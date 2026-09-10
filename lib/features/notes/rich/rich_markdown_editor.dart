@@ -10,6 +10,7 @@ import 'note_math.dart';
 import 'equation_editor.dart';
 import 'code_block.dart';
 import 'rich_table_editor.dart';
+import 'rich_math_block.dart';
 
 class RichMarkdownEditor extends StatefulWidget {
   const RichMarkdownEditor({
@@ -570,26 +571,22 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     }
     if (block.kind == MarkdownBlockKind.math) {
       return Center(
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: NoteMath(
-            block.content,
-            display: true,
-            onEdit: (v) {
-              final needsSeparator =
-                  block.prefix.endsWith('\n') &&
-                  !block.suffix.startsWith(RegExp(r'\r?\n')) &&
-                  v.isNotEmpty;
-              final separator = needsSeparator
-                  ? (block.source.contains('\r\n') ? '\r\n' : '\n')
-                  : '';
-              _replace(
-                block,
-                '${block.prefix}$v$separator${block.suffix}',
-                structural: needsSeparator,
-              );
-            },
-          ),
+        child: RichMathBlock(
+          content: block.content,
+          onChanged: (v) {
+            final needsSeparator =
+                block.prefix.endsWith('\n') &&
+                !block.suffix.startsWith(RegExp(r'\r?\n')) &&
+                v.isNotEmpty;
+            final separator = needsSeparator
+                ? (block.source.contains('\r\n') ? '\r\n' : '\n')
+                : '';
+            _replace(
+              block,
+              '${block.prefix}$v$separator${block.suffix}',
+              structural: needsSeparator,
+            );
+          },
         ),
       );
     }
