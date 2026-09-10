@@ -74,6 +74,36 @@ void main() {
   }
 
   testWidgets(
+    'inline fraction values edit directly without the equation studio',
+    (tester) async {
+      await open(tester, r'Value $\frac{1}{2}$ stays here.');
+      await tester.enterText(find.byKey(const ValueKey('frac-den-0')), '25');
+      await tester.pumpAndSettle();
+      expect(body, r'Value $\frac{1}{25}$ stays here.');
+      expect(find.text('Inline Equation Studio'), findsNothing);
+      await key(tester, LogicalKeyboardKey.keyZ, control: true);
+      await tester.pumpAndSettle();
+      expect(body, r'Value $\frac{1}{2}$ stays here.');
+    },
+  );
+
+  testWidgets(
+    'insert between paragraphs focuses a separate durable paragraph',
+    (tester) async {
+      await open(tester, 'First\n\nSecond');
+      await tester.tap(find.byTooltip('Insert paragraph here').first);
+      await tester.pumpAndSettle();
+      final focused = find.byWidgetPredicate(
+        (w) => w is TextField && w.focusNode?.hasFocus == true,
+      );
+      expect(focused, findsOneWidget);
+      await tester.enterText(focused, 'Middle');
+      await tester.pumpAndSettle();
+      expect(body, 'First\n\nMiddle\n\nSecond');
+    },
+  );
+
+  testWidgets(
     'Rich is real editable formatted text and mode switches preserve exact source/undo',
     (tester) async {
       const initial =

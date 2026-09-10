@@ -50,7 +50,14 @@ class _EquationEditorState extends State<EquationEditor> {
   bool showSource = true;
 
   void _applyModelUpdate(String newSource) {
-    input.text = newSource;
+    final selection = input.selection;
+    input.value = TextEditingValue(
+      text: newSource,
+      selection: TextSelection(
+        baseOffset: selection.baseOffset.clamp(0, newSource.length),
+        extentOffset: selection.extentOffset.clamp(0, newSource.length),
+      ),
+    );
     setState(() {});
   }
 
@@ -151,6 +158,14 @@ class _EquationEditorState extends State<EquationEditor> {
             _VisualEquationStudioHeader(
               model: model,
               onUpdate: _applyModelUpdate,
+              onSelect: (range) {
+                if (range != null) {
+                  input.selection = TextSelection(
+                    baseOffset: range.$1,
+                    extentOffset: range.$2,
+                  );
+                }
+              },
             ),
             const SizedBox(height: 6),
 
@@ -273,10 +288,12 @@ class _VisualEquationStudioHeader extends StatelessWidget {
   const _VisualEquationStudioHeader({
     required this.model,
     required this.onUpdate,
+    required this.onSelect,
   });
 
   final VisualMathModel model;
   final ValueChanged<String> onUpdate;
+  final ValueChanged<(int, int, bool)?> onSelect;
 
   @override
   Widget build(BuildContext context) {
@@ -360,11 +377,21 @@ class _VisualEquationStudioHeader extends StatelessWidget {
                     _StudioFractionCard(
                       fractionIndex: i,
                       fraction: model.fractions[i],
+                      onNumeratorActivated: () =>
+                          onSelect(model.fractions[i].numeratorRange),
+                      onDenominatorActivated: () =>
+                          onSelect(model.fractions[i].denominatorRange),
                       onNumeratorChanged: (val) {
                         onUpdate(model.updateFractionNumerator(i, val));
+                        if (i < model.fractions.length) {
+                          onSelect(model.fractions[i].numeratorRange);
+                        }
                       },
                       onDenominatorChanged: (val) {
                         onUpdate(model.updateFractionDenominator(i, val));
+                        if (i < model.fractions.length) {
+                          onSelect(model.fractions[i].denominatorRange);
+                        }
                       },
                     ),
                   ],
@@ -445,12 +472,15 @@ class _StudioFractionCard extends StatefulWidget {
     required this.fraction,
     required this.onNumeratorChanged,
     required this.onDenominatorChanged,
+    required this.onNumeratorActivated,
+    required this.onDenominatorActivated,
   });
 
   final int fractionIndex;
   final VisualFraction fraction;
   final ValueChanged<String> onNumeratorChanged;
   final ValueChanged<String> onDenominatorChanged;
+  final VoidCallback onNumeratorActivated, onDenominatorActivated;
 
   @override
   State<_StudioFractionCard> createState() => _StudioFractionCardState();
@@ -467,6 +497,12 @@ class _StudioFractionCardState extends State<_StudioFractionCard> {
     super.initState();
     _numCtrl = TextEditingController(text: widget.fraction.numerator);
     _denCtrl = TextEditingController(text: widget.fraction.denominator);
+    _numFocus.addListener(() {
+      if (_numFocus.hasFocus) widget.onNumeratorActivated();
+    });
+    _denFocus.addListener(() {
+      if (_denFocus.hasFocus) widget.onDenominatorActivated();
+    });
 
     // Arrow key navigation between top and bottom slots
     _numFocus.onKeyEvent = (_, event) {
@@ -490,11 +526,27 @@ class _StudioFractionCardState extends State<_StudioFractionCard> {
   @override
   void didUpdateWidget(covariant _StudioFractionCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.fraction.numerator != _numCtrl.text && !_numFocus.hasFocus) {
-      _numCtrl.text = widget.fraction.numerator;
+    if (widget.fraction.numerator != _numCtrl.text) {
+      _numCtrl.value = TextEditingValue(
+        text: widget.fraction.numerator,
+        selection: TextSelection.collapsed(
+          offset: _numCtrl.selection.extentOffset.clamp(
+            0,
+            widget.fraction.numerator.length,
+          ),
+        ),
+      );
     }
-    if (widget.fraction.denominator != _denCtrl.text && !_denFocus.hasFocus) {
-      _denCtrl.text = widget.fraction.denominator;
+    if (widget.fraction.denominator != _denCtrl.text) {
+      _denCtrl.value = TextEditingValue(
+        text: widget.fraction.denominator,
+        selection: TextSelection.collapsed(
+          offset: _denCtrl.selection.extentOffset.clamp(
+            0,
+            widget.fraction.denominator.length,
+          ),
+        ),
+      );
     }
   }
 
@@ -545,6 +597,7 @@ class _StudioFractionCardState extends State<_StudioFractionCard> {
                     ),
                   ),
                   onChanged: widget.onNumeratorChanged,
+                  onTap: widget.onNumeratorActivated,
                 ),
               ),
             ],
@@ -589,6 +642,7 @@ class _StudioFractionCardState extends State<_StudioFractionCard> {
                     ),
                   ),
                   onChanged: widget.onDenominatorChanged,
+                  onTap: widget.onDenominatorActivated,
                 ),
               ),
             ],

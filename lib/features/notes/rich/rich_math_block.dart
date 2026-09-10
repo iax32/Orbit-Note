@@ -3,6 +3,53 @@ import '../../../app/orbit_theme.dart';
 import 'note_math.dart';
 import 'visual_math_model.dart';
 
+/// Direct fraction fields inside the document; complex TeX retains its renderer.
+class EditableMathExpression extends StatelessWidget {
+  const EditableMathExpression({
+    super.key,
+    required this.source,
+    required this.onChanged,
+  });
+  final String source;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final model = VisualMathModel(source);
+    if (model.fractions.isEmpty ||
+        source.contains(r'\begin') ||
+        source.contains(r'\left')) {
+      return NoteMath(source, onEdit: onChanged);
+    }
+    final children = <Widget>[];
+    var offset = 0;
+    for (var i = 0; i < model.fractions.length; i++) {
+      final fraction = model.fractions[i];
+      if (fraction.startIndex < offset) continue;
+      final before = source.substring(offset, fraction.startIndex);
+      if (before.trim().isNotEmpty) children.add(NoteMath(before));
+      children.add(
+        _FractionSlotGroup(
+          fraction: fraction,
+          fractionIndex: i,
+          onNumeratorChanged: (v) =>
+              onChanged(model.updateFractionNumerator(i, v)),
+          onDenominatorChanged: (v) =>
+              onChanged(model.updateFractionDenominator(i, v)),
+        ),
+      );
+      offset = fraction.endIndex;
+    }
+    final after = source.substring(offset);
+    if (after.trim().isNotEmpty) children.add(NoteMath(after));
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 4,
+      children: children,
+    );
+  }
+}
+
 /// A rich, in-place interactive block for LaTeX equations.
 /// Provides direct visual slot editing (e.g. clicking below the fraction line
 /// to write the denominator) and one-click spacing actions directly in the
@@ -54,7 +101,7 @@ class _RichMathBlockState extends State<RichMathBlock> {
           children: [
             // Floating quick toolbar for direct spacing & structure without opening code
             AnimatedOpacity(
-              opacity: _hovered || hasFractions ? 1.0 : 0.0,
+              opacity: 1.0,
               duration: OrbitMotion.micro,
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 6),
@@ -292,11 +339,27 @@ class _FractionSlotGroupState extends State<_FractionSlotGroup> {
   @override
   void didUpdateWidget(covariant _FractionSlotGroup oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.fraction.numerator != _numCtrl.text && !_numFocus.hasFocus) {
-      _numCtrl.text = widget.fraction.numerator;
+    if (widget.fraction.numerator != _numCtrl.text) {
+      _numCtrl.value = TextEditingValue(
+        text: widget.fraction.numerator,
+        selection: TextSelection.collapsed(
+          offset: _numCtrl.selection.extentOffset.clamp(
+            0,
+            widget.fraction.numerator.length,
+          ),
+        ),
+      );
     }
-    if (widget.fraction.denominator != _denCtrl.text && !_denFocus.hasFocus) {
-      _denCtrl.text = widget.fraction.denominator;
+    if (widget.fraction.denominator != _denCtrl.text) {
+      _denCtrl.value = TextEditingValue(
+        text: widget.fraction.denominator,
+        selection: TextSelection.collapsed(
+          offset: _denCtrl.selection.extentOffset.clamp(
+            0,
+            widget.fraction.denominator.length,
+          ),
+        ),
+      );
     }
   }
 

@@ -35,12 +35,15 @@ class VisualFraction {
     required this.endIndex,
     required this.numerator,
     required this.denominator,
+    this.numeratorRange,
+    this.denominatorRange,
   });
 
   final int startIndex;
   final int endIndex;
   String numerator;
   String denominator;
+  final (int, int, bool)? numeratorRange, denominatorRange;
 
   String toTex() => '\\frac{$numerator}{$denominator}';
 }
@@ -140,7 +143,7 @@ class VisualMathModel {
       if (close != -1) {
         return (s.substring(i + 1, close), close + 1);
       } else {
-        return (s.substring(i + 1), s.length);
+        return null;
       }
     }
     // Single macro or character
@@ -149,6 +152,7 @@ class VisualMathModel {
       while (end < s.length && RegExp(r'[a-zA-Z]').hasMatch(s[end])) {
         end++;
       }
+      if (end == i + 1 && end < s.length) end++;
       return (s.substring(i, end), end);
     }
     return (s[i], i + 1);
@@ -169,9 +173,12 @@ class VisualMathModel {
     var i = 0;
     while (i < source.length) {
       // Check \frac
-      if (source.startsWith(r'\frac', i)) {
+      final fractionCommand = RegExp(
+        r'\\(?:frac|dfrac|tfrac)(?![a-zA-Z])',
+      ).matchAsPrefix(source, i);
+      if (fractionCommand != null) {
         final start = i;
-        final arg1 = extractArg(source, i + 5);
+        final arg1 = extractArg(source, fractionCommand.end);
         if (arg1 != null) {
           final arg2 = extractArg(source, arg1.$2);
           if (arg2 != null) {
@@ -181,9 +188,11 @@ class VisualMathModel {
                 endIndex: arg2.$2,
                 numerator: arg1.$1,
                 denominator: arg2.$1,
+                numeratorRange: _argumentRange(fractionCommand.end, arg1.$2),
+                denominatorRange: _argumentRange(arg1.$2, arg2.$2),
               ),
             );
-            i += 5;
+            i = fractionCommand.end;
             continue;
           }
         }
@@ -284,7 +293,17 @@ class VisualMathModel {
         }
       }
 
-      i++;
+      // Do not interpret escaped backslashes, comments or control-word suffixes
+      // as another editable expression.
+      if (source[i] == '%') {
+        final newline = source.indexOf('\n', i);
+        i = newline < 0 ? source.length : newline + 1;
+      } else if (source[i] == '\\') {
+        final command = RegExp(r'\\(?:[a-zA-Z]+|.)').matchAsPrefix(source, i);
+        i = command?.end ?? i + 1;
+      } else {
+        i++;
+      }
     }
   }
 
@@ -293,10 +312,32 @@ class VisualMathModel {
   bool get hasBigOps => bigOps.isNotEmpty;
   bool get hasMultipleLines => equationLines.length > 1;
 
+  (int, int, bool) _argumentRange(int start, int end) {
+    while (start < end && RegExp(r'\s').hasMatch(source[start])) {
+      start++;
+    }
+    return source[start] == '{'
+        ? (start + 1, end - 1, true)
+        : (start, end, false);
+  }
+
+  String _replaceArgument((int, int, bool) range, String value) {
+    source = source.replaceRange(
+      range.$1,
+      range.$2,
+      range.$3 ? value : '{$value}',
+    );
+    parse();
+    return source;
+  }
+
   /// Update the denominator ("the number below it") of a specific fraction.
   String updateFractionDenominator(int index, String newDenom) {
     if (index < 0 || index >= fractions.length) return source;
     final frac = fractions[index];
+    if (frac.denominatorRange != null) {
+      return _replaceArgument(frac.denominatorRange!, newDenom);
+    }
     final before = source.substring(0, frac.startIndex);
     final after = source.substring(frac.endIndex);
     frac.denominator = newDenom;
@@ -309,6 +350,9 @@ class VisualMathModel {
   String updateFractionNumerator(int index, String newNum) {
     if (index < 0 || index >= fractions.length) return source;
     final frac = fractions[index];
+    if (frac.numeratorRange != null) {
+      return _replaceArgument(frac.numeratorRange!, newNum);
+    }
     final before = source.substring(0, frac.startIndex);
     final after = source.substring(frac.endIndex);
     frac.numerator = newNum;
@@ -355,11 +399,14 @@ class VisualMathModel {
 
   /// Add a line break (\\) to separate equations into rows or add vertical space.
   String addLineBreak() {
-    var trimmed = source.trimRight();
-    if (trimmed.isEmpty) {
-      source = r'\\ ';
+    const closing = r'\end{aligned}';
+    final end = source.lastIndexOf(closing);
+    if (source.trimLeft().startsWith(r'\begin{aligned}') &&
+        end >= 0 &&
+        source.substring(end + closing.length).trim().isEmpty) {
+      source = source.replaceRange(end, end, '\\\\\n\\square\n');
     } else {
-      source = '$trimmed \\\\\n';
+      source = '\\begin{aligned}\n$source \\\\\n\\square\n\\end{aligned}';
     }
     parse();
     return source;

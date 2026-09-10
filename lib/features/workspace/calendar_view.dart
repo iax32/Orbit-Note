@@ -45,12 +45,28 @@ class _CalendarViewState extends State<CalendarView> {
   void _previousMonth() {
     setState(() {
       _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month - 1);
+      _selectedDay = DateTime(
+        _visibleMonth.year,
+        _visibleMonth.month,
+        _selectedDay.day.clamp(
+          1,
+          DateTime(_visibleMonth.year, _visibleMonth.month + 1, 0).day,
+        ),
+      );
     });
   }
 
   void _nextMonth() {
     setState(() {
       _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month + 1);
+      _selectedDay = DateTime(
+        _visibleMonth.year,
+        _visibleMonth.month,
+        _selectedDay.day.clamp(
+          1,
+          DateTime(_visibleMonth.year, _visibleMonth.month + 1, 0).day,
+        ),
+      );
     });
   }
 
@@ -62,17 +78,7 @@ class _CalendarViewState extends State<CalendarView> {
     });
   }
 
-  List<DateTime> _daysForGrid() {
-    final firstDayOfMonth = DateTime(
-      _visibleMonth.year,
-      _visibleMonth.month,
-      1,
-    );
-    final startOffset = firstDayOfMonth.weekday - 1;
-    final gridStart = firstDayOfMonth.subtract(Duration(days: startOffset));
-
-    return List.generate(42, (index) => gridStart.add(Duration(days: index)));
-  }
+  List<DateTime> _daysForGrid() => calendarMonthDays(_visibleMonth);
 
   @override
   Widget build(BuildContext context) {
@@ -206,7 +212,7 @@ class _CalendarViewState extends State<CalendarView> {
       child: GridView.builder(
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 7,
-          childAspectRatio: 1.25,
+          mainAxisExtent: 64,
           crossAxisSpacing: 4,
           mainAxisSpacing: 4,
         ),
@@ -655,15 +661,21 @@ Future<void> showEventDialog(
   String initialTitle = event?.title ?? '';
   String initialBody = event?.body ?? '';
   bool allDay = true;
+  bool saving = false;
+  String? saveError;
+  EventSchedule? originalSchedule;
   DateTime startDate = DateTime(date.year, date.month, date.day);
   DateTime endDate = DateTime(date.year, date.month, date.day + 1);
   TimeOfDay startTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay endTime = const TimeOfDay(hour: 10, minute: 0);
-  String? contextId = event?.properties['contextId'] as String?;
+  String? contextId = event?.properties['contextId'] is String
+      ? event!.properties['contextId'] as String
+      : null;
 
   if (isEditing) {
     try {
       final schedule = EventSchedule.fromProperties(event.properties);
+      originalSchedule = schedule;
       allDay = schedule.allDay;
       if (allDay) {
         startDate = schedule.start;
@@ -676,292 +688,389 @@ Future<void> showEventDialog(
         startTime = TimeOfDay(hour: startLocal.hour, minute: startLocal.minute);
         endTime = TimeOfDay(hour: endLocal.hour, minute: endLocal.minute);
       }
-    } catch (_) {}
+    } catch (_) {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Event dates need review'),
+          content: const Text(
+            'This event contains unsupported or invalid dates. Its original data '
+            'has been preserved. Review the event’s open JSON file before editing dates.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
   }
 
+  if (!context.mounted) {
+    return;
+  }
   final titleController = TextEditingController(text: initialTitle);
   final bodyController = TextEditingController(text: initialBody);
 
   await showDialog<void>(
     context: context,
+    barrierDismissible: false,
     builder: (context) => StatefulBuilder(
-      builder: (context, setState) => AlertDialog(
-        title: Text(isEditing ? 'Edit event' : 'New event'),
-        content: SizedBox(
-          width: 460,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: titleController,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Event title',
-                    hintText: 'Meeting, Lecture, Milestone…',
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SwitchListTile(
-                  title: const Text('All day'),
-                  value: allDay,
-                  contentPadding: EdgeInsets.zero,
-                  onChanged: (v) => setState(() => allDay = v),
-                ),
-                const SizedBox(height: 12),
-                if (allDay) ...[
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: startDate,
-                              firstDate: DateTime(2000),
-                              lastDate: DateTime(2100),
-                            );
-                            if (picked != null) {
-                              setState(() {
-                                startDate = picked;
-                                if (!endDate.isAfter(startDate)) {
-                                  endDate = startDate.add(
-                                    const Duration(days: 1),
-                                  );
-                                }
-                              });
-                            }
-                          },
-                          icon: const Icon(
-                            Icons.calendar_today_outlined,
-                            size: 15,
-                          ),
-                          label: Text('From: ${calendarDate(startDate)}'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: endDate,
-                              firstDate: startDate.add(const Duration(days: 1)),
-                              lastDate: DateTime(2100),
-                            );
-                            if (picked != null) {
-                              setState(() => endDate = picked);
-                            }
-                          },
-                          icon: const Icon(
-                            Icons.calendar_today_outlined,
-                            size: 15,
-                          ),
-                          label: Text('To: ${calendarDate(endDate)}'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ] else ...[
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: startDate,
-                              firstDate: DateTime(2000),
-                              lastDate: DateTime(2100),
-                            );
-                            if (picked != null) {
-                              setState(() {
-                                startDate = picked;
-                                if (endDate.isBefore(startDate)) {
-                                  endDate = startDate;
-                                }
-                              });
-                            }
-                          },
-                          child: Text(calendarDate(startDate)),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () async {
-                            final picked = await showTimePicker(
-                              context: context,
-                              initialTime: startTime,
-                            );
-                            if (picked != null) {
-                              setState(() => startTime = picked);
-                            }
-                          },
-                          child: Text(startTime.format(context)),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: endDate,
-                              firstDate: startDate,
-                              lastDate: DateTime(2100),
-                            );
-                            if (picked != null) {
-                              setState(() => endDate = picked);
-                            }
-                          },
-                          child: Text(calendarDate(endDate)),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () async {
-                            final picked = await showTimePicker(
-                              context: context,
-                              initialTime: endTime,
-                            );
-                            if (picked != null) {
-                              setState(() => endTime = picked);
-                            }
-                          },
-                          child: Text(endTime.format(context)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  initialValue: contextId,
-                  decoration: const InputDecoration(
-                    labelText: 'Linked context (optional)',
-                  ),
-                  items: [
-                    const DropdownMenuItem(
-                      value: null,
-                      child: Text('No context'),
+      builder: (context, setState) => PopScope(
+        canPop: !saving,
+        child: AlertDialog(
+          title: Text(isEditing ? 'Edit event' : 'New event'),
+          content: SizedBox(
+            width: 460,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: titleController,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Event title',
+                      hintText: 'Meeting, Lecture, Milestone…',
                     ),
-                    ...controller.activeObjects
-                        .where(
-                          (o) =>
-                              (event == null || o.id != event.id) &&
-                              o.typeId != 'orbit.event',
-                        )
-                        .map(
-                          (o) => DropdownMenuItem(
-                            value: o.id,
-                            child: Text(
-                              o.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                  ),
+                  if (saveError != null)
+                    Text(
+                      saveError!,
+                      key: const ValueKey('event-save-error'),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  const SizedBox(height: 16),
+                  SwitchListTile(
+                    title: const Text('All day'),
+                    value: allDay,
+                    contentPadding: EdgeInsets.zero,
+                    onChanged: saving
+                        ? null
+                        : (v) => setState(() {
+                            allDay = v;
+                            if (v && !endDate.isAfter(startDate)) {
+                              endDate = DateTime(
+                                startDate.year,
+                                startDate.month,
+                                startDate.day + 1,
+                              );
+                            } else if (!v && originalSchedule == null) {
+                              endDate = startDate;
+                            }
+                          }),
+                  ),
+                  const SizedBox(height: 12),
+                  if (allDay) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: startDate,
+                                firstDate: DateTime(1),
+                                lastDate: DateTime(9999, 12, 31),
+                              );
+                              if (picked != null) {
+                                setState(() {
+                                  startDate = picked;
+                                  if (!endDate.isAfter(startDate)) {
+                                    endDate = DateTime(
+                                      startDate.year,
+                                      startDate.month,
+                                      startDate.day + 1,
+                                    );
+                                  }
+                                });
+                              }
+                            },
+                            icon: const Icon(
+                              Icons.calendar_today_outlined,
+                              size: 15,
+                            ),
+                            label: Text('From: ${calendarDate(startDate)}'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: endDate,
+                                firstDate: DateTime(
+                                  startDate.year,
+                                  startDate.month,
+                                  startDate.day + 1,
+                                ),
+                                lastDate: DateTime(9999, 12, 31),
+                              );
+                              if (picked != null) {
+                                setState(() => endDate = picked);
+                              }
+                            },
+                            icon: const Icon(
+                              Icons.calendar_today_outlined,
+                              size: 15,
+                            ),
+                            label: Text(
+                              'Until (exclusive): ${calendarDate(endDate)}',
                             ),
                           ),
                         ),
+                      ],
+                    ),
+                  ] else ...[
+                    const Text('Times use this device’s local time zone.'),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: startDate,
+                                firstDate: DateTime(1),
+                                lastDate: DateTime(9999, 12, 31),
+                              );
+                              if (picked != null) {
+                                setState(() {
+                                  startDate = picked;
+                                  if (endDate.isBefore(startDate)) {
+                                    endDate = startDate;
+                                  }
+                                });
+                              }
+                            },
+                            child: Text(calendarDate(startDate)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () async {
+                              final picked = await showTimePicker(
+                                context: context,
+                                initialTime: startTime,
+                              );
+                              if (picked != null) {
+                                setState(() => startTime = picked);
+                              }
+                            },
+                            child: Text(startTime.format(context)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: endDate,
+                                firstDate: startDate,
+                                lastDate: DateTime(9999, 12, 31),
+                              );
+                              if (picked != null) {
+                                setState(() => endDate = picked);
+                              }
+                            },
+                            child: Text(calendarDate(endDate)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () async {
+                              final picked = await showTimePicker(
+                                context: context,
+                                initialTime: endTime,
+                              );
+                              if (picked != null) {
+                                setState(() => endTime = picked);
+                              }
+                            },
+                            child: Text(endTime.format(context)),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
-                  onChanged: (v) => setState(() => contextId = v),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: bodyController,
-                  minLines: 3,
-                  maxLines: 6,
-                  decoration: const InputDecoration(
-                    labelText: 'Notes / Agenda',
-                    hintText: 'Add details, description or links…',
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    initialValue: contextId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Linked context (optional)',
+                    ),
+                    items: [
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text('No context'),
+                      ),
+                      if (contextId != null &&
+                          !controller.activeObjects.any(
+                            (o) =>
+                                o.id == contextId && o.typeId != 'orbit.event',
+                          ))
+                        DropdownMenuItem(
+                          value: contextId,
+                          child: const Text('Unavailable context (preserved)'),
+                        ),
+                      ...controller.activeObjects
+                          .where(
+                            (o) =>
+                                (event == null || o.id != event.id) &&
+                                o.typeId != 'orbit.event',
+                          )
+                          .map(
+                            (o) => DropdownMenuItem(
+                              value: o.id,
+                              child: Text(
+                                o.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                    ],
+                    onChanged: (v) => setState(() => contextId = v),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: bodyController,
+                    minLines: 3,
+                    maxLines: 6,
+                    decoration: const InputDecoration(
+                      labelText: 'Notes / Agenda',
+                      hintText: 'Add details, description or links…',
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-        actions: [
-          if (isEditing)
+          actions: [
+            if (isEditing)
+              TextButton(
+                onPressed: saving
+                    ? null
+                    : () async {
+                        setState(() => saving = true);
+                        await controller.trash(event.id);
+                        if (!context.mounted) return;
+                        if (controller.find(event.id)?.isDeleted == true) {
+                          Navigator.pop(context);
+                        } else {
+                          setState(() {
+                            saving = false;
+                            saveError =
+                                controller.error ??
+                                'Could not delete the event.';
+                          });
+                        }
+                      },
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                child: const Text('Delete'),
+              ),
             TextButton(
-              onPressed: () {
-                controller.trash(event.id);
-                Navigator.pop(context);
-              },
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
-              child: const Text('Delete'),
+              onPressed: saving ? null : () => Navigator.pop(context),
+              child: const Text('Cancel'),
             ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final title = titleController.text.trim().isEmpty
-                  ? 'Untitled event'
-                  : titleController.text.trim();
-
-              final Map<String, dynamic> properties = {'allDay': allDay};
-
-              if (allDay) {
-                properties['startDate'] = calendarDate(startDate);
-                properties['endDate'] = calendarDate(endDate);
-              } else {
-                final startInstant = DateTime.utc(
-                  startDate.year,
-                  startDate.month,
-                  startDate.day,
-                  startTime.hour,
-                  startTime.minute,
-                );
-                var endInstant = DateTime.utc(
-                  endDate.year,
-                  endDate.month,
-                  endDate.day,
-                  endTime.hour,
-                  endTime.minute,
-                );
-                if (!endInstant.isAfter(startInstant)) {
-                  endInstant = startInstant.add(const Duration(hours: 1));
-                }
-                properties['startAt'] =
-                    '${startInstant.toIso8601String().split('.').first}Z';
-                properties['endAt'] =
-                    '${endInstant.toIso8601String().split('.').first}Z';
-              }
-
-              if (contextId != null) {
-                properties['contextId'] = contextId;
-              }
-
-              if (isEditing) {
-                controller.edit(
-                  event.id,
-                  title: title,
-                  body: bodyController.text,
-                  properties: properties,
-                );
-              } else {
-                controller.create('orbit.event', title: title).then((created) {
-                  if (created != null) {
-                    controller.edit(
-                      created.id,
-                      body: bodyController.text,
-                      properties: properties,
-                    );
-                  }
-                });
-              }
-              Navigator.pop(context);
-            },
-            child: Text(isEditing ? 'Save' : 'Create'),
-          ),
-        ],
+            FilledButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      setState(() {
+                        saving = true;
+                        saveError = null;
+                      });
+                      try {
+                        final properties = <String, dynamic>{
+                          ...?event?.properties,
+                          'allDay': allDay,
+                        };
+                        for (final field in [
+                          'startDate',
+                          'endDate',
+                          'startAt',
+                          'endAt',
+                          'contextId',
+                        ]) {
+                          properties.remove(field);
+                        }
+                        if (allDay) {
+                          properties['startDate'] = calendarDate(startDate);
+                          properties['endDate'] = calendarDate(endDate);
+                        } else {
+                          final start = eventLocalInstant(
+                            startDate,
+                            startTime.hour,
+                            startTime.minute,
+                            original: originalSchedule?.allDay == false
+                                ? originalSchedule!.start
+                                : null,
+                          );
+                          final end = eventLocalInstant(
+                            endDate,
+                            endTime.hour,
+                            endTime.minute,
+                            original: originalSchedule?.allDay == false
+                                ? originalSchedule!.end
+                                : null,
+                          );
+                          properties['startAt'] = start.toIso8601String();
+                          properties['endAt'] = end.toIso8601String();
+                        }
+                        if (contextId != null) {
+                          properties['contextId'] = contextId;
+                        }
+                        EventSchedule.fromProperties(properties);
+                        final saved = await controller.saveEvent(
+                          original: event,
+                          title: titleController.text.trim(),
+                          body: bodyController.text,
+                          properties: properties,
+                        );
+                        if (!context.mounted) return;
+                        if (saved != null) {
+                          Navigator.pop(context);
+                          return;
+                        }
+                        setState(() {
+                          saveError =
+                              controller.error ?? 'Could not save the event.';
+                          saving = false;
+                        });
+                      } catch (e) {
+                        if (context.mounted) {
+                          setState(() {
+                            saveError = '$e';
+                            saving = false;
+                          });
+                        }
+                      }
+                    },
+              child: Text(isEditing ? 'Save' : 'Create'),
+            ),
+          ],
+        ),
       ),
     ),
   );
+  // The closing route still builds its fields during the exit animation.
+  await Future<void>.delayed(const Duration(milliseconds: 300));
+  titleController.dispose();
+  bodyController.dispose();
 }

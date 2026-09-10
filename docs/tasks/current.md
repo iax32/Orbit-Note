@@ -1,45 +1,39 @@
-# Current task — stabilize the editable Rich Markdown editor
+# Current task — repair Rich math and Calendar workflows
 
-Status: bounded stabilization batch delivered, 2026-09-10. Preserve
-the local core, Vault/folder work and existing tests. The owner's direct Rich
-editor continuation request supersedes the former proposed Notes list task.
+Status: repair batch delivered and validated, 2026-09-10.
+The owner's request to repair the newly added features supersedes the earlier
+Rich-only task. Preserve the committed editor, Calendar, graph and callout work.
 
 ## Scope and acceptance
 
-Write directly in formatted paragraphs, headings and lists while Markdown remains
-the durable source. Finish formatting boundaries, naturally editable paragraphs
-after Enter, list continuation/exit/nesting, visual table cells/row/column commands,
-highlighted editable code and content-only Copy Code. Render inline/block LaTeX
-in Rich and Read, with local equation editing and safe invalid-source fallback.
-
-Preserve Rich/Source/Read/Split, shared document undo/redo, practical per-pane
-restoration, unknown constructs and all unrelated source bytes. Add behavioral
-round-trip and keyboard regressions. Do not introduce cloud, plugins, AI, Calendar
-or another unrelated subsystem in this editor stabilization pass.
+- Make symbol insertion target the active visual fraction slot; synchronize focused
+  visual fields on undo, preserve edited TeX argument boundaries, and render line breaks.
+- Share the validated event form between Calendar and event details. Convert local
+  clock input to UTC correctly; keep all-day dates civil and end-exclusive.
+- Persist complete event commands, retain failed drafts and unknown properties,
+  reject stale edits and invalid schedules without silently replacing source data.
+- Keep Universal Object identity, repository save/recovery, Markdown and documented
+  JSON authority. No cloud, plugins, AI or new persistence layer.
 
 ## Targeted reading
 
-- [Markdown editing requirements](../features/markdown-and-editing.md), EDT-01–15.
-- [Rich projection decision](../adr/0011-source-preserving-rich-markdown.md).
-- [Storage authority](../architecture/storage-formats.md).
-- Relevant `lib/features/notes/` implementation and Rich/editor tests.
+- [Markdown editing](../features/markdown-and-editing.md), EDT-01–15.
+- [Calendar/events](../features/calendar-and-events.md), EVT-01–05.
+- [Planning semantics](../features/tasks-calendar-and-planning.md).
+- [Rich projection](../adr/0011-source-preserving-rich-markdown.md).
+- [Implemented formats](../architecture/implemented-formats.md).
 
 ## Validation and handoff
 
-Run `dart format lib test tool`, the zero-change format check, `flutter analyze`,
-`flutter test`, and `flutter build windows --release`. Smoke-launch the release
-when possible. Validate after meaningful batches; stop adding features before
-capacity prevents completing the final gates.
+Run `dart format lib test tool`, zero-change format check, `flutter analyze`,
+`flutter test`, and `flutter build windows --release`; smoke-launch if possible.
+The [CURRENT capability map](../planning/implementation-status.md) records evidence
+and boundaries. Update architecture decisions only if the architecture changes;
+these repairs retain the accepted architecture and require no storage migration.
 
-The [CURRENT capability map](../planning/implementation-status.md) owns final
-evidence and limitations. Preserve historical evidence in the
-[audit/folder snapshot](../planning/audit-folder-snapshot-2026-09-09.md).
-Final format/zero-change check and analyzer pass. All 112 tests pass. The Windows
-release build passed (37.7 seconds); the rebuilt app created a responsive native
-window and closed normally with exit code 0 and no stderr. Existing user processes
-were preserved. See CURRENT status for the final compatibility check and exact limits.
+Next bounded task: Rich selection/formatting across inline equation segments,
+with keyboard and large-note layout acceptance. Do not restart the projection.
 
-Next bounded task: improve Rich selection/formatting across inline equation
-segments and blocks, with representative large-note layout measurements. Do not
-restart the projection or claim complete Word/Typora parity. Keep the source
-round-trip, shared undo and local save/conflict invariants proven in this batch.
+Final evidence: zero-change format, clean analyzer, all 151 tests passing, Windows
+release build successful (37.9 seconds), responsive native startup and clean exit.
+The existing user app instance was preserved; restart it to load the rebuilt code.

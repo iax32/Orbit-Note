@@ -8,6 +8,22 @@ import 'package:orbit_note/features/notes/rich/visual_math_model.dart';
 
 void main() {
   group('VisualMathModel', () {
+    test(
+      'slot edits preserve spacing, fraction variants and unsupported commands',
+      () {
+        final model = VisualMathModel(
+          r'A + \dfrac  {x}{y} + \fraction{keep}{exact}',
+        );
+        expect(model.fractions, hasLength(1));
+        expect(
+          model.updateFractionDenominator(0, '2'),
+          r'A + \dfrac  {x}{2} + \fraction{keep}{exact}',
+        );
+        expect(VisualMathModel(r'\frac{a}{broken').fractions, isEmpty);
+        expect(VisualMathModel(r'\\frac{a}{b}').fractions, isEmpty);
+        expect(VisualMathModel('% \\frac{a}{b}\nplain').fractions, isEmpty);
+      },
+    );
     test('parses simple and multiple fractions', () {
       final model = VisualMathModel(r'\frac{1}{2} + \frac{a}{b}');
       expect(model.fractions.length, 2);
@@ -122,6 +138,23 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(body, contains(r'\frac{a}{100}'));
+        await tester.enterText(denomInput, '200');
+        await tester.pumpAndSettle();
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+        expect(tester.widget<TextField>(denomInput).controller!.text, '100');
+        expect(
+          tester.widget<TextField>(denomInput).focusNode!.hasFocus,
+          isTrue,
+        );
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+        expect(body, contains(r'\frac{a}{b}'));
+        expect(tester.widget<TextField>(denomInput).controller!.text, 'b');
       },
     );
 
@@ -146,6 +179,12 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(body, contains(r'\\'));
+        expect(
+          find.byTooltip(
+            'Invalid or unsupported LaTeX. The source is preserved.',
+          ),
+          findsNothing,
+        );
       },
     );
 

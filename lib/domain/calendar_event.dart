@@ -12,6 +12,39 @@ DateTime? parseCalendarDate(Object? value) {
   return date != null && calendarDate(date) == value ? date : null;
 }
 
+/// A civil date is not a duration of 24 hours across daylight-saving changes.
+List<DateTime> calendarMonthDays(DateTime month) {
+  final first = DateTime(month.year, month.month);
+  return List.generate(
+    42,
+    (i) => DateTime(month.year, month.month, 2 - first.weekday + i),
+  );
+}
+
+DateTime eventLocalInstant(
+  DateTime date,
+  int hour,
+  int minute, {
+  DateTime? original,
+}) {
+  final old = original?.toLocal();
+  if (old != null &&
+      calendarDate(old) == calendarDate(date) &&
+      old.hour == hour &&
+      old.minute == minute) {
+    return original!.toUtc();
+  }
+  final local = DateTime(date.year, date.month, date.day, hour, minute);
+  if (calendarDate(local) != calendarDate(date) ||
+      local.hour != hour ||
+      local.minute != minute) {
+    throw const WorkspaceFailure(
+      'This local time does not exist because of a clock change. Choose another time.',
+    );
+  }
+  return local.toUtc();
+}
+
 /// Date-only intervals use exclusive end dates; timed intervals are UTC instants.
 /// Calendar display converts timed intervals to the current device's local zone.
 class EventSchedule {
@@ -23,9 +56,22 @@ class EventSchedule {
     if (allDay is! bool) {
       throw const WorkspaceFailure('Choose all-day or timed dates.');
     }
-    DateTime? instant(Object? value) => value is String && value.endsWith('Z')
-        ? DateTime.tryParse(value)
-        : null;
+    DateTime? instant(Object? value) {
+      if (value is! String ||
+          !RegExp(
+            r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$',
+          ).hasMatch(value) ||
+          parseCalendarDate(value.substring(0, 10)) == null) {
+        return null;
+      }
+      if (int.parse(value.substring(11, 13)) > 23 ||
+          int.parse(value.substring(14, 16)) > 59 ||
+          int.parse(value.substring(17, 19)) > 59) {
+        return null;
+      }
+      return DateTime.tryParse(value);
+    }
+
     final start = allDay
         ? parseCalendarDate(properties['startDate'])
         : instant(properties['startAt']);

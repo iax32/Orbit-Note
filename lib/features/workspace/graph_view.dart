@@ -70,14 +70,17 @@ class GraphData {
         typeFilters ??
         {'orbit.note', 'orbit.task', 'orbit.canvas', 'orbit.event'};
 
-    // Map titles & IDs for link resolution
-    final titleToId = <String, String>{};
-    for (final o in activeObjects) {
-      if (o.title.isNotEmpty) {
-        titleToId[o.title.toLowerCase()] = o.id;
-      }
-    }
-
+    final targets = activeObjects
+        .map(
+          (o) => NoteLinkTarget(
+            id: o.id,
+            title: o.title,
+            aliases: (o.properties['aliases'] is List)
+                ? (o.properties['aliases'] as List).whereType<String>().toList()
+                : const [],
+          ),
+        )
+        .toList();
     final rawEdges = <GraphEdge>[];
     final edgeKeys = <String>{};
 
@@ -94,22 +97,18 @@ class GraphData {
       if (o.typeId == 'orbit.note' && o.body.isNotEmpty) {
         final links = parseWikiLinks(o.body);
         for (final link in links) {
-          final targetText = link.target.trim();
-          final boundId = o.linkBindings[targetText];
-          if (boundId != null) {
-            addEdge(o.id, boundId);
-          } else {
-            final matchedId = titleToId[targetText.toLowerCase()];
-            if (matchedId != null) {
-              addEdge(o.id, matchedId);
-            }
-          }
+          final target = resolveWikiLink(
+            link,
+            targets,
+            bindings: o.linkBindings,
+          ).target;
+          if (target != null) addEdge(o.id, target.id);
         }
       }
 
       // 2. Task context link
       if (o.typeId == 'orbit.task') {
-        final ctx = o.properties['context'];
+        final ctx = o.properties['contextId'] ?? o.properties['context'];
         if (ctx is String && ctx.isNotEmpty) {
           addEdge(o.id, ctx);
         }
@@ -117,7 +116,10 @@ class GraphData {
 
       // 3. Event linked context
       if (o.typeId == 'orbit.event') {
-        final ctx = o.properties['context'] ?? o.properties['linkedId'];
+        final ctx =
+            o.properties['contextId'] ??
+            o.properties['context'] ??
+            o.properties['linkedId'];
         if (ctx is String && ctx.isNotEmpty) {
           addEdge(o.id, ctx);
         }
@@ -209,7 +211,9 @@ class GraphData {
     }
 
     // Run force-directed simulation steps
-    simulatePhysics(nodes, filteredEdges, iterations: 35);
+    if (nodes.length <= 300) {
+      simulatePhysics(nodes, filteredEdges, iterations: 35);
+    }
 
     return GraphData(nodes: nodes, edges: filteredEdges);
   }
@@ -291,6 +295,8 @@ class _GraphViewState extends State<GraphView> {
   final TransformationController _transformCtrl = TransformationController();
   String _query = '';
   bool _localMode = false;
+  String? _focusId;
+  int _depth = 2;
   final Set<String> _typeFilters = {
     'orbit.note',
     'orbit.task',
@@ -298,6 +304,9 @@ class _GraphViewState extends State<GraphView> {
     'orbit.event',
   };
   GraphNode? _hoveredNode;
+  GraphData? _cachedGraph;
+  List<UniversalObject> _cachedObjects = const [];
+  String _cachedOptions = '';
 
   @override
   void dispose() {
@@ -306,21 +315,64 @@ class _GraphViewState extends State<GraphView> {
   }
 
   void _resetView() {
-    _transformCtrl.value = Matrix4.identity();
+    final nodes = _cachedGraph?.nodes;
+    if (nodes == null || nodes.isEmpty) {
+      _transformCtrl.value = Matrix4.identity();
+      return;
+    }
+    var bounds = Rect.fromCircle(
+      center: Offset(nodes.first.x, nodes.first.y),
+      radius: 35,
+    );
+    for (final node in nodes.skip(1)) {
+      bounds = bounds.expandToInclude(
+        Rect.fromCircle(center: Offset(node.x, node.y), radius: 35),
+      );
+    }
+    final size = context.size ?? const Size(800, 600);
+    final scale = math
+        .min(
+          (size.width - 60) / bounds.width,
+          (size.height - 180) / bounds.height,
+        )
+        .clamp(.15, 3.5);
+    _transformCtrl.value = Matrix4.identity()
+      ..translateByDouble(
+        size.width / 2 - bounds.center.dx * scale,
+        (size.height + 100) / 2 - bounds.center.dy * scale,
+        0,
+        1,
+      )
+      ..scaleByDouble(scale, scale, 1, 1);
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = OrbitColors.of(context);
     final c = widget.controller;
-    final activeId = c.session.activeId;
+    final activeId = _focusId ?? c.session.activeId;
 
-    final graphData = GraphData.build(
-      objects: c.objects,
-      focusId: _localMode ? activeId : null,
-      typeFilters: _typeFilters,
-      query: _query,
-    );
+    final options =
+        '${_localMode ? activeId : null}|$_depth|$_query|${_typeFilters.join(',')}';
+    final unchanged =
+        _cachedObjects.length == c.objects.length &&
+        List.generate(
+          c.objects.length,
+          (i) => identical(c.objects[i], _cachedObjects[i]),
+        ).every((v) => v);
+    if (!unchanged || options != _cachedOptions || _cachedGraph == null) {
+      _cachedObjects = List.of(c.objects);
+      _cachedOptions = options;
+      _hoveredNode = null;
+      _cachedGraph = GraphData.build(
+        objects: c.objects,
+        focusId: _localMode ? activeId : null,
+        maxHops: _depth,
+        typeFilters: _typeFilters,
+        query: _query,
+      );
+    }
+    final graphData = _cachedGraph!;
 
     return Scaffold(
       backgroundColor: colors.background,
@@ -329,11 +381,13 @@ class _GraphViewState extends State<GraphView> {
           // Interactive Graph Canvas
           Positioned.fill(
             child: InteractiveViewer(
+              constrained: false,
               transformationController: _transformCtrl,
               boundaryMargin: const EdgeInsets.all(1200),
               minScale: 0.15,
               maxScale: 3.5,
               child: MouseRegion(
+                onExit: (_) => setState(() => _hoveredNode = null),
                 onHover: (event) {
                   final localPos = event.localPosition;
                   GraphNode? closest;
@@ -440,6 +494,70 @@ class _GraphViewState extends State<GraphView> {
                   ),
 
                   // Search Filter
+                  PopupMenuButton<String>(
+                    tooltip: 'Choose local graph focus',
+                    icon: const Icon(Icons.my_location),
+                    itemBuilder: (_) => [
+                      for (final object in c.activeObjects)
+                        PopupMenuItem(
+                          value: object.id,
+                          child: Text(object.title),
+                        ),
+                    ],
+                    onSelected: (id) => setState(() {
+                      _focusId = id;
+                      _localMode = true;
+                    }),
+                  ),
+                  if (_localMode)
+                    DropdownButton<int>(
+                      value: _depth,
+                      items: [
+                        for (final depth in [1, 2, 3])
+                          DropdownMenuItem(
+                            value: depth,
+                            child: Text('$depth hops'),
+                          ),
+                      ],
+                      onChanged: (v) => setState(() => _depth = v!),
+                    ),
+                  IconButton(
+                    tooltip: 'Browse graph objects',
+                    icon: const Icon(Icons.list_alt),
+                    onPressed: () => showDialog<void>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Graph objects'),
+                        content: SizedBox(
+                          width: 400,
+                          height: 350,
+                          child: ListView(
+                            children: [
+                              for (final node in graphData.nodes.where(
+                                (n) => n.matchesQuery,
+                              ))
+                                ListTile(
+                                  title: Text(node.title),
+                                  subtitle: Text(
+                                    '${node.connectionCount} connections',
+                                  ),
+                                  onTap: () {
+                                    Navigator.pop(context);
+                                    c.openObject(node.id);
+                                  },
+                                ),
+                            ],
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Close'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                   SizedBox(
                     width: 180,
                     height: 32,
@@ -500,7 +618,7 @@ class _GraphViewState extends State<GraphView> {
                       ),
                       const SizedBox(width: 8),
                       Tooltip(
-                        message: 'Reset view to center',
+                        message: 'Fit graph to view',
                         child: IconButton(
                           icon: const Icon(Icons.center_focus_strong, size: 18),
                           onPressed: _resetView,

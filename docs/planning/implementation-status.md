@@ -17,13 +17,13 @@ entire milestone is complete. No cloud, plugin runtime or AI subsystem was added
 | Notes | Directly editable Rich paragraphs/headings/lists plus Source/Read/Split; formatting, shared undo/redo, outline, literal find/replace, attachments and per-pane restoration; resizable Source/preview divider | Cross-block native selection, rich HTML paste conversion, complete CommonMark editing parity and long-document layout virtualization |
 | Smart lists | Bullet/number/checklist continuation, unchecked next checklist item, empty-item exit, Tab/Shift+Tab nesting; formatted paragraph split/join | Multi-block Rich selection/nesting; Source supports selected list lines |
 | Visual tables | Editable cells, Tab/Shift+Tab, final-cell Tab creates row, row/column add/remove, alignment, TSV paste, plain paste at caret, shared undo | Rectangular pipe tables only; no merged cells, formula engine, rectangular multi-cell selection or HTML/CSV conversion; 1,000-row/50-column bounds are safety limits, not a performance guarantee |
-| Code and math | Editable highlighted fenced code with language/Copy code; local inline/block TeX in Rich/Read, equation source/live-preview dialog, invalid-source fallback | Highlighting is plain above 50,000 code characters; unsupported languages stay editable; inline math uses separate prose segments with limited cross-segment selection/formatting |
+| Code and math | Editable highlighted fenced code with language/Copy code; local inline/block TeX in Rich/Read, visual fraction/script slots, searchable renderer symbol registry and templates, source/live preview, invalid-source fallback | Highlighting is plain above 50,000 code characters; unsupported languages stay editable; inline math uses separate prose segments with limited cross-segment selection/formatting |
 | References | Authored Markdown remains exact on autosave; readable links bind to UUID metadata; explicit ID links, title aliases and backlinks | Ambiguity repair UI, fragment anchors and inbound ordinary path-link repair after moves |
 | Search | Indexed title/body/property/Canvas-text search, title-first ranking, bounded results and unsaved-draft overlay | FTS5/query language, OCR, semantic search and full indexing benchmarks |
 | External edits | Native filesystem hints with debounced targeted hash checks; startup/resume/full reconciliation; clean reload and dirty-draft protection | Binary attachment cache invalidation, atomic handling of arbitrary external multi-file edits, cross-process exclusion |
 | Canvas | Existing shared spatial grid/culling, pan/zoom, referenced cards, text/stickies/shapes/frames, images, vector ink, selection/move/resize, gesture undo | Anchored connectors, semantic relations, real groups/columns, interactive embedded views and standalone freeform/PDF consumers |
 | Canvas performance | O(1) new stacking order, delta undo history, cached stroke points, bounded text/image caches, selective repaint comparisons, shared immutable object data | Full-board JSON checkpoints still scale with board size; release frame/memory profile on representative hardware |
-| Tasks/Calendar | Real Task objects, completion/priority/due dates/context | Calendar object type, month/agenda, events and recurrence are not implemented |
+| Tasks/Calendar | Universal Event objects, month/day agenda, shared safe event form, local timed input/UTC storage, exclusive all-day intervals, task deadlines/schedules and context references | Recurrence, named time zones, drag rescheduling and external providers |
 | Desktop shell/design | Graphite/violet theme, restrained rounded surfaces, tabs, two resizable side-by-side or stacked panes, Focus/reset, inspector, reduced motion | Full docking, multi-window/tab-group drag, light/system themes and complete native window restoration |
 | Native capture | File picker/drop, bounded attachment reads, image paste adapters, Canvas clipboard fallback, simulated pen/touch paths | Physical pen/palm rejection, real clipboard ownership, high-DPI/multi-monitor and hardware drop acceptance |
 
@@ -65,17 +65,23 @@ and [ADR-0010](../adr/0010-notes-folder-moves.md).
 
 ## Validation evidence
 
-| Check | Rich continuation result, 2026-09-10 |
+| Check | Final repair result, 2026-09-10 |
 |---|---|
-| `dart format lib test tool` and zero-change check | Passed; 81 Dart files, no remaining changes |
-| `flutter analyze` | Passed, no issues |
-| `flutter test --no-pub` | Passed, all 112 tests: 77 existing and 35 Rich model/widget/visual regressions |
-| `flutter build windows --release --no-pub` | Passed, final rebuild 37.7 seconds; earlier intermediate Rich gate also passed |
-| Windows release startup | Final rebuilt app reached input-idle, created a responsive Orbit Note window, emitted no stderr and closed normally with exit code 0; smoke-owned PID 22220 only was closed, existing instance preserved |
-| `flutter build web --no-pub` | Passed, 52.8 seconds; WASM dry run succeeded; existing non-blocking CupertinoIcons font advisory remains |
-| Visual fixtures | Mixed Rich lecture screenshot inspected with real text/math/code fonts; desktop and 390-pixel Notes test passed; existing two-pane/Canvas/Settings tests retained |
-| Documentation | 77 Markdown documents have resolving local links; five schemas parse; 264 unique requirements match 264 backlog rows |
+| Format and zero-change check | Passed; 96 Dart files, zero changes |
+| `flutter analyze` | Passed; no issues |
+| `flutter test --no-pub` | Passed; all 151 tests (baseline: 146) |
+| `flutter build windows --release --no-pub` | Passed; final rebuild 37.9 seconds |
+| Windows startup smoke | Input-idle and responsive native window; closed normally, exit 0, no stderr. Only smoke-owned PID 11196 closed; existing PID 12532 preserved |
+| Documentation links | All local links resolve across 77 Markdown documents |
+| Diff whitespace | `git diff --check` passed |
 
+Logs: ignored `.local/feature-repair-full.log` and
+`.local/feature-repair-release-smoke.json`. Startup smoke does not substitute for
+interactive acceptance of every workflow or physical-device testing. Web and
+mobile builds were not rerun for this batch.
+Historical Rich-only evidence: 112 tests, Windows/web builds and native startup
+passed before Calendar/visual-math/graph additions. The model measurements below
+are historical measurements, not benchmarks repeated for this repair.
 The web build retains a non-blocking CupertinoIcons font advisory. The app uses
 Material icons; no analyzer/test/build error is hidden. Android/iOS builds and
 physical pen, clipboard, drag/drop, high-DPI and multi-monitor acceptance remain unverified.
@@ -133,14 +139,14 @@ The following earlier consolidated changes are preserved:
 
 Next recommended bounded task: improve Rich selection/formatting across inline
 equation segments and blocks, with measured large-note layout behavior. Preserve
-the existing projection and exact-source fixtures. Calendar, new Canvas systems,
+the existing projection and exact-source fixtures. New Canvas systems,
 cloud, plugins and AI remain outside this editor pass.
 
 Historical evidence (not current capability maps):
 [initial local core](local-core-snapshot-2026-09-09.md),
 [earlier local hardening](local-hardening-report.md).
 [audit/folder delivery](audit-folder-snapshot-2026-09-09.md).
-The repository still has no committed baseline; existing untracked work was preserved.
+The committed baseline, including graph, callouts and document statistics, was preserved. These adjacent features retain existing test coverage but were not exhaustively audited in this repair batch.
 
 ## Rich editor boundaries and evidence
 
@@ -180,3 +186,26 @@ These are model costs, not Flutter layout/paint timings, FPS or a large-note UI
 capacity guarantee. Hardware IME, pen, drag/drop and clipboard ownership remain
 manual acceptance work; widget tests simulate those inputs where relevant.
 
+
+## Rich math and Calendar repair — 2026-09-10
+
+- Equation symbols insert into the activated fraction argument. Focused visual
+  fields reflect undo/redo; the Rich block retains math-field focus on undo.
+- Fraction edits preserve surrounding commands/spacing and recognize frac/dfrac/
+  tfrac without treating longer command names, escapes or comments as fractions.
+  Incomplete braced source remains untouched. Line breaks use an aligned math
+  environment and pass rendered-output regression checks.
+- Month grids use civil dates across DST. Month navigation moves the selected day
+  into the displayed month. Calendar and event details share one date editor.
+- Local clock input converts to UTC; unchanged precise instants survive saves.
+  Failed saves keep the form open; complete payloads are written through repository
+  commands, with revision checks and preserved unknown fields/context IDs.
+  Invalid imported dates are preserved rather than replaced with defaults.
+- Added four regression tests in `test/feature_repair_test.dart` and one source-
+  preservation test in `test/rich_math_editor_test.dart`; strengthened existing
+  visual undo and rendered line-break assertions. Total suite: 151 tests.
+
+The symbol registry covers the installed renderer's math symbols plus templates,
+not every macro in arbitrary LaTeX packages. The visual parser supports selected
+constructs, not a complete TeX AST; complex equations retain source editing and
+safe rendering fallback. Cross-segment selection remains a separate task.

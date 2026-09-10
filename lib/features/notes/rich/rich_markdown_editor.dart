@@ -119,6 +119,19 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
         document.blocks[a].source == next.blocks[b].source) {
       next.blocks[b--] = document.blocks[a--];
     }
+    if (a == b) {
+      for (var i = prefix; i <= a; i++) {
+        final old = document.blocks[i], replacement = next.blocks[i];
+        if (old.kind == MarkdownBlockKind.math &&
+            replacement.kind == old.kind &&
+            old.prefix == replacement.prefix &&
+            old.suffix == replacement.suffix) {
+          old.source = replacement.source;
+          next.blocks[i] = old;
+          cache.remove(old);
+        }
+      }
+    }
     document = next;
     final retained = document.blocks.toSet();
     keys.removeWhere((k, _) => !retained.contains(k));
@@ -560,7 +573,31 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
 
   Widget blockView(MarkdownBlock block) {
     if (block.kind == MarkdownBlockKind.blank) {
-      return const SizedBox(height: 10);
+      return SizedBox(
+        height: 28,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: IconButton(
+            tooltip: 'Insert paragraph here',
+            padding: EdgeInsets.zero,
+            iconSize: 16,
+            icon: const Icon(Icons.add_circle_outline),
+            onPressed: () {
+              final offset = document.offsetOf(document.blocks.indexOf(block));
+              final eol = block.source.contains('\r\n') ? '\r\n' : '\n';
+              final body = document.source.replaceRange(
+                offset,
+                offset,
+                '$eol$eol',
+              );
+              _load(body);
+              widget.onChanged(body);
+              _focusOffset(offset + eol.length);
+              setState(() {});
+            },
+          ),
+        ),
+      );
     }
     if (block.kind == MarkdownBlockKind.table) {
       return RichTableEditor(
@@ -1185,9 +1222,9 @@ class _InlineMathParagraph extends StatelessWidget {
     for (final m in inlineMathMatches(source)) {
       prose(offset, m.start);
       widgets.add(
-        NoteMath(
-          m[1]!,
-          onEdit: (v) =>
+        EditableMathExpression(
+          source: m[1]!,
+          onChanged: (v) =>
               onChanged(source.replaceRange(m.start, m.end, '\$$v\$')),
         ),
       );

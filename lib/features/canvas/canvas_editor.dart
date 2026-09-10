@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../canvas/geometry.dart';
+import '../../canvas/arrangement.dart';
 import '../../canvas/scene.dart';
 import '../../domain/json_values.dart';
 import 'canvas_painter.dart';
@@ -1348,6 +1349,26 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 tooltip: 'Canvas element list',
                 onPressed: _showElementList,
                 icon: const Icon(Icons.list_alt, size: 20),
+              ),
+              PopupMenuButton<CanvasArrangement>(
+                tooltip: 'Arrange selected placements',
+                enabled: _selection.length >= 2,
+                icon: const Icon(Icons.align_horizontal_left, size: 20),
+                itemBuilder: (_) => [
+                  for (final action in CanvasArrangement.values)
+                    PopupMenuItem(value: action, child: Text(action.label)),
+                ],
+                onSelected: (action) {
+                  _finishText();
+                  _cancelGesture();
+                  final elements = _selection
+                      .map((id) => _scene[id])
+                      .whereType<CanvasElement>();
+                  for (final element in arrangeCanvas(elements, action)) {
+                    _history.put(element);
+                  }
+                  _commit();
+                },
               ),
               if (_editingId != null)
                 TextButton(onPressed: _finishText, child: const Text('Done')),

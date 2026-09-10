@@ -301,11 +301,57 @@ class WorkspaceController extends Notifier<int> {
     notify();
   }
 
+  Future<UniversalObject?> saveEvent({
+    UniversalObject? original,
+    required String title,
+    required String body,
+    required Map<String, dynamic> properties,
+  }) async {
+    if (!await flushAll()) {
+      error = 'Resolve the pending save failure before saving this event.';
+      notify();
+      return null;
+    }
+    try {
+      EventSchedule.fromProperties(properties);
+      if (original != null &&
+          (find(original.id)?.revision != original.revision ||
+              find(original.id)?.isDeleted != false)) {
+        error =
+            'This event changed while you were editing. Reopen it to review the latest version.';
+        notify();
+        return null;
+      }
+      final saved = original == null
+          ? await repository.create(
+              typeId: 'orbit.event',
+              title: title,
+              body: body,
+              properties: properties,
+            )
+          : await repository.save(
+              original.copyWith(
+                title: title,
+                body: body,
+                properties: properties,
+              ),
+            );
+      mergeRepositoryObjects();
+      error = null;
+      notify();
+      return saved;
+    } catch (e) {
+      error = '$e';
+      notify();
+      return null;
+    }
+  }
+
   Future<UniversalObject?> create(String type, {String? title}) async {
     try {
       final now = DateTime.now();
       final today = calendarDate(now);
-      final tomorrow = calendarDate(now.add(const Duration(days: 1)));
+      final tomorrow = calendarDate(DateTime(now.year, now.month, now.day + 1));
       final object = await repository.create(
         typeId: type,
         title:

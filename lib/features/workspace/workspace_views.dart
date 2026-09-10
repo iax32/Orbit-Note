@@ -6,6 +6,7 @@ import '../../app/session_state.dart';
 import '../../app/workspace_controller.dart';
 import '../../domain/calendar_event.dart';
 import '../../domain/universal_object.dart';
+import 'calendar_view.dart';
 
 IconData objectIcon(String type) => switch (type) {
   'orbit.canvas' => Icons.dashboard_outlined,
@@ -641,209 +642,30 @@ class _EventDetailState extends State<EventDetail> {
           ],
         ),
         const SizedBox(height: 24),
-        Wrap(
-          spacing: 16,
-          runSpacing: 16,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('All day'),
-                Switch(
-                  value: allDay,
-                  onChanged: (v) {
-                    final now = DateTime.now();
-                    final today = calendarDate(now);
-                    final tomorrow = calendarDate(
-                      now.add(const Duration(days: 1)),
-                    );
-                    if (v) {
-                      widget.controller.edit(
-                        o.id,
-                        properties: {
-                          ...o.properties,
-                          'allDay': true,
-                          'startDate': today,
-                          'endDate': tomorrow,
-                          'startAt': null,
-                          'endAt': null,
-                        }..removeWhere((_, val) => val == null),
-                      );
-                    } else {
-                      final startInstant = DateTime.utc(
-                        now.year,
-                        now.month,
-                        now.day,
-                        9,
-                        0,
-                      );
-                      final endInstant = DateTime.utc(
-                        now.year,
-                        now.month,
-                        now.day,
-                        10,
-                        0,
-                      );
-                      widget.controller.edit(
-                        o.id,
-                        properties: {
-                          ...o.properties,
-                          'allDay': false,
-                          'startAt':
-                              '${startInstant.toIso8601String().split('.').first}Z',
-                          'endAt':
-                              '${endInstant.toIso8601String().split('.').first}Z',
-                          'startDate': null,
-                          'endDate': null,
-                        }..removeWhere((_, val) => val == null),
-                      );
-                    }
-                  },
-                ),
-              ],
-            ),
-            if (allDay) ...[
-              OutlinedButton.icon(
-                onPressed: () async {
-                  final initial =
-                      parseCalendarDate(o.properties['startDate']) ??
-                      DateTime.now();
-                  final picked = await showDatePicker(
-                    context: context,
-                    initialDate: initial,
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
-                  );
-                  if (picked != null) {
-                    final startStr = calendarDate(picked);
-                    var endStr = o.properties['endDate'] as String?;
-                    final endDate = parseCalendarDate(endStr);
-                    if (endDate == null || !endDate.isAfter(picked)) {
-                      endStr = calendarDate(
-                        picked.add(const Duration(days: 1)),
-                      );
-                    }
-                    widget.controller.edit(
-                      o.id,
-                      properties: {
-                        ...o.properties,
-                        'startDate': startStr,
-                        'endDate': endStr,
-                      },
-                    );
-                  }
-                },
-                icon: const Icon(Icons.calendar_today_outlined, size: 16),
-                label: Text(
-                  'From: ${o.properties['startDate'] ?? 'Set start'}',
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  final start =
-                      parseCalendarDate(o.properties['startDate']) ??
-                      DateTime.now();
-                  final initial =
-                      parseCalendarDate(o.properties['endDate']) ??
-                      start.add(const Duration(days: 1));
-                  final picked = await showDatePicker(
-                    context: context,
-                    initialDate: initial,
-                    firstDate: start.add(const Duration(days: 1)),
-                    lastDate: DateTime(2100),
-                  );
-                  if (picked != null) {
-                    property('endDate', calendarDate(picked));
-                  }
-                },
-                icon: const Icon(Icons.calendar_today_outlined, size: 16),
-                label: Text('To: ${o.properties['endDate'] ?? 'Set end'}'),
-              ),
-            ] else ...[
-              OutlinedButton.icon(
-                onPressed: () async {
-                  final now = DateTime.now();
-                  final pickedDate = await showDatePicker(
-                    context: context,
-                    initialDate: schedule?.start.toLocal() ?? now,
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
-                  );
-                  if (pickedDate == null || !context.mounted) return;
-                  final pickedTime = await showTimePicker(
-                    context: context,
-                    initialTime: TimeOfDay.fromDateTime(
-                      schedule?.start.toLocal() ?? now,
-                    ),
-                  );
-                  if (pickedTime == null) return;
-                  final startUtc = DateTime.utc(
-                    pickedDate.year,
-                    pickedDate.month,
-                    pickedDate.day,
-                    pickedTime.hour,
-                    pickedTime.minute,
-                  );
-                  final endUtc =
-                      (schedule != null && schedule.end.isAfter(startUtc))
-                      ? schedule.end
-                      : startUtc.add(const Duration(hours: 1));
-                  widget.controller.edit(
-                    o.id,
-                    properties: {
-                      ...o.properties,
-                      'startAt':
-                          '${startUtc.toIso8601String().split('.').first}Z',
-                      'endAt': '${endUtc.toIso8601String().split('.').first}Z',
-                    },
-                  );
-                },
-                icon: const Icon(Icons.schedule, size: 16),
-                label: Text(
-                  schedule != null
-                      ? 'Starts: ${schedule.start.toLocal().month}/${schedule.start.toLocal().day} ${schedule.start.toLocal().hour.toString().padLeft(2, '0')}:${schedule.start.toLocal().minute.toString().padLeft(2, '0')}'
-                      : 'Set start time',
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  final now = DateTime.now();
-                  final pickedDate = await showDatePicker(
-                    context: context,
-                    initialDate: schedule?.end.toLocal() ?? now,
-                    firstDate: schedule?.start.toLocal() ?? DateTime(2000),
-                    lastDate: DateTime(2100),
-                  );
-                  if (pickedDate == null || !context.mounted) return;
-                  final pickedTime = await showTimePicker(
-                    context: context,
-                    initialTime: TimeOfDay.fromDateTime(
-                      schedule?.end.toLocal() ?? now,
-                    ),
-                  );
-                  if (pickedTime == null) return;
-                  final endUtc = DateTime.utc(
-                    pickedDate.year,
-                    pickedDate.month,
-                    pickedDate.day,
-                    pickedTime.hour,
-                    pickedTime.minute,
-                  );
-                  property(
-                    'endAt',
-                    '${endUtc.toIso8601String().split('.').first}Z',
-                  );
-                },
-                icon: const Icon(Icons.schedule, size: 16),
-                label: Text(
-                  schedule != null
-                      ? 'Ends: ${schedule.end.toLocal().month}/${schedule.end.toLocal().day} ${schedule.end.toLocal().hour.toString().padLeft(2, '0')}:${schedule.end.toLocal().minute.toString().padLeft(2, '0')}'
-                      : 'Set end time',
-                ),
-              ),
-            ],
-          ],
+        Text(
+          schedule == null
+              ? 'Dates need review. The original event data is preserved.'
+              : allDay
+              ? '${calendarDate(schedule.start)} → ${calendarDate(schedule.end)} (exclusive) · All day'
+              : '${schedule.start.toLocal()} → ${schedule.end.toLocal()} · Device local time',
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.edit_calendar_outlined),
+            label: const Text('Edit dates'),
+            onPressed: () async {
+              final controller = widget.controller;
+              if (!await controller.flushAll() || !context.mounted) {
+                return;
+              }
+              final current = controller.find(o.id);
+              if (current != null && !current.isDeleted) {
+                await showEventDialog(context, controller, event: current);
+              }
+            },
+          ),
         ),
         const SizedBox(height: 24),
         DropdownButtonFormField<String>(

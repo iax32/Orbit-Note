@@ -62,3 +62,29 @@ and nested `rich` block/base/caret/scroll restoration state. These are disposabl
 view preferences. Equations use portable dollar-delimited TeX in the Markdown body.
 Visual table commands rewrite only the edited table; unknown constructs elsewhere
 remain exact. See [ADR-0011](../adr/0011-source-preserving-rich-markdown.md).
+
+## Calendar events
+
+Events use `typeId: orbit.event` in `Objects/<uuid>.object.json`; there is no
+separate calendar database or duplicate event content. Existing envelope version 1
+is retained. Calendar projects these objects and task `dueDate` / `scheduledDate`
+properties; deadlines and scheduled work stay distinct.
+
+Event `properties` contain either:
+
+- `allDay: true`, `startDate: YYYY-MM-DD`, `endDate: YYYY-MM-DD` (exclusive).
+- `allDay: false`, `startAt` and `endAt`: UTC ISO timestamps ending in `Z`, with
+  seconds and optional fractional seconds. The end must be after the start.
+
+`contextId` optionally references a Universal Object UUID. Unknown properties and
+unavailable context IDs survive event form edits. The device's local time zone is
+used for timed input/display, never for interpreting all-day dates as instants.
+Unchanged timed fields preserve their original sub-minute precision. Nonexistent
+local clock times are rejected; new ambiguous fall-back times follow the platform
+choice. Explicit IANA time-zone selection, recurrence and external providers are
+not implemented. Invalid imported schedules remain intact and available outside
+the date projection; the form does not silently initialize them to today.
+
+The controller submits complete create/save operations through the existing
+repository, checks the original revision after flushing pending edits, and keeps
+the form open on failure. No new storage schema or migration is introduced.

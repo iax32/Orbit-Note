@@ -33,6 +33,39 @@ void main() {
   }
 
   group('GraphData Model & Link Extraction', () {
+    test(
+      'uses stable IDs, aliases and actual event context without guessing duplicates',
+      () {
+        final graph = GraphData.build(
+          objects: [
+            makeObject(
+              id: 'a',
+              typeId: 'orbit.note',
+              title: 'Renamed',
+              properties: {
+                'aliases': ['Old'],
+              },
+            ),
+            makeObject(id: 'b', typeId: 'orbit.note', title: 'Duplicate'),
+            makeObject(id: 'c', typeId: 'orbit.note', title: 'Duplicate'),
+            makeObject(
+              id: 'source',
+              typeId: 'orbit.note',
+              title: 'Source',
+              body: '[[a]] [[Old]] [[Duplicate]]',
+            ),
+            makeObject(
+              id: 'event',
+              typeId: 'orbit.event',
+              title: 'Meeting',
+              properties: {'contextId': 'a'},
+            ),
+          ],
+        );
+        expect(graph.edges, hasLength(2));
+        expect(graph.edges.every((e) => e.targetId == 'a'), isTrue);
+      },
+    );
     test('extracts nodes and wiki link edges', () {
       final objects = [
         makeObject(
