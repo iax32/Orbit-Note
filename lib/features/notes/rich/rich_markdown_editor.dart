@@ -7,6 +7,7 @@ import '../note_format_toolbar.dart';
 import '../note_link_dialog.dart';
 import 'markdown_document.dart';
 import 'note_math.dart';
+import 'equation_editor.dart';
 import 'code_block.dart';
 import 'rich_table_editor.dart';
 
@@ -238,6 +239,8 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
         command('Code block');
       case NoteFormatAction.table:
         command('Table');
+      case NoteFormatAction.math:
+        command('Inline equation');
       case NoteFormatAction.link:
         final target = await showNoteLinkDialog(context, widget.linkTargets);
         if (!mounted || target == null) return;
@@ -292,15 +295,15 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
       return;
     }
     if (name == 'Inline equation') {
+      final code = await showDialog<String>(
+        context: context,
+        builder: (_) => const EquationEditor(source: 'x^2', display: false),
+      );
+      if (code == null || !mounted) return;
       if (fromSlash) {
-        _replace(
-          block,
-          r'$x^2$'
-          '\n',
-          structural: true,
-        );
+        _replace(block, '\$$code\$\n', structural: true);
       } else {
-        keys[block]?.currentState?.insert(r'$x^2$');
+        keys[block]?.currentState?.insert('\$$code\$');
         _replace(block, block.source, structural: true);
         setState(() {
           cache.remove(block);
@@ -308,9 +311,23 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
       }
       return;
     }
+    if (name == 'Block equation') {
+      final code = await showDialog<String>(
+        context: context,
+        builder: (_) =>
+            const EquationEditor(source: r'\frac{a}{b}', display: true),
+      );
+      if (code == null || !mounted) return;
+      final syntax = '\$\$\n$code\n\$\$\n';
+      _replace(
+        block,
+        block.source.isEmpty ? syntax : '${block.source}\n$syntax',
+        structural: true,
+      );
+      return;
+    }
     var syntax = switch (name) {
       'Code block' => '```text\n${content.isEmpty ? 'code' : content}\n```\n',
-      'Block equation' => '\$\$\n\\frac{a}{b}\n\$\$\n',
       'Horizontal rule' => '---\n',
       'Callout' =>
         '> [!NOTE]\n> ${content.isEmpty ? 'A useful observation.' : content}\n',

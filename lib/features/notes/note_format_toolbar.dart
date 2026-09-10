@@ -13,6 +13,7 @@ enum NoteFormatAction {
   codeBlock,
   table,
   link,
+  math,
 }
 
 class NoteFormatToolbar extends StatelessWidget {
@@ -103,6 +104,11 @@ class NoteFormatToolbar extends StatelessWidget {
               NoteFormatAction.link,
               Icons.add_link_rounded,
               'Object link · Ctrl+K',
+            ),
+            (
+              NoteFormatAction.math,
+              Icons.functions_rounded,
+              'Equation · LaTeX',
             ),
           ])
             IconButton(

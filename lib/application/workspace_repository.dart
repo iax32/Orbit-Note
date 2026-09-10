@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
 import 'package:path/path.dart' as p;
 
+import '../domain/calendar_event.dart';
 import '../domain/universal_object.dart';
 import '../domain/wiki_links.dart';
 import '../domain/note_path_links.dart';
@@ -754,6 +755,9 @@ class WorkspaceRepository {
       if (due != null && (due is! String || DateTime.tryParse(due) == null)) {
         throw const WorkspaceFailure('Task due date must be an ISO date.');
       }
+    }
+    if (object.typeId == 'orbit.event') {
+      EventSchedule.fromProperties(object.properties);
     }
     // JSON rejects non-finite geometry and unsupported runtime objects.
     jsonEncode({'object': object.toJson(), 'data': object.data});

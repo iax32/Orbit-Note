@@ -27,6 +27,7 @@ import '../../platform/open_attachment.dart';
 import '../canvas/canvas_editor.dart';
 import '../notes/note_editor.dart';
 import 'command_palette.dart';
+import 'calendar_view.dart';
 import 'workspace_views.dart';
 import 'note_folder_explorer.dart';
 
@@ -905,6 +906,11 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
           icon: Icons.check_circle_outline,
         ),
         (
+          destination: OrbitDestination.calendar,
+          label: 'Calendar',
+          icon: Icons.calendar_month_outlined,
+        ),
+        (
           destination: OrbitDestination.search,
           label: 'Search',
           icon: Icons.search,
@@ -964,6 +970,8 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         ? 'orbit.canvas'
         : destination == OrbitDestination.tasks
         ? 'orbit.task'
+        : destination == OrbitDestination.calendar
+        ? 'orbit.event'
         : 'orbit.note';
     final objects = destination == OrbitDestination.trash
         ? c.objects.where((o) => o.isDeleted).toList()
@@ -976,6 +984,8 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         ? 'CANVASES'
         : destination == OrbitDestination.tasks
         ? 'TASKS'
+        : destination == OrbitDestination.calendar
+        ? 'EVENTS'
         : destination == OrbitDestination.trash
         ? 'TRASH'
         : 'NOTES';
@@ -1393,6 +1403,10 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         (object == null || object.typeId != 'orbit.task')) {
       return TasksView(controller: c);
     }
+    if (destination == OrbitDestination.calendar &&
+        (object == null || object.typeId != 'orbit.event')) {
+      return CalendarView(controller: c);
+    }
     if (object == null || object.isDeleted) {
       return EmptyWorkspace(
         icon: destination == OrbitDestination.canvas
@@ -1536,6 +1550,11 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         },
       ),
       'orbit.task' => TaskDetail(
+        key: ValueKey(object.id),
+        object: object,
+        controller: c,
+      ),
+      'orbit.event' => EventDetail(
         key: ValueKey(object.id),
         object: object,
         controller: c,

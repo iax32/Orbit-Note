@@ -12,6 +12,7 @@ import 'note_outline.dart';
 import 'rich/rich_markdown_editor.dart';
 import 'rich/document_history.dart';
 import 'rich/note_math.dart';
+import 'rich/equation_editor.dart';
 import 'rich/code_block.dart';
 
 enum NoteEditorMode { rich, write, split, read }
@@ -298,13 +299,11 @@ class _NoteEditorState extends State<NoteEditor> {
       return;
     }
     if (command == 'Inline equation') {
-      _apply(MarkdownEditing.wrap(_body.value, r'$', placeholder: 'x^2'));
+      await _insertEquation(display: false);
       return;
     }
     if (command == 'Block equation') {
-      _apply(
-        MarkdownEditing.insert(_body.value, '\n\$\$\n\\frac{a}{b}\n\$\$\n'),
-      );
+      await _insertEquation(display: true);
       return;
     }
     final prefix = switch (command) {
@@ -427,6 +426,28 @@ class _NoteEditorState extends State<NoteEditor> {
         // The dialog is modal, so its saved selection still identifies insertion.
         final label = target.title.replaceAll('|', ' ').replaceAll(']', '');
         _apply(MarkdownEditing.insert(value, '[[${target.id}|$label]]'));
+      case NoteFormatAction.math:
+        await _insertEquation(display: false);
+    }
+  }
+
+  Future<void> _insertEquation({bool display = false}) async {
+    final selection = _body.selection;
+    final selected = selection.isValid ? selection.textInside(_body.text) : '';
+    final code = await showDialog<String>(
+      context: context,
+      builder: (_) => EquationEditor(
+        source: selected.isEmpty
+            ? (display ? r'\frac{a}{b}' : 'x^2')
+            : selected,
+        display: display,
+      ),
+    );
+    if (!mounted || code == null) return;
+    if (display) {
+      _apply(MarkdownEditing.insert(_body.value, '\n\$\$\n$code\n\$\$\n'));
+    } else {
+      _apply(MarkdownEditing.insert(_body.value, '\$$code\$'));
     }
   }
 

@@ -1,4 +1,13 @@
-enum OrbitDestination { home, notes, canvas, tasks, search, trash, settings }
+enum OrbitDestination {
+  home,
+  notes,
+  canvas,
+  tasks,
+  calendar,
+  search,
+  trash,
+  settings,
+}
 
 class SessionState {
   SessionState({

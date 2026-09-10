@@ -78,9 +78,19 @@ class _CommandPaletteState extends State<_CommandPalette> {
         run: () => c.create('orbit.task'),
       ),
       (
+        title: 'New event',
+        icon: Icons.event_outlined,
+        run: () => c.create('orbit.event'),
+      ),
+      (
         title: 'Go to Home',
         icon: Icons.home_outlined,
         run: () => c.navigate(OrbitDestination.home),
+      ),
+      (
+        title: 'Go to Calendar',
+        icon: Icons.calendar_month_outlined,
+        run: () => c.navigate(OrbitDestination.calendar),
       ),
       (
         title: 'Search knowledge',

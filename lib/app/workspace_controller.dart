@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/workspace_repository.dart';
+import '../domain/calendar_event.dart';
 import '../domain/universal_object.dart';
 import '../domain/wiki_links.dart';
 import '../domain/search_text.dart';
@@ -203,7 +204,8 @@ class WorkspaceController extends Notifier<int> {
     session.destination = destination;
     if (destination == OrbitDestination.notes ||
         destination == OrbitDestination.canvas ||
-        destination == OrbitDestination.tasks) {
+        destination == OrbitDestination.tasks ||
+        destination == OrbitDestination.calendar) {
       session.activeId = null;
     }
     persistSession();
@@ -275,6 +277,7 @@ class WorkspaceController extends Notifier<int> {
     session.destination = switch (object.typeId) {
       'orbit.canvas' => OrbitDestination.canvas,
       'orbit.task' => OrbitDestination.tasks,
+      'orbit.event' => OrbitDestination.calendar,
       _ => OrbitDestination.notes,
     };
     persistSession();
@@ -300,6 +303,9 @@ class WorkspaceController extends Notifier<int> {
 
   Future<UniversalObject?> create(String type, {String? title}) async {
     try {
+      final now = DateTime.now();
+      final today = calendarDate(now);
+      final tomorrow = calendarDate(now.add(const Duration(days: 1)));
       final object = await repository.create(
         typeId: type,
         title:
@@ -307,11 +313,18 @@ class WorkspaceController extends Notifier<int> {
             switch (type) {
               'orbit.canvas' => 'Untitled canvas',
               'orbit.task' => 'Untitled task',
+              'orbit.event' => 'Untitled event',
               _ => 'Untitled note',
             },
-        properties: type == 'orbit.task'
-            ? {'completed': false, 'priority': 'medium'}
-            : const {},
+        properties: switch (type) {
+          'orbit.task' => {'completed': false, 'priority': 'medium'},
+          'orbit.event' => {
+            'allDay': true,
+            'startDate': today,
+            'endDate': tomorrow,
+          },
+          _ => const {},
+        },
         data: type == 'orbit.canvas'
             ? {'schemaVersion': 1, 'elements': <dynamic>[]}
             : const {},
