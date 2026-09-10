@@ -58,11 +58,11 @@ void main() {
     () async {
       final store = NativeWorkspaceStore();
       await store.initialize(path: root.path);
+      await Directory('${root.path}/Notes').create();
       final events = <String>[];
       final subscription = store.changes.listen(events.add);
       try {
         await Future<void>.delayed(const Duration(milliseconds: 100));
-        await Directory('${root.path}/Notes').create();
         await File('${root.path}/Notes/external.md').writeAsString('External');
         await Directory('${root.path}/.orbit/cache').create(recursive: true);
         await File('${root.path}/.orbit/cache/preview').writeAsString('cache');
