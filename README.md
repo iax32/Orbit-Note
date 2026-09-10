@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="Orbit Note Logo" width="128" height="128" />
+</p>
+
 # 🪐 Orbit Note
 
 **Your knowledge, in one system.**  

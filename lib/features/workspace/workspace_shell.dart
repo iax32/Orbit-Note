@@ -871,7 +871,14 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
             padding: const EdgeInsets.symmetric(vertical: 20),
             child: Tooltip(
               message: 'Orbit Note',
-              child: Icon(Icons.blur_circular, color: colors.accent, size: 31),
+              child: Image.asset(
+                'assets/logo.png',
+                width: 32,
+                height: 32,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) =>
+                    Icon(Icons.blur_circular, color: colors.accent, size: 31),
+              ),
             ),
           ),
           ...destinations.take(5).map((d) => railButton(d)),
