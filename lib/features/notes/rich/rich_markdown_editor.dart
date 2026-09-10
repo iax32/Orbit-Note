@@ -11,6 +11,7 @@ import 'equation_editor.dart';
 import 'code_block.dart';
 import 'rich_table_editor.dart';
 import 'rich_math_block.dart';
+import 'callout_block.dart';
 
 class RichMarkdownEditor extends StatefulWidget {
   const RichMarkdownEditor({
@@ -567,6 +568,12 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
         onChanged: (v) => _replace(block, v),
         onUndo: widget.onUndo,
         onRedo: widget.onRedo,
+      );
+    }
+    if (block.kind == MarkdownBlockKind.callout) {
+      return CalloutBlock(
+        source: block.source,
+        onChanged: (v) => _replace(block, v),
       );
     }
     if (block.kind == MarkdownBlockKind.math) {

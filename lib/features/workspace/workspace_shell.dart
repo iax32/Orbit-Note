@@ -30,6 +30,7 @@ import 'command_palette.dart';
 import 'calendar_view.dart';
 import 'workspace_views.dart';
 import 'note_folder_explorer.dart';
+import 'graph_view.dart';
 
 class WorkspaceShell extends ConsumerStatefulWidget {
   const WorkspaceShell({super.key});
@@ -911,6 +912,11 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
           icon: Icons.calendar_month_outlined,
         ),
         (
+          destination: OrbitDestination.graph,
+          label: 'Graph',
+          icon: Icons.hub_outlined,
+        ),
+        (
           destination: OrbitDestination.search,
           label: 'Search',
           icon: Icons.search,
@@ -986,6 +992,8 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         ? 'TASKS'
         : destination == OrbitDestination.calendar
         ? 'EVENTS'
+        : destination == OrbitDestination.graph
+        ? 'GRAPH'
         : destination == OrbitDestination.trash
         ? 'TRASH'
         : 'NOTES';
@@ -1406,6 +1414,9 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     if (destination == OrbitDestination.calendar &&
         (object == null || object.typeId != 'orbit.event')) {
       return CalendarView(controller: c);
+    }
+    if (destination == OrbitDestination.graph) {
+      return GraphView(controller: c);
     }
     if (object == null || object.isDeleted) {
       return EmptyWorkspace(

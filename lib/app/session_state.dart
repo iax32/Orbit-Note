@@ -4,6 +4,7 @@ enum OrbitDestination {
   canvas,
   tasks,
   calendar,
+  graph,
   search,
   trash,
   settings,

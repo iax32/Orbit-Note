@@ -93,6 +93,11 @@ class _CommandPaletteState extends State<_CommandPalette> {
         run: () => c.navigate(OrbitDestination.calendar),
       ),
       (
+        title: 'Go to Knowledge Graph',
+        icon: Icons.hub_outlined,
+        run: () => c.navigate(OrbitDestination.graph),
+      ),
+      (
         title: 'Search knowledge',
         icon: Icons.search,
         run: () => c.navigate(OrbitDestination.search),

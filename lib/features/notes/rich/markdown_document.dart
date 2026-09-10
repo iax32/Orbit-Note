@@ -12,6 +12,7 @@ enum MarkdownBlockKind {
   rule,
   raw,
   blank,
+  callout,
 }
 
 class MarkdownBlock {
@@ -223,7 +224,21 @@ class MarkdownDocument {
         );
         continue;
       }
-      if (line.startsWith('> ') && !line.startsWith('> [!')) {
+      if (line.startsWith('> [!')) {
+        var end = i + 1;
+        while (end < lines.length &&
+            (text(end).startsWith('>') ||
+                (text(end).trim().isEmpty &&
+                    end + 1 < lines.length &&
+                    text(end + 1).startsWith('>')))) {
+          end++;
+        }
+        final raw = lines.sublist(i, end).join();
+        blocks.add(MarkdownBlock(raw, MarkdownBlockKind.callout));
+        i = end;
+        continue;
+      }
+      if (line.startsWith('> ')) {
         blocks.add(
           MarkdownBlock(
             lines[i++],
@@ -234,7 +249,7 @@ class MarkdownDocument {
         );
         continue;
       }
-      if (RegExp(r'^\s*(?:<|\[.*\]:|\{\{|:::|> \[!|\t| {4})').hasMatch(line)) {
+      if (RegExp(r'^\s*(?:<|\[.*\]:|\{\{|:::|\t| {4})').hasMatch(line)) {
         blocks.add(MarkdownBlock(lines[i++], MarkdownBlockKind.raw));
         continue;
       }

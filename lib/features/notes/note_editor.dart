@@ -601,6 +601,19 @@ class _NoteEditorState extends State<NoteEditor> {
           ? NoteEditorMode.write
           : _mode;
       final words = RegExp(r'\S+').allMatches(_body.text).length;
+      final chars = _body.text.runes.length;
+      final readMinutes = math.max(1, (words / 200).ceil());
+      final sel = _body.selection;
+      final hasSelection = sel.isValid && !sel.isCollapsed;
+      final selWords = hasSelection
+          ? RegExp(r'\S+').allMatches(sel.textInside(_body.text)).length
+          : 0;
+      final selChars = hasSelection
+          ? sel.textInside(_body.text).runes.length
+          : 0;
+      final statsLabel = hasSelection
+          ? '$selWords of $words ${words == 1 ? 'word' : 'words'} ($selChars chars selected)  ·  ~$readMinutes min read'
+          : '$words ${words == 1 ? 'word' : 'words'}  ·  $chars characters  ·  ~$readMinutes min read';
       final theme = Theme.of(context);
       return CallbackShortcuts(
         bindings: {
@@ -888,10 +901,15 @@ class _NoteEditorState extends State<NoteEditor> {
                   horizontal: 28,
                   vertical: 10,
                 ),
-                child: Text(
-                  '$words ${words == 1 ? 'word' : 'words'}  ·  ${_body.text.runes.length} characters',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                child: Tooltip(
+                  message:
+                      'Document metrics: $words words, $chars characters, ~$readMinutes min read time (200 wpm)',
+                  child: Text(
+                    statsLabel,
+                    key: const ValueKey('document-stats'),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ),
