@@ -58,18 +58,17 @@ void main() {
     () async {
       final store = NativeWorkspaceStore();
       await store.initialize(path: root.path);
-      await Directory('${root.path}/Notes').create();
       final events = <String>[];
       final subscription = store.changes.listen(events.add);
       try {
         await Future<void>.delayed(const Duration(milliseconds: 100));
-        await File('${root.path}/Notes/external.md').writeAsString('External');
+        await File('${root.path}/external.md').writeAsString('External');
         await Directory('${root.path}/.orbit/cache').create(recursive: true);
         await File('${root.path}/.orbit/cache/preview').writeAsString('cache');
-        for (var i = 0; i < 50 && !events.contains('Notes/external.md'); i++) {
+        for (var i = 0; i < 50 && !events.contains('external.md'); i++) {
           await Future<void>.delayed(const Duration(milliseconds: 20));
         }
-        expect(events, contains('Notes/external.md'));
+        expect(events, contains('external.md'));
         expect(events.any((e) => e.startsWith('.orbit/')), isFalse);
       } finally {
         await subscription.cancel();
