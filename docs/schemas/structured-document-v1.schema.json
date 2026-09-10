@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Orbit Note structured document v1",
+  "type": "object",
+  "required": ["format", "version", "object", "body", "data"],
+  "properties": {
+    "format": {"enum": ["orbit-note-object", "orbit-note-board", "orbit-note-drawing"]},
+    "version": {"const": 1},
+    "object": {"$ref": "object-envelope-v1.schema.json"},
+    "body": {"type": "string"},
+    "data": {"type": "object"}
+  },
+  "additionalProperties": true
+}

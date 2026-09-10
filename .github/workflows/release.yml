@@ -1,0 +1,124 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Android APK
+        run: flutter build apk --release
+
+      - name: Prepare APK artifact
+        run: |
+          mkdir -p release-assets
+          cp build/app/outputs/flutter-apk/app-release.apk release-assets/OrbitNote-Android.apk
+
+      - name: Upload Android APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: release-assets/OrbitNote-Android.apk
+
+  build-windows:
+    name: Build Windows x64
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows desktop
+        run: flutter build windows --release
+
+      - name: Package Windows ZIP
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-assets
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath release-assets\OrbitNote-Windows-x64.zip -Force
+
+      - name: Upload Windows ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: release-assets/OrbitNote-Windows-x64.zip
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-android, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Android artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: release-assets
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-zip
+          path: release-assets
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/OrbitNote-Windows-x64.zip
+            release-assets/OrbitNote-Android.apk
+          name: Orbit Note ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## 🪐 Orbit Note ${{ github.ref_name }}
+
+            ### 📥 Download Options
+            - **Windows (x64)**: Download [`OrbitNote-Windows-x64.zip`](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/OrbitNote-Windows-x64.zip) — extract and run `orbit_note.exe`.
+            - **Android**: Download [`OrbitNote-Android.apk`](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/OrbitNote-Android.apk) — install directly on your device.
+
+            ### ✨ What's Included
+            - Complete linked Markdown editor with live `[[WikiLinks]]`, task lists, visual tables, and LaTeX math.
+            - Infinite vector canvas with handwriting, shapes, and object transclusion.
+            - Local-first file storage and fast Drift SQLite indexing.
+            - Resizable desktop split views and tabs.

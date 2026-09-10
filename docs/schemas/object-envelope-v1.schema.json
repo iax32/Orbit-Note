@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Orbit Note object envelope v1 (JSON object or YAML orbit field)",
+  "type": "object",
+  "required": ["id", "typeId", "schemaVersion", "title", "createdAt", "updatedAt", "revision"],
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "typeId": {"type": "string", "minLength": 1},
+    "schemaVersion": {"const": 1},
+    "title": {"type": "string"},
+    "createdAt": {"type": "string", "format": "date-time"},
+    "updatedAt": {"type": "string", "format": "date-time"},
+    "revision": {"type": "integer", "minimum": 1},
+    "deletedAt": {"type": ["string", "null"], "format": "date-time"},
+    "properties": {"type": "object"}
+  },
+  "additionalProperties": true
+}

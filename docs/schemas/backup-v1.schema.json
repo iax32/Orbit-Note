@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Orbit Note backup v1",
+  "type": "object",
+  "required": ["format", "version", "workspaceId", "createdAt", "encoding", "files"],
+  "properties": {
+    "format": {"const": "orbit-note-backup"},
+    "version": {"const": 1},
+    "workspaceId": {"type": "string", "format": "uuid"},
+    "createdAt": {"type": "string", "format": "date-time"},
+    "encoding": {"const": "base64"},
+    "directories": {"type": "array", "maxItems": 10000, "uniqueItems": true, "items": {"type": "string", "pattern": "^Notes(?:/[^/]+)*$"}},
+    "files": {"type": "object", "additionalProperties": {"type": "string", "contentEncoding": "base64"}}
+  },
+  "additionalProperties": true
+}

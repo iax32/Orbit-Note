@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Orbit Note workspace v1",
+  "type": "object",
+  "required": ["format", "version", "id", "name", "createdAt"],
+  "properties": {
+    "format": {"const": "orbit-note-workspace"},
+    "version": {"const": 1},
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string"},
+    "createdAt": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": true
+}

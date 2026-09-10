@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Orbit Note Canvas data v1",
+  "type": "object",
+  "required": ["schemaVersion", "elements"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "elements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "Known elements have id/type and geometry. Unknown elements must be preserved without rewriting them.",
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}
