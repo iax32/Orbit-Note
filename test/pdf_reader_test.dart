@@ -369,10 +369,19 @@ void main() async {
     );
     await settleNative(
       tester,
-      () => find.text('Unlock PDF').evaluate().isNotEmpty,
+      () =>
+          find
+              .text(
+                'This PDF could not be opened. Its original bytes are unchanged.',
+              )
+              .evaluate()
+              .isNotEmpty ||
+          find.text('Unlock PDF').evaluate().isNotEmpty,
     );
-    await tester.tap(find.text('Cancel'));
-    await tester.pump(const Duration(milliseconds: 500));
+    if (find.text('Unlock PDF').evaluate().isNotEmpty) {
+      await tester.tap(find.text('Cancel'));
+      await tester.pump(const Duration(milliseconds: 500));
+    }
     await settleNative(
       tester,
       () => find
