@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,15 +13,9 @@ import 'package:orbit_note/features/pdf/pdf_reader.dart';
 import 'support/pdf_fixture.dart';
 import 'support/capture_ui.dart';
 
-void main() {
+void main() async {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUpAll(() async {
-    final cache = await Directory(
-      '.local/pdf-test-cache',
-    ).create(recursive: true);
-    Pdfrx.cacheDirectoryPath = cache.absolute.path;
-    await pdfrxFlutterInitialize();
-  });
+  final pdfiumReady = await initPdfTesting();
   test(
     'page references resolve renamed IDs and preserve page in rendered links',
     () {
@@ -305,52 +298,55 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       await tester.pump(const Duration(seconds: 1));
     },
+    skip: !pdfiumReady,
   );
 
-  testWidgets('phone comfort reading wraps text and returns to original PDF', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: orbitDarkTheme(),
-        home: Scaffold(
-          body: OrbitPdfReader(
-            objectId: 'phone',
-            title: 'Research',
-            loadBytes: () async => researchPdf(),
-            onOpenOriginal: () {},
-            onOpenExternal: (_) {},
-            onReadingState: (_, _) {},
-            onQuote: (_, _) async {},
-            onBookmarks: (_) {},
+  testWidgets(
+    'phone comfort reading wraps text and returns to original PDF',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: orbitDarkTheme(),
+          home: Scaffold(
+            body: OrbitPdfReader(
+              objectId: 'phone',
+              title: 'Research',
+              loadBytes: () async => researchPdf(),
+              onOpenOriginal: () {},
+              onOpenExternal: (_) {},
+              onReadingState: (_, _) {},
+              onQuote: (_, _) async {},
+              onBookmarks: (_) {},
+            ),
           ),
         ),
-      ),
-    );
-    await settleNative(
-      tester,
-      () => find.byType(SelectableText).evaluate().isNotEmpty,
-    );
-    expect(find.byTooltip('Original page'), findsOneWidget);
-    expect(
-      tester.widget<SelectableText>(find.byType(SelectableText)).data,
-      contains('Orbit research page one'),
-    );
-    await tester.tap(find.byTooltip('Larger reading text'));
-    await tester.pump();
-    expect(find.text('Page 1 · 22 pt'), findsOneWidget);
-    await tester.tap(find.byTooltip('Original page'));
-    await tester.pump();
-    expect(find.byType(SelectableText), findsNothing);
-    expect(find.byTooltip('Comfort reading'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-    await tester.pumpWidget(const SizedBox());
-    await tester.pump(const Duration(seconds: 1));
-  });
+      );
+      await settleNative(
+        tester,
+        () => find.byType(SelectableText).evaluate().isNotEmpty,
+      );
+      expect(find.byTooltip('Original page'), findsOneWidget);
+      expect(
+        tester.widget<SelectableText>(find.byType(SelectableText)).data,
+        contains('Orbit research page one'),
+      );
+      await tester.tap(find.byTooltip('Larger reading text'));
+      await tester.pump();
+      expect(find.text('Page 1 · 22 pt'), findsOneWidget);
+      await tester.tap(find.byTooltip('Original page'));
+      await tester.pump();
+      expect(find.byType(SelectableText), findsNothing);
+      expect(find.byTooltip('Comfort reading'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 1));
+    },
+    skip: !pdfiumReady,
+  );
 
   testWidgets('corrupt PDF shows a recoverable error without crashing', (
     tester,
@@ -390,7 +386,7 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));
-  });
+  }, skip: !pdfiumReady);
 
   testWidgets('missing PDF has retry and external-open fallback', (
     tester,

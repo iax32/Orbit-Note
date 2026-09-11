@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:orbit_note/app/orbit_theme.dart';
@@ -8,17 +7,14 @@ import 'package:pdfrx/pdfrx.dart';
 import 'package:orbit_note/platform/pdf_forms.dart';
 import 'support/pdf_fixture.dart';
 
-void main() {
+void main() async {
   TestWidgetsFlutterBinding.ensureInitialized();
+  final pdfiumReady = await initPdfTesting();
+
   testWidgets('on-page form controls save text and checkbox drafts', (
     tester,
   ) async {
-    Pdfrx.cacheDirectoryPath = (await tester.runAsync(
-      () async => (await Directory(
-        '.local/pdf-test-cache',
-      ).create(recursive: true)).absolute.path,
-    ))!;
-    await tester.runAsync(pdfrxFlutterInitialize);
+    await tester.runAsync(initPdfTesting);
     var values = <String, dynamic>{};
     Uint8List? filledCopy;
     await tester.pumpWidget(
@@ -97,14 +93,11 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));
-  });
+  }, skip: !pdfiumReady);
   test(
     'real AcroForm text and checkbox survive filled-copy encoding',
     () async {
-      Pdfrx.cacheDirectoryPath = (await Directory(
-        '.local/pdf-test-cache',
-      ).create(recursive: true)).absolute.path;
-      await pdfrxFlutterInitialize();
+      await initPdfTesting();
       final original = formPdf();
       final document = await PdfDocument.openData(original);
       try {
@@ -135,5 +128,6 @@ void main() {
         await document.dispose();
       }
     },
+    skip: !pdfiumReady,
   );
 }

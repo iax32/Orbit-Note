@@ -1,5 +1,58 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
+import 'package:pdfrx/pdfrx.dart';
+
+bool? _pdfiumReady;
+
+/// Initializes Pdfrx and locates the PDFium dynamic library if available.
+/// Returns true if native PDFium is ready for rendering or PDF inspection.
+Future<bool> initPdfTesting() async {
+  if (_pdfiumReady != null) return _pdfiumReady!;
+
+  try {
+    final cache = await Directory(
+      '.local/pdf-test-cache',
+    ).create(recursive: true);
+    Pdfrx.cacheDirectoryPath = cache.absolute.path;
+
+    if (Platform.isLinux && Pdfrx.pdfiumModulePath == null) {
+      final candidates = [
+        Platform.environment['PDFIUM_PATH'],
+        '${Directory.current.path}/.local/lib/libpdfium.so',
+        '${Directory.current.path}/.local/libpdfium.so',
+        '/usr/local/lib/libpdfium.so',
+        '/usr/lib/libpdfium.so',
+        '${File(Platform.resolvedExecutable).parent.path}/lib/libpdfium.so',
+        '${File(Platform.resolvedExecutable).parent.path}/libpdfium.so',
+      ];
+      for (final candidate in candidates) {
+        if (candidate != null && File(candidate).existsSync()) {
+          Pdfrx.pdfiumModulePath = File(candidate).absolute.path;
+          break;
+        }
+      }
+    } else if (Platform.isWindows && Pdfrx.pdfiumModulePath == null) {
+      final candidates = [
+        Platform.environment['PDFIUM_PATH'],
+        '${Directory.current.path}/build/native_assets/windows/pdfium.dll',
+        '${Directory.current.path}/build/windows/x64/runner/Release/pdfium.dll',
+      ];
+      for (final candidate in candidates) {
+        if (candidate != null && File(candidate).existsSync()) {
+          Pdfrx.pdfiumModulePath = File(candidate).absolute.path;
+          break;
+        }
+      }
+    }
+
+    await pdfrxFlutterInitialize();
+    _pdfiumReady = true;
+  } catch (_) {
+    _pdfiumReady = false;
+  }
+  return _pdfiumReady!;
+}
 
 /// A real two-page PDF with extractable text; no downloaded sample or generator.
 Uint8List researchPdf() {

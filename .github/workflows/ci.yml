@@ -30,5 +30,19 @@ jobs:
       - name: Analyze code
         run: flutter analyze
 
+      - name: Set up PDFium for Linux tests
+        run: |
+          mkdir -p .local
+          curl -sL "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F7811/pdfium-linux-x64.tgz" | tar -xz -C .local lib/libpdfium.so
+          sudo cp .local/lib/libpdfium.so /usr/local/lib/libpdfium.so
+          sudo ldconfig
+          FLUTTER_ENGINE_DIR="$(dirname $(which flutter))/cache/artifacts/engine/linux-x64"
+          mkdir -p "$FLUTTER_ENGINE_DIR/lib"
+          cp .local/lib/libpdfium.so "$FLUTTER_ENGINE_DIR/lib/libpdfium.so"
+
       - name: Run unit & widget tests
         run: flutter test
+        env:
+          LD_LIBRARY_PATH: /usr/local/lib
+          PDFIUM_PATH: ${{ github.workspace }}/.local/lib/libpdfium.so
+
