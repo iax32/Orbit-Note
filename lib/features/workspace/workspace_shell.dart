@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'dart:async';
 import 'dart:ui' show AppExitResponse;
 import 'dart:ui' as ui;
@@ -19,6 +20,9 @@ import '../../app/workspace_controller.dart';
 import '../../domain/universal_object.dart';
 import '../../domain/attachment_safety.dart';
 import '../../domain/object_sort.dart';
+import '../../domain/object_reference.dart';
+import '../../domain/pdf_annotation.dart';
+import '../../domain/code_preview.dart';
 import '../../application/backup_bundle.dart';
 import '../../platform/import_backup.dart';
 import '../../platform/vault_folder.dart';
@@ -26,6 +30,8 @@ import '../../platform/export_file.dart';
 import '../../platform/open_attachment.dart';
 import '../canvas/canvas_editor.dart';
 import '../notes/note_editor.dart';
+import '../pdf/pdf_reader.dart';
+import '../files/code_file_preview.dart';
 import 'command_palette.dart';
 import 'calendar_view.dart';
 import 'workspace_views.dart';
@@ -43,6 +49,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   late final AppLifecycleListener lifecycle;
   bool dropping = false;
   String explorerFilter = '';
+  bool _secondaryFocused = false;
   WorkspaceController get c => ref.read(workspaceProvider.notifier);
   @override
   void initState() {
@@ -111,7 +118,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     final input = TextEditingController(text: initial);
     final result = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => OrbitDialog(
         title: Text(
           heading ?? (initial.isEmpty ? 'New Vault' : 'Rename Vault'),
         ),
@@ -170,7 +177,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       if (!mounted) return;
       await showDialog<void>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) => OrbitDialog(
           title: const Text('Your Vaults'),
           content: SizedBox(
             width: 520,
@@ -196,6 +203,18 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                   ),
                   for (final path in recent)
                     ListTile(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      selected: path == c.repository.location,
+                      leading: Icon(
+                        path == c.repository.location
+                            ? Icons.folder_special_outlined
+                            : Icons.folder_outlined,
+                      ),
+                      trailing: path == c.repository.location
+                          ? const Icon(Icons.check, size: 18)
+                          : const Icon(Icons.chevron_right, size: 18),
                       title: Text(path.split(RegExp(r'[/\\]')).last),
                       subtitle: Text(
                         path,
@@ -273,7 +292,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       if (!mounted) return;
       final accepted = await showDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => OrbitDialog(
           title: const Text('Import into a new workspace'),
           content: Text(
             '${bundle.name}\n${bundle.files.length} files · ${(bundle.totalBytes / 1048576).toStringAsFixed(1)} MiB\n\nReview notices: ${bundle.warnings.isEmpty ? "None" : bundle.warnings.take(5).join("; ")}\n\nChoose a parent folder next. Orbit creates a separate workspace and preserves existing files. Imported recovery journals are retained for review and never replayed automatically.',
@@ -331,6 +350,9 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   String attachmentMarkdown(UniversalObject object, {String? noteId}) {
     final path = object.properties['contentRef'] as String;
     final label = object.title.replaceAll(RegExp(r'[\[\]\\]'), '');
+    if (object.properties['mimeType'] == 'application/pdf') {
+      return ObjectReference(object.id).markdown(label);
+    }
     final image = (object.properties['mimeType'] as String? ?? '').startsWith(
       'image/',
     );
@@ -454,15 +476,38 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   }
 
   void openAttachmentReference(String raw) {
-    final path = Uri.decodeFull(raw).replaceFirst(RegExp(r'^\.\./'), '');
+    final reference = ObjectReference.parse(Uri.decodeFull(raw));
+    final path = reference.id.replaceFirst(RegExp(r'^\.\./'), '');
     final matches = c.activeObjects
         .where((o) => o.properties['contentRef'] == path)
         .toList();
     if (matches.length == 1) {
-      c.openObject(matches.single.id);
+      openLinkedObject(
+        ObjectReference(matches.single.id, page: reference.page).target,
+      );
     } else {
       message('Attachment reference could not be resolved.');
     }
+  }
+
+  void openLinkedObject(String target) {
+    final reference = ObjectReference.parse(target);
+    final object = c.find(reference.id);
+    if (object == null || object.isDeleted) {
+      message('The referenced object is unavailable.');
+      return;
+    }
+    if (reference.page != null &&
+        object.properties['mimeType'] == 'application/pdf') {
+      final key = 'pdf:primary:${object.id}';
+      c.updateSession(
+        (s) => s.noteViews = {
+          ...s.noteViews,
+          key: {...?s.noteViews[key], 'page': reference.page},
+        },
+      );
+    }
+    c.openObject(reference.id);
   }
 
   Future<void> openOriginal(
@@ -475,7 +520,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         if (!mounted) return;
         final confirmed = await showDialog<bool>(
           context: context,
-          builder: (context) => AlertDialog(
+          builder: (context) => OrbitDialog(
             title: const Text('Open this file externally?'),
             content: Text(
               '${object.title}\n\nThis file type may run code or use an unknown application. Only open it if you trust its source. You can use Show in Explorer instead.',
@@ -510,7 +555,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     final input = TextEditingController(text: object.title);
     final result = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => OrbitDialog(
         title: const Text('Rename object'),
         content: TextField(
           controller: input,
@@ -693,8 +738,25 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         const SingleActivator(LogicalKeyboardKey.keyS, control: true): () =>
             c.flushAll(),
         const SingleActivator(LogicalKeyboardKey.keyW, control: true): () {
-          if (c.session.activeId != null) c.closeTab(c.session.activeId!);
+          if (_secondaryFocused && c.session.secondaryId != null) {
+            c.updateSession((s) => s.secondaryId = null);
+            _secondaryFocused = false;
+          } else if (c.session.activeId != null) {
+            c.closeTab(c.session.activeId!);
+          }
         },
+        const SingleActivator(LogicalKeyboardKey.tab, control: true): () =>
+            c.cycleTab(
+              secondary: _secondaryFocused && c.session.secondaryId != null,
+            ),
+        const SingleActivator(
+          LogicalKeyboardKey.tab,
+          control: true,
+          shift: true,
+        ): () => c.cycleTab(
+          reverse: true,
+          secondary: _secondaryFocused && c.session.secondaryId != null,
+        ),
         const SingleActivator(
           LogicalKeyboardKey.keyT,
           control: true,
@@ -864,7 +926,10 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     final colors = OrbitColors.of(context);
     return Container(
       width: 68,
-      color: colors.panel,
+      decoration: BoxDecoration(
+        color: colors.panel,
+        border: Border(right: BorderSide(color: colors.divider)),
+      ),
       child: Column(
         children: [
           Padding(
@@ -945,34 +1010,11 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     final selected = c.session.destination == d.destination;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Tooltip(
-        message: d.label,
-        child: Semantics(
-          label: d.label,
-          selected: selected,
-          button: true,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(10),
-            onTap: () => c.navigate(d.destination),
-            child: Container(
-              width: 46,
-              height: 48,
-              decoration: BoxDecoration(
-                color: selected
-                    ? OrbitColors.of(context).accent.withValues(alpha: .13)
-                    : null,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                d.icon,
-                size: 21,
-                color: selected
-                    ? OrbitColors.of(context).accent
-                    : OrbitColors.of(context).subtle,
-              ),
-            ),
-          ),
-        ),
+      child: OrbitControl(
+        tooltip: d.label,
+        icon: d.icon,
+        selected: selected,
+        onPressed: () => c.navigate(d.destination),
       ),
     );
   }
@@ -1054,17 +1096,26 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: OutlinedButton(
               onPressed: () => showCommandPalette(context, c),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.search, size: 16),
-                  SizedBox(width: 8),
-                  Expanded(
+                  const Icon(Icons.search, size: 16),
+                  const SizedBox(width: 8),
+                  const Expanded(
                     child: Text(
                       'Find anything',
                       style: TextStyle(fontSize: 12),
                     ),
                   ),
-                  Text('⌃ P', style: TextStyle(fontSize: 10)),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: const BorderRadius.all(Radius.circular(4)),
+                      color: colors.raised,
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+                      child: Text('Ctrl P', style: TextStyle(fontSize: 10)),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1221,10 +1272,20 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       child: Row(
         children: [
           if (wide)
-            IconButton(
-              tooltip: 'Switch Vault',
-              onPressed: switchVault,
-              icon: const Icon(Icons.folder_copy_outlined, size: 18),
+            Tooltip(
+              message: 'Switch Vault',
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 190),
+                child: TextButton.icon(
+                  onPressed: switchVault,
+                  icon: const Icon(Icons.folder_special_outlined, size: 18),
+                  label: Text(
+                    c.repository.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
             ),
           if (!sidebar)
             IconButton(
@@ -1301,8 +1362,9 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     ),
   );
   Widget tabs() => SizedBox(
-    height: 38,
+    height: 42,
     child: ReorderableListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       scrollDirection: Axis.horizontal,
       buildDefaultDragHandles: false,
       onReorderItem: c.reorderTab,
@@ -1313,54 +1375,81 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         return ReorderableDragStartListener(
           key: ValueKey(id),
           index: index,
-          child: Material(
-            color: selected
-                ? OrbitColors.of(context).raised
-                : Colors.transparent,
-            child: InkWell(
-              onTap: () => c.openObject(id),
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 220),
-                padding: const EdgeInsets.only(left: 14),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
+          child: Listener(
+            onPointerDown: (event) {
+              if (event.buttons == 4) c.closeTab(id);
+            },
+            child: Material(
+              color: selected
+                  ? OrbitColors.of(context).raised
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(OrbitRadius.control),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(OrbitRadius.control),
+                onTap: () {
+                  _secondaryFocused = false;
+                  c.openObject(id);
+                },
+                child: AnimatedContainer(
+                  duration: OrbitMotionScope.duration(
+                    context,
+                    OrbitMotion.micro,
+                  ),
+                  curve: OrbitMotion.ease,
+                  constraints: const BoxConstraints(maxWidth: 220),
+                  padding: const EdgeInsets.only(left: 14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(OrbitRadius.control),
+                    border: Border.all(
                       color: selected
-                          ? OrbitColors.of(context).accent
+                          ? OrbitColors.of(context).border
                           : Colors.transparent,
-                      width: 2,
                     ),
                   ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(objectIcon(object?.typeId ?? ''), size: 14),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        object?.title ?? 'Missing object',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        objectIcon(object?.typeId ?? ''),
+                        size: 14,
+                        color: selected
+                            ? OrbitColors.of(context).accentHover
+                            : OrbitColors.of(context).subtle,
                       ),
-                    ),
-                    if (c.dirty.contains(id))
-                      const Padding(
-                        padding: EdgeInsets.only(left: 6),
-                        child: Icon(Icons.circle, size: 5),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          object?.title ?? 'Missing object',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: selected
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                            color: selected
+                                ? OrbitColors.of(context).text
+                                : OrbitColors.of(context).subtle,
+                          ),
+                        ),
                       ),
-                    IconButton(
-                      tooltip: 'Close tab',
-                      onPressed: () => c.closeTab(id),
-                      icon: const Icon(Icons.close, size: 12),
-                      constraints: const BoxConstraints.tightFor(
-                        width: 30,
-                        height: 30,
+                      if (c.dirty.contains(id))
+                        const Padding(
+                          padding: EdgeInsets.only(left: 6),
+                          child: Icon(Icons.circle, size: 5),
+                        ),
+                      IconButton(
+                        tooltip: 'Close tab',
+                        onPressed: () => c.closeTab(id),
+                        icon: const Icon(Icons.close, size: 12),
+                        constraints: const BoxConstraints.tightFor(
+                          width: 30,
+                          height: 30,
+                        ),
+                        padding: EdgeInsets.zero,
                       ),
-                      padding: EdgeInsets.zero,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1482,20 +1571,24 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
               ),
               Expanded(
                 flex: ((1 - c.session.splitRatio) * 1000).round(),
-                child: Column(
-                  children: [
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: IconButton(
-                        tooltip: 'Close split',
-                        onPressed: () =>
-                            c.updateSession((s) => s.secondaryId = null),
-                        icon: const Icon(Icons.close, size: 16),
+                child: secondary.typeId == 'orbit.note'
+                    ? objectView(secondary, pane: 'secondary')
+                    : Column(
+                        children: [
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: IconButton(
+                              tooltip: 'Close split',
+                              onPressed: () =>
+                                  c.updateSession((s) => s.secondaryId = null),
+                              icon: const Icon(Icons.close, size: 16),
+                            ),
+                          ),
+                          Expanded(
+                            child: objectView(secondary, pane: 'secondary'),
+                          ),
+                        ],
                       ),
-                    ),
-                    Expanded(child: objectView(secondary, pane: 'secondary')),
-                  ],
-                ),
               ),
             ],
           );
@@ -1511,13 +1604,16 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       'orbit.note' => NoteEditor(
         key: ValueKey('$pane:note-${object.id}'),
         noteId: object.id,
+        onClosePane: pane == 'secondary'
+            ? () => c.updateSession((s) => s.secondaryId = null)
+            : null,
         title: object.title,
         body: object.body,
         onTitleChanged: (v) => c.edit(object.id, title: v),
         onBodyChanged: (v) => c.edit(object.id, body: v),
         linkTargets: c.linkTargets,
         linkBindings: object.linkBindings,
-        onOpenObject: c.openObject,
+        onOpenObject: openLinkedObject,
         fontSize: c.session.fontSize,
         contentWidth: c.session.contentWidth,
         initialScrollOffset:
@@ -1542,6 +1638,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         onOpenExternalLink: (v) => launchUrl(Uri.parse(v)),
       ),
       'orbit.canvas' => CanvasEditor(
+        onOpenExternal: (uri) => launchUrl(uri),
         key: ValueKey('$pane:${object.id}'),
         imageLoader: c.repository.readAttachment,
         onInsertImage: selectCanvasImage,
@@ -1577,6 +1674,99 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         object: object,
         controller: c,
       ),
+      'orbit.file' when object.properties['mimeType'] == 'application/pdf' =>
+        OrbitPdfReader(
+          key: ValueKey(
+            '$pane:pdf:${object.id}:${object.properties['contentRef']}:${object.properties['checksum']}',
+          ),
+          objectId: object.id,
+          title: object.title,
+          checksum: object.properties['checksum'] as String?,
+          annotations: c.activeObjects
+              .where(PdfAnnotation.isAnnotation)
+              .map(PdfAnnotation.new)
+              .where((a) => a.fileId == object.id)
+              .toList(),
+          onOpenAnnotation: (id) {
+            c.openObject(id);
+            c.updateSession((s) => s.secondaryId = object.id);
+          },
+          onHighlight: (quote, regions, comment) async =>
+              await c.createPdfHighlight(
+                object.id,
+                object.properties['checksum'] as String,
+                quote,
+                regions,
+                comment: comment,
+              ) !=
+              null,
+          loadBytes: () => c.repository.readAttachment(
+            object.properties['contentRef'] as String,
+          ),
+          onOpenOriginal: () => openOriginal(object),
+          onOpenExternal: (uri) => launchUrl(uri),
+          initialPage:
+              (c.session.noteViews['pdf:$pane:${object.id}']?['page'] as num?)
+                  ?.toInt() ??
+              1,
+          initialZoom:
+              (c.session.noteViews['pdf:$pane:${object.id}']?['zoom'] as num?)
+                  ?.toDouble(),
+          onReadingState: (page, zoom) {
+            c.session.noteViews = {
+              ...c.session.noteViews,
+              'pdf:$pane:${object.id}': {'page': page, 'zoom': zoom},
+            };
+            c.persistSession();
+          },
+          readOnly: c.repository.readOnly || object.isReadOnly,
+          bookmarks:
+              (object.properties['pdfBookmarks'] is List
+                      ? object.properties['pdfBookmarks'] as List
+                      : const [])
+                  .whereType<int>()
+                  .where((p) => p > 0)
+                  .toList(),
+          onBookmarks: (pages) {
+            final latest = c.find(object.id);
+            if (latest != null) {
+              c.edit(
+                object.id,
+                properties: {...latest.properties, 'pdfBookmarks': pages},
+              );
+            }
+          },
+          onQuote: (text, page) async {
+            final note = await c.createPdfQuote(object.id, page, text);
+            if (note != null) {
+              c.updateSession((s) {
+                s.secondaryId = object.id;
+                s.noteViews = {
+                  ...s.noteViews,
+                  'pdf:secondary:${object.id}': {'page': page},
+                };
+              });
+            }
+          },
+        ),
+      'orbit.file'
+          when previewLanguage(
+                object.properties['originalName'] as String? ?? object.title,
+              ) !=
+              null =>
+        CodeFilePreview(
+          key: ValueKey(
+            '$pane:code:${object.id}:${object.properties['checksum']}',
+          ),
+          title: object.title,
+          language: previewLanguage(
+            object.properties['originalName'] as String? ?? object.title,
+          )!,
+          loadBytes: () => c.repository.readAttachment(
+            object.properties['contentRef'] as String,
+          ),
+          onOpenOriginal: () => openOriginal(object),
+        ),
       _ => ListView(
         padding: const EdgeInsets.all(28),
         children: [
@@ -1611,7 +1801,17 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         ],
       ),
     };
-    if (!object.isReadOnly && !c.repository.readOnly) return view;
+    if (!object.isReadOnly && !c.repository.readOnly) {
+      return Focus(
+        onFocusChange: (focused) {
+          if (focused) _secondaryFocused = pane == 'secondary';
+        },
+        child: Listener(
+          onPointerDown: (_) => _secondaryFocused = pane == 'secondary',
+          child: view,
+        ),
+      );
+    }
     return Column(
       children: [
         const Padding(

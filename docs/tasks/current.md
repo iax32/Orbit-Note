@@ -1,39 +1,34 @@
-# Current task — repair Rich math and Calendar workflows
+# Current task — Explorer actions and keyboard navigation
 
-Status: repair batch delivered and validated, 2026-09-10.
-The owner's request to repair the newly added features supersedes the earlier
-Rich-only task. Preserve the committed editor, Calendar, graph and callout work.
+Status: implemented; final validation in progress, 2026-09-11.
 
-## Scope and acceptance
+The owner asked to continue documented features. This is the next bounded NAV-02/
+NAV-10 slice from the visual pass: explorer rows and context-menu interaction.
+Preserve existing repository commands and the prior Windows baseline.
 
-- Make symbol insertion target the active visual fraction slot; synchronize focused
-  visual fields on undo, preserve edited TeX argument boundaries, and render line breaks.
-- Share the validated event form between Calendar and event details. Convert local
-  clock input to UTC correctly; keep all-day dates civil and end-exclusive.
-- Persist complete event commands, retain failed drafts and unknown properties,
-  reject stale edits and invalid schedules without silently replacing source data.
-- Keep Universal Object identity, repository save/recovery, Markdown and documented
-  JSON authority. No cloud, plugins, AI or new persistence layer.
+## Delivered
 
-## Targeted reading
+- Shared OrbitExplorerRow, with clear hover/selection/focus and restrained surfaces.
+- Right click and Shift+F10/context-menu key open the same actions as the visible
+  more button, without opening the note as an incidental side effect.
+- Folder Left/Right collapse/expand; Enter/Space activate the focused row.
+- Copy note reference produces a stable-ID wiki reference with a readable title.
+- Existing Open beside, Move, Trash, folder create/rename/move commands retained.
+- Mutation menu items disabled for read-only workspaces/unsupported note formats.
+- Folder naming dialog uses the existing OrbitDialog surface.
 
-- [Markdown editing](../features/markdown-and-editing.md), EDT-01–15.
-- [Calendar/events](../features/calendar-and-events.md), EVT-01–05.
-- [Planning semantics](../features/tasks-calendar-and-planning.md).
-- [Rich projection](../adr/0011-source-preserving-rich-markdown.md).
-- [Implemented formats](../architecture/implemented-formats.md).
+## Validation
 
-## Validation and handoff
+Run formatting, analyzer, all tests and Windows release. Exercise real explorer
+right-click, keyboard menus, side-by-side opening, collapse/expand, persisted
+collapse state on reopen and exact note-body preservation. Screenshot the context
+menu. Existing move/history/conflict tests remain the safety foundation.
 
-Run `dart format lib test tool`, zero-change format check, `flutter analyze`,
-`flutter test`, and `flutter build windows --release`; smoke-launch if possible.
-The [CURRENT capability map](../planning/implementation-status.md) records evidence
-and boundaries. Update architecture decisions only if the architecture changes;
-these repairs retain the accepted architecture and require no storage migration.
+No data format, storage authority, migration or architecture change. Notes/slash
+menus and inspector/split transitions are not implemented in this slice.
 
-Next bounded task: Rich selection/formatting across inline equation segments,
-with keyboard and large-note layout acceptance. Do not restart the projection.
+## Next recommended task
 
-Final evidence: zero-change format, clean analyzer, all 151 tests passing, Windows
-release build successful (37.9 seconds), responsive native startup and clean exit.
-The existing user app instance was preserved; restart it to load the rebuilt code.
+Searchable, keyboard-navigable Rich slash and block insertion menus, reusing Orbit
+controls and preserving source ranges, undo and caret state. Read the editor spec
+and existing source-projection tests before starting.

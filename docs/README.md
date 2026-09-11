@@ -79,3 +79,5 @@ Historical change record: [2026-09-08 documentation expansion](planning/document
 
 
 - [Historical local hardening batch report](planning/local-hardening-report.md).
+
+Current implementation evidence: [incremental audit polish batch](planning/audit-polish-batch.md).

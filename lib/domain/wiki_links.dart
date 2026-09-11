@@ -1,3 +1,5 @@
+import 'object_reference.dart';
+
 /// A lightweight link target, independent of UI and persistence libraries.
 class NoteLinkTarget {
   const NoteLinkTarget({
@@ -126,7 +128,8 @@ WikiLinkResolution resolveWikiLink(
   Map<String, String> bindings = const {},
 }) {
   final available = targets.toList();
-  final byId = available.where((target) => target.id == link.target).toList();
+  final reference = ObjectReference.parse(link.target);
+  final byId = available.where((target) => target.id == reference.id).toList();
   if (byId.length == 1) {
     return WikiLinkResolution(WikiLinkStatus.resolved, byId);
   }
@@ -191,8 +194,10 @@ String wikiLinksToMarkdown(
     final String suffix;
     switch (resolution.status) {
       case WikiLinkStatus.resolved:
+        final reference = ObjectReference.parse(link.target);
         destination =
-            'orbit-object:${Uri.encodeComponent(resolution.target!.id)}';
+            'orbit-object:${Uri.encodeComponent(resolution.target!.id)}'
+            '${reference.id == resolution.target!.id && reference.page != null ? '#page=${reference.page}' : ''}';
         suffix = '';
       case WikiLinkStatus.unresolved:
         destination = 'orbit-missing:${Uri.encodeComponent(link.target)}';

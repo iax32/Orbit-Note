@@ -2,6 +2,48 @@ import 'package:flutter/material.dart';
 import '../../../app/orbit_theme.dart';
 
 enum CalloutType {
+  definition(
+    name: 'DEFINITION',
+    label: 'Definition',
+    icon: Icons.menu_book_outlined,
+    color: Color(0xFF8B7CF6),
+  ),
+  theorem(
+    name: 'THEOREM',
+    label: 'Theorem',
+    icon: Icons.school_outlined,
+    color: Color(0xFF8B7CF6),
+  ),
+  lemma(
+    name: 'LEMMA',
+    label: 'Lemma',
+    icon: Icons.account_tree_outlined,
+    color: Color(0xFF6F7FEA),
+  ),
+  proposition(
+    name: 'PROPOSITION',
+    label: 'Proposition',
+    icon: Icons.lightbulb_outline,
+    color: Color(0xFF6F7FEA),
+  ),
+  proof(
+    name: 'PROOF',
+    label: 'Proof',
+    icon: Icons.fact_check_outlined,
+    color: Color(0xFF65C6A3),
+  ),
+  example(
+    name: 'EXAMPLE',
+    label: 'Example',
+    icon: Icons.science_outlined,
+    color: Color(0xFFD8B56A),
+  ),
+  remark(
+    name: 'REMARK',
+    label: 'Remark',
+    icon: Icons.chat_bubble_outline,
+    color: Color(0xFFB6B2C2),
+  ),
   note(
     name: 'NOTE',
     label: 'Note',

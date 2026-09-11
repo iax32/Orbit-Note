@@ -86,3 +86,20 @@ university fractions, roots, sums, integrals, matrices, Greek letters, sets, log
 and indices; invalid/unsupported input must remain visible and editable. An
 equation is edited locally without switching the entire note to Source. This
 refines EDT-02/03/04/11/12/15 and does not add a second feature backlog.
+
+## Incremental delivery (2026-09-10)
+
+Rich formatting escape, block action menu and academic math-grid subset are tracked in the [audit polish report](../planning/audit-polish-batch.md). Cross-block selection is not complete. Grid edits emit standard TeX; no document database is introduced.
+
+## Delivered Notes interaction refinement — 2026-09-11
+
+Desktop paragraph insertion and block-action menus appear on hover or keyboard
+focus; touch and accessible-navigation modes keep controls visible. Hovering alone
+never changes the source. Reduced gutter/control heights remove excess vertical
+spacing, while the document remains centered. The formatting bar sizes to its
+contents at the left and scrolls horizontally when the pane is narrow.
+
+PDF attachments inserted now use stable file-object wiki references. Standalone
+legacy Markdown PDF links retain their source and expose an Open PDF action in
+Rich mode. PDF UUID page anchors survive Rich/Read navigation. Cross-block native
+selection and drag reordering are still unfinished; this is not full Notion parity.

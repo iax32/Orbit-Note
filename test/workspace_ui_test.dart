@@ -92,6 +92,11 @@ void main() {
     });
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('note-body')), findsNWidgets(2));
+    final titles = find.byKey(const ValueKey('note-title'));
+    expect(
+      tester.getTopLeft(titles.first).dy,
+      tester.getTopLeft(titles.last).dy,
+    );
     await snapshot('notes-split');
     await tester.enterText(
       find.byKey(const ValueKey('note-body')).first,

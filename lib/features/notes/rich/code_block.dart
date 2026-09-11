@@ -1,4 +1,6 @@
 import 'dart:async';
+import '../../../app/orbit_components.dart';
+import '../../../app/orbit_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -134,7 +136,13 @@ class _NoteCodeBlockState extends State<NoteCodeBlock> {
                 });
               },
               icon: Icon(copied ? Icons.check : Icons.copy, size: 14),
-              label: Text(copied ? 'Copied ✓' : 'Copy code'),
+              label: AnimatedSwitcher(
+                duration: OrbitMotionScope.duration(context, OrbitMotion.micro),
+                child: Text(
+                  copied ? 'Copied ✓' : 'Copy code',
+                  key: ValueKey(copied),
+                ),
+              ),
             ),
           ],
         ),

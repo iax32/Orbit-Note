@@ -36,3 +36,7 @@ Native clipboard and pointer checks complement widget tests; simulated paste alo
 does not establish desktop interoperability. Related contracts:
 [attachments](attachments-and-research.md), [history](history-and-recovery.md),
 [shell](shell-and-navigation.md), [continuity](home-and-work-sessions.md).
+
+## Incremental desktop acceptance
+
+The current batch adds pane-aware tab cycling/closing and middle-click tab close, plus Notes-tree drag/drop via existing safe move commands. Native window geometry persistence remains unimplemented. See [batch evidence](../planning/audit-polish-batch.md).

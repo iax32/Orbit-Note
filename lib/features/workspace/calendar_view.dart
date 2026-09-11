@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/orbit_theme.dart';
@@ -135,13 +136,17 @@ class _CalendarViewState extends State<CalendarView> {
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+            child: AnimatedSwitcher(
+              duration: OrbitMotionScope.duration(context, OrbitMotion.panel),
+              child: Text(
+                title,
+                key: ValueKey(title),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -691,7 +696,7 @@ Future<void> showEventDialog(
     } catch (_) {
       await showDialog<void>(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => OrbitDialog(
           title: const Text('Event dates need review'),
           content: const Text(
             'This event contains unsupported or invalid dates. Its original data '
@@ -721,7 +726,7 @@ Future<void> showEventDialog(
     builder: (context) => StatefulBuilder(
       builder: (context, setState) => PopScope(
         canPop: !saving,
-        child: AlertDialog(
+        child: OrbitDialog(
           title: Text(isEditing ? 'Edit event' : 'New event'),
           content: SizedBox(
             width: 460,

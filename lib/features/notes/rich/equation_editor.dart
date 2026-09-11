@@ -4,6 +4,7 @@ import '../../../app/orbit_theme.dart';
 import 'latex_catalog.dart';
 import 'note_math.dart';
 import 'visual_math_model.dart';
+import 'math_grid_editor.dart';
 
 class EquationEditor extends StatefulWidget {
   const EquationEditor({
@@ -153,6 +154,37 @@ class _EquationEditorState extends State<EquationEditor> {
               ),
             ),
             const SizedBox(height: 8),
+
+            Wrap(
+              children: [
+                for (final aligned in [false, true])
+                  TextButton.icon(
+                    icon: Icon(
+                      aligned ? Icons.format_align_left : Icons.grid_on,
+                      size: 16,
+                    ),
+                    label: Text(aligned ? 'Aligned equations' : 'Matrix'),
+                    onPressed: () async {
+                      final original = MathGrid.parse(input.text);
+                      final compatible =
+                          original != null &&
+                          (original.environment == 'aligned') == aligned;
+                      final result = await showMathGrid(
+                        context,
+                        initial: compatible ? original : null,
+                        aligned: aligned,
+                      );
+                      if (result != null && mounted) {
+                        _applyModelUpdate(
+                          compatible || input.text.trim().isEmpty
+                              ? result
+                              : '${input.text} \\quad $result',
+                        );
+                      }
+                    },
+                  ),
+              ],
+            ),
 
             // 2. Visual Equation Slots & Spacing Toolbar
             _VisualEquationStudioHeader(

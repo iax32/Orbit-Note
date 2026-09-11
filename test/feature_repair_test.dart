@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:orbit_note/app/orbit_components.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:orbit_note/app/workspace_controller.dart';
@@ -107,7 +108,7 @@ void main() {
       await tester.enterText(
         find
             .descendant(
-              of: find.byType(AlertDialog),
+              of: find.byType(OrbitDialog),
               matching: find.byType(TextField),
             )
             .first,

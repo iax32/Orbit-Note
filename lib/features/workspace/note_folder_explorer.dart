@@ -1,10 +1,54 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import '../../app/workspace_controller.dart';
 import '../../domain/universal_object.dart';
+import '../../domain/object_reference.dart';
+import '../../app/orbit_components.dart';
+import 'orbit_explorer_row.dart';
 
 /// Real on-disk Notes folders. Objects keep their identity when their owner moves.
 class NoteFolderExplorer extends StatelessWidget {
+  Widget _drag(String path, String? noteId, Widget child) =>
+      Draggable<({String path, String? noteId})>(
+        data: (path: path, noteId: noteId),
+        maxSimultaneousDrags: controller.repository.readOnly || path == 'Notes'
+            ? 0
+            : 1,
+        feedback: Material(
+          elevation: 4,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Text(p.posix.basename(path)),
+          ),
+        ),
+        child: child,
+      );
+
+  Widget _drop(String folder, Widget child) =>
+      DragTarget<({String path, String? noteId})>(
+        onWillAcceptWithDetails: (details) {
+          final source = details.data;
+          return !controller.repository.readOnly &&
+              source.path != folder &&
+              p.posix.dirname(source.path) != folder &&
+              !folder.startsWith('${source.path}/');
+        },
+        onAcceptWithDetails: (details) => controller.organize(
+          () => details.data.noteId == null
+              ? controller.repository.moveFolder(
+                  details.data.path,
+                  '$folder/${p.posix.basename(details.data.path)}',
+                )
+              : controller.repository.moveNote(details.data.noteId!, folder),
+        ),
+        builder: (context, candidates, rejected) => ColoredBox(
+          color: candidates.isEmpty
+              ? Colors.transparent
+              : Theme.of(context).colorScheme.primary.withValues(alpha: .12),
+          child: child,
+        ),
+      );
   const NoteFolderExplorer({
     super.key,
     required this.controller,
@@ -23,7 +67,7 @@ class NoteFolderExplorer extends StatelessWidget {
     final input = TextEditingController(text: initial);
     final result = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => OrbitDialog(
         title: Text(title),
         content: TextField(
           controller: input,
@@ -117,42 +161,65 @@ class NoteFolderExplorer extends StatelessWidget {
       rows.add(
         Padding(
           padding: EdgeInsets.only(left: depth * 12.0),
-          child: ListTile(
-            key: ValueKey('folder:$folder'),
-            dense: true,
-            leading: Icon(
-              collapsed ? Icons.chevron_right : Icons.expand_more,
-              size: 16,
-            ),
-            minLeadingWidth: 12,
-            title: Text(
-              p.posix.basename(folder),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12),
-            ),
-            onTap: () => controller.updateSession(
-              (s) => s.collapsedFolders = collapsed
-                  ? s.collapsedFolders.where((f) => f != folder).toList()
-                  : {...s.collapsedFolders, folder}.toList(),
-            ),
-            trailing: PopupMenuButton<String>(
-              tooltip: 'Folder actions',
-              icon: const Icon(Icons.more_horiz, size: 16),
-              onSelected: (action) => _folderAction(context, folder, action),
-              itemBuilder: (_) => [
-                const PopupMenuItem(value: 'new', child: Text('New folder')),
-                if (folder != 'Notes') ...[
-                  const PopupMenuItem(
-                    value: 'rename',
-                    child: Text('Rename folder'),
-                  ),
-                  const PopupMenuItem(
-                    value: 'move',
-                    child: Text('Move folder…'),
-                  ),
-                ],
-              ],
+          child: _drop(
+            folder,
+            _drag(
+              folder,
+              null,
+              OrbitExplorerRow(
+                key: ValueKey('folder:$folder'),
+                leading: Icon(
+                  collapsed ? Icons.chevron_right : Icons.expand_more,
+                  size: 16,
+                ),
+                onExpand: () => controller.updateSession(
+                  (s) => s.collapsedFolders = s.collapsedFolders
+                      .where((f) => f != folder)
+                      .toList(),
+                ),
+                onCollapse: () => controller.updateSession(
+                  (s) => s.collapsedFolders = {
+                    ...s.collapsedFolders,
+                    folder,
+                  }.toList(),
+                ),
+                title: Text(
+                  p.posix.basename(folder),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12),
+                ),
+                onTap: () => controller.updateSession(
+                  (s) => s.collapsedFolders = collapsed
+                      ? s.collapsedFolders.where((f) => f != folder).toList()
+                      : {...s.collapsedFolders, folder}.toList(),
+                ),
+                menu: PopupMenuButton<String>(
+                  tooltip: 'Folder actions',
+                  icon: const Icon(Icons.more_horiz, size: 16),
+                  onSelected: (action) =>
+                      _folderAction(context, folder, action),
+                  itemBuilder: (_) => [
+                    PopupMenuItem(
+                      enabled: !repo.readOnly,
+                      value: 'new',
+                      child: const Text('New folder'),
+                    ),
+                    if (folder != 'Notes') ...[
+                      PopupMenuItem(
+                        enabled: !repo.readOnly,
+                        value: 'rename',
+                        child: const Text('Rename folder'),
+                      ),
+                      PopupMenuItem(
+                        enabled: !repo.readOnly,
+                        value: 'move',
+                        child: const Text('Move folder…'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -169,42 +236,66 @@ class NoteFolderExplorer extends StatelessWidget {
         rows.add(
           Padding(
             padding: EdgeInsets.only(left: (depth + 1) * 12.0),
-            child: ListTile(
-              key: ValueKey('folder-note:${note.id}'),
-              dense: true,
-              selected: controller.session.activeId == note.id,
-              leading: const Icon(Icons.description_outlined, size: 16),
-              minLeadingWidth: 12,
-              title: Text(
-                note.title.isEmpty ? 'Untitled' : note.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12),
-              ),
-              onTap: () => controller.openObject(note.id),
-              trailing: PopupMenuButton<String>(
-                tooltip: 'Object actions',
-                icon: const Icon(Icons.more_horiz, size: 16),
-                onSelected: (action) async {
-                  if (action == 'split') {
-                    controller.openObject(note.id, secondary: true);
-                  }
-                  if (action == 'trash') await controller.trash(note.id);
-                  if (action == 'move') {
-                    if (!context.mounted) return;
-                    final target = await _destination(context);
-                    if (target != null && target != folder) {
-                      await controller.organize(
-                        () => repo.moveNote(note.id, target),
+            child: _drag(
+              repo.objectPath(note.id)!,
+              note.id,
+              OrbitExplorerRow(
+                key: ValueKey('folder-note:${note.id}'),
+                selected: controller.session.activeId == note.id,
+                leading: const Icon(Icons.description_outlined, size: 16),
+                title: Text(
+                  note.title.isEmpty ? 'Untitled' : note.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12),
+                ),
+                onTap: () => controller.openObject(note.id),
+                menu: PopupMenuButton<String>(
+                  tooltip: 'Object actions',
+                  icon: const Icon(Icons.more_horiz, size: 16),
+                  onSelected: (action) async {
+                    if (action == 'copy') {
+                      await Clipboard.setData(
+                        ClipboardData(
+                          text: ObjectReference(note.id).markdown(note.title),
+                        ),
                       );
                     }
-                  }
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'split', child: Text('Open beside')),
-                  PopupMenuItem(value: 'move', child: Text('Move to folder…')),
-                  PopupMenuItem(value: 'trash', child: Text('Move to Trash')),
-                ],
+                    if (action == 'split') {
+                      controller.openObject(note.id, secondary: true);
+                    }
+                    if (action == 'trash') await controller.trash(note.id);
+                    if (action == 'move') {
+                      if (!context.mounted) return;
+                      final target = await _destination(context);
+                      if (target != null && target != folder) {
+                        await controller.organize(
+                          () => repo.moveNote(note.id, target),
+                        );
+                      }
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: 'split',
+                      child: Text('Open beside'),
+                    ),
+                    const PopupMenuItem(
+                      value: 'copy',
+                      child: Text('Copy note reference'),
+                    ),
+                    PopupMenuItem(
+                      enabled: !repo.readOnly && !note.isReadOnly,
+                      value: 'move',
+                      child: const Text('Move to folder…'),
+                    ),
+                    PopupMenuItem(
+                      enabled: !repo.readOnly && !note.isReadOnly,
+                      value: 'trash',
+                      child: const Text('Move to Trash'),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

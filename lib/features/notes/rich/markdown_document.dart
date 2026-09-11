@@ -465,7 +465,20 @@ class InlineProjection {
     return position;
   }
 
-  String edit(String next, {int? selectionStart, int? selectionEnd}) {
+  int outsideOffset(int visible) {
+    var offset = sourceOffset(visible, end: true);
+    for (final (_, _, contentEnd, close) in _wrappers.reversed) {
+      if (offset == contentEnd) offset = close;
+    }
+    return offset;
+  }
+
+  String edit(
+    String next, {
+    int? selectionStart,
+    int? selectionEnd,
+    bool outsideFormatting = false,
+  }) {
     final old = text;
     var start = 0, end = old.length, nextEnd = next.length;
     while (start < end && start < nextEnd && old[start] == next[start]) {
@@ -496,6 +509,10 @@ class InlineProjection {
     if (start == 0 && end == old.length && next.isEmpty) return '';
     var a = sourceOffset(start, end: start == end),
         b = start == end ? a : sourceOffset(end, end: true);
+    if (outsideFormatting && start == end) {
+      a = outsideOffset(start);
+      b = a;
+    }
     var insertion = next.substring(start, nextEnd);
     for (final (open, close) in _plainWiki) {
       if (a >= open + 2 && b <= close - 2 && insertion.isNotEmpty) {

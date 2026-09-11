@@ -69,3 +69,7 @@ tasks, not independent planning copies.
 Start with source navigation and reliable aggregation; implement stable anchor
 round-trips before cross-view toggles. Standalone tasks, dates and basic views follow.
 Recurring schedules, reminders and advanced dependencies are separate later work.
+
+## Implemented incremental subset
+
+Task list date/search filters and quick due-date editing reuse Universal Tasks; Calendar still projects those same deadlines. Recurrence, named zones, reminders and task dependencies remain future work. See [CURRENT](../planning/implementation-status.md).

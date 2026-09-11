@@ -24,3 +24,7 @@ for the earlier decision. Routine files, widgets and bug fixes do not need ADRs.
 - [0009 — Audit and incremental local state](0009-audit-and-incremental-local-state.md): authored source, mixed backups, recovery retention, native events and Canvas deltas; partially supersedes 0008.
 - [0010 — Notes folder moves](0010-notes-folder-moves.md): real directories, staged roll-forward move recovery and empty-folder backup extension.
 - [0011 — Source-preserving Rich Markdown](0011-source-preserving-rich-markdown.md): transient editable blocks, shared splice history and portable local math/code rendering.
+- [0012 — FTS5 derived search](0012-fts5-derived-search.md): trigram substring indexing, literal query handling and rebuildable schema 3.
+- [0013 — Local PDF reader](0013-local-pdf-reader.md): repository-owned bytes, local PDFium viewing, portable page references and quote notes.
+
+- [0014 — PDF highlight notes](0014-pdf-highlight-notes.md): source-versioned regions using Canvas rectangles and linkable Markdown notes.

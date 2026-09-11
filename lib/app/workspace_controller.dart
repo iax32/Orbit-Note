@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/workspace_repository.dart';
 import '../domain/calendar_event.dart';
 import '../domain/universal_object.dart';
+import '../domain/object_reference.dart';
+import '../domain/pdf_annotation.dart';
+import '../canvas/scene.dart';
 import '../domain/wiki_links.dart';
 import '../domain/search_text.dart';
 import 'session_state.dart';
@@ -103,6 +106,9 @@ class WorkspaceController extends Notifier<int> {
       .toList();
   Future<List<UniversalObject>> search(String query) async {
     final indexed = await repository.search(query);
+    final indexOrder = {
+      for (var i = 0; i < indexed.length; i++) indexed[i].id: i,
+    };
     final results = [
       ...indexed.where((o) => !dirty.contains(o.id)),
       ...activeObjects.where(
@@ -113,7 +119,11 @@ class WorkspaceController extends Notifier<int> {
     ];
     results.sort((a, b) {
       final rank = searchRank(a, query).compareTo(searchRank(b, query));
-      return rank != 0 ? rank : a.title.compareTo(b.title);
+      if (rank != 0) return rank;
+      final aDraft = dirty.contains(a.id), bDraft = dirty.contains(b.id);
+      if (aDraft != bDraft) return aDraft ? -1 : 1;
+      if (!aDraft) return indexOrder[a.id]!.compareTo(indexOrder[b.id]!);
+      return a.title.compareTo(b.title);
     });
     return results.take(100).toList();
   }
@@ -293,6 +303,16 @@ class WorkspaceController extends Notifier<int> {
     notify();
   }
 
+  void cycleTab({bool reverse = false, bool secondary = false}) {
+    if (session.tabs.isEmpty) return;
+    final id = secondary ? session.secondaryId : session.activeId;
+    final index = session.tabs.indexOf(id ?? '');
+    final next = index < 0
+        ? 0
+        : (index + (reverse ? -1 : 1)) % session.tabs.length;
+    openObject(session.tabs[next], secondary: secondary);
+  }
+
   void reorderTab(int oldIndex, int newIndex) {
     final tabs = List.of(session.tabs);
     tabs.insert(newIndex, tabs.removeAt(oldIndex));
@@ -379,6 +399,102 @@ class WorkspaceController extends Notifier<int> {
       error = null;
       openObject(object.id);
       return object;
+    } catch (e) {
+      error = '$e';
+      notify();
+      return null;
+    }
+  }
+
+  Future<UniversalObject?> createPdfQuote(
+    String fileId,
+    int page,
+    String quote,
+  ) async {
+    final file = find(fileId);
+    if (file == null ||
+        file.isDeleted ||
+        file.typeId != 'orbit.file' ||
+        file.properties['mimeType'] != 'application/pdf' ||
+        page < 1 ||
+        page > 999999 ||
+        quote.trim().isEmpty) {
+      return null;
+    }
+    try {
+      final note = await repository.create(
+        typeId: 'orbit.note',
+        title: '${file.title} · page $page',
+        body: ObjectReference(
+          fileId,
+          page: page,
+        ).quoteMarkdown(file.title, quote),
+        properties: {
+          'pdfSource': {
+            'objectId': fileId,
+            'page': page,
+            'checksum': file.properties['checksum'],
+          },
+        },
+      );
+      objects = [...objects, note];
+      error = null;
+      openObject(note.id);
+      return note;
+    } catch (e) {
+      error = '$e';
+      notify();
+      return null;
+    }
+  }
+
+  Future<UniversalObject?> createPdfHighlight(
+    String fileId,
+    String checksum,
+    String quote,
+    List<CanvasElement> regions, {
+    String comment = '',
+  }) async {
+    final file = find(fileId);
+    if (file == null ||
+        file.isDeleted ||
+        file.isReadOnly ||
+        repository.readOnly ||
+        file.typeId != 'orbit.file' ||
+        file.properties['mimeType'] != 'application/pdf' ||
+        file.properties['checksum'] != checksum ||
+        quote.trim().isEmpty ||
+        quote.length > 100000 ||
+        regions.isEmpty ||
+        regions.length > 10000 ||
+        !regions.every(PdfAnnotation.validRegion)) {
+      error =
+          'The highlight could not be saved: its source or selected regions changed.';
+      notify();
+      return null;
+    }
+    try {
+      final page = regions.first.data['page'] as int;
+      final note = await repository.create(
+        typeId: 'orbit.note',
+        title: '${file.title} · highlight p. $page',
+        body:
+            '${ObjectReference(fileId, page: page).quoteMarkdown(file.title, quote)}${comment.trim().isEmpty ? '' : '\n\n$comment'}',
+        properties: {
+          'pdfHighlightVersion': 1,
+          'pdfSource': {
+            'objectId': fileId,
+            'checksum': checksum,
+            'page': page,
+            'quote': quote,
+            'regions': regions.map((r) => r.data).toList(),
+          },
+        },
+      );
+      objects = [...objects, note];
+      error = null;
+      notify();
+      return note;
     } catch (e) {
       error = '$e';
       notify();

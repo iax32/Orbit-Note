@@ -1,4 +1,6 @@
 import 'dart:async';
+import '../../app/orbit_components.dart';
+import '../../app/orbit_theme.dart';
 import '../../domain/universal_object.dart';
 import 'package:flutter/material.dart';
 import '../../app/workspace_controller.dart';
@@ -9,9 +11,8 @@ Future<void> showCommandPalette(BuildContext context, WorkspaceController c) =>
     showDialog<void>(
       context: context,
       animationStyle: AnimationStyle(
-        duration: MediaQuery.disableAnimationsOf(context)
-            ? Duration.zero
-            : const Duration(milliseconds: 200),
+        duration: OrbitMotionScope.duration(context, OrbitMotion.dialog),
+        curve: OrbitMotion.ease,
       ),
       builder: (context) => _CommandPalette(controller: c),
     );
@@ -154,12 +155,9 @@ class _CommandPaletteState extends State<_CommandPalette> {
           children: [
             Padding(
               padding: const EdgeInsets.all(16),
-              child: TextField(
+              child: OrbitSearchField(
                 autofocus: true,
-                decoration: const InputDecoration(
-                  hintText: 'Search commands and knowledge…',
-                  prefixIcon: Icon(Icons.search),
-                ),
+                hint: 'Search commands and knowledge…',
                 onChanged: _search,
                 onSubmitted: (_) {
                   if (filtered.isNotEmpty) {

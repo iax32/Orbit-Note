@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../app/orbit_theme.dart';
@@ -201,18 +202,23 @@ class GraphData {
         )
         .toList();
 
-    // Compute connection counts
+    // Count edges once rather than scanning all nodes for every edge.
+    final byId = {for (final node in nodes) node.id: node};
     for (final edge in filteredEdges) {
-      for (final n in nodes) {
-        if (n.id == edge.sourceId || n.id == edge.targetId) {
-          n.connectionCount++;
-        }
-      }
+      byId[edge.sourceId]!.connectionCount++;
+      byId[edge.targetId]!.connectionCount++;
     }
 
     // Run force-directed simulation steps
     if (nodes.length <= 300) {
       simulatePhysics(nodes, filteredEdges, iterations: 35);
+    } else {
+      // Stable, legible large-graph fallback with bounded linear work.
+      final columns = math.sqrt(nodes.length).ceil();
+      for (var i = 0; i < nodes.length; i++) {
+        nodes[i].x = 60 + (i % columns) * 100;
+        nodes[i].y = 120 + (i ~/ columns) * 70;
+      }
     }
 
     return GraphData(nodes: nodes, edges: filteredEdges);
@@ -291,7 +297,8 @@ class GraphView extends StatefulWidget {
   State<GraphView> createState() => _GraphViewState();
 }
 
-class _GraphViewState extends State<GraphView> {
+class _GraphViewState extends State<GraphView>
+    with SingleTickerProviderStateMixin {
   final TransformationController _transformCtrl = TransformationController();
   String _query = '';
   bool _localMode = false;
@@ -307,9 +314,46 @@ class _GraphViewState extends State<GraphView> {
   GraphData? _cachedGraph;
   List<UniversalObject> _cachedObjects = const [];
   String _cachedOptions = '';
+  late final AnimationController _cameraMotion =
+      AnimationController(vsync: this)..addListener(() {
+        _transformCtrl.value = Matrix4Tween(
+          begin: _cameraFrom,
+          end: _cameraTo,
+        ).transform(Curves.easeOutCubic.transform(_cameraMotion.value));
+      });
+  Matrix4 _cameraFrom = Matrix4.identity(), _cameraTo = Matrix4.identity();
+
+  void _moveCamera(Matrix4 target) {
+    _cameraMotion.stop();
+    final duration = OrbitMotionScope.duration(
+      context,
+      OrbitMotion.dialog,
+      spatial: true,
+    );
+    _cameraFrom = _transformCtrl.value.clone();
+    _cameraTo = target;
+    if (duration == Duration.zero) {
+      _transformCtrl.value = target;
+      return;
+    }
+    _cameraMotion.duration = duration;
+    _cameraMotion.forward(from: 0);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_cameraMotion.isAnimating &&
+        OrbitMotionScope.duration(context, OrbitMotion.dialog, spatial: true) ==
+            Duration.zero) {
+      _cameraMotion.stop();
+      _transformCtrl.value = _cameraTo;
+    }
+  }
 
   @override
   void dispose() {
+    _cameraMotion.dispose();
     _transformCtrl.dispose();
     super.dispose();
   }
@@ -335,15 +379,17 @@ class _GraphViewState extends State<GraphView> {
           (size.width - 60) / bounds.width,
           (size.height - 180) / bounds.height,
         )
-        .clamp(.15, 3.5);
-    _transformCtrl.value = Matrix4.identity()
-      ..translateByDouble(
-        size.width / 2 - bounds.center.dx * scale,
-        (size.height + 100) / 2 - bounds.center.dy * scale,
-        0,
-        1,
-      )
-      ..scaleByDouble(scale, scale, 1, 1);
+        .clamp(.15, 1.25);
+    _moveCamera(
+      Matrix4.identity()
+        ..translateByDouble(
+          size.width / 2 - bounds.center.dx * scale,
+          (size.height + 100) / 2 - bounds.center.dy * scale,
+          0,
+          1,
+        )
+        ..scaleByDouble(scale, scale, 1, 1),
+    );
   }
 
   @override
@@ -361,6 +407,7 @@ class _GraphViewState extends State<GraphView> {
           (i) => identical(c.objects[i], _cachedObjects[i]),
         ).every((v) => v);
     if (!unchanged || options != _cachedOptions || _cachedGraph == null) {
+      final previous = _cachedGraph?.nodeMap ?? <String, GraphNode>{};
       _cachedObjects = List.of(c.objects);
       _cachedOptions = options;
       _hoveredNode = null;
@@ -371,326 +418,331 @@ class _GraphViewState extends State<GraphView> {
         typeFilters: _typeFilters,
         query: _query,
       );
+      // Filtering preserves spatial memory; physics is bounded and never ticks at rest.
+      for (final node in _cachedGraph!.nodes) {
+        final old = previous[node.id];
+        if (old != null) {
+          node.x = old.x;
+          node.y = old.y;
+        }
+      }
     }
     final graphData = _cachedGraph!;
 
-    return Scaffold(
-      backgroundColor: colors.background,
-      body: Stack(
-        children: [
-          // Interactive Graph Canvas
-          Positioned.fill(
-            child: InteractiveViewer(
-              constrained: false,
-              transformationController: _transformCtrl,
-              boundaryMargin: const EdgeInsets.all(1200),
-              minScale: 0.15,
-              maxScale: 3.5,
-              child: MouseRegion(
-                onExit: (_) => setState(() => _hoveredNode = null),
-                onHover: (event) {
-                  final localPos = event.localPosition;
-                  GraphNode? closest;
-                  var minDist = double.infinity;
-                  for (final node in graphData.nodes) {
-                    final dx = node.x - localPos.dx;
-                    final dy = node.y - localPos.dy;
-                    final dist = math.sqrt((dx * dx) + (dy * dy));
-                    if (dist < node.radius + 8 && dist < minDist) {
-                      minDist = dist;
-                      closest = node;
-                    }
-                  }
-                  if (closest != _hoveredNode) {
-                    setState(() => _hoveredNode = closest);
-                  }
-                },
-                child: GestureDetector(
-                  onTapUp: (details) {
-                    final localPos = details.localPosition;
+    return OrbitEntrance(
+      child: Scaffold(
+        backgroundColor: colors.background,
+        body: Stack(
+          children: [
+            // Interactive Graph Canvas
+            Positioned.fill(
+              child: InteractiveViewer(
+                constrained: false,
+                transformationController: _transformCtrl,
+                onInteractionStart: (_) => _cameraMotion.stop(),
+                boundaryMargin: const EdgeInsets.all(1200),
+                minScale: 0.15,
+                maxScale: 3.5,
+                child: MouseRegion(
+                  onExit: (_) => setState(() => _hoveredNode = null),
+                  onHover: (event) {
+                    final localPos = event.localPosition;
+                    GraphNode? closest;
+                    var minDist = double.infinity;
                     for (final node in graphData.nodes) {
                       final dx = node.x - localPos.dx;
                       final dy = node.y - localPos.dy;
                       final dist = math.sqrt((dx * dx) + (dy * dy));
-                      if (dist <= node.radius + 6) {
-                        c.openObject(node.id);
-                        return;
+                      if (dist < node.radius + 8 && dist < minDist) {
+                        minDist = dist;
+                        closest = node;
                       }
                     }
+                    if (closest != _hoveredNode) {
+                      setState(() => _hoveredNode = closest);
+                    }
                   },
-                  child: CustomPaint(
-                    size: const Size(1800, 1400),
-                    painter: _GraphCanvasPainter(
-                      data: graphData,
-                      hoveredNode: _hoveredNode,
-                      colors: colors,
+                  child: GestureDetector(
+                    onTapUp: (details) {
+                      final localPos = details.localPosition;
+                      for (final node in graphData.nodes) {
+                        final dx = node.x - localPos.dx;
+                        final dy = node.y - localPos.dy;
+                        final dist = math.sqrt((dx * dx) + (dy * dy));
+                        if (dist <= node.radius + 6) {
+                          c.openObject(node.id);
+                          return;
+                        }
+                      }
+                    },
+                    child: CustomPaint(
+                      size: Size(
+                        graphData.nodes.fold<double>(
+                          1800,
+                          (v, n) => math.max(v, n.x + 100),
+                        ),
+                        graphData.nodes.fold<double>(
+                          1400,
+                          (v, n) => math.max(v, n.y + 100),
+                        ),
+                      ),
+                      painter: _GraphCanvasPainter(
+                        data: graphData,
+                        hoveredNode: _hoveredNode,
+                        colors: colors,
+                        transform: _transformCtrl,
+                        focusId: _localMode ? activeId : null,
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
 
-          // Floating Top Controls Bar
-          Positioned(
-            top: 16,
-            left: 16,
-            right: 16,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: colors.panel.withValues(alpha: 0.92),
-                borderRadius: BorderRadius.circular(OrbitRadius.card),
-                border: Border.all(color: colors.border),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.25),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Wrap(
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 12,
-                runSpacing: 8,
-                children: [
-                  // Title & Mode Toggle
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.hub_rounded, color: colors.accent, size: 20),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Knowledge Graph',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: colors.text,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      ChoiceChip(
-                        label: const Text(
-                          'Global',
-                          style: TextStyle(fontSize: 11),
-                        ),
-                        selected: !_localMode,
-                        visualDensity: VisualDensity.compact,
-                        onSelected: (_) => setState(() => _localMode = false),
-                      ),
-                      const SizedBox(width: 6),
-                      ChoiceChip(
-                        label: const Text(
-                          'Local',
-                          style: TextStyle(fontSize: 11),
-                        ),
-                        selected: _localMode,
-                        visualDensity: VisualDensity.compact,
-                        onSelected: (_) => setState(() => _localMode = true),
-                      ),
-                    ],
-                  ),
-
-                  // Search Filter
-                  PopupMenuButton<String>(
-                    tooltip: 'Choose local graph focus',
-                    icon: const Icon(Icons.my_location),
-                    itemBuilder: (_) => [
-                      for (final object in c.activeObjects)
-                        PopupMenuItem(
-                          value: object.id,
-                          child: Text(object.title),
-                        ),
-                    ],
-                    onSelected: (id) => setState(() {
-                      _focusId = id;
-                      _localMode = true;
-                    }),
-                  ),
-                  if (_localMode)
-                    DropdownButton<int>(
-                      value: _depth,
-                      items: [
-                        for (final depth in [1, 2, 3])
-                          DropdownMenuItem(
-                            value: depth,
-                            child: Text('$depth hops'),
-                          ),
-                      ],
-                      onChanged: (v) => setState(() => _depth = v!),
-                    ),
-                  IconButton(
-                    tooltip: 'Browse graph objects',
-                    icon: const Icon(Icons.list_alt),
-                    onPressed: () => showDialog<void>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Graph objects'),
-                        content: SizedBox(
-                          width: 400,
-                          height: 350,
-                          child: ListView(
-                            children: [
-                              for (final node in graphData.nodes.where(
-                                (n) => n.matchesQuery,
-                              ))
-                                ListTile(
-                                  title: Text(node.title),
-                                  subtitle: Text(
-                                    '${node.connectionCount} connections',
-                                  ),
-                                  onTap: () {
-                                    Navigator.pop(context);
-                                    c.openObject(node.id);
-                                  },
-                                ),
-                            ],
-                          ),
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Close'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 180,
-                    height: 32,
-                    child: TextField(
-                      style: TextStyle(fontSize: 12, color: colors.text),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        hintText: 'Filter nodes…',
-                        prefixIcon: Icon(
-                          Icons.search,
-                          size: 16,
-                          color: colors.subtle,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 6,
-                        ),
-                      ),
-                      onChanged: (v) => setState(() => _query = v),
-                    ),
-                  ),
-
-                  // Type Filter Chips & Reset
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _TypeFilterChip(
-                        label: 'Notes',
-                        color: const Color(0xFF8B7CF6),
-                        selected: _typeFilters.contains('orbit.note'),
-                        onTap: () => setState(() {
-                          _typeFilters.contains('orbit.note')
-                              ? _typeFilters.remove('orbit.note')
-                              : _typeFilters.add('orbit.note');
-                        }),
-                      ),
-                      const SizedBox(width: 4),
-                      _TypeFilterChip(
-                        label: 'Tasks',
-                        color: const Color(0xFFD8B56A),
-                        selected: _typeFilters.contains('orbit.task'),
-                        onTap: () => setState(() {
-                          _typeFilters.contains('orbit.task')
-                              ? _typeFilters.remove('orbit.task')
-                              : _typeFilters.add('orbit.task');
-                        }),
-                      ),
-                      const SizedBox(width: 4),
-                      _TypeFilterChip(
-                        label: 'Canvases',
-                        color: const Color(0xFF6F7FEA),
-                        selected: _typeFilters.contains('orbit.canvas'),
-                        onTap: () => setState(() {
-                          _typeFilters.contains('orbit.canvas')
-                              ? _typeFilters.remove('orbit.canvas')
-                              : _typeFilters.add('orbit.canvas');
-                        }),
-                      ),
-                      const SizedBox(width: 8),
-                      Tooltip(
-                        message: 'Fit graph to view',
-                        child: IconButton(
-                          icon: const Icon(Icons.center_focus_strong, size: 18),
-                          onPressed: _resetView,
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: colors.raised,
-                          borderRadius: BorderRadius.circular(
-                            OrbitRadius.control,
-                          ),
-                        ),
-                        child: Text(
-                          '${graphData.nodes.length} nodes · ${graphData.edges.length} links',
-                          style: TextStyle(fontSize: 11, color: colors.subtle),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Hovered Node Details Pill
-          if (_hoveredNode != null)
+            // Floating Top Controls Bar
             Positioned(
-              bottom: 24,
-              left: 24,
+              top: 16,
+              left: 16,
+              right: 16,
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
-                  vertical: 10,
+                  vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: colors.raised.withValues(alpha: 0.95),
-                  borderRadius: BorderRadius.circular(OrbitRadius.control),
-                  border: Border.all(color: _hoveredNode!.color),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _hoveredNode!.color.withValues(alpha: 0.2),
-                      blurRadius: 10,
-                      spreadRadius: 2,
-                    ),
-                  ],
+                  color: colors.panel.withValues(alpha: 0.92),
+                  borderRadius: BorderRadius.circular(OrbitRadius.card),
+                  border: Border.all(color: colors.border),
+                  boxShadow: OrbitDepth.floating,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 12,
+                  runSpacing: 8,
                   children: [
-                    Text(
-                      _hoveredNode!.title,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: colors.text,
+                    // Title & Mode Toggle
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Icon(Icons.hub_rounded, color: colors.accent, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Knowledge Graph',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: colors.text,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        OrbitModeControl<bool>(
+                          values: const {false: 'Global', true: 'Local'},
+                          value: _localMode,
+                          onChanged: (v) {
+                            setState(() => _localMode = v);
+                          },
+                        ),
+                      ],
+                    ),
+
+                    // Search Filter
+                    PopupMenuButton<String>(
+                      tooltip: 'Choose local graph focus',
+                      icon: const Icon(Icons.my_location),
+                      itemBuilder: (_) => [
+                        for (final object in c.activeObjects)
+                          PopupMenuItem(
+                            value: object.id,
+                            child: Text(object.title),
+                          ),
+                      ],
+                      onSelected: (id) => setState(() {
+                        _focusId = id;
+                        _localMode = true;
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) _resetView();
+                        });
+                      }),
+                    ),
+                    if (_localMode)
+                      DropdownButton<int>(
+                        value: _depth,
+                        items: [
+                          for (final depth in [1, 2, 3])
+                            DropdownMenuItem(
+                              value: depth,
+                              child: Text('$depth hops'),
+                            ),
+                        ],
+                        onChanged: (v) => setState(() => _depth = v!),
+                      ),
+                    IconButton(
+                      tooltip: 'Browse graph objects',
+                      icon: const Icon(Icons.list_alt),
+                      onPressed: () => showDialog<void>(
+                        context: context,
+                        builder: (context) => OrbitDialog(
+                          title: const Text('Graph objects'),
+                          content: SizedBox(
+                            width: 400,
+                            height: 350,
+                            child: ListView(
+                              children: [
+                                for (final node in graphData.nodes.where(
+                                  (n) => n.matchesQuery,
+                                ))
+                                  ListTile(
+                                    title: Text(node.title),
+                                    subtitle: Text(
+                                      '${node.connectionCount} connections',
+                                    ),
+                                    onTap: () {
+                                      Navigator.pop(context);
+                                      c.openObject(node.id);
+                                    },
+                                  ),
+                              ],
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Close'),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${_hoveredNode!.type.replaceFirst('orbit.', '').toUpperCase()} · ${_hoveredNode!.connectionCount} connections · Click to open',
-                      style: TextStyle(fontSize: 11, color: colors.subtle),
+                    SizedBox(
+                      width: 180,
+                      height: 32,
+                      child: OrbitSearchField(
+                        hint: 'Filter nodes…',
+                        onChanged: (v) => setState(() => _query = v),
+                      ),
+                    ),
+
+                    // Type Filter Chips & Reset
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: [
+                        _TypeFilterChip(
+                          label: 'Notes',
+                          color: const Color(0xFF8B7CF6),
+                          selected: _typeFilters.contains('orbit.note'),
+                          onTap: () => setState(() {
+                            _typeFilters.contains('orbit.note')
+                                ? _typeFilters.remove('orbit.note')
+                                : _typeFilters.add('orbit.note');
+                          }),
+                        ),
+                        const SizedBox(width: 4),
+                        _TypeFilterChip(
+                          label: 'Tasks',
+                          color: const Color(0xFFD8B56A),
+                          selected: _typeFilters.contains('orbit.task'),
+                          onTap: () => setState(() {
+                            _typeFilters.contains('orbit.task')
+                                ? _typeFilters.remove('orbit.task')
+                                : _typeFilters.add('orbit.task');
+                          }),
+                        ),
+                        const SizedBox(width: 4),
+                        _TypeFilterChip(
+                          label: 'Canvases',
+                          color: const Color(0xFF6F7FEA),
+                          selected: _typeFilters.contains('orbit.canvas'),
+                          onTap: () => setState(() {
+                            _typeFilters.contains('orbit.canvas')
+                                ? _typeFilters.remove('orbit.canvas')
+                                : _typeFilters.add('orbit.canvas');
+                          }),
+                        ),
+                        const SizedBox(width: 8),
+                        Tooltip(
+                          message: 'Fit graph to view',
+                          child: IconButton(
+                            icon: const Icon(
+                              Icons.center_focus_strong,
+                              size: 18,
+                            ),
+                            onPressed: _resetView,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colors.raised,
+                            borderRadius: BorderRadius.circular(
+                              OrbitRadius.control,
+                            ),
+                          ),
+                          child: Text(
+                            '${graphData.nodes.length} nodes · ${graphData.edges.length} links',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: colors.subtle,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
             ),
-        ],
+
+            // Hovered Node Details Pill
+            if (_hoveredNode != null)
+              Positioned(
+                bottom: 24,
+                left: 24,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colors.raised.withValues(alpha: 0.95),
+                    borderRadius: BorderRadius.circular(OrbitRadius.control),
+                    border: Border.all(color: _hoveredNode!.color),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _hoveredNode!.color.withValues(alpha: 0.2),
+                        blurRadius: 10,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _hoveredNode!.title,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: colors.text,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${_hoveredNode!.type.replaceFirst('orbit.', '').toUpperCase()} · ${_hoveredNode!.connectionCount} connections · Click to open',
+                        style: TextStyle(fontSize: 11, color: colors.subtle),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -710,42 +762,16 @@ class _TypeFilterChip extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(OrbitRadius.control),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: selected ? color.withValues(alpha: 0.15) : Colors.transparent,
-          borderRadius: BorderRadius.circular(OrbitRadius.control),
-          border: Border.all(
-            color: selected ? color : Colors.transparent,
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 7,
-              height: 7,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-                color: selected ? color : Colors.grey,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => OrbitControl(
+    label: label,
+    icon: label == 'Notes'
+        ? Icons.description_outlined
+        : label == 'Tasks'
+        ? Icons.check_circle_outline
+        : Icons.dashboard_outlined,
+    selected: selected,
+    onPressed: onTap,
+  );
 }
 
 class _GraphCanvasPainter extends CustomPainter {
@@ -753,11 +779,15 @@ class _GraphCanvasPainter extends CustomPainter {
     required this.data,
     required this.hoveredNode,
     required this.colors,
-  });
+    required this.transform,
+    this.focusId,
+  }) : super(repaint: transform);
 
   final GraphData data;
   final GraphNode? hoveredNode;
   final OrbitColors colors;
+  final TransformationController transform;
+  final String? focusId;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -771,7 +801,7 @@ class _GraphCanvasPainter extends CustomPainter {
     }
 
     final nodeMap = data.nodeMap;
-    final hovered = hoveredNode;
+    final hovered = hoveredNode ?? nodeMap[focusId];
     final activeConnectedIds = <String>{};
     if (hovered != null) {
       activeConnectedIds.add(hovered.id);
@@ -802,8 +832,8 @@ class _GraphCanvasPainter extends CustomPainter {
         edgePaint.color = colors.border.withValues(alpha: 0.2);
         edgePaint.strokeWidth = 0.8;
       } else {
-        edgePaint.color = colors.border.withValues(alpha: 0.7);
-        edgePaint.strokeWidth = 1.2;
+        edgePaint.color = colors.subtle.withValues(alpha: 0.22);
+        edgePaint.strokeWidth = 1.0;
       }
 
       canvas.drawLine(Offset(n1.x, n1.y), Offset(n2.x, n2.y), edgePaint);
@@ -822,44 +852,70 @@ class _GraphCanvasPainter extends CustomPainter {
           hovered != null && activeConnectedIds.contains(node.id);
       final isDimmed = hovered != null && !isConnected;
 
-      final baseColor = node.color;
+      final baseColor = node.type == 'orbit.canvas'
+          ? colors.secondary
+          : colors.accent;
       final alphaFactor = (!node.matchesQuery || isDimmed) ? 0.25 : 1.0;
-      final nodeRadius = isHovered ? node.radius * 1.25 : node.radius;
+      final nodeRadius = node.radius;
 
       // Outer glow
       glowPaint.color = baseColor.withValues(
-        alpha: isHovered ? 0.45 : 0.15 * alphaFactor,
+        alpha: isHovered ? 0.12 : 0.03 * alphaFactor,
       );
       canvas.drawCircle(
         Offset(node.x, node.y),
-        nodeRadius + (isHovered ? 8.0 : 4.0),
+        nodeRadius + (isHovered ? 6.0 : 3.0),
         glowPaint,
       );
 
       // Node body
-      fillPaint.color = baseColor.withValues(alpha: 0.85 * alphaFactor);
-      canvas.drawCircle(Offset(node.x, node.y), nodeRadius, fillPaint);
+      fillPaint.color = colors.raised.withValues(alpha: alphaFactor);
+      final body = RRect.fromRectAndRadius(
+        Rect.fromCircle(center: Offset(node.x, node.y), radius: nodeRadius),
+        const Radius.circular(4),
+      );
+      if (node.type == 'orbit.canvas') {
+        canvas.drawRRect(body, fillPaint);
+      } else {
+        canvas.drawCircle(Offset(node.x, node.y), nodeRadius, fillPaint);
+      }
 
       // Node border
       strokePaint.color = isHovered
-          ? Colors.white
-          : baseColor.withValues(alpha: alphaFactor);
-      canvas.drawCircle(Offset(node.x, node.y), nodeRadius, strokePaint);
+          ? colors.accentHover
+          : baseColor.withValues(alpha: .65 * alphaFactor);
+      if (node.type == 'orbit.canvas') {
+        canvas.drawRRect(body, strokePaint);
+      } else {
+        canvas.drawCircle(Offset(node.x, node.y), nodeRadius, strokePaint);
+      }
+      canvas.drawCircle(
+        Offset(node.x, node.y),
+        2.5,
+        Paint()..color = baseColor.withValues(alpha: alphaFactor),
+      );
+
+      final labelOpacity = ((transform.value.getMaxScaleOnAxis() - .3) / .4)
+          .clamp(0.0, 1.0);
+      if (labelOpacity == 0 && !isHovered) continue;
 
       // Node Label
       final textSpan = TextSpan(
         text: node.title,
         style: TextStyle(
-          fontSize: isHovered ? 12 : 10,
+          fontFamily: 'Segoe UI',
+          fontSize: 12 / transform.value.getMaxScaleOnAxis().clamp(1.0, 3.5),
           fontWeight: isHovered ? FontWeight.bold : FontWeight.normal,
           color: isHovered
               ? Colors.white
-              : colors.text.withValues(alpha: alphaFactor),
+              : colors.text.withValues(alpha: alphaFactor * labelOpacity),
         ),
       );
       final textPainter = TextPainter(
         text: textSpan,
         textDirection: TextDirection.ltr,
+        maxLines: 2,
+        ellipsis: '…',
       )..layout(maxWidth: 120);
 
       final labelOffset = Offset(
@@ -883,9 +939,14 @@ class _GraphCanvasPainter extends CustomPainter {
       );
 
       textPainter.paint(canvas, labelOffset);
+      textPainter.dispose();
     }
   }
 
   @override
-  bool shouldRepaint(covariant _GraphCanvasPainter oldDelegate) => true;
+  bool shouldRepaint(covariant _GraphCanvasPainter oldDelegate) =>
+      data != oldDelegate.data ||
+      hoveredNode != oldDelegate.hoveredNode ||
+      colors != oldDelegate.colors ||
+      focusId != oldDelegate.focusId;
 }

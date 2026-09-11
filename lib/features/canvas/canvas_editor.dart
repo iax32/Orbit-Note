@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -8,6 +9,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../canvas/geometry.dart';
 import '../../canvas/arrangement.dart';
+import '../../canvas/columns.dart';
 import '../../canvas/scene.dart';
 import '../../domain/json_values.dart';
 import 'canvas_painter.dart';
@@ -44,6 +46,7 @@ class CanvasEditor extends StatefulWidget {
     this.imageLoader,
     this.onInsertImage,
     this.onPasteImage,
+    this.onOpenExternal,
   });
   final String canvasId;
   final Map<String, dynamic> data;
@@ -54,6 +57,7 @@ class CanvasEditor extends StatefulWidget {
   final ValueChanged<Map<String, dynamic>>? onCameraChanged;
   final Future<Uint8List?> Function(String)? imageLoader;
   final Future<CanvasImageReference?> Function()? onInsertImage, onPasteImage;
+  final ValueChanged<Uri>? onOpenExternal;
 
   @override
   State<CanvasEditor> createState() => _CanvasEditorState();
@@ -216,6 +220,19 @@ class _CanvasEditorState extends State<CanvasEditor> {
           for (final id in _selection) {
             if (_scene[id] != null && !_scene[id]!.locked) {
               _original[id] = _scene[id]!;
+            }
+          }
+          for (final id in _selection) {
+            if (_scene[id]?.type == 'column') {
+              final members = columnMembers(_scene, id);
+              if (members.any((e) => e.locked)) {
+                _original.clear();
+                _notice('Unlock the column’s items before moving it.');
+                break;
+              }
+              for (final member in members) {
+                _original[member.id] = member;
+              }
             }
           }
         } else {
@@ -396,6 +413,42 @@ class _CanvasEditorState extends State<CanvasEditor> {
         ..clear()
         ..add(element.id);
     }
+    if (!_panning &&
+        !_resizing &&
+        _original.isNotEmpty &&
+        _selection.length == 1) {
+      final element = _scene[_selection.single];
+      final original = _original[_selection.single];
+      if (element != null &&
+          original != null &&
+          element.type != 'column' &&
+          (element.x != original.x || element.y != original.y)) {
+        final columns = _scene
+            .query(element.bounds)
+            .where(
+              (e) =>
+                  e.type == 'column' &&
+                  !e.locked &&
+                  e.bounds.contains(element.bounds.center) &&
+                  !columnMembers(_scene, e.id).any((child) => child.locked),
+            )
+            .toList();
+        final target = columns.isEmpty ? null : columns.last;
+        final oldColumn = element.data['columnId'];
+        _history.put(element.copy({'columnId': target?.id}));
+        for (final id in {oldColumn, target?.id}.whereType<String>()) {
+          final column = _scene[id];
+          if (column != null) {
+            for (final item in arrangeColumn(
+              column,
+              columnMembers(_scene, id),
+            )) {
+              _history.put(item);
+            }
+          }
+        }
+      }
+    }
     _clearGesture();
     _commit();
   }
@@ -440,6 +493,11 @@ class _CanvasEditorState extends State<CanvasEditor> {
   void _delete() {
     _finishText();
     for (final id in _selection) {
+      if (_scene[id]?.type == 'column' && !(_scene[id]?.locked ?? true)) {
+        for (final member in columnMembers(_scene, id)) {
+          _history.put(member.copy({'columnId': null}));
+        }
+      }
       if (!(_scene[id]?.locked ?? true)) _history.remove(id);
     }
     _selection.clear();
@@ -447,7 +505,17 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   Future<void> _copy({bool cut = false}) async {
-    final elements = _selection
+    final ids = {..._selection};
+    for (final id in _selection) {
+      if (_scene[id]?.type == 'column') {
+        ids.addAll(columnMembers(_scene, id).map((e) => e.id));
+      }
+    }
+    if (cut && ids.any((id) => _scene[id]?.locked == true)) {
+      _notice('Unlock all selected items before cutting them.');
+      return;
+    }
+    final elements = ids
         .map((id) => _scene[id])
         .whereType<CanvasElement>()
         .map((e) => e.data)
@@ -458,7 +526,16 @@ class _CanvasEditorState extends State<CanvasEditor> {
         text: 'orbit-canvas/1\n${jsonEncode({'elements': elements})}',
       ),
     );
-    if (cut && mounted) _delete();
+    if (cut && mounted) {
+      if (elements.any((data) => !identical(_scene[data['id']]?.data, data))) {
+        _notice('The selection changed while copying; no items were removed.');
+        return;
+      }
+      _selection
+        ..clear()
+        ..addAll(ids);
+      _delete();
+    }
   }
 
   Future<void> _paste() async {
@@ -480,9 +557,11 @@ class _CanvasEditorState extends State<CanvasEditor> {
             .where((e) => e.renderable)
             .toList();
         _selection.clear();
+        final newIds = {for (final original in originals) original.id: _id()};
         for (final original in originals) {
           final element = original.copy({
-            'id': _id(),
+            'id': newIds[original.id],
+            'columnId': newIds[original.data['columnId']],
             'x': original.x + 32,
             'y': original.y + 32,
             'locked': false,
@@ -520,6 +599,15 @@ class _CanvasEditorState extends State<CanvasEditor> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 
   void _edit(CanvasElement element) {
+    if (element.type == 'link') {
+      final uri = Uri.tryParse(element.url);
+      if (uri != null &&
+          {'http', 'https'}.contains(uri.scheme) &&
+          uri.host.isNotEmpty) {
+        widget.onOpenExternal?.call(uri);
+      }
+      return;
+    }
     if (element.type == 'card') {
       if (_objects.containsKey(element.objectId)) {
         widget.onOpenObject(element.objectId!);
@@ -538,6 +626,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
           'ellipse',
           'diamond',
           'frame',
+          'column',
         }.contains(element.type)) {
       return;
     }
@@ -722,7 +811,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                     o.title.toLowerCase().contains(query.text.toLowerCase()),
               )
               .toList();
-          return AlertDialog(
+          return OrbitDialog(
             title: const Text('Place an object'),
             content: SizedBox(
               width: 420,
@@ -799,7 +888,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
     final elements = _scene.elements.where((e) => e.renderable).toList();
     await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => OrbitDialog(
         title: const Text('Canvas elements'),
         content: SizedBox(
           width: 420,
@@ -1190,6 +1279,145 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _commit();
   }
 
+  void _createColumn() {
+    _finishText();
+    _cancelGesture();
+    final members = _selection
+        .map((id) => _scene[id])
+        .whereType<CanvasElement>()
+        .toList();
+    if (members.any((e) => e.locked || e.type == 'column')) {
+      _notice('Choose unlocked items. Nested columns are not supported yet.');
+      return;
+    }
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final column = CanvasElement({
+      'id': _id(),
+      'type': 'column',
+      'text': 'Column',
+      'x': members.isEmpty
+          ? center.x - 140
+          : members.map((e) => e.x).reduce(math.min) - 16,
+      'y': members.isEmpty
+          ? center.y - 100
+          : members.map((e) => e.y).reduce(math.min) - 54,
+      'width': 280.0,
+      'height': 200.0,
+      'color': _color,
+    });
+    for (final element in arrangeColumn(column, members)) {
+      _history.put(element);
+    }
+    _selection
+      ..clear()
+      ..add(column.id);
+    _commit();
+    _edit(_scene[column.id]!);
+  }
+
+  Future<void> _addLink([CanvasElement? existing]) async {
+    if (_scene.readOnly || existing?.locked == true) return;
+    _finishText();
+    final title = TextEditingController(text: existing?.text);
+    final url = TextEditingController(text: existing?.url);
+    String? error;
+    final value = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, update) => OrbitDialog(
+          title: const Text('Website link card'),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: title,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: 'Title'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: url,
+                  decoration: InputDecoration(
+                    labelText: 'https://…',
+                    errorText: error,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final uri = Uri.tryParse(url.text.trim());
+                if (uri == null ||
+                    !{'http', 'https'}.contains(uri.scheme) ||
+                    uri.host.isEmpty) {
+                  update(
+                    () => error = 'Enter a complete HTTP or HTTPS address.',
+                  );
+                  return;
+                }
+                Navigator.pop(context, {
+                  'title': title.text.trim().isEmpty
+                      ? uri.host
+                      : title.text.trim(),
+                  'url': uri.toString(),
+                });
+              },
+              child: Text(existing == null ? 'Add link' : 'Save link'),
+            ),
+          ],
+        ),
+      ),
+    );
+    Future<void>.delayed(const Duration(seconds: 1), () {
+      title.dispose();
+      url.dispose();
+    });
+    if (!mounted || value == null) {
+      return;
+    }
+    if (_scene.readOnly) return;
+    if (existing != null) {
+      final latest = _scene[existing.id];
+      if (latest == null ||
+          latest.locked ||
+          !identical(latest.data, existing.data)) {
+        return;
+      }
+      _history.put(latest.copy({'text': value['title'], 'url': value['url']}));
+      _commit();
+      return;
+    }
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final element = CanvasElement({
+      'id': _id(),
+      'type': 'link',
+      'x': center.x - 140,
+      'y': center.y - 65,
+      'width': 280.0,
+      'height': 130.0,
+      'text': value['title'],
+      'url': value['url'],
+      'color': _color,
+    });
+    _history.put(element);
+    _selection
+      ..clear()
+      ..add(element.id);
+    _commit();
+  }
+
   Widget _toolbar(BuildContext context) {
     final tools = <(_Tool, IconData, String)>[
       (_Tool.select, Icons.near_me_outlined, 'Select (V)'),
@@ -1210,24 +1438,16 @@ class _CanvasEditorState extends State<CanvasEditor> {
               for (final item in tools)
                 Padding(
                   padding: const EdgeInsets.only(right: 3),
-                  child: IconButton.filledTonal(
+                  child: OrbitControl(
                     tooltip: item.$3,
-                    isSelected: _tool == item.$1,
+                    selected: _tool == item.$1,
                     onPressed:
                         _scene.readOnly &&
                             item.$1 != _Tool.pan &&
                             item.$1 != _Tool.select
                         ? null
                         : () => _setTool(item.$1),
-                    style: IconButton.styleFrom(
-                      backgroundColor: _tool == item.$1
-                          ? Theme.of(context).colorScheme.primaryContainer
-                          : Colors.transparent,
-                      foregroundColor: _tool == item.$1
-                          ? Theme.of(context).colorScheme.onPrimaryContainer
-                          : Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                    icon: Icon(item.$2, size: 20),
+                    icon: item.$2,
                   ),
                 ),
               PopupMenuButton<_Tool>(
@@ -1257,6 +1477,73 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 ],
               ),
               const SizedBox(width: 8),
+              PopupMenuButton<String>(
+                tooltip: 'Add / organize board content',
+                enabled: !_scene.readOnly,
+                icon: const Icon(Icons.add_box_outlined, size: 20),
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: 'column',
+                    child: Text(
+                      _selection.isEmpty
+                          ? 'New column'
+                          : 'Create column from selection',
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'link',
+                    child: Text('Website link card'),
+                  ),
+                  if (_selection.length == 1 &&
+                      _scene[_selection.first]?.type == 'link')
+                    PopupMenuItem(
+                      value: 'editLink',
+                      enabled: _scene[_selection.first]?.locked != true,
+                      child: const Text('Edit selected link'),
+                    ),
+                  if (_selection.length == 1 &&
+                      _scene[_selection.first]?.type == 'column')
+                    const PopupMenuItem(
+                      value: 'tidy',
+                      child: Text('Tidy column'),
+                    ),
+                  if (_selection.any(
+                    (id) => _scene[id]?.data['columnId'] != null,
+                  ))
+                    const PopupMenuItem(
+                      value: 'detach',
+                      child: Text('Remove from column'),
+                    ),
+                ],
+                onSelected: (action) {
+                  if (action == 'link') {
+                    _addLink();
+                  }
+                  if (action == 'editLink') _addLink(_scene[_selection.single]);
+                  if (action == 'column') {
+                    _createColumn();
+                  }
+                  if (action == 'tidy') {
+                    final column = _scene[_selection.single]!;
+                    for (final element in arrangeColumn(
+                      column,
+                      columnMembers(_scene, column.id),
+                    )) {
+                      _history.put(element);
+                    }
+                    _commit();
+                  }
+                  if (action == 'detach') {
+                    for (final id in _selection) {
+                      final element = _scene[id];
+                      if (element != null && !element.locked) {
+                        _history.put(element.copy({'columnId': null}));
+                      }
+                    }
+                    _commit();
+                  }
+                },
+              ),
               TextButton.icon(
                 onPressed: _scene.readOnly ? null : _chooseObject,
                 icon: const Icon(Icons.add_link, size: 19),

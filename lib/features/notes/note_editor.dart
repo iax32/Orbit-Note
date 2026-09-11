@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -40,6 +41,7 @@ class NoteEditor extends StatefulWidget {
     this.initialViewState = const {},
     this.onViewStateChanged,
     this.linkBindings = const {},
+    this.onClosePane,
   });
 
   final String noteId;
@@ -62,6 +64,7 @@ class NoteEditor extends StatefulWidget {
   final ValueChanged<String>? onOpenAttachment;
   final Map<String, dynamic> initialViewState;
   final Map<String, String> linkBindings;
+  final VoidCallback? onClosePane;
   final ValueChanged<Map<String, dynamic>>? onViewStateChanged;
 
   @override
@@ -516,7 +519,9 @@ class _NoteEditorState extends State<NoteEditor> {
     if (uri == null) return;
     switch (uri.scheme) {
       case 'orbit-object':
-        widget.onOpenObject(Uri.decodeComponent(uri.path));
+        widget.onOpenObject(
+          '${Uri.decodeComponent(uri.path)}${uri.hasFragment ? '#${uri.fragment}' : ''}',
+        );
       case 'orbit-ambiguous':
         final target = await showNoteLinkDialog(
           context,
@@ -682,63 +687,66 @@ class _NoteEditorState extends State<NoteEditor> {
                       onPressed: _openFind,
                       icon: const Icon(Icons.search_rounded, size: 18),
                     ),
-                    if (constraints.maxWidth /
+                    if ((constraints.maxWidth -
+                                (widget.onClosePane == null ? 0 : 48)) /
                             MediaQuery.textScalerOf(context).scale(1) <
                         500)
-                      DropdownButtonHideUnderline(
-                        child: DropdownButton<NoteEditorMode>(
-                          key: const ValueKey('note-mode-menu'),
-                          value: mode,
-                          items: [
-                            for (final entry in {
-                              NoteEditorMode.rich: 'Rich',
-                              NoteEditorMode.write: 'Source',
-                              if (wide) NoteEditorMode.split: 'Split',
-                              NoteEditorMode.read: 'Read',
-                            }.entries)
-                              DropdownMenuItem(
-                                value: entry.key,
-                                child: Text(entry.value),
+                      PopupMenuButton<NoteEditorMode>(
+                        key: const ValueKey('note-mode-menu'),
+                        tooltip: 'Editor mode',
+                        itemBuilder: (_) => [
+                          for (final entry in {
+                            NoteEditorMode.rich: 'Rich',
+                            NoteEditorMode.write: 'Source',
+                            if (wide) NoteEditorMode.split: 'Split',
+                            NoteEditorMode.read: 'Read',
+                          }.entries)
+                            PopupMenuItem(
+                              value: entry.key,
+                              child: Text(entry.value),
+                            ),
+                        ],
+                        onSelected: (value) {
+                          setState(() => _mode = value);
+                          _recordView();
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                {
+                                  NoteEditorMode.rich: 'Rich',
+                                  NoteEditorMode.write: 'Source',
+                                  NoteEditorMode.split: 'Split',
+                                  NoteEditorMode.read: 'Read',
+                                }[mode]!,
                               ),
-                          ],
-                          onChanged: (value) {
-                            if (value == null) return;
-                            setState(() => _mode = value);
-                            _recordView();
-                          },
+                              const Icon(Icons.expand_more, size: 16),
+                            ],
+                          ),
                         ),
                       )
                     else
-                      SegmentedButton<NoteEditorMode>(
-                        showSelectedIcon: false,
-                        style: SegmentedButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          textStyle: theme.textTheme.labelSmall,
-                        ),
-                        segments: [
-                          const ButtonSegment(
-                            value: NoteEditorMode.rich,
-                            label: Text('Rich'),
-                          ),
-                          const ButtonSegment(
-                            value: NoteEditorMode.write,
-                            label: Text('Source'),
-                          ),
-                          if (wide)
-                            const ButtonSegment(
-                              value: NoteEditorMode.split,
-                              label: Text('Split'),
-                            ),
-                          const ButtonSegment(
-                            value: NoteEditorMode.read,
-                            label: Text('Read'),
-                          ),
-                        ],
-                        selected: {mode},
-                        onSelectionChanged: (selection) {
-                          setState(() => _mode = selection.single);
+                      OrbitModeControl<NoteEditorMode>(
+                        values: {
+                          NoteEditorMode.rich: 'Rich',
+                          NoteEditorMode.write: 'Source',
+                          if (wide) NoteEditorMode.split: 'Split',
+                          NoteEditorMode.read: 'Read',
+                        },
+                        value: mode,
+                        onChanged: (value) {
+                          setState(() => _mode = value);
                           _recordView();
                         },
+                      ),
+                    if (widget.onClosePane != null)
+                      IconButton(
+                        tooltip: 'Close split',
+                        onPressed: widget.onClosePane,
+                        icon: const Icon(Icons.close, size: 16),
                       ),
                   ],
                 ),

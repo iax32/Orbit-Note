@@ -69,3 +69,7 @@ the user's carefully arranged Canvas positions without review.
 Deliver literal local search, link completion and backlinks before a complex
 graph. Ranking details, query syntax, anchor syntax and graph layout algorithm are
 implementation decisions to evaluate in their tasks.
+
+## Incremental delivery (2026-09-10)
+
+Native FTS5 literal substring search and bounded large-graph layout are implemented subsets. See [ADR-0012](../adr/0012-fts5-derived-search.md) and the [current batch](../planning/audit-polish-batch.md); saved/typed relation graphs remain future work.

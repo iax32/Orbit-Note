@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../../../domain/wiki_links.dart';
+import '../../../domain/object_reference.dart';
 import '../markdown_editing.dart';
 import '../note_format_toolbar.dart';
 import '../note_link_dialog.dart';
@@ -12,6 +13,7 @@ import 'code_block.dart';
 import 'rich_table_editor.dart';
 import 'rich_math_block.dart';
 import 'callout_block.dart';
+import 'hover_chrome.dart';
 
 class RichMarkdownEditor extends StatefulWidget {
   const RichMarkdownEditor({
@@ -192,6 +194,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
         Scrollable.ensureVisible(
           context,
           alignment: .15,
+          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
           duration: Duration.zero,
         );
       }
@@ -573,28 +576,43 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
 
   Widget blockView(MarkdownBlock block) {
     if (block.kind == MarkdownBlockKind.blank) {
-      return SizedBox(
-        height: 28,
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: IconButton(
-            tooltip: 'Insert paragraph here',
-            padding: EdgeInsets.zero,
-            iconSize: 16,
-            icon: const Icon(Icons.add_circle_outline),
-            onPressed: () {
-              final offset = document.offsetOf(document.blocks.indexOf(block));
-              final eol = block.source.contains('\r\n') ? '\r\n' : '\n';
-              final body = document.source.replaceRange(
-                offset,
-                offset,
-                '$eol$eol',
-              );
-              _load(body);
-              widget.onChanged(body);
-              _focusOffset(offset + eol.length);
-              setState(() {});
-            },
+      return HoverChrome(
+        child: SizedBox(
+          height: 16,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 28,
+                child: IconButton(
+                  tooltip: 'Insert paragraph here',
+                  padding: EdgeInsets.zero,
+                  iconSize: 16,
+                  icon: const Icon(Icons.add),
+                  onPressed: () {
+                    final offset = document.offsetOf(
+                      document.blocks.indexOf(block),
+                    );
+                    final eol = block.source.contains('\r\n') ? '\r\n' : '\n';
+                    final body = document.source.replaceRange(
+                      offset,
+                      offset,
+                      '$eol$eol',
+                    );
+                    _load(body);
+                    widget.onChanged(body);
+                    _focusOffset(offset + eol.length);
+                    setState(() {});
+                  },
+                ),
+              ),
+              Expanded(
+                child: Divider(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: .25),
+                ),
+              ),
+            ],
           ),
         ),
       );
@@ -771,6 +789,10 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
       );
     }
     final links = parseWikiLinks(block.content);
+    final pdfLink = RegExp(
+      r'^\[([^\]]+)\]\((?:<([^>]+)>|([^ )]+))\)$',
+    ).firstMatch(block.content.trim());
+    final pdfDestination = pdfLink == null ? null : pdfLink[2] ?? pdfLink[3];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -813,6 +835,17 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
             Expanded(child: field),
           ],
         ),
+        if (pdfDestination != null &&
+            Uri.tryParse(pdfDestination)?.path.toLowerCase().endsWith('.pdf') ==
+                true)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => widget.onOpenLink(pdfDestination),
+              icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
+              label: const Text('Open PDF'),
+            ),
+          ),
         if (links.isNotEmpty)
           Wrap(
             spacing: 4,
@@ -828,7 +861,11 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
                       bindings: widget.linkBindings,
                     ).target;
                     if (target != null) {
-                      widget.onOpenLink('orbit-object:${target.id}');
+                      final reference = ObjectReference.parse(link.target);
+                      widget.onOpenLink(
+                        'orbit-object:${target.id}'
+                        '${reference.id == target.id && reference.page != null ? '#page=${reference.page}' : ''}',
+                      );
                     }
                   },
                 ),
@@ -853,27 +890,118 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
               for (final block in document.blocks)
                 Container(
                   key: anchors.putIfAbsent(block, () => GlobalKey()),
-                  padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Listener(
                     onPointerDown: (_) {
                       active = document.blocks.indexOf(block);
                       record();
                     },
-                    child: cache.putIfAbsent(block, () => blockView(block)),
+                    child:
+                        block.kind == MarkdownBlockKind.blank ||
+                            block.kind == MarkdownBlockKind.raw
+                        ? cache.putIfAbsent(block, () => blockView(block))
+                        : HoverChrome(
+                            content: cache.putIfAbsent(
+                              block,
+                              () => blockView(block),
+                            ),
+                            child: SizedBox(
+                              width: 28,
+                              height: 28,
+                              child: PopupMenuButton<String>(
+                                tooltip: 'Block actions',
+                                padding: EdgeInsets.zero,
+                                icon: const Icon(Icons.more_horiz, size: 16),
+                                constraints: const BoxConstraints(
+                                  minWidth: 170,
+                                ),
+                                itemBuilder: (_) => const [
+                                  PopupMenuItem(
+                                    value: 'below',
+                                    child: Text('Insert paragraph below'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'above',
+                                    child: Text('Insert paragraph above'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'copy',
+                                    child: Text('Copy Markdown'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'duplicate',
+                                    child: Text('Duplicate block'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'delete',
+                                    child: Text('Delete block'),
+                                  ),
+                                ],
+                                onSelected: (action) {
+                                  final eol = block.source.contains('\r\n')
+                                      ? '\r\n'
+                                      : '\n';
+                                  if (action == 'copy') {
+                                    Clipboard.setData(
+                                      ClipboardData(text: block.source),
+                                    );
+                                  } else if (action == 'delete') {
+                                    _replace(
+                                      block,
+                                      '',
+                                      structural: true,
+                                      focusOffset: 0,
+                                    );
+                                  } else if (action == 'duplicate') {
+                                    _replace(
+                                      block,
+                                      '${block.source}$eol$eol${block.source}',
+                                      structural: true,
+                                      focusOffset: 0,
+                                    );
+                                  } else if (action == 'above') {
+                                    _replace(
+                                      block,
+                                      '$eol$eol${block.source}',
+                                      structural: true,
+                                      focusOffset: 0,
+                                    );
+                                  } else {
+                                    final ending = block.source.endsWith(eol)
+                                        ? ''
+                                        : eol;
+                                    _replace(
+                                      block,
+                                      '${block.source}$ending$eol$eol$eol',
+                                      structural: true,
+                                      focusOffset:
+                                          block.source.length +
+                                          ending.length +
+                                          eol.length,
+                                    );
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
                   ),
                 ),
-              TextButton.icon(
-                onPressed: () {
-                  final last = document.blocks.last;
-                  _replace(
-                    last,
-                    '${last.source}${last.source.endsWith('\n') ? '\n' : '\n\n'}',
-                    structural: true,
-                    focusOffset: last.source.length + 2,
-                  );
-                },
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('New paragraph'),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: HoverChrome(
+                  child: TextButton.icon(
+                    onPressed: () {
+                      final last = document.blocks.last;
+                      _replace(
+                        last,
+                        '${last.source}${last.source.endsWith('\n') ? '\n' : '\n\n'}',
+                        structural: true,
+                        focusOffset: last.source.length + 2,
+                      );
+                    },
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('New paragraph'),
+                  ),
+                ),
               ),
             ],
           ),
@@ -973,6 +1101,7 @@ class _RichTextBlock extends StatefulWidget {
 }
 
 class _RichTextBlockState extends State<_RichTextBlock> {
+  bool _outsideFormatting = false;
   late final _StyledController controller = _StyledController(
     widget.source,
     raw: widget.raw,
@@ -1082,6 +1211,34 @@ class _RichTextBlockState extends State<_RichTextBlock> {
       return KeyEventResult.ignored;
     }
     final keyboard = HardwareKeyboard.instance;
+    if (!widget.raw &&
+        controller.value.composing.isCollapsed &&
+        !keyboard.isControlPressed &&
+        !keyboard.isShiftPressed &&
+        controller.selection.isCollapsed) {
+      final position = controller.selection.extentOffset;
+      if (event.logicalKey == LogicalKeyboardKey.arrowRight &&
+          !_outsideFormatting &&
+          controller.projection.outsideOffset(position) >
+              controller.projection.sourceOffset(position, end: true)) {
+        _outsideFormatting = true;
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowLeft &&
+          _outsideFormatting) {
+        _outsideFormatting = false;
+        return KeyEventResult.handled;
+      }
+      if ({
+        LogicalKeyboardKey.arrowRight,
+        LogicalKeyboardKey.arrowUp,
+        LogicalKeyboardKey.arrowDown,
+        LogicalKeyboardKey.home,
+        LogicalKeyboardKey.end,
+      }.contains(event.logicalKey)) {
+        _outsideFormatting = false;
+      }
+    }
     if (!controller.value.composing.isCollapsed) {
       // Do not let the enclosing document consume IME undo as document undo.
       return keyboard.isControlPressed &&
@@ -1156,6 +1313,7 @@ class _RichTextBlockState extends State<_RichTextBlock> {
               value,
               selectionStart: _beforeSelection.start,
               selectionEnd: _beforeSelection.end,
+              outsideFormatting: _outsideFormatting,
             );
       controller.projection = InlineProjection(source);
       widget.onChanged(source);

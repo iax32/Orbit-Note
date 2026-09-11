@@ -65,3 +65,16 @@ chat conflict with each other; choose one documented map at implementation time.
 The exact M0 breakpoint, two destinations and test sizes remain defined in
 [current.md](../tasks/current.md). No tabs, docking, registries or advanced inspector
 are added to M0 by this expanded specification.
+
+## Explorer interaction follow-up — 2026-09-11
+
+NAV-02/10 subset: Notes folder/note rows now have an Orbit surface with hover,
+selection and keyboard focus. Right click or Shift+F10/context-menu key opens the
+same commands as the visible more button. Folder Left/Right expands/collapses
+without changing note content; Enter/Space activates a focused row. Collapse state
+uses existing persisted session settings. Tab traversal remains available.
+
+Copy note reference uses the existing stable UUID wiki-link format and sanitized
+readable title. Open beside, move, Trash and folder commands retain their existing
+repository paths. Read-only/unsupported-format rows disable mutation entries.
+No multi-select, new folder deletion, tree-wide arrow traversal or data migration.

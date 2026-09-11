@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/workspace/workspace_shell.dart';
 import 'orbit_theme.dart';
+import 'orbit_components.dart';
 import 'workspace_controller.dart';
 
 class OrbitNoteApp extends ConsumerWidget {
@@ -31,9 +32,13 @@ class OrbitNoteApp extends ConsumerWidget {
         final media = MediaQuery.of(context);
         final reduced =
             controller.session.motion != 'normal' || media.disableAnimations;
-        return MediaQuery(
-          data: media.copyWith(disableAnimations: reduced),
-          child: child!,
+        return OrbitMotionScope(
+          preference: controller.session.motion,
+          osReduced: media.disableAnimations,
+          child: MediaQuery(
+            data: media.copyWith(disableAnimations: reduced),
+            child: child!,
+          ),
         );
       },
       home: const WorkspaceShell(),

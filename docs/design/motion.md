@@ -40,3 +40,12 @@ and dialog motion; not every planned MOT interaction is implemented yet.
 Direct text, pointer, pen and camera input must remain immediate. Never postpone a
 save, selection or accessible announcement to let an animation complete. Orbit-like
 relationship reveals may be tested later as brief, optional explanations.
+
+## Visual identity pass — 2026-09-11
+
+OrbitMotionScope separates the app preference from the OS cap. Normal uses shared
+durations; Reduced uses 110ms state/opacity and immediate spatial camera changes;
+Off uses zero-duration custom transitions. Graph fit/focus stops after a finite
+ease-out, and direct manipulation interrupts it. Existing nodes keep positions
+across filters. Graph entry, Calendar headings, Task text, tabs and Copy Code use
+bounded feedback. See observatory-pass-2026-09-11.md for unimplemented transitions.

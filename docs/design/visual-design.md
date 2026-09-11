@@ -42,3 +42,53 @@ the same object, with a draggable divider and independent reading state. A pane
 is not a second note. Focus hides optional side panels and offers a visible exit;
 layout reset remains reachable. Nested docking, tab transfer and named Spaces
 extend these existing requirements rather than becoming competing shell systems.
+
+## Premium desktop refinement (2026-09-10)
+
+Keep the existing OrbitColors palette authoritative. Material surface-container
+roles now map explicitly to graphite tokens, with automatic elevation tint
+disabled. Violet identifies selected controls, primary actions and keyboard focus;
+ordinary button labels remain neutral. Preserve semantic error/success colors.
+
+Use Segoe UI with a deliberate 28/24/20-pixel heading hierarchy and 12–15-pixel
+interface text. Note content retains the user's editor size preference. Controls,
+filter chips and segmented selectors use the 8-pixel rounded-rectangle token.
+Floating menus/dialogs use bordered graphite surfaces. Hover, focus, pressed and
+disabled states remain distinct; shared styling retains Material keyboard and
+accessibility behavior. Do not remove focus affordances to make controls quieter.
+
+Home content is bounded to 1120 pixels and Settings to 960 pixels, including
+padding, so controls do not stretch across the entire desktop. These are maximums,
+not minimum widths. Tabs use raised bordered cards and a violet object icon for
+the active tab. The Notes formatting bar groups prose, list and code tools in a
+single horizontally scrollable surface. The secondary Notes close control sits
+in its own editor header, aligning both writing areas in a horizontal split.
+
+No new decorative motion, fonts to download, storage changes or dependencies are
+introduced. Existing reduced-motion preferences and layout recovery remain in
+effect. Desktop captures plus narrow Notes at 150% text scaling are checked;
+full high-DPI and multi-monitor manual acceptance remains separate.
+
+### Notes follow-up — 2026-09-11
+
+The formatting bar now shrink-wraps its controls at the left, retaining horizontal
+scrolling on smaller panes; it does not draw a full-width strip. Rich text remains
+centered, with compact block spacing and hover/focus-only desktop insert/menu
+chrome. Touch controls and keyboard/assistive access remain available.
+
+### Research and source previews — 2026-09-11
+
+The desktop Vault control shows its name rather than an unexplained folder icon;
+the chooser distinguishes the current Vault with selection color and a check.
+Source files use a graphite reading surface, restrained violet code icon, file
+identity header and quiet read-only status. PDF highlights use translucent violet
+and a collapsible graphite list with explicit source-review messages. Preserve
+focus and hover feedback on Material-backed interactive rows.
+
+### Custom controls and bounded motion — 2026-09-11
+
+See the [visual pass audit](observatory-pass-2026-09-11.md) for delivered components,
+screen coverage and remaining work. OrbitControl/ModeControl replace the stock
+Notes segmented selector, Canvas primary tools and rail states. OrbitDialog and
+OrbitSearchField change composition rather than only ThemeData. Keep the original
+graphite/violet palette, quiet markers and clear keyboard focus.

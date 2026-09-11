@@ -87,6 +87,42 @@ void main() {
     },
   );
 
+  testWidgets('Right arrow exits hidden formatting without adding a space', (
+    tester,
+  ) async {
+    for (final marker in ['**', '*', '~~', '`']) {
+      await open(tester, '${marker}word$marker');
+      final finder = field('word');
+      await tester.tap(finder);
+      tester.widget<TextField>(finder).controller!.selection =
+          const TextSelection.collapsed(offset: 4);
+      await key(tester, LogicalKeyboardKey.arrowRight);
+      tester.testTextInput.updateEditingValue(
+        const TextEditingValue(
+          text: 'wordX',
+          selection: TextSelection.collapsed(offset: 5),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(body, '${marker}word${marker}X');
+      await tester.pumpWidget(const SizedBox());
+    }
+  });
+
+  testWidgets('block duplication and deletion participate in document undo', (
+    tester,
+  ) async {
+    await open(tester, 'First\n\nSecond');
+    await tester.tap(find.byTooltip('Block actions').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Duplicate block'));
+    await tester.pumpAndSettle();
+    expect(body.split('First'), hasLength(3));
+    expect(body.endsWith('Second'), isTrue);
+    await key(tester, LogicalKeyboardKey.keyZ, control: true);
+    expect(body, 'First\n\nSecond');
+  });
+
   testWidgets(
     'insert between paragraphs focuses a separate durable paragraph',
     (tester) async {

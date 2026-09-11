@@ -78,11 +78,18 @@ class DriftObjectIndex implements ObjectIndex {
         .replaceAll('\\', '\\\\')
         .replaceAll('%', '\\%')
         .replaceAll('_', '\\_');
+    // Trigram FTS retains Orbit's literal substring semantics. Short queries
+    // cannot use trigrams and deliberately retain the bounded legacy path.
+    final useFts = query.runes.length >= 3;
     final rows = await _database!
         .customSelect(
-          "SELECT id FROM objects WHERE deleted=0 AND search_text LIKE ? ESCAPE '\\' ORDER BY CASE WHEN lower(title)=lower(?) THEN 0 WHEN title LIKE ? ESCAPE '\\' THEN 1 WHEN title LIKE ? ESCAPE '\\' THEN 2 ELSE 3 END, lower(title), id LIMIT 100",
+          useFts
+              ? "SELECT objects.id FROM objects_fts JOIN objects ON objects.rowid=objects_fts.rowid WHERE objects_fts MATCH ? AND deleted=0 ORDER BY CASE WHEN lower(objects.title)=lower(?) THEN 0 WHEN objects.title LIKE ? ESCAPE '\\' THEN 1 WHEN objects.title LIKE ? ESCAPE '\\' THEN 2 ELSE 3 END, bm25(objects_fts, 5.0, 1.0), lower(objects.title), objects.id LIMIT 100"
+              : "SELECT id FROM objects WHERE deleted=0 AND search_text LIKE ? ESCAPE '\\' ORDER BY CASE WHEN lower(title)=lower(?) THEN 0 WHEN title LIKE ? ESCAPE '\\' THEN 1 WHEN title LIKE ? ESCAPE '\\' THEN 2 ELSE 3 END, lower(title), id LIMIT 100",
           variables: [
-            Variable.withString('%$literal%'),
+            Variable.withString(
+              useFts ? '"${query.replaceAll('"', '""')}"' : '%$literal%',
+            ),
             Variable.withString(query),
             Variable.withString('$literal%'),
             Variable.withString('%$literal%'),
@@ -104,7 +111,7 @@ class DriftObjectIndex implements ObjectIndex {
 class _IndexDatabase extends GeneratedDatabase {
   _IndexDatabase(super.executor);
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
   @override
   Iterable<TableInfo<Table, dynamic>> get allTables => const [];
   @override
@@ -119,6 +126,7 @@ class _IndexDatabase extends GeneratedDatabase {
       await customStatement(
         'CREATE INDEX objects_type ON objects(type_id, deleted)',
       );
+      await _createFts();
     },
     onUpgrade: (_, from, to) async {
       if (from < 2) {
@@ -126,6 +134,29 @@ class _IndexDatabase extends GeneratedDatabase {
           "ALTER TABLE objects ADD COLUMN search_text TEXT NOT NULL DEFAULT ''",
         );
       }
+      if (from < 3) await _createFts();
     },
   );
+
+  Future<void> _createFts() async {
+    await customStatement(
+      "CREATE VIRTUAL TABLE objects_fts USING fts5(title, search_text, content='objects', content_rowid='rowid', tokenize='trigram')",
+    );
+    await customStatement(
+      '''CREATE TRIGGER objects_ai AFTER INSERT ON objects BEGIN
+      INSERT INTO objects_fts(rowid,title,search_text) VALUES(new.rowid,new.title,new.search_text); END''',
+    );
+    await customStatement(
+      '''CREATE TRIGGER objects_ad AFTER DELETE ON objects BEGIN
+      INSERT INTO objects_fts(objects_fts,rowid,title,search_text) VALUES('delete',old.rowid,old.title,old.search_text); END''',
+    );
+    await customStatement(
+      '''CREATE TRIGGER objects_au AFTER UPDATE ON objects BEGIN
+      INSERT INTO objects_fts(objects_fts,rowid,title,search_text) VALUES('delete',old.rowid,old.title,old.search_text);
+      INSERT INTO objects_fts(rowid,title,search_text) VALUES(new.rowid,new.title,new.search_text); END''',
+    );
+    await customStatement(
+      "INSERT INTO objects_fts(objects_fts) VALUES('rebuild')",
+    );
+  }
 }

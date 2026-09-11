@@ -72,3 +72,38 @@ Explorer are defined once in [desktop interactions](desktop-interactions.md).
 Start with durable attachment objects and explicit open/fallback. Add viewers one
 at a time, then annotations and extraction. Choose packages based on actual target
 platform support in the corresponding task, not a speculative all-format dependency list.
+
+## Delivered reader subset — 2026-09-11
+
+PDF file objects now open in the local reader: page input/previous/next, zoom,
+fit, virtualized thumbnails, PDF outline, text selection/copy, literal in-document
+search and page bookmarks. Page/zoom restore per pane. Copy Page Reference produces
+a UUID wiki link; selected-text context actions copy a quote with source or create
+a durable linked note beside the PDF. Original bytes stay unchanged.
+
+See ADR-0013 and implemented-formats for file properties and page fragments.
+Missing files offer Retry/external-open. On Windows the PDF engine can report a
+damaged file as password-related; the dialog explains this and Cancel leads to
+recovery. No password is persisted. Password-protected documents are supported by
+the local prompt but encrypted-file fidelity has not been exhaustively tested.
+
+Still planned: persisted highlights/underlines/strikeout/comments, annotation
+objects, shared ink, OCR, citation adapters, revision re-anchoring, forms, signatures,
+redaction, page editing and annotated export. This is a research reader, not full
+Acrobat parity. Scanned PDFs can be viewed but have no text search without OCR.
+
+### Highlight and source-preview follow-up — 2026-09-11
+
+Supersedes the initial reader's deferred text-highlights/comments boundary.
+Select PDF text and choose Highlight or Highlight and comment. The Highlights
+panel returns to the source page or opens a linkable Markdown note beside the PDF.
+Comments are edited in that note; ordinary Trash/restore removes/restores overlays.
+Checksum mismatch suppresses old overlays and preserves the note for source review.
+Normalized regions reuse Canvas rectangles; freehand PDF ink is still deferred.
+
+Attached source/text files now open read-only with syntax highlighting and Copy
+Code: C/C++, C#, Python, JavaScript/TypeScript, Dart, Java, Kotlin, Rust, Go, Swift,
+Ruby, PHP, shells, SQL, JSON/YAML/XML/HTML/CSS and additional mapped extensions.
+This is source text, not execution or an HTML browser. Unsupported grammars remain
+plain text. Strict UTF-8 previews are limited to 1 MiB; invalid/binary/oversized
+files retain an external-open fallback. Tests verify C++ highlighting and exact copy.

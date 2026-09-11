@@ -5,6 +5,25 @@ import 'package:orbit_note/features/notes/rich/markdown_document.dart';
 
 void main() {
   group('Callout Parser', () {
+    test(
+      'academic callouts remain ordinary source-preserving Markdown blocks',
+      () {
+        for (final name in [
+          'DEFINITION',
+          'THEOREM',
+          'LEMMA',
+          'PROPOSITION',
+          'PROOF',
+          'EXAMPLE',
+          'REMARK',
+        ]) {
+          final source = '> [!$name]\n> A useful result.\n';
+          expect(ParsedCallout.parse(source).type.name, name);
+          expect(ParsedCallout.parse(source).toMarkdown(), source);
+          expect(MarkdownDocument.parse(source).source, source);
+        }
+      },
+    );
     test('detects and parses standard callouts', () {
       const source =
           '> [!NOTE] Architecture Review\n> This is a crucial note.\n> Second line.\n';

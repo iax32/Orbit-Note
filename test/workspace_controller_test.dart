@@ -8,6 +8,9 @@ import 'package:orbit_note/app/session_state.dart';
 import 'package:orbit_note/application/workspace_repository.dart';
 import 'package:orbit_note/infrastructure/storage/memory_object_index.dart';
 import 'support/memory_store.dart';
+import 'support/pdf_fixture.dart';
+import 'package:orbit_note/canvas/scene.dart';
+import 'package:orbit_note/domain/pdf_annotation.dart';
 
 void main() {
   late MemoryStore store;
@@ -33,6 +36,113 @@ void main() {
     await controller.flushAll();
     container.dispose();
   });
+  test(
+    'PDF quotes create durable linked notes without changing original bytes',
+    () async {
+      final bytes = researchPdf();
+      final file = await repo.importAttachment(
+        name: 'lecture.pdf',
+        bytes: bytes,
+      );
+      await controller.refresh();
+      final quote = await controller.createPdfQuote(
+        file.id,
+        2,
+        'A research finding',
+      );
+      expect(quote, isNotNull);
+      expect(quote!.body, contains('[[${file.id}#page=2|lecture.pdf · p. 2]]'));
+      expect(
+        (quote.properties['pdfSource'] as Map)['checksum'],
+        file.properties['checksum'],
+      );
+      await repo.refresh();
+      expect(repo.objects.firstWhere((o) => o.id == quote.id).body, quote.body);
+      expect(
+        await repo.readAttachment(file.properties['contentRef'] as String),
+        bytes,
+      );
+      final count = controller.objects.length;
+      store.failWrites = true;
+      expect(
+        await controller.createPdfQuote(file.id, 1, 'Cannot save'),
+        isNull,
+      );
+      expect(controller.objects.length, count);
+      expect(controller.error, isNotNull);
+      store.failWrites = false;
+      expect(
+        await repo.readAttachment(file.properties['contentRef'] as String),
+        bytes,
+      );
+    },
+  );
+  test(
+    'PDF highlights persist as linkable notes with source-version safety',
+    () async {
+      final bytes = researchPdf();
+      final file = await repo.importAttachment(name: 'paper.pdf', bytes: bytes);
+      await controller.refresh();
+      final checksum = file.properties['checksum'] as String;
+      final regions = [
+        CanvasElement({
+          'id': 'r1',
+          'type': 'rectangle',
+          'page': 1,
+          'x': .1,
+          'y': .2,
+          'width': .3,
+          'height': .02,
+        }),
+      ];
+      final note = await controller.createPdfHighlight(
+        file.id,
+        checksum,
+        'A finding',
+        regions,
+        comment: 'Compare with chapter two.',
+      );
+      expect(note, isNotNull);
+      expect(note!.body, contains('Compare with chapter two.'));
+      expect(note.body, contains('[[${file.id}#page=1|'));
+      await controller.initialize();
+      final restored = PdfAnnotation(controller.find(note.id)!);
+      expect(restored.regions.single.data, regions.single.data);
+      expect(restored.matches(checksum), isTrue);
+      expect(restored.matches('replacement'), isFalse);
+      expect(
+        await repo.readAttachment(file.properties['contentRef'] as String),
+        bytes,
+      );
+      final count = controller.objects.length;
+      expect(
+        await controller.createPdfHighlight(file.id, 'stale', 'Quote', regions),
+        isNull,
+      );
+      expect(
+        await controller.createPdfHighlight(file.id, checksum, 'Quote', [
+          regions.single.copy({'x': -1}),
+        ]),
+        isNull,
+      );
+      store.failWrites = true;
+      expect(
+        await controller.createPdfHighlight(
+          file.id,
+          checksum,
+          'Quote',
+          regions,
+        ),
+        isNull,
+      );
+      expect(controller.objects.length, count);
+      store.failWrites = false;
+      await controller.trash(note.id);
+      expect(PdfAnnotation.isAnnotation(controller.find(note.id)!), isFalse);
+      await controller.restore(note.id);
+      expect(PdfAnnotation.isAnnotation(controller.find(note.id)!), isTrue);
+    },
+  );
   test('editing while a save is pending commits the newest draft', () async {
     final object = (await controller.create('orbit.note'))!;
     final gate = Completer<void>();
@@ -46,6 +156,33 @@ void main() {
     await pending;
     expect(repo.objects.single.body, 'Newer draft');
     expect(controller.dirty, isEmpty);
+  });
+  test('tab cycling wraps and preserves the other split pane', () async {
+    final a = (await controller.create('orbit.note', title: 'A'))!;
+    final b = (await controller.create('orbit.note', title: 'B'))!;
+    controller.openObject(a.id);
+    controller.openObject(b.id, secondary: true);
+    controller.cycleTab(secondary: true);
+    expect(controller.session.secondaryId, a.id);
+    expect(controller.session.activeId, a.id);
+    controller.cycleTab(reverse: true);
+    expect(controller.session.activeId, b.id);
+    expect(controller.session.secondaryId, a.id);
+  });
+  test('search retains index relevance and overlays unsaved drafts', () async {
+    final z = (await controller.create('orbit.note', title: 'Z topic'))!;
+    final a = (await controller.create('orbit.note', title: 'A topic'))!;
+    controller.edit(z.id, body: 'needle');
+    controller.edit(a.id, body: 'needle');
+    await controller.flushAll();
+    expect((await controller.search('needle')).map((o) => o.id), [z.id, a.id]);
+    controller.edit(a.id, body: 'needle updated draft');
+    expect(
+      (await controller.search('needle')).first.body,
+      'needle updated draft',
+    );
+    controller.edit(a.id, body: 'no match');
+    expect((await controller.search('needle')).map((o) => o.id), [z.id]);
   });
   test(
     'startup failure still allows selecting a replacement workspace',

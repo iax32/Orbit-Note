@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 
@@ -96,134 +97,145 @@ class HomeView extends StatelessWidget {
         .where((o) => !o.isDeleted)
         .take(5)
         .toList();
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 30),
-      children: [
-        Text(
-          'YOUR PERSONAL SPACE',
-          style: TextStyle(
-            color: colors.accent,
-            fontSize: 11,
-            letterSpacing: 2,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          'Room for your next idea.',
-          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-            letterSpacing: -.7,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Text(
-          'Write it down. Connect the pieces. Pick up where you left off.',
-          style: TextStyle(color: colors.subtle, height: 1.5),
-        ),
-        const SizedBox(height: 28),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1120),
+        child: ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 30),
           children: [
-            FilledButton.icon(
-              onPressed: () => c.create('orbit.note'),
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('New note'),
+            Text(
+              'YOUR PERSONAL SPACE',
+              style: TextStyle(
+                color: colors.accent,
+                fontSize: 11,
+                letterSpacing: 2,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-            OutlinedButton.icon(
-              onPressed: () => c.create('orbit.canvas'),
-              icon: const Icon(Icons.dashboard_outlined, size: 18),
-              label: const Text('New canvas'),
+            const SizedBox(height: 12),
+            Text(
+              'Room for your next idea.',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                letterSpacing: -.7,
+              ),
             ),
-            OutlinedButton.icon(
-              onPressed: () => c.create('orbit.task'),
-              icon: const Icon(Icons.check_circle_outline, size: 18),
-              label: const Text('New task'),
+            const SizedBox(height: 10),
+            Text(
+              'Write it down. Connect the pieces. Pick up where you left off.',
+              style: TextStyle(color: colors.subtle, height: 1.5),
             ),
-            OutlinedButton.icon(
-              onPressed: () => c.create('orbit.event'),
-              icon: const Icon(Icons.event_outlined, size: 18),
-              label: const Text('New event'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 32),
-        if (recent.isNotEmpty)
-          Container(
-            padding: const EdgeInsets.all(22),
-            decoration: BoxDecoration(
-              color: colors.raised,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(height: 28),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
               children: [
-                Row(
-                  children: [
-                    Icon(Icons.history, size: 18, color: colors.accent),
-                    const SizedBox(width: 10),
-                    const Text(
-                      'Continue session',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ],
+                FilledButton.icon(
+                  onPressed: () => c.create('orbit.note'),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('New note'),
                 ),
-                const SizedBox(height: 14),
-                Text(
-                  recent.first.title,
-                  style: Theme.of(context).textTheme.titleLarge,
+                OutlinedButton.icon(
+                  onPressed: () => c.create('orbit.canvas'),
+                  icon: const Icon(Icons.dashboard_outlined, size: 18),
+                  label: const Text('New canvas'),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  '${c.session.tabs.length} open tabs · ${tasks.length} open tasks in this workspace',
-                  style: TextStyle(color: colors.subtle),
+                OutlinedButton.icon(
+                  onPressed: () => c.create('orbit.task'),
+                  icon: const Icon(Icons.check_circle_outline, size: 18),
+                  label: const Text('New task'),
                 ),
-                const SizedBox(height: 14),
-                TextButton.icon(
-                  onPressed: () => c.openObject(recent.first.id),
-                  icon: const Icon(Icons.arrow_forward, size: 18),
-                  label: const Text('Resume context'),
+                OutlinedButton.icon(
+                  onPressed: () => c.create('orbit.event'),
+                  icon: const Icon(Icons.event_outlined, size: 18),
+                  label: const Text('New event'),
                 ),
               ],
             ),
-          ),
-        const SizedBox(height: 30),
-        _heading(context, 'Recent notes', '${notes.length} total'),
-        if (notes.isEmpty)
-          _quiet(
-            context,
-            'A thought, a plan, a paragraph. Your notes will appear here.',
-          )
-        else
-          ...notes
-              .take(5)
-              .map(
-                (o) => ObjectRow(object: o, onTap: () => c.openObject(o.id)),
+            const SizedBox(height: 32),
+            if (recent.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [colors.raised, colors.panel],
+                  ),
+                  border: Border.all(color: colors.border),
+                  borderRadius: BorderRadius.circular(OrbitRadius.card),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.history, size: 18, color: colors.accent),
+                        const SizedBox(width: 10),
+                        const Text(
+                          'Continue session',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      recent.first.title,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${c.session.tabs.length} open tabs · ${tasks.length} open tasks in this workspace',
+                      style: TextStyle(color: colors.subtle),
+                    ),
+                    const SizedBox(height: 14),
+                    TextButton.icon(
+                      onPressed: () => c.openObject(recent.first.id),
+                      icon: const Icon(Icons.arrow_forward, size: 18),
+                      label: const Text('Resume context'),
+                    ),
+                  ],
+                ),
               ),
-        const SizedBox(height: 26),
-        _heading(context, 'Open tasks', '${tasks.length} remaining'),
-        if (tasks.isEmpty)
-          _quiet(
-            context,
-            'Nothing waiting on you. Capture a task when you need one.',
-          )
-        else
-          ...tasks.take(4).map((o) => TaskRow(object: o, controller: c)),
-        const SizedBox(height: 28),
-        Row(
-          children: [
-            Icon(Icons.cloud_off_outlined, size: 14, color: colors.subtle),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Local by default. Your work stays with you.',
-                style: TextStyle(color: colors.subtle, fontSize: 12),
-              ),
+            const SizedBox(height: 30),
+            _heading(context, 'Recent notes', '${notes.length} total'),
+            if (notes.isEmpty)
+              _quiet(
+                context,
+                'A thought, a plan, a paragraph. Your notes will appear here.',
+              )
+            else
+              ...notes
+                  .take(5)
+                  .map(
+                    (o) =>
+                        ObjectRow(object: o, onTap: () => c.openObject(o.id)),
+                  ),
+            const SizedBox(height: 26),
+            _heading(context, 'Open tasks', '${tasks.length} remaining'),
+            if (tasks.isEmpty)
+              _quiet(
+                context,
+                'Nothing waiting on you. Capture a task when you need one.',
+              )
+            else
+              ...tasks.take(4).map((o) => TaskRow(object: o, controller: c)),
+            const SizedBox(height: 28),
+            Row(
+              children: [
+                Icon(Icons.cloud_off_outlined, size: 14, color: colors.subtle),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Local by default. Your work stays with you.',
+                    style: TextStyle(color: colors.subtle, fontSize: 12),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
-      ],
+      ),
     );
   }
 
@@ -270,10 +282,19 @@ class ObjectRow extends StatelessWidget {
   Widget build(BuildContext context) => ListTile(
     contentPadding: const EdgeInsets.symmetric(horizontal: 8),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-    leading: Icon(
-      objectIcon(object.typeId),
-      size: 20,
-      color: OrbitColors.of(context).subtle,
+    leading: Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        color: OrbitColors.of(context).raised,
+        border: Border.all(color: OrbitColors.of(context).border),
+        borderRadius: BorderRadius.circular(OrbitRadius.control),
+      ),
+      child: Icon(
+        objectIcon(object.typeId),
+        size: 18,
+        color: OrbitColors.of(context).subtle,
+      ),
     ),
     title: Text(
       object.title.isEmpty ? 'Untitled' : object.title,
@@ -304,12 +325,16 @@ class TaskRow extends StatelessWidget {
         properties: {...object.properties, 'completed': value},
       ),
     ),
-    title: Text(
-      object.title,
+    title: AnimatedDefaultTextStyle(
+      duration: OrbitMotionScope.duration(context, OrbitMotion.panel),
       style: TextStyle(
         fontSize: 14,
+        color: object.isCompleted
+            ? OrbitColors.of(context).muted
+            : OrbitColors.of(context).text,
         decoration: object.isCompleted ? TextDecoration.lineThrough : null,
       ),
+      child: Text(object.title),
     ),
     subtitle: object.properties['dueDate'] is String
         ? Text(
@@ -317,10 +342,31 @@ class TaskRow extends StatelessWidget {
             style: const TextStyle(fontSize: 12),
           )
         : null,
+    onTap: () => controller.openObject(object.id),
     trailing: IconButton(
-      tooltip: 'Edit task',
-      onPressed: () => controller.openObject(object.id),
-      icon: const Icon(Icons.open_in_new, size: 16),
+      tooltip: 'Change due date',
+      onPressed: () async {
+        final picked = await showDatePicker(
+          context: context,
+          initialDate:
+              parseCalendarDate(object.properties['dueDate']) ?? DateTime.now(),
+          firstDate: DateTime(1),
+          lastDate: DateTime(9999, 12, 31),
+        );
+        if (picked != null) {
+          final current = controller.find(object.id);
+          if (current != null && !current.isDeleted) {
+            controller.edit(
+              object.id,
+              properties: {
+                ...current.properties,
+                'dueDate': calendarDate(picked),
+              },
+            );
+          }
+        }
+      },
+      icon: const Icon(Icons.event_outlined, size: 16),
     ),
   );
 }
@@ -335,6 +381,8 @@ class TasksView extends StatefulWidget {
 class _TasksViewState extends State<TasksView> {
   final input = TextEditingController();
   bool completed = false;
+  String dateFilter = 'all';
+  String query = '';
   @override
   void dispose() {
     input.dispose();
@@ -344,10 +392,26 @@ class _TasksViewState extends State<TasksView> {
   @override
   Widget build(BuildContext context) {
     final c = widget.controller;
+    final today = calendarDate(DateTime.now());
     final tasks = c
         .ofType('orbit.task')
         .where((o) => o.isCompleted == completed)
+        .where((o) => o.title.toLowerCase().contains(query.toLowerCase()))
+        .where((o) {
+          if (dateFilter == 'all') return true;
+          final due = parseCalendarDate(o.properties['dueDate']);
+          if (due == null) return false;
+          return dateFilter == 'today'
+              ? calendarDate(due) == today
+              : calendarDate(due).compareTo(today) > 0;
+        })
         .toList();
+    String dueKey(UniversalObject object) {
+      final date = parseCalendarDate(object.properties['dueDate']);
+      return date == null ? '9999-12-31' : calendarDate(date);
+    }
+
+    tasks.sort((a, b) => dueKey(a).compareTo(dueKey(b)));
     return ListView(
       padding: const EdgeInsets.all(28),
       children: [
@@ -366,12 +430,21 @@ class _TasksViewState extends State<TasksView> {
           ),
           onSubmitted: (value) async {
             if (value.trim().isEmpty) return;
-            await c.create('orbit.task', title: value.trim());
-            input.clear();
-            c.navigate(OrbitDestination.tasks);
+            final created = await c.create('orbit.task', title: value.trim());
+            if (created != null && mounted) {
+              input.clear();
+              c.navigate(OrbitDestination.tasks);
+            }
           },
         ),
         const SizedBox(height: 20),
+        TextField(
+          decoration: const InputDecoration(
+            hintText: 'Search tasks',
+            prefixIcon: Icon(Icons.search),
+          ),
+          onChanged: (value) => setState(() => query = value),
+        ),
         Wrap(
           spacing: 10,
           children: [
@@ -385,6 +458,16 @@ class _TasksViewState extends State<TasksView> {
               selected: completed,
               onSelected: (_) => setState(() => completed = true),
             ),
+            for (final filter in {
+              'all': 'All dates',
+              'today': 'Today',
+              'upcoming': 'Upcoming',
+            }.entries)
+              ChoiceChip(
+                label: Text(filter.value),
+                selected: dateFilter == filter.key,
+                onSelected: (_) => setState(() => dateFilter = filter.key),
+              ),
           ],
         ),
         const SizedBox(height: 12),
@@ -392,9 +475,7 @@ class _TasksViewState extends State<TasksView> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 36),
             child: Text(
-              completed
-                  ? 'Completed tasks will appear here.'
-                  : 'No open tasks. Enjoy the space.',
+              'No tasks match this view.',
               style: TextStyle(color: OrbitColors.of(context).subtle),
             ),
           )
@@ -818,155 +899,166 @@ class SettingsView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = controller, s = c.session;
-    return ListView(
-      padding: const EdgeInsets.all(28),
-      children: [
-        Text(
-          'Make room for your way.',
-          style: Theme.of(context).textTheme.headlineSmall,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'A few thoughtful controls. Always a way back.',
-          style: TextStyle(color: OrbitColors.of(context).subtle),
-        ),
-        const SizedBox(height: 28),
-        const Text(
-          'APPEARANCE',
-          style: TextStyle(fontSize: 11, letterSpacing: 1.8),
-        ),
-        const ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(Icons.dark_mode_outlined),
-          title: Text('Orbit Dark'),
-          subtitle: Text('Graphite surfaces · muted violet accents'),
-        ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Compact density'),
-          value: s.compact,
-          onChanged: (v) => c.updateSession((s) => s.compact = v),
-        ),
-        const SizedBox(height: 22),
-        const Text(
-          'EDITOR',
-          style: TextStyle(fontSize: 11, letterSpacing: 1.8),
-        ),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Text size'),
-          trailing: Text('${s.fontSize.round()} px'),
-        ),
-        Slider(
-          value: s.fontSize,
-          min: 12,
-          max: 26,
-          divisions: 14,
-          label: '${s.fontSize.round()}',
-          onChanged: (v) => c.updateSession((s) => s.fontSize = v),
-        ),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Reading width'),
-          trailing: Text('${s.contentWidth.round()} px'),
-        ),
-        Slider(
-          value: s.contentWidth,
-          min: 520,
-          max: 1200,
-          divisions: 17,
-          onChanged: (v) => c.updateSession((s) => s.contentWidth = v),
-        ),
-        const SizedBox(height: 22),
-        const Text(
-          'LAYOUT & MOTION',
-          style: TextStyle(fontSize: 11, letterSpacing: 1.8),
-        ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Show explorer'),
-          value: s.sidebarVisible,
-          onChanged: (v) => c.updateSession((s) => s.sidebarVisible = v),
-        ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Show context inspector'),
-          value: s.inspectorVisible,
-          onChanged: (v) => c.updateSession((s) => s.inspectorVisible = v),
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          children: ['normal', 'reduced', 'off']
-              .map(
-                (mode) => ChoiceChip(
-                  label: Text(mode[0].toUpperCase() + mode.substring(1)),
-                  selected: s.motion == mode,
-                  onSelected: (_) => c.updateSession((s) => s.motion = mode),
-                ),
-              )
-              .toList(),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Respects the system’s reduced-motion preference.',
-          style: TextStyle(color: OrbitColors.of(context).subtle, fontSize: 12),
-        ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: c.resetLayout,
-            icon: const Icon(Icons.restart_alt),
-            label: const Text('Reset layout'),
-          ),
-        ),
-        const SizedBox(height: 24),
-        const Text(
-          'YOUR DATA',
-          style: TextStyle(fontSize: 11, letterSpacing: 1.8),
-        ),
-        const SizedBox(height: 12),
-        SelectableText(
-          c.repository.location,
-          style: TextStyle(fontSize: 12, color: OrbitColors.of(context).subtle),
-        ),
-        const SizedBox(height: 16),
-        Wrap(
-          spacing: 12,
-          runSpacing: 10,
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 960),
+        child: ListView(
+          padding: const EdgeInsets.all(28),
           children: [
-            OutlinedButton.icon(
-              onPressed: onExport,
-              icon: const Icon(Icons.file_download_outlined, size: 18),
-              label: const Text('Export workspace'),
+            Text(
+              'Make room for your way.',
+              style: Theme.of(context).textTheme.headlineSmall,
             ),
-            OutlinedButton.icon(
-              onPressed: onImport,
-              icon: const Icon(Icons.file_upload_outlined, size: 18),
-              label: const Text('Import backup'),
+            const SizedBox(height: 8),
+            Text(
+              'A few thoughtful controls. Always a way back.',
+              style: TextStyle(color: OrbitColors.of(context).subtle),
             ),
-            OutlinedButton.icon(
-              onPressed: onOpenWorkspace,
-              icon: const Icon(Icons.folder_open, size: 18),
-              label: const Text('Manage Vaults'),
+            const SizedBox(height: 28),
+            const Text(
+              'APPEARANCE',
+              style: TextStyle(fontSize: 11, letterSpacing: 1.8),
             ),
-            TextButton.icon(
-              onPressed: c.refresh,
-              icon: const Icon(Icons.refresh, size: 18),
-              label: const Text('Reload from files'),
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.dark_mode_outlined),
+              title: Text('Orbit Dark'),
+              subtitle: Text('Graphite surfaces · muted violet accents'),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Compact density'),
+              value: s.compact,
+              onChanged: (v) => c.updateSession((s) => s.compact = v),
+            ),
+            const SizedBox(height: 22),
+            const Text(
+              'EDITOR',
+              style: TextStyle(fontSize: 11, letterSpacing: 1.8),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Text size'),
+              trailing: Text('${s.fontSize.round()} px'),
+            ),
+            Slider(
+              value: s.fontSize,
+              min: 12,
+              max: 26,
+              divisions: 14,
+              label: '${s.fontSize.round()}',
+              onChanged: (v) => c.updateSession((s) => s.fontSize = v),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Reading width'),
+              trailing: Text('${s.contentWidth.round()} px'),
+            ),
+            Slider(
+              value: s.contentWidth,
+              min: 520,
+              max: 1200,
+              divisions: 17,
+              onChanged: (v) => c.updateSession((s) => s.contentWidth = v),
+            ),
+            const SizedBox(height: 22),
+            const Text(
+              'LAYOUT & MOTION',
+              style: TextStyle(fontSize: 11, letterSpacing: 1.8),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Show explorer'),
+              value: s.sidebarVisible,
+              onChanged: (v) => c.updateSession((s) => s.sidebarVisible = v),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Show context inspector'),
+              value: s.inspectorVisible,
+              onChanged: (v) => c.updateSession((s) => s.inspectorVisible = v),
+            ),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OrbitModeControl<String>(
+                values: const {
+                  'normal': 'Normal',
+                  'reduced': 'Reduced',
+                  'off': 'Off',
+                },
+                value: s.motion,
+                onChanged: (mode) => c.updateSession((s) => s.motion = mode),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Respects the system’s reduced-motion preference.',
+              style: TextStyle(
+                color: OrbitColors.of(context).subtle,
+                fontSize: 12,
+              ),
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: c.resetLayout,
+                icon: const Icon(Icons.restart_alt),
+                label: const Text('Reset layout'),
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'YOUR DATA',
+              style: TextStyle(fontSize: 11, letterSpacing: 1.8),
+            ),
+            const SizedBox(height: 12),
+            SelectableText(
+              c.repository.location,
+              style: TextStyle(
+                fontSize: 12,
+                color: OrbitColors.of(context).subtle,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 12,
+              runSpacing: 10,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: onExport,
+                  icon: const Icon(Icons.file_download_outlined, size: 18),
+                  label: const Text('Export workspace'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: onImport,
+                  icon: const Icon(Icons.file_upload_outlined, size: 18),
+                  label: const Text('Import backup'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: onOpenWorkspace,
+                  icon: const Icon(Icons.folder_open, size: 18),
+                  label: const Text('Manage Vaults'),
+                ),
+                TextButton.icon(
+                  onPressed: c.refresh,
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('Reload from files'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Notes use Markdown; tasks and canvases use documented JSON.\nNo account, cloud connection or AI provider is required.',
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.6,
+                color: OrbitColors.of(context).subtle,
+              ),
             ),
           ],
         ),
-        const SizedBox(height: 14),
-        Text(
-          'Notes use Markdown; tasks and canvases use documented JSON.\nNo account, cloud connection or AI provider is required.',
-          style: TextStyle(
-            fontSize: 12,
-            height: 1.6,
-            color: OrbitColors.of(context).subtle,
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

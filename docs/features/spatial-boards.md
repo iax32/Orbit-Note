@@ -96,3 +96,24 @@ be dense; culling alone is not a guarantee of unlimited performance.
 M3 begins with camera, visible object cards, selection, durable placement and undo.
 Add connectors and grouping incrementally. Ink reuses this engine in M4. Live
 views, advanced auto-layout, portals and conversions are not first-board prerequisites.
+
+## Delivered column and website-card subset — 2026-09-11
+
+The Add / organize board content menu creates empty columns or packs selected
+placements into a column. Rename the heading inline; drag its header to move
+members. Drop a card inside to add/reorder it; drag out to detach it. Tidy Column
+reapplies spacing. Removing a column retains its items. Commands share Canvas undo,
+copy/paste remaps column/placement IDs, and unknown fields/object IDs survive reload.
+Nested columns and general groups remain planned; locked members prevent parent
+moves/automatic arrangement.
+
+Website cards store a readable title and validated HTTP/HTTPS URL and open by an
+explicit double-click/Open action. They do not fetch remote previews. Existing
+notes/tasks/files remain real object references. More Milanote-style workflows,
+including anchored connectors, nested boards, native content editing on cards,
+advanced groups and collaborative publishing, remain in the single backlog.
+
+Website cards now support Edit selected link in Add / organize board content.
+Editing validates HTTP/HTTPS, retains geometry/identity/unknown fields and uses
+the existing undo history. Locked or changed cards are not overwritten by a stale
+dialog. Creation, editing and persisted geometry are covered by widget tests.

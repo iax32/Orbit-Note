@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../app/orbit_theme.dart';
 import 'note_math.dart';
 import 'visual_math_model.dart';
+import 'math_grid_editor.dart';
 
 /// Direct fraction fields inside the document; complex TeX retains its renderer.
 class EditableMathExpression extends StatelessWidget {
@@ -111,6 +112,24 @@ class _RichMathBlockState extends State<RichMathBlock> {
                   spacing: 6,
                   runSpacing: 4,
                   children: [
+                    if (MathGrid.parse(widget.content) != null)
+                      _ToolbarButton(
+                        tooltip: 'Edit equation cells',
+                        icon: Icons.grid_on,
+                        label: 'Edit grid',
+                        onPressed: () async {
+                          final original = widget.content;
+                          final result = await showMathGrid(
+                            context,
+                            initial: MathGrid.parse(original),
+                          );
+                          if (result != null &&
+                              mounted &&
+                              widget.content == original) {
+                            widget.onChanged(result);
+                          }
+                        },
+                      ),
                     // Add space between equations without opening code
                     _ToolbarButton(
                       tooltip: 'Add space between equations or terms (\\quad)',

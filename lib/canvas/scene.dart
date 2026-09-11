@@ -14,6 +14,8 @@ const canvasElementTypes = {
   'line',
   'ink',
   'frame',
+  'column',
+  'link',
 };
 
 class CanvasElement {
@@ -22,6 +24,7 @@ class CanvasElement {
   String get id => data['id'] is String ? data['id'] as String : '';
   String get type => data['type'] is String ? data['type'] as String : '';
   String get text => data['text'] is String ? data['text'] as String : '';
+  String get url => data['url'] is String ? data['url'] as String : '';
   String? get objectId =>
       data['objectId'] is String ? data['objectId'] as String : null;
   double get x => finiteNumber(data['x'], 0);
@@ -59,6 +62,9 @@ class CanvasElement {
   bool hit(CanvasPoint point, {double tolerance = 5}) {
     if (!bounds.inflate(tolerance).contains(point)) return false;
     final local = point - CanvasPoint(x, y);
+    if (type == 'column') {
+      return local.y <= 44;
+    }
     if (type == 'ellipse') {
       final rx = math.max(width / 2, 1), ry = math.max(height / 2, 1);
       return math.pow((local.x - rx) / (rx + tolerance), 2) +

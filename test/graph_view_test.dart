@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:orbit_note/app/orbit_theme.dart';
+import 'support/capture_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:orbit_note/app/workspace_controller.dart';
@@ -33,6 +35,17 @@ void main() {
   }
 
   group('GraphData Model & Link Extraction', () {
+    test('five thousand nodes use distinct bounded layout positions', () {
+      final graph = GraphData.build(
+        objects: List.generate(
+          5000,
+          (i) => makeObject(id: 'n$i', typeId: 'orbit.note', title: 'Node $i'),
+        ),
+      );
+      expect(graph.nodes, hasLength(5000));
+      expect(graph.nodes.map((n) => (n.x, n.y)).toSet(), hasLength(5000));
+      expect(graph.nodes.every((n) => n.x.isFinite && n.y.isFinite), isTrue);
+    });
     test(
       'uses stable IDs, aliases and actual event context without guessing duplicates',
       () {
@@ -175,6 +188,7 @@ void main() {
 
   group('GraphView Widget', () {
     testWidgets('renders graph view controls and canvas', (tester) async {
+      await prepareCapture(tester);
       tester.view.physicalSize = const Size(1200, 800);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
@@ -207,6 +221,7 @@ void main() {
         UncontrolledProviderScope(
           container: container,
           child: MaterialApp(
+            theme: orbitDarkTheme(),
             home: Scaffold(body: GraphView(controller: controller)),
           ),
         ),
@@ -218,6 +233,20 @@ void main() {
       expect(find.text('Local'), findsOneWidget);
       expect(find.byType(CustomPaint), findsWidgets);
       expect(find.text('2 nodes · 0 links'), findsOneWidget);
+      final transform = tester
+          .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+          .transformationController!;
+      final before = transform.value.clone();
+      await tester.tap(find.byTooltip('Fit graph to view'));
+      await tester.pump();
+      expect(transform.value, before);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(transform.value, isNot(before));
+      await tester.pumpAndSettle();
+      final settled = transform.value.clone();
+      await tester.pump(const Duration(seconds: 1));
+      expect(transform.value, settled);
+      await captureUi(tester, 'graph-observatory');
 
       // Switch to Local mode
       await tester.tap(find.text('Local'));

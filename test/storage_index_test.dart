@@ -5,8 +5,46 @@ import 'package:orbit_note/application/workspace_repository.dart';
 import 'package:orbit_note/infrastructure/storage/native_object_index.dart';
 import 'package:orbit_note/infrastructure/storage/native_workspace_store.dart';
 import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart';
 
 void main() {
+  test(
+    'v2 migrates to FTS with quoted literal queries and synchronized updates',
+    () async {
+      final folder = await Directory.systemTemp.createTemp(
+        'orbit-fts-migration-',
+      );
+      final index = DriftObjectIndex();
+      try {
+        await Directory(p.join(folder.path, '.orbit')).create();
+        final db = sqlite3.open(
+          p.join(folder.path, '.orbit', 'workspace.sqlite'),
+        );
+        db.execute(
+          'CREATE TABLE objects(id TEXT PRIMARY KEY, workspace_id TEXT, type_id TEXT, title TEXT, body TEXT, revision INTEGER, deleted INTEGER, search_text TEXT)',
+        );
+        db.execute(
+          "INSERT INTO objects VALUES('legacy','w','orbit.note','Legacy needle','',1,0,'Legacy needle 100% a_b \"quoted\"')",
+        );
+        db.execute('PRAGMA user_version=2');
+        db.close();
+        await index.initialize(folder.path);
+        expect(await index.search('needle'), ['legacy']);
+        expect(await index.search('100%'), ['legacy']);
+        expect(await index.search('a_b'), ['legacy']);
+        expect(await index.search('"quoted"'), ['legacy']);
+        expect(await index.search('OR'), isEmpty);
+        await index.replaceAll([]);
+        expect(await index.search('needle'), isEmpty);
+        await index.close();
+        await index.initialize(folder.path);
+        expect(await index.search('needle'), isEmpty);
+      } finally {
+        await index.close();
+        await folder.delete(recursive: true);
+      }
+    },
+  );
   test(
     'indexed search includes metadata and Canvas text with title ranking',
     () async {

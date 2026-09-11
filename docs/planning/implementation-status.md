@@ -1,6 +1,6 @@
 # Implementation status — CURRENT
 
-Updated 2026-09-10. This is the single current capability/completion map.
+Updated 2026-09-11. This is the single current capability/completion map.
 The [backlog](feature-backlog.md) owns requirement IDs and release classifications;
 the [roadmap](roadmap.md) owns milestone gates. Implemented subsets do not mean an
 entire milestone is complete. No cloud, plugin runtime or AI subsystem was added.
@@ -12,19 +12,22 @@ entire milestone is complete. No cloud, plugin runtime or AI subsystem was added
 | Local foundation | Flutter/Riverpod, Windows desktop, conditional browser adapters, Universal Object UUIDs, no account | Android/iOS device testing and production browser persistence |
 | Durable files | Markdown/YAML notes, versioned JSON boards/tasks, original attachments, rebuildable Drift index, hash preconditions and recoverable saves | Multi-process locking, history browser and hardware power-loss certification |
 | Backup import/export | Separate staged-folder restore, raw/unknown bytes preserved, mixed-content warnings, archive journals quarantined, empty Notes folders round-trip | Streaming large archives, recovery-review UI, browser folder import |
-| Vaults | New/Open/Recent/remember last/close/startup chooser/switch; rename display name with same workspace ID | Physical Vault-directory rename, OS file associations, multiple app windows |
-| Real folders | Nested Notes folders, create/rename/move folders, move notes, collapse/reveal active ancestors; six note sort orders and title filter | Internal drag/drop organization, folder Trash/undo UI, custom manual sort, automatic adoption of ordinary Markdown |
-| Notes | Directly editable Rich paragraphs/headings/lists plus Source/Read/Split; formatting, shared undo/redo, outline, literal find/replace, attachments and per-pane restoration; resizable Source/preview divider | Cross-block native selection, rich HTML paste conversion, complete CommonMark editing parity and long-document layout virtualization |
+| Vaults | New/Open/Recent/remember last/close/startup chooser/switch; named header control/current-Vault marker; rename display name with same workspace ID | Physical Vault-directory rename, OS file associations, multiple app windows |
+| Real folders | Nested Notes folders, create/rename/move folders, move notes, collapse/reveal active ancestors; six note sort orders, title filter and safe internal note/folder drop | Folder Trash/undo UI, custom manual sort, automatic adoption of ordinary Markdown |
+| Notes | Directly editable Rich paragraphs/headings/lists plus Source/Read/Split; formatting with Right-arrow escape, block insert/copy/duplicate/delete, shared undo/redo, outline, literal find/replace, attachments and per-pane restoration; resizable Source/preview divider | Cross-block native selection, rich HTML paste conversion, complete CommonMark editing parity and long-document layout virtualization |
 | Smart lists | Bullet/number/checklist continuation, unchecked next checklist item, empty-item exit, Tab/Shift+Tab nesting; formatted paragraph split/join | Multi-block Rich selection/nesting; Source supports selected list lines |
 | Visual tables | Editable cells, Tab/Shift+Tab, final-cell Tab creates row, row/column add/remove, alignment, TSV paste, plain paste at caret, shared undo | Rectangular pipe tables only; no merged cells, formula engine, rectangular multi-cell selection or HTML/CSV conversion; 1,000-row/50-column bounds are safety limits, not a performance guarantee |
-| Code and math | Editable highlighted fenced code with language/Copy code; local inline/block TeX in Rich/Read, visual fraction/script slots, searchable renderer symbol registry and templates, source/live preview, invalid-source fallback | Highlighting is plain above 50,000 code characters; unsupported languages stay editable; inline math uses separate prose segments with limited cross-segment selection/formatting |
-| References | Authored Markdown remains exact on autosave; readable links bind to UUID metadata; explicit ID links, title aliases and backlinks | Ambiguity repair UI, fragment anchors and inbound ordinary path-link repair after moves |
-| Search | Indexed title/body/property/Canvas-text search, title-first ranking, bounded results and unsaved-draft overlay | FTS5/query language, OCR, semantic search and full indexing benchmarks |
+| Code and math | Editable highlighted fenced code with language/Copy code; local inline/block TeX in Rich/Read, visual fraction/script slots, searchable renderer symbol registry and templates, source/live preview, bounded visual matrix/aligned grids, academic callouts, invalid-source fallback | Highlighting is plain above 50,000 code characters; unsupported languages stay editable; inline math uses separate prose segments with limited cross-segment selection/formatting |
+| References | Authored Markdown remains exact on autosave; readable links bind to UUID metadata; explicit ID links, title aliases, backlinks and rename-safe PDF page anchors | Ambiguity repair UI, general block fragment anchors and inbound ordinary path-link repair after moves |
+| Source files | Strict UTF-8 read-only previews, C/C++ and other mapped language highlighting, exact Copy Code, original-file fallback | 1 MiB preview bound; plain text above 50,000 characters; unsupported encodings and code editing/execution deferred |
+| PDF research | Local PDFium reader, page/zoom restoration per pane, outline/thumbnails, literal search, text selection/copy, persistent bookmarks, UUID page references, quote-to-note and source-versioned highlight notes with editable comments; changed-source and missing/corrupt recovery | Freehand ink, underline/strikeout, threaded comments, precise annotation navigation, re-anchoring, OCR, forms, redaction, signatures, page editing/export; mobile/web validation |
+| Search | Native FTS5 trigram title/body/property/Canvas-text search, title-first/BM25 ranking, bounded results and unsaved-draft overlay | Boolean query language, OCR, semantic search and full indexing benchmarks; queries shorter than three characters use escaped LIKE |
 | External edits | Native filesystem hints with debounced targeted hash checks; startup/resume/full reconciliation; clean reload and dirty-draft protection | Binary attachment cache invalidation, atomic handling of arbitrary external multi-file edits, cross-process exclusion |
-| Canvas | Existing shared spatial grid/culling, pan/zoom, referenced cards, text/stickies/shapes/frames, images, vector ink, selection/move/resize, gesture undo | Anchored connectors, semantic relations, real groups/columns, interactive embedded views and standalone freeform/PDF consumers |
+| Canvas | Existing shared spatial grid/culling, pan/zoom, referenced cards, text/stickies/shapes/frames, images, vector ink, selection/move/resize, gesture undo; persistent columns with member movement/tidying, safe container deletion and copy/paste; website link cards with safe title/URL editing | Anchored connectors, semantic relations, nested columns/general groups, interactive embedded views and standalone freeform/PDF annotation consumers |
 | Canvas performance | O(1) new stacking order, delta undo history, cached stroke points, bounded text/image caches, selective repaint comparisons, shared immutable object data | Full-board JSON checkpoints still scale with board size; release frame/memory profile on representative hardware |
-| Tasks/Calendar | Universal Event objects, month/day agenda, shared safe event form, local timed input/UTC storage, exclusive all-day intervals, task deadlines/schedules and context references | Recurrence, named time zones, drag rescheduling and external providers |
-| Desktop shell/design | Graphite/violet theme, restrained rounded surfaces, tabs, two resizable side-by-side or stacked panes, Focus/reset, inspector, reduced motion | Full docking, multi-window/tab-group drag, light/system themes and complete native window restoration |
+| Tasks/Calendar | Universal Event objects, month/day agenda, shared safe event form, local timed input/UTC storage, exclusive all-day intervals, task deadlines/schedules and context references; Task date/search views and quick due-date editing | Recurrence, named time zones, drag rescheduling and external providers |
+| Desktop shell/design | Explicit graphite/violet surface tokens, shared typography/control states, restrained rounded tabs/menus/selectors, bounded Home/Settings, grouped Notes toolbar and aligned split Notes; split-aware shortcuts/middle-click close, resizable panes, Focus/reset, inspector, reduced motion | Full docking, multi-window/tab-group drag, light/system themes and complete native window restoration |
+| Graph | Cached small-graph layout, large-graph grid, linear edge counts, UUID-safe links, local focus/depth, object list and fit | Frame-time profiling, saved views, semantic relation editing and motion redesign |
 | Native capture | File picker/drop, bounded attachment reads, image paste adapters, Canvas clipboard fallback, simulated pen/touch paths | Physical pen/palm rejection, real clipboard ownership, high-DPI/multi-monitor and hardware drop acceptance |
 
 ## Audit resolution
@@ -65,20 +68,29 @@ and [ADR-0010](../adr/0010-notes-folder-moves.md).
 
 ## Validation evidence
 
-| Check | Final repair result, 2026-09-10 |
+| Check | Observatory visual identity, 2026-09-11 |
 |---|---|
-| Format and zero-change check | Passed; 96 Dart files, zero changes |
-| `flutter analyze` | Passed; no issues |
-| `flutter test --no-pub` | Passed; all 151 tests (baseline: 146) |
-| `flutter build windows --release --no-pub` | Passed; final rebuild 37.9 seconds |
-| Windows startup smoke | Input-idle and responsive native window; closed normally, exit 0, no stderr. Only smoke-owned PID 11196 closed; existing PID 12532 preserved |
-| Documentation links | All local links resolve across 77 Markdown documents |
-| Diff whitespace | `git diff --check` passed |
+| Format / zero-change check | Passed; 117 Dart files |
+| `flutter analyze --no-pub` | Passed; no issues |
+| `flutter test --no-pub` | Passed; all 181 tests; keyboard/disabled controls, motion policies, narrow large-text dialog and finite Graph camera behavior plus prior regressions |
+| Visual checks | Notes, Canvas, Home and final Graph captures inspected |
+| `flutter build windows --release --no-pub` | Passed; final build 39.6 seconds |
+| Native Windows startup | Input-idle, responsive window, clean close, exit 0, no stderr; smoke-owned PID 9544 only |
+| Documentation / diff | Updated task/design/status links checked; git diff --check clean |
 
-Logs: ignored `.local/feature-repair-full.log` and
-`.local/feature-repair-release-smoke.json`. Startup smoke does not substitute for
-interactive acceptance of every workflow or physical-device testing. Web and
-mobile builds were not rerun for this batch.
+Evidence logs: `.local/observatory-tests.log`, `.local/observatory-build.log`,
+`.local/observatory-release-smoke.json`;
+captures in `work/ui` (ignored local artifacts).
+This pass refines visual controls and motion; previous PDF highlight notes, source
+previews, Vault switching and Canvas features remain intact. See the
+[visual coverage report](../design/observatory-pass-2026-09-11.md),
+[open formats](../architecture/implemented-formats.md) and
+[visual design](../design/visual-design.md).
+The [batch report](audit-polish-batch.md) covers every requested area and deferred
+boundary. No user-owned content migration; only derived SQLite index schema 3.
+The earlier 151-test repair and intermediate builds are historical evidence.
+Web/mobile builds and physical pen/clipboard/multi-monitor acceptance were not
+rerun. Native startup is not exhaustive manual testing of all interactions.
 Historical Rich-only evidence: 112 tests, Windows/web builds and native startup
 passed before Calendar/visual-math/graph additions. The model measurements below
 are historical measurements, not benchmarks repeated for this repair.
@@ -137,10 +149,11 @@ The following earlier consolidated changes are preserved:
 
 ## Continuation
 
-Next recommended bounded task: improve Rich selection/formatting across inline
-equation segments and blocks, with measured large-note layout behavior. Preserve
-the existing projection and exact-source fixtures. New Canvas systems,
-cloud, plugins and AI remain outside this editor pass.
+Next recommended bounded design task: explorer/context menus and focus-safe panel
+transitions. Source annotation navigation/re-anchoring and Vault ownership/
+locking, Rich cross-block selection/drag reorder and deeper Canvas interactions
+remain important tracked boundaries. Preserve exact-source fixtures and original
+PDF bytes. Cloud, plugins and AI remain outside this pass.
 
 Historical evidence (not current capability maps):
 [initial local core](local-core-snapshot-2026-09-09.md),
@@ -209,3 +222,18 @@ The symbol registry covers the installed renderer's math symbols plus templates,
 not every macro in arbitrary LaTeX packages. The visual parser supports selected
 constructs, not a complete TeX AST; complex equations retain source editing and
 safe rendering fallback. Cross-segment selection remains a separate task.
+
+## Incremental audit batch
+
+The [scope and audit report](audit-polish-batch.md) distinguishes completed slices, outdated audit claims and deferred systems. [ADR-0012](../adr/0012-fts5-derived-search.md) records the only new schema decision, a disposable FTS index. No content migration, locking guarantee, recurrence engine or cross-block editor rewrite is claimed.
+
+## Observatory visual delivery — 2026-09-11
+
+The [visual pass audit](../design/observatory-pass-2026-09-11.md) is the detailed
+coverage map for the current design task. It adds custom Notes modes, Canvas/rail
+controls, floating dialogs, Graph controls and finite camera motion, semantic
+label zoom, search composition, tab/Task/Calendar/Copy Code feedback and explicit
+Normal/Reduced/Off policy. Earlier product features remain intact. No storage,
+package or architecture change. Explorer/context menus and panel transitions are
+the next recommended design task; annotation re-anchoring remains a product backlog
+item rather than the immediate focus of this visual pass.

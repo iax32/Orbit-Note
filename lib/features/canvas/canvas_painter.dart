@@ -100,7 +100,10 @@ class OrbitCanvasPainter extends CustomPainter {
     final visible = scene.query(
       camera.viewport(size.width, size.height).inflate(80 / camera.zoom),
     );
-    for (final element in visible) {
+    for (final element in visible.where((e) => e.type == 'column')) {
+      _element(canvas, element);
+    }
+    for (final element in visible.where((e) => e.type != 'column')) {
       _element(canvas, element);
     }
     if (preview != null) _element(canvas, preview!);
@@ -165,6 +168,94 @@ class OrbitCanvasPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
     switch (element.type) {
+      case 'column':
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(bounds, const Radius.circular(12)),
+          Paint()..color = colors.surfaceContainerLow,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(bounds, const Radius.circular(12)),
+          Paint()
+            ..color = colors.outline
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1,
+        );
+        canvas.drawLine(
+          Offset(bounds.left + 16, bounds.top + 42),
+          Offset(bounds.right - 16, bounds.top + 42),
+          Paint()
+            ..color = accent.withValues(alpha: .45)
+            ..strokeWidth = 2,
+        );
+        if (camera.zoom > .25) {
+          _text(
+            canvas,
+            element.text,
+            Rect.fromLTWH(
+              bounds.left + 16,
+              bounds.top + 12,
+              math.max(1, bounds.width - 32),
+              26,
+            ),
+            color: colors.onSurface,
+            size: 15,
+            weight: FontWeight.w600,
+            maxLines: 1,
+          );
+        }
+      case 'link':
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(bounds, const Radius.circular(12)),
+          Paint()..color = colors.surfaceContainerHigh,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(bounds, const Radius.circular(12)),
+          Paint()
+            ..color = colors.outline
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1,
+        );
+        if (camera.zoom > .25) {
+          _text(
+            canvas,
+            'WEBSITE ↗',
+            Rect.fromLTWH(
+              bounds.left + 16,
+              bounds.top + 14,
+              math.max(1, bounds.width - 32),
+              20,
+            ),
+            color: accent,
+            size: 10,
+          );
+          _text(
+            canvas,
+            element.text,
+            Rect.fromLTWH(
+              bounds.left + 16,
+              bounds.top + 40,
+              math.max(1, bounds.width - 32),
+              44,
+            ),
+            color: colors.onSurface,
+            size: 16,
+            weight: FontWeight.w600,
+            maxLines: 2,
+          );
+          _text(
+            canvas,
+            element.url,
+            Rect.fromLTWH(
+              bounds.left + 16,
+              bounds.top + 92,
+              math.max(1, bounds.width - 32),
+              22,
+            ),
+            color: colors.onSurfaceVariant,
+            size: 11,
+            maxLines: 1,
+          );
+        }
       case 'image':
         final image = images[element.data['contentRef']];
         final destination = Rect.fromLTWH(

@@ -88,3 +88,56 @@ the date projection; the form does not silently initialize them to today.
 The controller submits complete create/save operations through the existing
 repository, checks the original revision after flushing pending edits, and keeps
 the form open on failure. No new storage schema or migration is introduced.
+
+## Derived search index
+
+Native SQLite index schema 3 adds an FTS5 trigram external-content table and transactional triggers. It remains rebuildable from authoritative files; see [ADR-0012](../adr/0012-fts5-derived-search.md). Object/Markdown/Canvas envelope versions are unchanged.
+
+## PDF reading and research links
+
+Original PDF bytes stay in ordinary Attachments files, referenced by `orbit.file`.
+`properties.pdfBookmarks` is a list of positive one-based page integers; editing
+bookmarks preserves all other properties. `[[uuid#page=N|label]]` resolves the
+same object for backlinks/graph and opens page N in Rich/Read. Renaming the file
+object does not change the target. Viewer page navigation clamps to actual bounds.
+The session's `noteViews['pdf:<pane>:<uuid>']` stores `page` and `zoom` only.
+
+Extracted quotes are ordinary notes with quoted Markdown, a page wiki reference
+and `properties.pdfSource: {objectId, page, checksum}`. Source bytes remain exact;
+the checksum records provenance but this batch does not implement automatic
+revision re-anchoring. See [ADR-0013](../adr/0013-local-pdf-reader.md).
+
+## Canvas columns and website cards
+
+Schema 1 gains `column` and `link` element types using existing IDs/geometry/style.
+A column has a `text` heading; direct child placements hold `columnId`. Geometry
+remains world coordinates. Columns do not contain copied Universal Object content.
+Dragging the header moves children; dropping an item inside arranges members by
+vertical position. Columns cannot nest. Locked children block parent moves and
+automatic arrangement. Removing a column clears child membership and retains the
+items; cutting a column cuts its placements together. Undo restores the whole command.
+Copy/paste remaps placement and column IDs while preserving object IDs. Cross-Vault
+object remapping is still unsupported. New types remain opaque in older readers.
+
+A `link` element stores `text` and `url`. Creation accepts only HTTP/HTTPS URLs;
+opening requires an explicit gesture. No remote preview fetching or embedded scripts.
+Links are board-local bookmarks, not new Universal Objects or semantic relations.
+
+## PDF highlight notes — 2026-09-11
+
+An ordinary orbit.note with properties.pdfHighlightVersion: 1 contains a Markdown
+quote, stable page reference and optional editable comment. Its properties.pdfSource
+has objectId, checksum, page, quote, and regions. Each region uses existing Canvas
+rectangle fields id, type: rectangle, x, y, width, height, color plus one-based page.
+Geometry is normalized to the displayed page, top-left origin. Bounds must be finite
+and inside [0,1]. Creation limits are 10,000 regions and 100,000 selected characters.
+
+Only matching-checksum regions are painted; stale versions retain all metadata and
+show source-review status. Unknown versions remain readable ordinary notes.
+Deleting/restoring a highlight uses ordinary note Trash/restore. No PDF writes,
+object-envelope migration or SQLite schema change. See ADR-0014.
+
+Source-file preview is disposable: extension mapping, strict UTF-8, 1 MiB limit,
+binary/invalid-encoding fallback, existing syntax renderer (plain text above 50,000
+characters). Copy Code retains decoded source and original line endings. No code
+execution, compiler or executable web preview is invoked.
