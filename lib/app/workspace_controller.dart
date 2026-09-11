@@ -7,6 +7,7 @@ import '../domain/calendar_event.dart';
 import '../domain/universal_object.dart';
 import '../domain/object_reference.dart';
 import '../domain/pdf_annotation.dart';
+import '../domain/research_document.dart';
 import '../canvas/scene.dart';
 import '../domain/wiki_links.dart';
 import '../domain/search_text.dart';
@@ -406,29 +407,81 @@ class WorkspaceController extends Notifier<int> {
     }
   }
 
+  Future<bool> savePdfFormField(
+    String id,
+    String checksum,
+    String key,
+    Object value,
+  ) async {
+    final file = find(id);
+    if (file == null ||
+        file.isDeleted ||
+        file.isReadOnly ||
+        repository.readOnly ||
+        file.typeId != 'orbit.file' ||
+        file.properties['mimeType'] != 'application/pdf' ||
+        file.properties['checksum'] != checksum ||
+        !RegExp(r'^[1-9][0-9]{0,5}:[0-9]{1,5}$').hasMatch(key) ||
+        (value is! bool && value is! String) ||
+        (value is String && value.length > 10000)) {
+      return false;
+    }
+    final draft = file.properties['pdfFormDraft'];
+    if (draft is Map &&
+        (draft['checksum'] != checksum || draft['version'] != 1)) {
+      return false;
+    }
+    final values = draft is Map && draft['values'] is Map
+        ? Map<String, dynamic>.from(draft['values'] as Map)
+        : <String, dynamic>{};
+    if (values.length >= 2000 && !values.containsKey(key)) return false;
+    edit(
+      id,
+      properties: {
+        ...file.properties,
+        'pdfFormDraft': {
+          if (draft is Map) ...Map<String, dynamic>.from(draft),
+          'version': 1,
+          'checksum': checksum,
+          'values': {...values, key: value},
+        },
+      },
+    );
+    await flush(id);
+    return !dirty.contains(id) && !failures.containsKey(id);
+  }
+
   Future<UniversalObject?> createPdfQuote(
     String fileId,
     int page,
-    String quote,
-  ) async {
+    String quote, {
+    ResearchDocument? document,
+  }) async {
     final file = find(fileId);
     if (file == null ||
         file.isDeleted ||
+        file.isReadOnly ||
+        repository.readOnly ||
         file.typeId != 'orbit.file' ||
         file.properties['mimeType'] != 'application/pdf' ||
         page < 1 ||
         page > 999999 ||
-        quote.trim().isEmpty) {
+        quote.length > 100000 ||
+        (document == null && quote.trim().isEmpty)) {
       return null;
     }
     try {
       final note = await repository.create(
         typeId: 'orbit.note',
-        title: '${file.title} · page $page',
-        body: ObjectReference(
-          fileId,
-          page: page,
-        ).quoteMarkdown(file.title, quote),
+        title: document == null
+            ? '${file.title} · page $page'
+            : '${document.label} · ${file.title} · p. $page',
+        body:
+            document?.markdown(fileId, file.title, page, quote) ??
+            ObjectReference(
+              fileId,
+              page: page,
+            ).quoteMarkdown(file.title, quote),
         properties: {
           'pdfSource': {
             'objectId': fileId,

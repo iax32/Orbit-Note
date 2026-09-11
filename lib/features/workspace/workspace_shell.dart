@@ -1682,6 +1682,27 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
           objectId: object.id,
           title: object.title,
           checksum: object.properties['checksum'] as String?,
+          formValues:
+              object.properties['pdfFormDraft'] is Map &&
+                  (object.properties['pdfFormDraft'] as Map)['checksum'] ==
+                      object.properties['checksum'] &&
+                  (object.properties['pdfFormDraft'] as Map)['values'] is Map
+              ? Map<String, dynamic>.from(
+                  (object.properties['pdfFormDraft'] as Map)['values'] as Map,
+                )
+              : const {},
+          onFormChanged: (key, value) => c.savePdfFormField(
+            object.id,
+            object.properties['checksum'] as String,
+            key,
+            value,
+          ),
+          onSaveFilledCopy: (bytes) async =>
+              await importBytes(
+                '${object.title.replaceFirst(RegExp(r'\.pdf$', caseSensitive: false), '')} · filled.pdf',
+                bytes,
+              ) !=
+              null,
           annotations: c.activeObjects
               .where(PdfAnnotation.isAnnotation)
               .map(PdfAnnotation.new)
@@ -1747,6 +1768,23 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                 };
               });
             }
+          },
+          onCreateDocument: (document, page, quote) async {
+            final note = await c.createPdfQuote(
+              object.id,
+              page,
+              quote,
+              document: document,
+            );
+            if (note == null) return false;
+            c.updateSession((s) {
+              s.secondaryId = object.id;
+              s.noteViews = {
+                ...s.noteViews,
+                'pdf:secondary:${object.id}': {'page': page},
+              };
+            });
+            return true;
           },
         ),
       'orbit.file'

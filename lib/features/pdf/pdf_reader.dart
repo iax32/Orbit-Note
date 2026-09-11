@@ -5,9 +5,13 @@ import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart' hide PdfAnnotation;
 
 import '../../app/orbit_theme.dart';
+import '../../app/orbit_components.dart';
+import '../../domain/research_document.dart';
 import '../../domain/object_reference.dart';
 import '../../domain/pdf_annotation.dart';
 import '../../canvas/scene.dart';
+import '../../platform/pdf_forms.dart';
+import 'pdf_work_widgets.dart';
 
 List<CanvasElement> pdfSelectionRegions(
   List<PdfPageTextRange> ranges,
@@ -62,8 +66,15 @@ class OrbitPdfReader extends StatefulWidget {
     this.annotations = const [],
     this.onHighlight,
     this.onOpenAnnotation,
+    this.onCreateDocument,
+    this.formValues = const {},
+    this.onFormChanged,
+    this.onSaveFilledCopy,
   });
   final String objectId, title;
+  final Map<String, dynamic> formValues;
+  final Future<bool> Function(String, Object)? onFormChanged;
+  final Future<bool> Function(Uint8List)? onSaveFilledCopy;
   final Future<Uint8List?> Function() loadBytes;
   final VoidCallback onOpenOriginal;
   final ValueChanged<Uri> onOpenExternal;
@@ -83,6 +94,12 @@ class OrbitPdfReader extends StatefulWidget {
   )?
   onHighlight;
   final ValueChanged<String>? onOpenAnnotation;
+  final Future<bool> Function(
+    ResearchDocument document,
+    int page,
+    String quote,
+  )?
+  onCreateDocument;
 
   @override
   State<OrbitPdfReader> createState() => _OrbitPdfReaderState();
@@ -94,12 +111,16 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   late Future<Uint8List?> _bytes = widget.loadBytes();
   final _query = TextEditingController();
   final _pageInput = TextEditingController();
+  final _annotationInput = TextEditingController();
   final _searchFocus = FocusNode();
   Timer? _saveTimer;
   bool _ready = false;
+  bool _forms = false, _comfort = false, _savingCopy = false;
   bool _thumbnails = false;
   bool _finding = false;
   bool _showAnnotations = false;
+  bool _creatingDocument = false;
+  String _annotationQuery = '';
   int _page = 1;
   List<PdfOutlineNode> _outline = const [];
 
@@ -143,6 +164,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     _viewer.removeListener(_positionChanged);
     _query.dispose();
     _pageInput.dispose();
+    _annotationInput.dispose();
     _searchFocus.dispose();
     super.dispose();
   }
@@ -157,6 +179,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   }
 
   void _find() {
+    _comfort = false;
     setState(() => _finding = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -165,9 +188,63 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     });
   }
 
+  Future<void> _saveFilledCopy() async {
+    if (_savingCopy ||
+        !_ready ||
+        widget.readOnly ||
+        widget.onSaveFilledCopy == null) {
+      return;
+    }
+    setState(() => _savingCopy = true);
+    try {
+      final bytes = await applyPdfFields(_viewer.document, widget.formValues);
+      if (!mounted) return;
+      final saved = await widget.onSaveFilledCopy!(bytes);
+      _notice(
+        saved
+            ? 'Filled copy saved as a separate PDF in this Vault.'
+            : 'Could not save filled copy. Your field drafts are retained.',
+      );
+    } catch (error) {
+      _notice('Could not create filled copy: $error');
+    } finally {
+      if (mounted) setState(() => _savingCopy = false);
+    }
+  }
+
+  Future<void> _createDocument(ResearchDocument document) async {
+    if (_creatingDocument || widget.readOnly || !_viewer.isReady) return;
+    final create = widget.onCreateDocument;
+    if (create == null) return;
+    setState(() => _creatingDocument = true);
+    try {
+      var quote = '';
+      var page = _page;
+      final selection = _viewer.textSelectionDelegate;
+      if (selection.isCopyAllowed && selection.hasSelectedText) {
+        final ranges = await selection.getSelectedTextRanges();
+        if (!mounted) return;
+        if (ranges.isNotEmpty) {
+          quote = ranges.map((r) => r.text).join('\n');
+          page = ranges.first.pageNumber;
+        }
+      }
+      final saved = await create(document, page, quote);
+      if (!saved) {
+        _notice('Document could not be saved. Your PDF is unchanged.');
+      }
+    } catch (error) {
+      _notice('Could not create the document: $error');
+    } finally {
+      if (mounted) setState(() => _creatingDocument = false);
+    }
+  }
+
   void _notice(String text) {
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(text)));
     }
   }
 
@@ -220,7 +297,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     final input = TextEditingController();
     final password = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => OrbitDialog(
         title: const Text('Unlock PDF'),
         content: SizedBox(
           width: 360,
@@ -274,7 +351,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
       if (comment) {
         final result = await showDialog<String>(
           context: context,
-          builder: (context) => AlertDialog(
+          builder: (context) => OrbitDialog(
             title: const Text('Comment on this passage'),
             content: SizedBox(
               width: 460,
@@ -334,87 +411,109 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     }
   }
 
-  Widget _annotationPanel() => Container(
-    height: 190,
-    decoration: BoxDecoration(
-      color: OrbitColors.of(context).raised,
-      border: Border(top: BorderSide(color: OrbitColors.of(context).border)),
-    ),
-    child: Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 6, 8, 0),
-          child: Row(
-            children: [
-              Icon(
-                Icons.auto_awesome_outlined,
-                size: 16,
-                color: OrbitColors.of(context).accent,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Highlights · ${widget.annotations.length}',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-              const Spacer(),
-              IconButton(
-                tooltip: 'Close highlights',
-                onPressed: () => setState(() => _showAnnotations = false),
-                icon: const Icon(Icons.close, size: 16),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: widget.annotations.isEmpty
-              ? const Center(
-                  child: Text(
-                    'Select PDF text, then choose Highlight or Highlight and comment.',
-                  ),
-                )
-              : ListView.builder(
-                  itemCount: widget.annotations.length,
-                  itemBuilder: (context, index) {
-                    final annotation = widget.annotations[index];
-                    final matches = annotation.matches(widget.checksum);
-                    return Material(
-                      color: OrbitColors.of(context).raised,
-                      child: ListTile(
-                        dense: true,
-                        leading: Icon(
-                          matches ? Icons.format_quote : Icons.history,
-                          color: OrbitColors.of(context).accent,
-                        ),
-                        title: Text(
-                          annotation.source['quote'] is String
-                              ? annotation.source['quote'] as String
-                              : annotation.object.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Text(
-                          matches
-                              ? 'Page ${annotation.source['page']} · click to return'
-                              : 'PDF version changed · review source before re-anchoring',
-                        ),
-                        onTap: matches && annotation.source['page'] is int
-                            ? () => _go(annotation.source['page'] as int)
-                            : null,
-                        trailing: IconButton(
-                          tooltip: 'Open highlight note and comments',
-                          onPressed: () => widget.onOpenAnnotation?.call(
-                            annotation.object.id,
-                          ),
-                          icon: const Icon(Icons.open_in_new, size: 18),
-                        ),
-                      ),
-                    );
-                  },
+  Widget _annotationPanel() {
+    final query = _annotationQuery.trim().toLowerCase();
+    final annotations = widget.annotations
+        .where(
+          (a) => '${a.object.title}\n${a.source['quote']}\n${a.object.body}'
+              .toLowerCase()
+              .contains(query),
+        )
+        .toList();
+    return Container(
+      height: 230,
+      decoration: BoxDecoration(
+        color: OrbitColors.of(context).raised,
+        border: Border(top: BorderSide(color: OrbitColors.of(context).border)),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 8, 0),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.auto_awesome_outlined,
+                  size: 16,
+                  color: OrbitColors.of(context).accent,
                 ),
-        ),
-      ],
-    ),
-  );
+                const SizedBox(width: 8),
+                Text(
+                  'Highlights · ${widget.annotations.length}',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const Spacer(),
+                IconButton(
+                  tooltip: 'Close highlights',
+                  onPressed: () => setState(() => _showAnnotations = false),
+                  icon: const Icon(Icons.close, size: 16),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: TextField(
+              controller: _annotationInput,
+              decoration: const InputDecoration(
+                hintText: 'Filter highlights and comments',
+                prefixIcon: Icon(Icons.search, size: 18),
+                isDense: true,
+              ),
+              onChanged: (value) => setState(() => _annotationQuery = value),
+            ),
+          ),
+          Expanded(
+            child: annotations.isEmpty
+                ? const Center(
+                    child: Text(
+                      'No matching highlights. Select PDF text to add a highlight.',
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: annotations.length,
+                    itemBuilder: (context, index) {
+                      final annotation = annotations[index];
+                      final matches = annotation.matches(widget.checksum);
+                      return Material(
+                        color: OrbitColors.of(context).raised,
+                        child: ListTile(
+                          dense: true,
+                          leading: Icon(
+                            matches ? Icons.format_quote : Icons.history,
+                            color: OrbitColors.of(context).accent,
+                          ),
+                          title: Text(
+                            annotation.source['quote'] is String
+                                ? annotation.source['quote'] as String
+                                : annotation.object.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(
+                            matches
+                                ? 'Page ${annotation.source['page']} · click to return'
+                                : 'PDF version changed · review source before re-anchoring',
+                          ),
+                          onTap: matches && annotation.source['page'] is int
+                              ? () => _go(annotation.source['page'] as int)
+                              : null,
+                          trailing: IconButton(
+                            tooltip: 'Open highlight note and comments',
+                            onPressed: () => widget.onOpenAnnotation?.call(
+                              annotation.object.id,
+                            ),
+                            icon: const Icon(Icons.open_in_new, size: 18),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _fallback(String message) => Center(
     child: Padding(
@@ -466,6 +565,42 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    IconButton(
+                      tooltip: _comfort ? 'Original page' : 'Comfort reading',
+                      isSelected: _comfort,
+                      onPressed:
+                          _ready &&
+                              (_viewer.document.permissions?.allowsCopying ??
+                                  true)
+                          ? () => setState(() {
+                              _comfort = !_comfort;
+                              _forms = false;
+                            })
+                          : null,
+                      icon: const Icon(Icons.chrome_reader_mode_outlined),
+                    ),
+                    if (widget.onFormChanged != null)
+                      IconButton(
+                        tooltip: 'Fill PDF forms',
+                        isSelected: _forms,
+                        onPressed: _ready && !widget.readOnly
+                            ? () => setState(() {
+                                _forms = !_forms;
+                                _comfort = false;
+                              })
+                            : null,
+                        icon: const Icon(Icons.check_box_outlined),
+                      ),
+                    if (_forms && widget.onSaveFilledCopy != null)
+                      OrbitControl(
+                        label: _savingCopy ? 'Saving…' : 'Save filled copy',
+                        onPressed:
+                            _savingCopy ||
+                                widget.formValues.isEmpty ||
+                                widget.readOnly
+                            ? null
+                            : _saveFilledCopy,
+                      ),
                     IconButton(
                       tooltip: 'Page thumbnails',
                       isSelected: _thumbnails,
@@ -548,6 +683,21 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                       onPressed: _ready ? _copyReference : null,
                       icon: const Icon(Icons.link),
                     ),
+                    if (widget.onCreateDocument != null)
+                      PopupMenuButton<ResearchDocument>(
+                        tooltip: 'Create document from PDF',
+                        enabled:
+                            _ready && !widget.readOnly && !_creatingDocument,
+                        onSelected: _createDocument,
+                        itemBuilder: (_) => [
+                          for (final document in ResearchDocument.values)
+                            PopupMenuItem(
+                              value: document,
+                              child: Text(document.label),
+                            ),
+                        ],
+                        icon: const Icon(Icons.post_add_rounded),
+                      ),
                     IconButton(
                       tooltip: 'Highlights and comments',
                       isSelected: _showAnnotations,
@@ -654,156 +804,197 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                     'PDF bytes are unavailable. The file reference has been preserved.',
                   );
                 }
-                return Row(
+                return Stack(
                   children: [
-                    if (_thumbnails && _ready)
-                      SizedBox(
-                        width: 130,
-                        child: ListView.builder(
-                          itemCount: _viewer.pageCount,
-                          itemBuilder: (context, index) => InkWell(
-                            onTap: () => _go(index + 1),
-                            child: Container(
-                              margin: const EdgeInsets.all(8),
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: index + 1 == _page
-                                      ? OrbitColors.of(context).accent
-                                      : OrbitColors.of(context).border,
-                                ),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Column(
-                                children: [
-                                  SizedBox(
-                                    height: 120,
-                                    child: PdfPageView(
-                                      document: _viewer.document,
-                                      pageNumber: index + 1,
+                    Row(
+                      children: [
+                        if (_thumbnails && _ready)
+                          SizedBox(
+                            width: 130,
+                            child: ListView.builder(
+                              itemCount: _viewer.pageCount,
+                              itemBuilder: (context, index) => InkWell(
+                                onTap: () => _go(index + 1),
+                                child: Container(
+                                  margin: const EdgeInsets.all(8),
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: index + 1 == _page
+                                          ? OrbitColors.of(context).accent
+                                          : OrbitColors.of(context).border,
                                     ),
+                                    borderRadius: BorderRadius.circular(8),
                                   ),
-                                  Text('${index + 1}'),
-                                ],
+                                  child: Column(
+                                    children: [
+                                      SizedBox(
+                                        height: 120,
+                                        child: PdfPageView(
+                                          document: _viewer.document,
+                                          pageNumber: index + 1,
+                                        ),
+                                      ),
+                                      Text('${index + 1}'),
+                                    ],
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ),
-                    Expanded(
-                      child: PdfViewer.data(
-                        snapshot.data!,
-                        sourceName: '${widget.objectId}:${widget.key}',
-                        controller: _viewer,
-                        initialPageNumber: widget.initialPage,
-                        passwordProvider: _password,
-                        params: PdfViewerParams(
-                          backgroundColor: OrbitColors.of(context).panel,
-                          onViewerReady: (document, controller) async {
-                            if (!mounted) {
-                              return;
-                            }
-                            setState(() {
-                              _search?.dispose();
-                              _search = PdfTextSearcher(controller)
-                                ..addListener(_refresh);
-                              _ready = true;
-                            });
-                            final zoom = widget.initialZoom;
-                            if (zoom != null && zoom.isFinite) {
-                              await controller.setZoom(
-                                controller.centerPosition,
-                                zoom.clamp(
-                                  controller.minScale,
-                                  controller.maxScale,
-                                ),
-                                duration: Duration.zero,
-                              );
-                            }
-                            try {
-                              final outline = await document.loadOutline();
-                              if (mounted) {
-                                setState(() => _outline = outline);
-                              }
-                            } catch (_) {
-                              /* A malformed outline does not prevent reading. */
-                            }
-                          },
-                          onPageChanged: (page) {
-                            if (mounted && page != null) {
-                              setState(() {
-                                _page = page;
-                                _pageInput.text = '$page';
-                              });
-                              _positionChanged();
-                            }
-                          },
-                          errorBannerBuilder: (_, error, _, _) => _fallback(
-                            'This PDF could not be opened. Its original bytes are unchanged.',
-                          ),
-                          pagePaintCallbacks: [
-                            _paintAnnotations,
-                            if (_search != null)
-                              _search!.pageTextMatchPaintCallback,
-                          ],
-                          linkHandlerParams: PdfLinkHandlerParams(
-                            onLinkTap: (link) {
-                              if (link.dest != null) {
-                                _viewer.goToDest(
-                                  link.dest,
-                                  duration: Duration.zero,
-                                );
-                              }
-                              final url = link.url;
-                              if (url != null &&
-                                  {
-                                    'http',
-                                    'https',
-                                    'mailto',
-                                  }.contains(url.scheme)) {
-                                widget.onOpenExternal(url);
-                              }
-                            },
-                          ),
-                          customizeContextMenuItems: (params, items) {
-                            if (params.textSelectionDelegate.isCopyAllowed &&
-                                params.textSelectionDelegate.hasSelectedText) {
-                              items.add(
-                                ContextMenuButtonItem(
-                                  label: 'Copy quote with source',
-                                  onPressed: () => _quote(params, copy: true),
-                                ),
-                              );
-                              if (!widget.readOnly) {
-                                if (widget.onHighlight != null) {
-                                  items.add(
-                                    ContextMenuButtonItem(
-                                      label: 'Highlight',
-                                      onPressed: () =>
-                                          _highlight(params, comment: false),
+                        Expanded(
+                          child: PdfViewer.data(
+                            snapshot.data!,
+                            sourceName: '${widget.objectId}:${widget.key}',
+                            controller: _viewer,
+                            initialPageNumber: widget.initialPage,
+                            passwordProvider: _password,
+                            params: PdfViewerParams(
+                              pageOverlaysBuilder:
+                                  _forms && widget.onFormChanged != null
+                                  ? (context, rect, page) => [
+                                      PdfFormLayer(
+                                        key: ValueKey(
+                                          'forms:${page.pageNumber}',
+                                        ),
+                                        document: _viewer.document,
+                                        page: page,
+                                        values: widget.formValues,
+                                        onChanged: widget.onFormChanged!,
+                                      ),
+                                    ]
+                                  : null,
+                              backgroundColor: OrbitColors.of(context).panel,
+                              onViewerReady: (document, controller) async {
+                                if (!mounted) {
+                                  return;
+                                }
+                                setState(() {
+                                  _search?.dispose();
+                                  _search = PdfTextSearcher(controller)
+                                    ..addListener(_refresh);
+                                  _ready = true;
+                                  if (MediaQuery.sizeOf(context).width < 600 &&
+                                      (document.permissions?.allowsCopying ??
+                                          true)) {
+                                    _comfort = true;
+                                  }
+                                });
+                                final zoom = widget.initialZoom;
+                                if (zoom != null && zoom.isFinite) {
+                                  await controller.setZoom(
+                                    controller.centerPosition,
+                                    zoom.clamp(
+                                      controller.minScale,
+                                      controller.maxScale,
                                     ),
-                                  );
-                                  items.add(
-                                    ContextMenuButtonItem(
-                                      label: 'Highlight and comment',
-                                      onPressed: () =>
-                                          _highlight(params, comment: true),
-                                    ),
+                                    duration: Duration.zero,
                                   );
                                 }
-                                items.add(
-                                  ContextMenuButtonItem(
-                                    label: 'Create linked note',
-                                    onPressed: () =>
-                                        _quote(params, copy: false),
-                                  ),
-                                );
-                              }
-                            }
-                          },
+                                try {
+                                  final outline = await document.loadOutline();
+                                  if (mounted) {
+                                    setState(() => _outline = outline);
+                                  }
+                                } catch (_) {
+                                  /* A malformed outline does not prevent reading. */
+                                }
+                              },
+                              onPageChanged: (page) {
+                                if (mounted && page != null) {
+                                  setState(() {
+                                    _page = page;
+                                    _pageInput.text = '$page';
+                                  });
+                                  _positionChanged();
+                                }
+                              },
+                              errorBannerBuilder: (_, error, _, _) => _fallback(
+                                'This PDF could not be opened. Its original bytes are unchanged.',
+                              ),
+                              pagePaintCallbacks: [
+                                _paintAnnotations,
+                                if (_search != null)
+                                  _search!.pageTextMatchPaintCallback,
+                              ],
+                              linkHandlerParams: PdfLinkHandlerParams(
+                                onLinkTap: (link) {
+                                  if (link.dest != null) {
+                                    _viewer.goToDest(
+                                      link.dest,
+                                      duration: Duration.zero,
+                                    );
+                                  }
+                                  final url = link.url;
+                                  if (url != null &&
+                                      {
+                                        'http',
+                                        'https',
+                                        'mailto',
+                                      }.contains(url.scheme)) {
+                                    widget.onOpenExternal(url);
+                                  }
+                                },
+                              ),
+                              customizeContextMenuItems: (params, items) {
+                                if (params
+                                        .textSelectionDelegate
+                                        .isCopyAllowed &&
+                                    params
+                                        .textSelectionDelegate
+                                        .hasSelectedText) {
+                                  items.add(
+                                    ContextMenuButtonItem(
+                                      label: 'Copy quote with source',
+                                      onPressed: () =>
+                                          _quote(params, copy: true),
+                                    ),
+                                  );
+                                  if (!widget.readOnly) {
+                                    if (widget.onHighlight != null) {
+                                      items.add(
+                                        ContextMenuButtonItem(
+                                          label: 'Highlight',
+                                          onPressed: () => _highlight(
+                                            params,
+                                            comment: false,
+                                          ),
+                                        ),
+                                      );
+                                      items.add(
+                                        ContextMenuButtonItem(
+                                          label: 'Highlight and comment',
+                                          onPressed: () =>
+                                              _highlight(params, comment: true),
+                                        ),
+                                      );
+                                    }
+                                    items.add(
+                                      ContextMenuButtonItem(
+                                        label: 'Create linked note',
+                                        onPressed: () =>
+                                            _quote(params, copy: false),
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_comfort && _ready)
+                      Positioned.fill(
+                        child: PdfComfortPage(
+                          key: ValueKey('comfort:$_page'),
+                          page:
+                              _viewer.document.pages[(_page - 1).clamp(
+                                0,
+                                _viewer.pageCount - 1,
+                              )],
                         ),
                       ),
-                    ),
                   ],
                 );
               },

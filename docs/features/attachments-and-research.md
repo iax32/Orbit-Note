@@ -107,3 +107,17 @@ Ruby, PHP, shells, SQL, JSON/YAML/XML/HTML/CSS and additional mapped extensions.
 This is source text, not execution or an HTML browser. Unsupported grammars remain
 plain text. Strict UTF-8 previews are limited to 1 MiB; invalid/binary/oversized
 files retain an external-open fallback. Tests verify C++ highlighting and exact copy.
+
+### PDF documentation workflow — 2026-09-11
+
+The PDF reader's Create document action offers Research note, Game design decision
+and Playtest finding. Each creates an ordinary editable Markdown note beside the
+PDF, with a stable current-page link and checksum provenance. A permitted text
+selection is quoted with its first page. No original attachment is modified.
+Saved highlights can be filtered by title, quote and note/comment body; the filter
+is local to the reader session. Read-only workspaces disable document creation;
+failed saves leave the source and existing notes intact.
+
+These are document starters, not automatic evidence extraction, a template registry
+or a complete project preset. Precise region return and revision re-anchoring remain
+planned; multi-page selections retain first-page provenance.

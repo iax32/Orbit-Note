@@ -68,18 +68,18 @@ and [ADR-0010](../adr/0010-notes-folder-moves.md).
 
 ## Validation evidence
 
-| Check | Observatory visual identity, 2026-09-11 |
+| Check | PDF documentation follow-up, 2026-09-11 |
 |---|---|
-| Format / zero-change check | Passed; 117 Dart files |
+| Format / zero-change check | Passed; 120 Dart files |
 | `flutter analyze --no-pub` | Passed; no issues |
-| `flutter test --no-pub` | Passed; all 181 tests; keyboard/disabled controls, motion policies, narrow large-text dialog and finite Graph camera behavior plus prior regressions |
-| Visual checks | Notes, Canvas, Home and final Graph captures inspected |
-| `flutter build windows --release --no-pub` | Passed; final build 39.6 seconds |
-| Native Windows startup | Input-idle, responsive window, clean close, exit 0, no stderr; smoke-owned PID 9544 only |
+| `flutter test --no-pub` | Passed; all 183 tests; PDF document creation, selected/current-page sources, highlight filters, failure/read-only feedback, durable reopen and preserved PDF bytes plus prior regressions |
+| Visual checks | Updated PDF highlights/filter panel capture inspected; native document-creation menu behavior verified in widget tests |
+| `flutter build windows --release --no-pub` | Passed; final build 42.1 seconds |
+| Native Windows startup | Hidden process reached input idle and responded, no stderr; no closable main window exposed. Owned PID 12312 terminated for cleanup; interactive launch/close needs manual acceptance |
 | Documentation / diff | Updated task/design/status links checked; git diff --check clean |
 
-Evidence logs: `.local/observatory-tests.log`, `.local/observatory-build.log`,
-`.local/observatory-release-smoke.json`;
+Evidence logs: `.local/pdf-documentation-tests.log`, `.local/pdf-documentation-build.log`,
+`.local/pdf-documentation-release-smoke.json`;
 captures in `work/ui` (ignored local artifacts).
 This pass refines visual controls and motion; previous PDF highlight notes, source
 previews, Vault switching and Canvas features remain intact. See the
@@ -149,8 +149,10 @@ The following earlier consolidated changes are preserved:
 
 ## Continuation
 
-Next recommended bounded design task: explorer/context menus and focus-safe panel
-transitions. Source annotation navigation/re-anchoring and Vault ownership/
+The owner now prioritizes precise PDF highlight-region navigation and source-version review.
+Previously suggested: searchable, keyboard-navigable Rich slash and block
+insertion menus preserving source ranges, undo and caret state. Focus-safe panel
+transitions, source annotation navigation/re-anchoring and Vault ownership/
 locking, Rich cross-block selection/drag reorder and deeper Canvas interactions
 remain important tracked boundaries. Preserve exact-source fixtures and original
 PDF bytes. Cloud, plugins and AI remain outside this pass.
@@ -234,6 +236,18 @@ coverage map for the current design task. It adds custom Notes modes, Canvas/rai
 controls, floating dialogs, Graph controls and finite camera motion, semantic
 label zoom, search composition, tab/Task/Calendar/Copy Code feedback and explicit
 Normal/Reduced/Off policy. Earlier product features remain intact. No storage,
-package or architecture change. Explorer/context menus and panel transitions are
-the next recommended design task; annotation re-anchoring remains a product backlog
-item rather than the immediate focus of this visual pass.
+package or architecture change. The explorer follow-up now adds shared row states,
+right-click/Shift+F10 menus, Left/Right folder navigation, readable stable-ID copy
+references and read-only mutation guards. Folder expansion persists through the
+existing session contract. Tree-wide Up/Down navigation, multi-selection and
+focus-safe panel transitions remain unfinished. Rich slash/block insertion menus
+are the next bounded task; annotation re-anchoring remains a product backlog item.
+
+## PDF documentation delivery — 2026-09-11
+
+The reader offers Research note, Game design decision and Playtest finding starters
+as ordinary Markdown notes beside the source PDF. Source UUID/page/checksum and
+permitted selected quotes retain provenance. Highlight title/quote/comment filtering
+is session-local. No new data format or architecture decision. GAME-01 project
+presets, precise annotation-region return and source re-anchoring remain planned.
+This PDF priority supersedes the earlier Rich insertion-menu recommendation.

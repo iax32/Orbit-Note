@@ -107,6 +107,12 @@ and `properties.pdfSource: {objectId, page, checksum}`. Source bytes remain exac
 the checksum records provenance but this batch does not implement automatic
 revision re-anchoring. See [ADR-0013](../adr/0013-local-pdf-reader.md).
 
+Research/game-design/playtest document starters use the same ordinary note and
+`pdfSource` fields. Headings and prompts are authored Markdown content, with no
+template version or additional schema. When selected text spans multiple pages,
+the source link records the first page. Starters do not imply extracted facts or
+automatic task creation; users edit the document normally.
+
 ## Canvas columns and website cards
 
 Schema 1 gains `column` and `link` element types using existing IDs/geometry/style.

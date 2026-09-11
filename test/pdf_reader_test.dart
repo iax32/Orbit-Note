@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pdfrx/pdfrx.dart' hide PdfAnnotation;
 import 'package:orbit_note/domain/pdf_annotation.dart';
+import 'package:orbit_note/domain/research_document.dart';
 import 'package:orbit_note/domain/universal_object.dart';
 import 'package:orbit_note/canvas/scene.dart';
 import 'package:orbit_note/app/orbit_theme.dart';
@@ -92,6 +93,11 @@ void main() {
       var checksum = 'version-one';
       late StateSetter refreshReader;
       var openedAnnotation = '';
+      ResearchDocument? createdDocument;
+      int? documentPage;
+      String? documentQuote;
+      var documentSaveSucceeds = true;
+      var readOnly = false;
       await tester.pumpWidget(
         MaterialApp(
           theme: orbitDarkTheme(),
@@ -103,8 +109,15 @@ void main() {
                   objectId: 'paper',
                   title: 'Research',
                   checksum: checksum,
+                  readOnly: readOnly,
                   annotations: annotations,
                   onOpenAnnotation: (id) => openedAnnotation = id,
+                  onCreateDocument: (document, page, quote) async {
+                    createdDocument = document;
+                    documentPage = page;
+                    documentQuote = quote;
+                    return documentSaveSucceeds;
+                  },
                   onHighlight: (quote, regions, comment) async {
                     rawRegions = regions;
                     final now = DateTime.utc(2026);
@@ -163,6 +176,13 @@ void main() {
       await tester.tap(find.byTooltip('Next page'));
       await tester.pump(const Duration(milliseconds: 500));
       expect(page, 2);
+      await tester.tap(find.byTooltip('Create document from PDF'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Game design decision'));
+      await tester.pumpAndSettle();
+      expect(createdDocument, ResearchDocument.design);
+      expect(documentPage, 2);
+      expect(documentQuote, '');
       await tester.tap(find.byTooltip('Bookmark page'));
       await tester.pump();
       expect(bookmarks, [2]);
@@ -186,6 +206,34 @@ void main() {
       final pdf = tester.widget<PdfViewer>(find.byType(PdfViewer));
       final delegate = pdf.controller!.textSelectionDelegate;
       await tester.runAsync(delegate.selectAllText);
+      await tester.pump();
+      await tester.tap(find.byTooltip('Create document from PDF'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Playtest finding'));
+      await tester.pumpAndSettle();
+      expect(createdDocument, ResearchDocument.playtest);
+      expect(documentPage, 1);
+      expect(documentQuote, isNotEmpty);
+      documentSaveSucceeds = false;
+      await tester.tap(find.byTooltip('Create document from PDF'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Research note'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Document could not be saved. Your PDF is unchanged.'),
+        findsOneWidget,
+      );
+      refreshReader(() => readOnly = true);
+      await tester.pump();
+      expect(
+        tester
+            .widget<PopupMenuButton<ResearchDocument>>(
+              find.byType(PopupMenuButton<ResearchDocument>),
+            )
+            .enabled,
+        isFalse,
+      );
+      refreshReader(() => readOnly = false);
       await tester.pump();
       final menu = <ContextMenuButtonItem>[];
       pdf.params.customizeContextMenuItems!(
@@ -224,6 +272,26 @@ void main() {
       });
       expect(annotations.single.object.body, 'Compare both pages.');
       expect(find.text('Highlights · 1'), findsOneWidget);
+      final filter = find.widgetWithText(
+        TextField,
+        'Filter highlights and comments',
+      );
+      await tester.enterText(filter, 'COMPARE BOTH');
+      await tester.pump();
+      expect(
+        find.byTooltip('Open highlight note and comments'),
+        findsOneWidget,
+      );
+      await tester.enterText(filter, 'unmatched phrase');
+      await tester.pump();
+      expect(find.byTooltip('Open highlight note and comments'), findsNothing);
+      await tester.tap(find.byTooltip('Close highlights'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Highlights and comments'));
+      await tester.pump();
+      expect(find.text('unmatched phrase'), findsOneWidget);
+      await tester.enterText(filter, '');
+      await tester.pump();
       await captureUi(tester, 'pdf-highlights');
       await tester.tap(find.byTooltip('Open highlight note and comments'));
       expect(openedAnnotation, 'highlight');
@@ -238,6 +306,51 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
     },
   );
+
+  testWidgets('phone comfort reading wraps text and returns to original PDF', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: orbitDarkTheme(),
+        home: Scaffold(
+          body: OrbitPdfReader(
+            objectId: 'phone',
+            title: 'Research',
+            loadBytes: () async => researchPdf(),
+            onOpenOriginal: () {},
+            onOpenExternal: (_) {},
+            onReadingState: (_, _) {},
+            onQuote: (_, _) async {},
+            onBookmarks: (_) {},
+          ),
+        ),
+      ),
+    );
+    await settleNative(
+      tester,
+      () => find.byType(SelectableText).evaluate().isNotEmpty,
+    );
+    expect(find.byTooltip('Original page'), findsOneWidget);
+    expect(
+      tester.widget<SelectableText>(find.byType(SelectableText)).data,
+      contains('Orbit research page one'),
+    );
+    await tester.tap(find.byTooltip('Larger reading text'));
+    await tester.pump();
+    expect(find.text('Page 1 · 22 pt'), findsOneWidget);
+    await tester.tap(find.byTooltip('Original page'));
+    await tester.pump();
+    expect(find.byType(SelectableText), findsNothing);
+    expect(find.byTooltip('Comfort reading'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
 
   testWidgets('corrupt PDF shows a recoverable error without crashing', (
     tester,

@@ -36,7 +36,7 @@ Use **Orbit Note**, **universal object**, **canvas**, and **Space** consistently
 
 - [Roadmap](planning/roadmap.md): order and exit gates, not a build-all checklist.
 - [Current milestone: durable local core](planning/current-milestone.md).
-- [Current task: Rich Markdown stabilization](tasks/current.md) and [task template](tasks/TEMPLATE.md).
+- [Current task](tasks/current.md) and [task template](tasks/TEMPLATE.md).
 - [Development setup and verification](development/setup.md).
 - [ADR template](adr/TEMPLATE.md).
 

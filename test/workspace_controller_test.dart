@@ -11,6 +11,7 @@ import 'support/memory_store.dart';
 import 'support/pdf_fixture.dart';
 import 'package:orbit_note/canvas/scene.dart';
 import 'package:orbit_note/domain/pdf_annotation.dart';
+import 'package:orbit_note/domain/research_document.dart';
 
 void main() {
   late MemoryStore store;
@@ -36,6 +37,71 @@ void main() {
     await controller.flushAll();
     container.dispose();
   });
+  test(
+    'PDF documentation starters persist with provenance and safe failures',
+    () async {
+      final bytes = researchPdf();
+      final file = await repo.importAttachment(
+        name: 'Game systems.pdf',
+        bytes: bytes,
+      );
+      await controller.refresh();
+      final created = <String, String>{};
+      for (final document in ResearchDocument.values) {
+        final note = await controller.createPdfQuote(
+          file.id,
+          2,
+          '',
+          document: document,
+        );
+        expect(note, isNotNull);
+        expect(note!.body, contains('[[${file.id}#page=2|'));
+        expect(note.body, startsWith('# ${document.label}\n'));
+        expect(
+          (note.properties['pdfSource'] as Map)['checksum'],
+          file.properties['checksum'],
+        );
+        created[note.id] = note.body;
+      }
+      final selected = await controller.createPdfQuote(
+        file.id,
+        1,
+        'Exact *source*\nsecond line',
+        document: ResearchDocument.design,
+      );
+      expect(selected!.body, contains('> Exact *source*\n> second line'));
+      final count = controller.objects.length;
+      expect(
+        await controller.createPdfQuote(
+          file.id,
+          0,
+          '',
+          document: ResearchDocument.playtest,
+        ),
+        isNull,
+      );
+      store.failWrites = true;
+      expect(
+        await controller.createPdfQuote(
+          file.id,
+          1,
+          '',
+          document: ResearchDocument.playtest,
+        ),
+        isNull,
+      );
+      expect(controller.objects.length, count);
+      store.failWrites = false;
+      await controller.initialize();
+      for (final entry in created.entries) {
+        expect(controller.find(entry.key)!.body, entry.value);
+      }
+      expect(
+        await repo.readAttachment(file.properties['contentRef'] as String),
+        bytes,
+      );
+    },
+  );
   test(
     'PDF quotes create durable linked notes without changing original bytes',
     () async {
@@ -71,6 +137,62 @@ void main() {
       expect(controller.objects.length, count);
       expect(controller.error, isNotNull);
       store.failWrites = false;
+      expect(
+        await repo.readAttachment(file.properties['contentRef'] as String),
+        bytes,
+      );
+    },
+  );
+  test(
+    'PDF form drafts persist and reject stale sources without changing bytes',
+    () async {
+      final bytes = formPdf();
+      final file = await repo.importAttachment(name: 'form.pdf', bytes: bytes);
+      await controller.refresh();
+      final checksum = file.properties['checksum'] as String;
+      expect(
+        await controller.savePdfFormField(
+          file.id,
+          checksum,
+          '1:0',
+          'Player one',
+        ),
+        isTrue,
+      );
+      expect(
+        await controller.savePdfFormField(file.id, checksum, '1:1', true),
+        isTrue,
+      );
+      await controller.initialize();
+      final draft = controller.find(file.id)!.properties['pdfFormDraft'] as Map;
+      expect(draft['values'], {'1:0': 'Player one', '1:1': true});
+      expect(
+        await controller.savePdfFormField(file.id, 'stale', '1:1', false),
+        isFalse,
+      );
+      expect(
+        await controller.savePdfFormField(file.id, checksum, 'bad', true),
+        isFalse,
+      );
+      store.failWrites = true;
+      expect(
+        await controller.savePdfFormField(
+          file.id,
+          checksum,
+          '1:0',
+          'Retained draft',
+        ),
+        isFalse,
+      );
+      expect(controller.dirty, contains(file.id));
+      store.failWrites = false;
+      expect(await controller.flushAll(), isTrue);
+      await controller.initialize();
+      expect(
+        ((controller.find(file.id)!.properties['pdfFormDraft'] as Map)['values']
+            as Map)['1:0'],
+        'Retained draft',
+      );
       expect(
         await repo.readAttachment(file.properties['contentRef'] as String),
         bytes,
