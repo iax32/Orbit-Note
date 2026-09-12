@@ -147,3 +147,13 @@ Source-file preview is disposable: extension mapping, strict UTF-8, 1 MiB limit,
 binary/invalid-encoding fallback, existing syntax renderer (plain text above 50,000
 characters). Copy Code retains decoded source and original line endings. No code
 execution, compiler or executable web preview is invoked.
+
+## PDF form drafts
+
+The file object's properties.pdfFormDraft contains version: 1, checksum and values.
+Values maps page:annotation-index identifiers to bool checkbox states or String
+text. These coordinates identify fields only within the exact source checksum.
+Edits preserve unknown sibling properties. Unknown draft versions/source mismatches
+are retained and rejected for editing. Save filled copy imports new PDF bytes as a
+separate orbit.file; it never replaces original attachment bytes. No envelope or
+SQLite migration. See [ADR-0015](../adr/0015-pdf-form-drafts.md).

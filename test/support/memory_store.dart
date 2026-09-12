@@ -43,4 +43,9 @@ class MemoryStore implements WorkspaceStore {
     }
     files[relativePath] = Uint8List.fromList(bytes);
   }
+
+  @override
+  Future<void> deleteFile(String relativePath) async {
+    files.remove(relativePath);
+  }
 }

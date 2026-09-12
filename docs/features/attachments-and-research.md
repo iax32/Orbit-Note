@@ -121,3 +121,20 @@ failed saves leave the source and existing notes intact.
 These are document starters, not automatic evidence extraction, a template registry
 or a complete project preset. Precise region return and revision re-anchoring remain
 planned; multi-page selections retain first-page provenance.
+
+### PDF work mode and phone reading — 2026-09-11
+
+Fill PDF forms exposes ordinary AcroForm checkboxes and text fields on their page.
+A checkbox toggles on tap; a text field opens a local editor. Field drafts persist
+in Orbit. Save filled copy creates a separate PDF attachment with real filled field
+values; the source PDF is unchanged. Protected/signed/XFA documents and other form
+field types remain unsupported. Browser form editing is disabled. A checksum change
+blocks stale drafts; manual draft-review/reset UI remains future work.
+
+Comfort reading presents extracted text at adjustable 14–36 pt on a narrow reading
+surface. It starts automatically below 600 logical pixels and has an Original page
+switch. It is page-based text reading, not automatic cropping or OCR. Scans and
+complex diagrams retain the original-page view; text order follows PDF extraction.
+Font size/mode are session-local and not yet restored across launches. Physical
+phone validation remains required; a 390×844 widget test covers the narrow layout.
+See ADR-0015 and implemented-formats for the safety contract.

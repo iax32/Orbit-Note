@@ -302,7 +302,7 @@ void main() async {
   );
 
   testWidgets(
-    'phone comfort reading wraps text and returns to original PDF',
+    'phone visual comfort retains illustrated PDF and offers optional text reading',
     (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
@@ -315,7 +315,7 @@ void main() async {
             body: OrbitPdfReader(
               objectId: 'phone',
               title: 'Research',
-              loadBytes: () async => researchPdf(),
+              loadBytes: () async => researchPdf(illustrated: true),
               onOpenOriginal: () {},
               onOpenExternal: (_) {},
               onReadingState: (_, _) {},
@@ -325,6 +325,23 @@ void main() async {
           ),
         ),
       );
+      await settleNative(
+        tester,
+        () => find.byTooltip('Original page').evaluate().isNotEmpty,
+      );
+      expect(find.byType(SelectableText), findsNothing);
+      final viewer = tester
+          .widget<PdfViewer>(find.byType(PdfViewer))
+          .controller!;
+      final fullWidthZoom =
+          (viewer.viewSize.width - 16) / viewer.layout.pageLayouts.first.width;
+      await settleNative(
+        tester,
+        () => viewer.currentZoom > fullWidthZoom * 1.02,
+      );
+      await captureUi(tester, 'pdf-phone-visual');
+      await tester.tap(find.byTooltip('Text-only reading'));
+      await tester.pump();
       await settleNative(
         tester,
         () => find.byType(SelectableText).evaluate().isNotEmpty,
@@ -337,9 +354,11 @@ void main() async {
       await tester.tap(find.byTooltip('Larger reading text'));
       await tester.pump();
       expect(find.text('Page 1 · 22 pt'), findsOneWidget);
-      await tester.tap(find.byTooltip('Original page'));
+      await tester.tap(find.byTooltip('Return to visual reading'));
       await tester.pump();
       expect(find.byType(SelectableText), findsNothing);
+      await tester.tap(find.byTooltip('Original page'));
+      await tester.pump();
       expect(find.byTooltip('Comfort reading'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());

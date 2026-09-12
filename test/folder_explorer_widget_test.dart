@@ -18,6 +18,13 @@ class FolderFixtureStore extends MemoryStore implements WorkspaceFolderStore {
   }
 
   @override
+  Future<void> deleteFolder(String path) async {
+    folders.remove(path);
+    folders.removeWhere((f) => f.startsWith('$path/'));
+    files.removeWhere((k, _) => k.startsWith('$path/'));
+  }
+
+  @override
   Future<void> movePath(
     String source,
     String target,

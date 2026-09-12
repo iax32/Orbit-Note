@@ -12,6 +12,7 @@ class OrbitExplorerRow extends StatefulWidget {
     required this.onTap,
     required this.menu,
     this.selected = false,
+    this.multiSelected = false,
     this.onExpand,
     this.onCollapse,
   });
@@ -19,6 +20,7 @@ class OrbitExplorerRow extends StatefulWidget {
   final VoidCallback onTap;
   final PopupMenuButton<String> menu;
   final bool selected;
+  final bool multiSelected;
   final VoidCallback? onExpand, onCollapse;
   @override
   State<OrbitExplorerRow> createState() => _OrbitExplorerRowState();
@@ -90,7 +92,9 @@ class _OrbitExplorerRowState extends State<OrbitExplorerRow> {
               ),
             ),
             child: Material(
-              color: widget.selected ? c.selected : Colors.transparent,
+              color: widget.multiSelected
+                  ? c.accent.withValues(alpha: .22)
+                  : (widget.selected ? c.selected : Colors.transparent),
               borderRadius: BorderRadius.circular(OrbitRadius.control),
               child: InkWell(
                 canRequestFocus: false,

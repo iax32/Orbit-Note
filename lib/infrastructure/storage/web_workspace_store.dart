@@ -80,5 +80,11 @@ class BrowserWorkspaceStore implements WorkspaceStore {
   }
 
   @override
+  Future<void> deleteFile(String relativePath) async {
+    validateRelativePath(relativePath);
+    web.window.localStorage.removeItem('$_prefix$relativePath');
+  }
+
+  @override
   Future<void> close() async {}
 }

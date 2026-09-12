@@ -75,6 +75,7 @@ class OrbitCanvasPainter extends CustomPainter {
     this.region,
     this.preview,
     this.editingId,
+    this.guides = const [],
     this.images = const {},
     required this.textCache,
   }) : sceneRevision = scene.revision;
@@ -88,6 +89,7 @@ class OrbitCanvasPainter extends CustomPainter {
   final CanvasBounds? region;
   final CanvasElement? preview;
   final String? editingId;
+  final List<CanvasGuideLine> guides;
   final Map<String, ui.Image> images;
 
   @override
@@ -119,6 +121,20 @@ class OrbitCanvasPainter extends CustomPainter {
         RRect.fromRectAndRadius(bounds, Radius.circular(8 / camera.zoom)),
         selectionPaint,
       );
+      if (element.locked) {
+        _text(
+          canvas,
+          '🔒',
+          Rect.fromLTWH(
+            bounds.right - 18 / camera.zoom,
+            bounds.top - 18 / camera.zoom,
+            18 / camera.zoom,
+            18 / camera.zoom,
+          ),
+          color: colors.primary,
+          size: 12 / camera.zoom,
+        );
+      }
       if (selection.length == 1 && element.type != 'ink') {
         canvas.drawRRect(
           RRect.fromRectAndRadius(
@@ -140,7 +156,61 @@ class OrbitCanvasPainter extends CustomPainter {
       );
       canvas.drawRect(_rect(region!), selectionPaint);
     }
+    if (guides.isNotEmpty) {
+      final guidePaint = Paint()
+        ..color = colors.primary.withValues(alpha: .75)
+        ..strokeWidth = 1.0 / camera.zoom
+        ..style = PaintingStyle.stroke;
+      final vp = camera.viewport(size.width, size.height);
+      for (final guide in guides) {
+        if (guide.isVertical) {
+          _drawDashedLine(
+            canvas,
+            Offset(guide.position, vp.top),
+            Offset(guide.position, vp.bottom),
+            guidePaint,
+            dashLength: 5.0 / camera.zoom,
+            gapLength: 4.0 / camera.zoom,
+          );
+        } else {
+          _drawDashedLine(
+            canvas,
+            Offset(vp.left, guide.position),
+            Offset(vp.right, guide.position),
+            guidePaint,
+            dashLength: 5.0 / camera.zoom,
+            gapLength: 4.0 / camera.zoom,
+          );
+        }
+      }
+    }
     canvas.restore();
+  }
+
+  void _drawDashedLine(
+    Canvas canvas,
+    Offset p1,
+    Offset p2,
+    Paint paint, {
+    required double dashLength,
+    required double gapLength,
+  }) {
+    final dx = p2.dx - p1.dx;
+    final dy = p2.dy - p1.dy;
+    final distance = math.sqrt(dx * dx + dy * dy);
+    if (distance == 0) return;
+    final nx = dx / distance;
+    final ny = dy / distance;
+    var current = 0.0;
+    while (current < distance) {
+      final next = math.min(current + dashLength, distance);
+      canvas.drawLine(
+        Offset(p1.dx + nx * current, p1.dy + ny * current),
+        Offset(p1.dx + nx * next, p1.dy + ny * next),
+        paint,
+      );
+      current = next + gapLength;
+    }
   }
 
   void _grid(Canvas canvas, Size size) {
@@ -409,49 +479,131 @@ class OrbitCanvasPainter extends CustomPainter {
           ),
           Paint()..color = object == null ? colors.error : accent,
         );
-        if (camera.zoom > .25) {
+        final isCanvas = object?.typeId == 'orbit.canvas';
+        final typeLabel = isCanvas
+            ? 'CANVAS BOARD'
+            : (object?.typeId ?? 'Unresolved reference').toUpperCase();
+        _text(
+          canvas,
+          typeLabel,
+          Rect.fromLTWH(
+            bounds.left + 30,
+            bounds.top + 18,
+            math.max(1, bounds.width - 46),
+            18,
+          ),
+          color: isCanvas ? accent : colors.onSurfaceVariant,
+          size: 10,
+          weight: isCanvas ? FontWeight.w600 : null,
+          maxLines: 1,
+        );
+        _text(
+          canvas,
+          object?.title ?? 'Missing object',
+          Rect.fromLTWH(
+            bounds.left + 16,
+            bounds.top + 48,
+            math.max(1, bounds.width - 32),
+            48,
+          ),
+          color: colors.onSurface,
+          size: 17,
+          weight: FontWeight.w600,
+          maxLines: 2,
+        );
+        if (camera.zoom > .6 && bounds.height > 115) {
           _text(
             canvas,
-            (object?.typeId ?? 'Unresolved reference').toUpperCase(),
-            Rect.fromLTWH(
-              bounds.left + 30,
-              bounds.top + 18,
-              math.max(1, bounds.width - 46),
-              18,
-            ),
-            color: colors.onSurfaceVariant,
-            size: 10,
-            maxLines: 1,
-          );
-          _text(
-            canvas,
-            object?.title ?? 'Missing object',
+            object?.body.replaceAll(RegExp(r'[#*`\[\]]'), '') ??
+                element.objectId ??
+                '',
             Rect.fromLTWH(
               bounds.left + 16,
-              bounds.top + 48,
+              bounds.top + 103,
               math.max(1, bounds.width - 32),
-              48,
+              math.max(1, bounds.height - 119),
+            ),
+            color: colors.onSurfaceVariant,
+            size: 12,
+            maxLines: 4,
+          );
+        }
+      case 'section':
+        if (camera.zoom > .2) {
+          final title = element.text.isEmpty
+              ? 'SECTION'
+              : element.text.toUpperCase();
+          _text(
+            canvas,
+            title,
+            Rect.fromLTWH(bounds.left, bounds.top, bounds.width, 22),
+            color: accent,
+            size: 13,
+            weight: FontWeight.w700,
+            maxLines: 1,
+          );
+          final lineY = bounds.top + 25;
+          canvas.drawLine(
+            Offset(bounds.left, lineY),
+            Offset(bounds.right, lineY),
+            Paint()
+              ..color = accent.withValues(alpha: 0.45)
+              ..strokeWidth = 1.5,
+          );
+        }
+      case 'swatch':
+        final swatchCard = RRect.fromRectAndRadius(
+          bounds,
+          const Radius.circular(10),
+        );
+        canvas.drawRRect(
+          swatchCard,
+          Paint()..color = colors.surfaceContainerHigh,
+        );
+        canvas.drawRRect(
+          swatchCard,
+          Paint()
+            ..color = colors.outlineVariant.withValues(alpha: .4)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1,
+        );
+        final colorHeight = bounds.height * 0.62;
+        final colorFill = RRect.fromRectAndCorners(
+          Rect.fromLTWH(bounds.left, bounds.top, bounds.width, colorHeight),
+          topLeft: const Radius.circular(10),
+          topRight: const Radius.circular(10),
+        );
+        canvas.drawRRect(colorFill, Paint()..color = Color(element.color));
+        if (camera.zoom > .25) {
+          final hex =
+              '#${(element.color & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
+          _text(
+            canvas,
+            hex,
+            Rect.fromLTWH(
+              bounds.left + 10,
+              bounds.top + colorHeight + 8,
+              math.max(1, bounds.width - 20),
+              16,
             ),
             color: colors.onSurface,
-            size: 17,
+            size: 11,
             weight: FontWeight.w600,
-            maxLines: 2,
+            maxLines: 1,
           );
-          if (camera.zoom > .6 && bounds.height > 115) {
+          if (element.text.isNotEmpty) {
             _text(
               canvas,
-              object?.body.replaceAll(RegExp(r'[#*`\[\]]'), '') ??
-                  element.objectId ??
-                  '',
+              element.text,
               Rect.fromLTWH(
-                bounds.left + 16,
-                bounds.top + 103,
-                math.max(1, bounds.width - 32),
-                math.max(1, bounds.height - 119),
+                bounds.left + 10,
+                bounds.top + colorHeight + 26,
+                math.max(1, bounds.width - 20),
+                16,
               ),
               color: colors.onSurfaceVariant,
-              size: 12,
-              maxLines: 4,
+              size: 10,
+              maxLines: 1,
             );
           }
         }
@@ -501,5 +653,6 @@ class OrbitCanvasPainter extends CustomPainter {
       colors != oldDelegate.colors ||
       region != oldDelegate.region ||
       preview != oldDelegate.preview ||
-      editingId != oldDelegate.editingId;
+      editingId != oldDelegate.editingId ||
+      !listEquals(guides, oldDelegate.guides);
 }

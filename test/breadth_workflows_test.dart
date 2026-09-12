@@ -108,7 +108,7 @@ void main() {
         await c.flushAll();
       });
       await show(() => TasksView(controller: c));
-      await tester.tap(find.text('Today'));
+      await tester.tap(find.text('Today').first);
       await tester.pumpAndSettle();
       expect(find.text('Today task'), findsOneWidget);
       await tester.tap(find.text('Upcoming'));

@@ -53,6 +53,39 @@ class WorkspaceRepository {
     _folders = await (_store as WorkspaceFolderStore).listFolders();
   });
 
+  Future<void> deleteFolder(String folder) => _serial(() async {
+    _requireWritable();
+    await _verifyManifest();
+    if (folder == 'Notes' || !folder.startsWith('Notes/')) {
+      throw const WorkspaceFailure('Cannot remove the root Notes folder.');
+    }
+    final notesInFolder = _paths.entries
+        .where((e) => e.value == folder || e.value.startsWith('$folder/'))
+        .map((e) => e.key)
+        .toList();
+    final owned = _paths.values.toSet();
+    if ((await _store.listFiles()).any(
+      (path) => path.startsWith('$folder/') && !owned.contains(path),
+    )) {
+      throw const WorkspaceFailure(
+        'Move unrecognized files out before deleting this folder.',
+      );
+    }
+    for (final id in notesInFolder) {
+      final source = _paths[id]!;
+      await _moveNotes(source, 'Notes/${p.posix.basename(source)}');
+      final obj = _objects[id];
+      if (obj != null && !obj.isDeleted) {
+        await _save(obj.copyWith(deletedAt: DateTime.now().toUtc()));
+      }
+    }
+    if (_store is WorkspaceFolderStore) {
+      await (_store as WorkspaceFolderStore).deleteFolder(folder);
+      _folders = await (_store as WorkspaceFolderStore).listFolders();
+    }
+    await _refresh();
+  });
+
   Future<void> moveNote(String id, String folder) => _serial(() async {
     final source = _paths[id];
     if (source == null || !source.startsWith('Notes/')) {
@@ -501,6 +534,51 @@ class WorkspaceRepository {
   );
   Future<UniversalObject> restore(String id) =>
       _serial(() => _save(_requireObject(id).copyWith(clearDeletedAt: true)));
+
+  Future<void> deletePermanently(String id) => _serial(() async {
+    _requireWritable();
+    await _verifyManifest();
+    final object = _objects[id];
+    if (object == null) return;
+    final path = _paths[id];
+    if (path != null) {
+      await _store.deleteFile(path);
+    }
+    _objects.remove(id);
+    _paths.remove(id);
+    _sources.remove(id);
+    _hashes.remove(id);
+    if (_indexReady) {
+      try {
+        await _index.replaceAll(objects);
+      } on Object {
+        _indexReady = false;
+      }
+    }
+  });
+
+  Future<void> emptyTrash() => _serial(() async {
+    _requireWritable();
+    await _verifyManifest();
+    final trashed = _objects.values.where((o) => o.isDeleted).toList();
+    for (final object in trashed) {
+      final path = _paths[object.id];
+      if (path != null) {
+        await _store.deleteFile(path);
+      }
+      _objects.remove(object.id);
+      _paths.remove(object.id);
+      _sources.remove(object.id);
+      _hashes.remove(object.id);
+    }
+    if (_indexReady) {
+      try {
+        await _index.replaceAll(objects);
+      } on Object {
+        _indexReady = false;
+      }
+    }
+  });
 
   Future<List<UniversalObject>> search(String query) async {
     await _queue;

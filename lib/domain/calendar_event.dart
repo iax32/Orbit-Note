@@ -12,6 +12,51 @@ DateTime? parseCalendarDate(Object? value) {
   return date != null && calendarDate(date) == value ? date : null;
 }
 
+const _monthNames = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+String formatFriendlyDueDate(DateTime? date, {DateTime? now}) {
+  if (date == null) return '';
+  final current = now ?? DateTime.now();
+  final target = DateTime(date.year, date.month, date.day);
+  final today = DateTime(current.year, current.month, current.day);
+  final diff = target.difference(today).inDays;
+
+  if (diff == 0) return 'Today';
+  if (diff == 1) return 'Tomorrow';
+  if (diff == -1) return 'Yesterday';
+
+  final month = _monthNames[date.month - 1];
+  if (date.year == current.year) {
+    return '$month ${date.day}';
+  }
+  return '$month ${date.day}, ${date.year}';
+}
+
+bool isDueDateOverdue(
+  DateTime? date, {
+  bool isCompleted = false,
+  DateTime? now,
+}) {
+  if (date == null || isCompleted) return false;
+  final current = now ?? DateTime.now();
+  final target = DateTime(date.year, date.month, date.day);
+  final today = DateTime(current.year, current.month, current.day);
+  return target.isBefore(today);
+}
+
 /// A civil date is not a duration of 24 hours across daylight-saving changes.
 List<DateTime> calendarMonthDays(DateTime month) {
   final first = DateTime(month.year, month.month);

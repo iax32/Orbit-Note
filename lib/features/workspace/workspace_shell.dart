@@ -184,10 +184,23 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    child: Text(
+                      'ACTIONS',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ),
                   ListTile(
                     leading: const Icon(Icons.create_new_folder_outlined),
                     title: const Text('New Vault'),
+                    subtitle: const Text('Create a new local vault folder'),
                     onTap: () {
                       Navigator.pop(dialogContext);
                       newVault();
@@ -195,12 +208,32 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                   ),
                   ListTile(
                     leading: const Icon(Icons.folder_open),
-                    title: const Text('Open Folder'),
+                    title: const Text('Open Folder as Vault'),
+                    subtitle: const Text(
+                      'Open an existing directory on your device',
+                    ),
                     onTap: () {
                       Navigator.pop(dialogContext);
                       openWorkspace();
                     },
                   ),
+                  const Divider(height: 24),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    child: Text(
+                      'YOUR VAULTS',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ),
+                  if (recent.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text('No recent vaults found.'),
+                    ),
                   for (final path in recent)
                     ListTile(
                       shape: RoundedRectangleBorder(
@@ -227,6 +260,21 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                       },
                     ),
                   if (c.hasWorkspace) ...[
+                    const Divider(height: 24),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 6,
+                      ),
+                      child: Text(
+                        'MANAGE CURRENT VAULT',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ),
                     ListTile(
                       leading: const Icon(Icons.edit_outlined),
                       title: const Text('Rename current Vault'),
@@ -266,6 +314,109 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     } catch (e) {
       message('Vault list is unavailable: $e');
     }
+  }
+
+  Future<void> showHelpDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => OrbitDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.help_outline, size: 20),
+            SizedBox(width: 8),
+            Text('Orbit Note Help & Shortcuts'),
+          ],
+        ),
+        content: SizedBox(
+          width: 480,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Orbit Note is a local-first personal knowledge OS. Your notes, canvases, and attachments live directly in your local vault folder as Markdown and open files.',
+                  style: TextStyle(fontSize: 13, height: 1.4),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'KEYBOARD SHORTCUTS',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _shortcutRow('Ctrl + P', 'Command palette & quick switcher'),
+                _shortcutRow('Ctrl + B', 'Toggle sidebar'),
+                _shortcutRow('Ctrl + Tab', 'Cycle next tab'),
+                _shortcutRow('Ctrl + Shift + Tab', 'Cycle previous tab'),
+                _shortcutRow('Ctrl + Shift + T', 'Reopen last closed tab'),
+                const SizedBox(height: 18),
+                const Text(
+                  'CANVAS & EDITOR',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _shortcutRow('Space + Drag', 'Pan canvas scene'),
+                _shortcutRow('Scroll Wheel', 'Zoom canvas in / out'),
+                _shortcutRow('[[Note Name]]', 'Wiki-link to another note'),
+                _shortcutRow(
+                  '::card:: / ::callout::',
+                  'Milanote & Notion style blocks',
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _shortcutRow(String shortcut, String description) {
+    final colors = OrbitColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: colors.raised,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: colors.border),
+            ),
+            child: Text(
+              shortcut,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: colors.text,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              description,
+              style: TextStyle(fontSize: 12, color: colors.subtle),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> restoreBackup() async {
@@ -586,6 +737,26 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     if (result != null) c.edit(object.id, title: result);
   }
 
+  Future<void> revealObjectInExplorer(String id) async {
+    try {
+      final relPath = c.repository.objectPath(id);
+      if (relPath == null) {
+        message('File path not found for this object.');
+        return;
+      }
+      final opened = await openAttachment(
+        c.repository.location,
+        relPath,
+        reveal: true,
+      );
+      if (!opened) {
+        message('Could not reveal file in explorer.');
+      }
+    } catch (e) {
+      message('Could not reveal file: $e');
+    }
+  }
+
   Future<void> dropFiles(DropDoneDetails details) async {
     final workspaceId = c.repository.workspaceId;
     final target = c.find(c.session.activeId);
@@ -761,9 +932,12 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
           LogicalKeyboardKey.keyT,
           control: true,
           shift: true,
-        ): () {
-          if (c.lastClosed != null) c.openObject(c.lastClosed!);
-        },
+        ): () =>
+            c.reopenClosedTab(),
+        const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true): () =>
+            c.navigateBack(),
+        const SingleActivator(LogicalKeyboardKey.arrowRight, alt: true): () =>
+            c.navigateForward(),
         const SingleActivator(
           LogicalKeyboardKey.keyB,
           control: true,
@@ -1134,6 +1308,53 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                   ),
                 ),
                 const Spacer(),
+                if (destination == OrbitDestination.notes)
+                  IconButton(
+                    tooltip: c.showAttachments
+                        ? 'Hide files & PDFs'
+                        : 'Show files & PDFs',
+                    onPressed: c.toggleShowAttachments,
+                    icon: Icon(
+                      c.showAttachments
+                          ? Icons.attachment
+                          : Icons.attachment_outlined,
+                      size: 16,
+                      color: c.showAttachments ? colors.accent : colors.subtle,
+                    ),
+                  ),
+                if (destination == OrbitDestination.trash)
+                  TextButton.icon(
+                    onPressed: objects.isEmpty
+                        ? null
+                        : () async {
+                            final confirmed = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => OrbitDialog(
+                                title: const Text('Empty Trash'),
+                                content: const Text(
+                                  'Permanently delete all items in Trash? This cannot be undone.',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    child: const Text('Empty Trash'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirmed == true) {
+                              await c.emptyTrash();
+                            }
+                          },
+                    icon: const Icon(Icons.delete_sweep_outlined, size: 16),
+                    label: const Text('Empty', style: TextStyle(fontSize: 11)),
+                  ),
                 if (destination != OrbitDestination.trash)
                   IconButton(
                     tooltip: 'Create ${type.replaceFirst('orbit.', '')}',
@@ -1224,28 +1445,75 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                           trailing: PopupMenuButton<String>(
                             tooltip: 'Object actions',
                             icon: const Icon(Icons.more_horiz, size: 16),
-                            onSelected: (v) {
+                            onSelected: (v) async {
                               if (v == 'trash') c.trash(o.id);
                               if (v == 'restore') c.restore(o.id);
+                              if (v == 'delete_forever') {
+                                final confirmed = await showDialog<bool>(
+                                  context: context,
+                                  builder: (context) => OrbitDialog(
+                                    title: const Text('Delete permanently'),
+                                    content: Text(
+                                      'Permanently delete “${o.title.isEmpty ? 'Untitled' : o.title}”? This cannot be undone.',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, false),
+                                        child: const Text('Cancel'),
+                                      ),
+                                      FilledButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, true),
+                                        child: const Text('Delete'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (confirmed == true) {
+                                  await c.deletePermanently(o.id);
+                                }
+                              }
+                              if (v == 'rename') {
+                                renameObject(o);
+                              }
                               if (v == 'split') {
                                 c.openObject(o.id, secondary: true);
+                              }
+                              if (v == 'reveal') {
+                                revealObjectInExplorer(o.id);
                               }
                             },
                             itemBuilder: (_) => [
                               if (!o.isDeleted) ...[
                                 const PopupMenuItem(
+                                  value: 'rename',
+                                  child: Text('Rename'),
+                                ),
+                                const PopupMenuItem(
                                   value: 'split',
                                   child: Text('Open beside'),
                                 ),
+                                if (c.repository.objectPath(o.id) != null &&
+                                    !kIsWeb)
+                                  const PopupMenuItem(
+                                    value: 'reveal',
+                                    child: Text('Reveal in File Explorer'),
+                                  ),
                                 const PopupMenuItem(
                                   value: 'trash',
                                   child: Text('Move to Trash'),
                                 ),
-                              ] else
+                              ] else ...[
                                 const PopupMenuItem(
                                   value: 'restore',
                                   child: Text('Restore'),
                                 ),
+                                const PopupMenuItem(
+                                  value: 'delete_forever',
+                                  child: Text('Delete permanently'),
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -1253,12 +1521,74 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                     },
                   ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: Text(
-              '${c.activeObjects.length} objects · local workspace',
-              style: TextStyle(color: colors.subtle, fontSize: 10),
+          _buildVaultSwitcherFooter(colors),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVaultSwitcherFooter(OrbitColors colors) {
+    return Container(
+      height: 48,
+      decoration: BoxDecoration(
+        color: colors.panel,
+        border: Border(top: BorderSide(color: colors.divider)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Tooltip(
+              message:
+                  '${c.repository.name}\n${c.activeObjects.length} objects · Click to switch vault',
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(OrbitRadius.control),
+                  onTap: switchVault,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.unfold_more, size: 18, color: colors.subtle),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            c.repository.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: colors.text,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
+          ),
+          IconButton(
+            tooltip: 'Help & shortcuts',
+            icon: Icon(Icons.help_outline, size: 18, color: colors.subtle),
+            splashRadius: 18,
+            constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+            padding: EdgeInsets.zero,
+            onPressed: showHelpDialog,
+          ),
+          IconButton(
+            tooltip: 'Settings',
+            icon: Icon(Icons.settings_outlined, size: 18, color: colors.subtle),
+            splashRadius: 18,
+            constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+            padding: EdgeInsets.zero,
+            onPressed: () => c.navigate(OrbitDestination.settings),
           ),
         ],
       ),
@@ -1271,7 +1601,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
         children: [
-          if (wide)
+          if (wide && !sidebar)
             Tooltip(
               message: 'Switch Vault',
               child: ConstrainedBox(
@@ -1307,6 +1637,19 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                   )
                   .toList(),
             ),
+          IconButton(
+            tooltip: 'Back (Alt+Left)',
+            onPressed: c.canNavigateBack ? c.navigateBack : null,
+            icon: const Icon(Icons.arrow_back, size: 18),
+            splashRadius: 16,
+          ),
+          IconButton(
+            tooltip: 'Forward (Alt+Right)',
+            onPressed: c.canNavigateForward ? c.navigateForward : null,
+            icon: const Icon(Icons.arrow_forward, size: 18),
+            splashRadius: 16,
+          ),
+          const SizedBox(width: 4),
           Expanded(
             child: Text(
               destinations
@@ -1361,103 +1704,304 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       ),
     ),
   );
-  Widget tabs() => SizedBox(
-    height: 42,
-    child: ReorderableListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      scrollDirection: Axis.horizontal,
-      buildDefaultDragHandles: false,
-      onReorderItem: c.reorderTab,
-      itemCount: c.session.tabs.length,
-      itemBuilder: (context, index) {
-        final id = c.session.tabs[index], object = c.find(id);
-        final selected = c.session.activeId == id;
-        return ReorderableDragStartListener(
-          key: ValueKey(id),
-          index: index,
-          child: Listener(
-            onPointerDown: (event) {
-              if (event.buttons == 4) c.closeTab(id);
-            },
-            child: Material(
-              color: selected
-                  ? OrbitColors.of(context).raised
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(OrbitRadius.control),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(OrbitRadius.control),
-                onTap: () {
-                  _secondaryFocused = false;
-                  c.openObject(id);
+  Future<void> _showTabContextMenu(
+    BuildContext context,
+    String id,
+    Offset globalPosition,
+  ) async {
+    final overlay =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final object = c.find(id);
+    final tabIndex = c.session.tabs.indexOf(id);
+    final hasTabsToRight =
+        tabIndex >= 0 && tabIndex < c.session.tabs.length - 1;
+    final hasOtherTabs = c.session.tabs.length > 1;
+    final relPath = c.repository.objectPath(id);
+    final canReveal = relPath != null && !kIsWeb;
+    final isPinned = c.isPinned(id);
+
+    final action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 1, 1),
+        Offset.zero & overlay.size,
+      ),
+      items: [
+        PopupMenuItem(
+          value: isPinned ? 'unpin' : 'pin',
+          child: Row(
+            children: [
+              Icon(
+                isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                size: 16,
+              ),
+              const SizedBox(width: 8),
+              Text(isPinned ? 'Unpin Tab' : 'Pin Tab'),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
+        const PopupMenuItem(
+          value: 'close',
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Close Tab'),
+              SizedBox(width: 16),
+              Text(
+                'Ctrl+W',
+                style: TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+        if (hasOtherTabs)
+          const PopupMenuItem(
+            value: 'close_others',
+            child: Text('Close Other Tabs'),
+          ),
+        if (hasTabsToRight)
+          const PopupMenuItem(
+            value: 'close_right',
+            child: Text('Close Tabs to the Right'),
+          ),
+        const PopupMenuDivider(),
+        const PopupMenuItem(value: 'copy_ref', child: Text('Copy Reference')),
+        if (canReveal)
+          const PopupMenuItem(
+            value: 'reveal',
+            child: Text('Reveal in File Explorer'),
+          ),
+      ],
+    );
+
+    if (action == null || !mounted) return;
+    switch (action) {
+      case 'pin':
+        c.pinTab(id);
+      case 'unpin':
+        c.unpinTab(id);
+      case 'close':
+        c.closeTab(id);
+      case 'close_others':
+        c.closeOtherTabs(id);
+      case 'close_right':
+        c.closeTabsToTheRight(id);
+      case 'copy_ref':
+        if (object != null) {
+          await Clipboard.setData(
+            ClipboardData(
+              text: ObjectReference(object.id).markdown(object.title),
+            ),
+          );
+        }
+      case 'reveal':
+        revealObjectInExplorer(id);
+    }
+  }
+
+  Future<void> _showEmptyTabBarContextMenu(
+    BuildContext context,
+    Offset globalPosition,
+  ) async {
+    final overlay =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final canReopen = c.session.closedTabs.isNotEmpty || c.lastClosed != null;
+
+    final action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 1, 1),
+        Offset.zero & overlay.size,
+      ),
+      items: [
+        PopupMenuItem(
+          enabled: canReopen,
+          value: 'reopen',
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Reopen Closed Tab'),
+              SizedBox(width: 16),
+              Text(
+                'Ctrl+Shift+T',
+                style: TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuItem(value: 'new_note', child: Text('New Note')),
+      ],
+    );
+
+    if (action == null || !mounted) return;
+    if (action == 'reopen') {
+      c.reopenClosedTab();
+    } else if (action == 'new_note') {
+      c.create('orbit.note');
+    }
+  }
+
+  Widget tabs() {
+    final pinnedCount = c.session.tabs.where(c.isPinned).length;
+    return SizedBox(
+      height: 42,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onSecondaryTapDown: (details) =>
+            _showEmptyTabBarContextMenu(context, details.globalPosition),
+        child: ReorderableListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          scrollDirection: Axis.horizontal,
+          buildDefaultDragHandles: false,
+          onReorderItem: c.reorderTab,
+          itemCount: c.session.tabs.length,
+          itemBuilder: (context, index) {
+            final id = c.session.tabs[index], object = c.find(id);
+            final selected = c.session.activeId == id;
+            final isPinned = c.isPinned(id);
+            final isLastPinned =
+                isPinned &&
+                index == pinnedCount - 1 &&
+                pinnedCount < c.session.tabs.length;
+            final tabWidget = ReorderableDragStartListener(
+              key: ValueKey(id),
+              index: index,
+              child: Listener(
+                onPointerDown: (event) {
+                  if (event.buttons == 4) c.closeTab(id);
                 },
-                child: AnimatedContainer(
-                  duration: OrbitMotionScope.duration(
-                    context,
-                    OrbitMotion.micro,
-                  ),
-                  curve: OrbitMotion.ease,
-                  constraints: const BoxConstraints(maxWidth: 220),
-                  padding: const EdgeInsets.only(left: 14),
-                  decoration: BoxDecoration(
+                child: Material(
+                  color: selected
+                      ? OrbitColors.of(context).raised
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(OrbitRadius.control),
+                  child: InkWell(
                     borderRadius: BorderRadius.circular(OrbitRadius.control),
-                    border: Border.all(
-                      color: selected
-                          ? OrbitColors.of(context).border
-                          : Colors.transparent,
+                    onTap: () {
+                      _secondaryFocused = false;
+                      c.openObject(id);
+                    },
+                    onSecondaryTapDown: (details) => _showTabContextMenu(
+                      context,
+                      id,
+                      details.globalPosition,
                     ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        objectIcon(object?.typeId ?? ''),
-                        size: 14,
-                        color: selected
-                            ? OrbitColors.of(context).accentHover
-                            : OrbitColors.of(context).subtle,
+                    child: AnimatedContainer(
+                      duration: OrbitMotionScope.duration(
+                        context,
+                        OrbitMotion.micro,
                       ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          object?.title ?? 'Missing object',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: selected
-                                ? FontWeight.w600
-                                : FontWeight.w400,
-                            color: selected
-                                ? OrbitColors.of(context).text
-                                : OrbitColors.of(context).subtle,
+                      curve: OrbitMotion.ease,
+                      constraints: BoxConstraints(
+                        maxWidth: isPinned ? 160 : 220,
+                      ),
+                      padding: const EdgeInsets.only(left: 10),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(
+                          OrbitRadius.control,
+                        ),
+                        border: Border.all(
+                          color: selected
+                              ? OrbitColors.of(context).border
+                              : Colors.transparent,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isPinned)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: Icon(
+                                Icons.push_pin,
+                                size: 12,
+                                color: selected
+                                    ? OrbitColors.of(context).accentHover
+                                    : OrbitColors.of(context).subtle,
+                              ),
+                            ),
+                          if (object?.properties['icon'] != null &&
+                              object!.properties['icon'].toString().isNotEmpty)
+                            Text(
+                              object.properties['icon'].toString(),
+                              style: const TextStyle(fontSize: 13),
+                            )
+                          else
+                            Icon(
+                              objectIcon(object?.typeId ?? ''),
+                              size: 14,
+                              color: selected
+                                  ? OrbitColors.of(context).accentHover
+                                  : OrbitColors.of(context).subtle,
+                            ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              object?.title ?? 'Missing object',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: selected
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
+                                color: selected
+                                    ? OrbitColors.of(context).text
+                                    : OrbitColors.of(context).subtle,
+                              ),
+                            ),
                           ),
-                        ),
+                          if (c.dirty.contains(id))
+                            const Padding(
+                              padding: EdgeInsets.only(left: 6),
+                              child: Icon(Icons.circle, size: 5),
+                            ),
+                          IconButton(
+                            tooltip: isPinned ? 'Unpin tab' : 'Close tab',
+                            onPressed: () =>
+                                isPinned ? c.unpinTab(id) : c.closeTab(id),
+                            icon: Icon(
+                              isPinned ? Icons.push_pin_outlined : Icons.close,
+                              size: 12,
+                            ),
+                            constraints: const BoxConstraints.tightFor(
+                              width: 28,
+                              height: 28,
+                            ),
+                            padding: const EdgeInsets.all(4),
+                            splashRadius: 14,
+                          ),
+                        ],
                       ),
-                      if (c.dirty.contains(id))
-                        const Padding(
-                          padding: EdgeInsets.only(left: 6),
-                          child: Icon(Icons.circle, size: 5),
-                        ),
-                      IconButton(
-                        tooltip: 'Close tab',
-                        onPressed: () => c.closeTab(id),
-                        icon: const Icon(Icons.close, size: 12),
-                        constraints: const BoxConstraints.tightFor(
-                          width: 30,
-                          height: 30,
-                        ),
-                        padding: EdgeInsets.zero,
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
-        );
-      },
-    ),
-  );
+            );
+
+            if (isLastPinned) {
+              return Row(
+                key: ValueKey('pinned-container-$id'),
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  tabWidget,
+                  Container(
+                    width: 1,
+                    height: 18,
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    color: OrbitColors.of(context).border,
+                  ),
+                ],
+              );
+            }
+            return tabWidget;
+          },
+        ),
+      ),
+    );
+  }
+
   Widget content() {
     final destination = c.session.destination,
         object = c.find(c.session.activeId);
@@ -1636,8 +2180,32 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         onOpenAttachment: (raw) =>
             openAttachmentReference(resolveNotePath(object.id, raw)),
         onOpenExternalLink: (v) => launchUrl(Uri.parse(v)),
+        onCreateTask: (title) async =>
+            await c.create('orbit.task', title: title),
+        icon: object.properties['icon'] as String?,
+        cover: object.properties['cover'] as String?,
+        onIconChanged: (v) {
+          final next = Map<String, dynamic>.from(object.properties);
+          if (v == null) {
+            next.remove('icon');
+          } else {
+            next['icon'] = v;
+          }
+          c.edit(object.id, properties: next);
+        },
+        onCoverChanged: (v) {
+          final next = Map<String, dynamic>.from(object.properties);
+          if (v == null) {
+            next.remove('cover');
+          } else {
+            next['cover'] = v;
+          }
+          c.edit(object.id, properties: next);
+        },
       ),
       'orbit.canvas' => CanvasEditor(
+        title: object.title,
+        onTitleChanged: (v) => c.edit(object.id, title: v),
         onOpenExternal: (uri) => launchUrl(uri),
         key: ValueKey('$pane:${object.id}'),
         imageLoader: c.repository.readAttachment,
@@ -1658,6 +2226,26 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
             )
             .toList(),
         onOpenObject: c.openObject,
+        breadcrumbs: () {
+          final parents = c.activeObjects
+              .where((o) => o.typeId == 'orbit.canvas' && o.id != object.id)
+              .where((o) {
+                final elements = o.data['elements'];
+                if (elements is List) {
+                  return elements.any(
+                    (e) => e is Map && e['objectId'] == object.id,
+                  );
+                }
+                return false;
+              })
+              .toList();
+          if (parents.isEmpty) return null;
+          final parent = parents.first;
+          return [
+            CanvasBreadcrumb(id: parent.id, title: parent.title),
+            CanvasBreadcrumb(id: object.id, title: object.title),
+          ];
+        }(),
         camera: c.session.cameras[object.id],
         onCameraChanged: (v) {
           c.session.cameras = {...c.session.cameras, object.id: v};
@@ -1684,6 +2272,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
           checksum: object.properties['checksum'] as String?,
           formValues:
               object.properties['pdfFormDraft'] is Map &&
+                  (object.properties['pdfFormDraft'] as Map)['version'] == 1 &&
                   (object.properties['pdfFormDraft'] as Map)['checksum'] ==
                       object.properties['checksum'] &&
                   (object.properties['pdfFormDraft'] as Map)['values'] is Map
@@ -1691,12 +2280,14 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                   (object.properties['pdfFormDraft'] as Map)['values'] as Map,
                 )
               : const {},
-          onFormChanged: (key, value) => c.savePdfFormField(
-            object.id,
-            object.properties['checksum'] as String,
-            key,
-            value,
-          ),
+          onFormChanged: kIsWeb
+              ? null
+              : (key, value) => c.savePdfFormField(
+                  object.id,
+                  object.properties['checksum'] as String,
+                  key,
+                  value,
+                ),
           onSaveFilledCopy: (bytes) async =>
               await importBytes(
                 '${object.title.replaceFirst(RegExp(r'\.pdf$', caseSensitive: false), '')} · filled.pdf',
@@ -1948,38 +2539,73 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     );
   }
 
-  Widget statusBar() => Container(
-    height: 29,
-    color: OrbitColors.of(context).panel,
-    padding: const EdgeInsets.symmetric(horizontal: 14),
-    child: Row(
-      children: [
-        Icon(
-          c.failures.isEmpty ? Icons.check_circle_outline : Icons.error_outline,
-          size: 12,
-          color: c.failures.isEmpty
-              ? OrbitColors.of(context).success
-              : Theme.of(context).colorScheme.error,
-        ),
-        const SizedBox(width: 7),
-        Expanded(
-          child: Text(
-            c.saveLabel,
+  Widget statusBar() {
+    final activeObject = c.find(c.session.activeId);
+    final isNote = activeObject?.typeId == 'orbit.note';
+    String? noteStats;
+    if (isNote && activeObject != null) {
+      final body = activeObject.body;
+      final characters = body.length;
+      final words = body.trim().isEmpty
+          ? 0
+          : body.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+      final readingMinutes = (words / 200).ceil();
+      final wordsLabel = '$words ${words == 1 ? 'word' : 'words'}';
+      final charsLabel =
+          '$characters ${characters == 1 ? 'character' : 'characters'}';
+      final readLabel = '$readingMinutes min read';
+      noteStats = '$wordsLabel · $charsLabel · $readLabel';
+    }
+
+    return Container(
+      height: 29,
+      color: OrbitColors.of(context).panel,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Row(
+        children: [
+          Icon(
+            c.failures.isEmpty
+                ? Icons.check_circle_outline
+                : Icons.error_outline,
+            size: 12,
+            color: c.failures.isEmpty
+                ? OrbitColors.of(context).success
+                : Theme.of(context).colorScheme.error,
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              c.saveLabel,
+              style: TextStyle(
+                fontSize: 10,
+                color: OrbitColors.of(context).subtle,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (noteStats != null) ...[
+            Text(
+              noteStats,
+              key: const ValueKey('note-live-statistics'),
+              style: TextStyle(
+                fontSize: 10,
+                color: OrbitColors.of(context).subtle,
+              ),
+            ),
+            const SizedBox(width: 14),
+          ],
+          Text(
+            c.repository.isBrowser ? 'Browser storage' : 'Local workspace',
             style: TextStyle(
               fontSize: 10,
               color: OrbitColors.of(context).subtle,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
           ),
-        ),
-        Text(
-          c.repository.isBrowser ? 'Browser storage' : 'Local workspace',
-          style: TextStyle(fontSize: 10, color: OrbitColors.of(context).subtle),
-        ),
-        const SizedBox(width: 10),
-        const Icon(Icons.cloud_off_outlined, size: 12),
-      ],
-    ),
-  );
+          const SizedBox(width: 10),
+          const Icon(Icons.cloud_off_outlined, size: 12),
+        ],
+      ),
+    );
+  }
 }

@@ -251,3 +251,25 @@ permitted selected quotes retain provenance. Highlight title/quote/comment filte
 is session-local. No new data format or architecture decision. GAME-01 project
 presets, precise annotation-region return and source re-anchoring remain planned.
 This PDF priority supersedes the earlier Rich insertion-menu recommendation.
+
+## PDF work mode — 2026-09-11
+
+Implemented ordinary AcroForm text/checkbox editing with persistent Orbit drafts
+and separate filled PDF copies. Comfort reading automatically uses a narrow text
+view below 600 logical pixels, supports adjustable type and Original page return.
+The form adapter uses isolated in-memory copies on PDFium's worker (ADR-0015).
+Native pointer interaction, filled-copy readback, draft save/reopen/failure safety,
+and 390×844 reading layout have regression coverage. Physical phone acceptance,
+radios/dropdowns, XFA/signed/protected forms, OCR and semantic reflow remain deferred.
+
+The resumed run also fixed compile/test mismatches in the pre-existing Task/block/
+folder changes. Folder removal now preserves trashed note files and refuses unknown
+files; block moves restore keyboard focus for undo. No new cloud/plugin/AI work.
+Final complete suite: 206 tests passed; analyzer clean; formatting checked for 129
+Dart files. Current logs: .local/pdf-work-tests-final.log and .local/pdf-work-build.log.
+Earlier validation tables above are historical; Windows build result follows here.
+
+Windows release build passed in 59.3 seconds. Executable:
+`build/windows/x64/runner/Release/orbit_note.exe` (keep the Release folder together).
+Documentation links and git diff --check pass. No physical phone build/test or
+interactive Windows smoke launch was performed in this resumed validation.

@@ -32,12 +32,17 @@ class SessionState {
     this.noteViews = const {},
     this.noteSort = 'modified-desc',
     this.collapsedFolders = const [],
+    this.showAttachments = false,
+    this.pinnedTabs = const [],
+    this.closedTabs = const [],
   });
   OrbitDestination destination;
   List<String> tabs;
+  List<String> pinnedTabs;
+  List<String> closedTabs;
   String? activeId, secondaryId;
   List<String> recent;
-  bool sidebarVisible, inspectorVisible, compact;
+  bool sidebarVisible, inspectorVisible, compact, showAttachments;
   double sidebarWidth, fontSize, contentWidth;
   String motion;
   String splitAxis;
@@ -136,12 +141,17 @@ class SessionState {
           ].contains(json['noteSort'])
           ? json['noteSort'] as String
           : 'modified-desc',
+      showAttachments: json['showAttachments'] == true,
+      pinnedTabs: ids('pinnedTabs'),
+      closedTabs: ids('closedTabs'),
     );
   }
   Map<String, dynamic> toJson() => {
     'version': 1,
     'destination': destination.name,
     'tabs': tabs,
+    'pinnedTabs': pinnedTabs,
+    'closedTabs': closedTabs,
     'activeId': activeId,
     'secondaryId': secondaryId,
     'recent': recent,
@@ -160,5 +170,6 @@ class SessionState {
     'noteViews': noteViews,
     'noteSort': noteSort,
     'collapsedFolders': collapsedFolders,
+    'showAttachments': showAttachments,
   };
 }

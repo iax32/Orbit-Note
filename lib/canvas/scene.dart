@@ -16,6 +16,8 @@ const canvasElementTypes = {
   'frame',
   'column',
   'link',
+  'section',
+  'swatch',
 };
 
 class CanvasElement {
@@ -159,11 +161,16 @@ class CanvasScene {
     return result;
   }
 
-  CanvasElement? hit(CanvasPoint point, {double tolerance = 5}) {
+  CanvasElement? hit(
+    CanvasPoint point, {
+    double tolerance = 5,
+    bool includeLocked = false,
+  }) {
     for (final element in query(
       CanvasBounds(point.x, point.y, 0, 0).inflate(tolerance),
     ).reversed) {
-      if (!element.locked && element.hit(point, tolerance: tolerance)) {
+      if ((includeLocked || !element.locked) &&
+          element.hit(point, tolerance: tolerance)) {
         return element;
       }
     }

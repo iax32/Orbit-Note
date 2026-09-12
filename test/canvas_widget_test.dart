@@ -138,4 +138,50 @@ void main() {
     expect(images.single['height'], 160);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('displays canvas title and allows renaming canvas', (
+    tester,
+  ) async {
+    String currentTitle = 'Initial Board Name';
+    String? changedTitle;
+    final data = {'schemaVersion': 1, 'elements': <dynamic>[]};
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: orbitDarkTheme(),
+        home: Scaffold(
+          body: CanvasEditor(
+            canvasId: 'board-1',
+            title: currentTitle,
+            onTitleChanged: (val) => changedTitle = val,
+            data: data,
+            onChanged: (_) {},
+            objects: const [],
+            onOpenObject: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    // Verify title is rendered in the canvas title field
+    final titleFinder = find.byKey(const ValueKey('canvas-title-field'));
+    expect(titleFinder, findsOneWidget);
+    final field = tester.widget<TextField>(titleFinder);
+    expect(field.controller?.text, 'Initial Board Name');
+
+    // Tap rename button
+    final renameButton = find.byTooltip('Rename canvas');
+    expect(renameButton, findsOneWidget);
+    await tester.tap(renameButton);
+    await tester.pumpAndSettle();
+
+    // Verify typing updates title via onTitleChanged
+    await tester.enterText(titleFinder, 'My Architecture Map');
+    await tester.pump();
+    expect(changedTitle, 'My Architecture Map');
+
+    // Submit title
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+  });
 }

@@ -55,17 +55,21 @@ Future<bool> initPdfTesting() async {
 }
 
 /// A real two-page PDF with extractable text; no downloaded sample or generator.
-Uint8List researchPdf() {
-  const a = 'BT /F1 18 Tf 40 200 Td (Orbit research page one) Tj ET';
+Uint8List researchPdf({bool illustrated = false}) {
+  final a =
+      'BT /F1 18 Tf 40 200 Td (Orbit research page one) Tj ET'
+      '${illustrated ? ' q 40 0 0 40 340 100 cm /Im1 Do Q 40 40 280 80 re S 40 80 m 320 80 l S 180 40 m 180 120 l S' : ''}';
   const b = 'BT /F1 18 Tf 40 200 Td (Orbit research page two) Tj ET';
   final objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Resources << /Font << /F1 4 0 R >> ${illustrated ? '/XObject << /Im1 8 0 R >>' : ''} >> /Contents 5 0 R >>',
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
     '<< /Length ${a.length} >>\nstream\n$a\nendstream',
     '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Resources << /Font << /F1 4 0 R >> >> /Contents 7 0 R >>',
     '<< /Length ${b.length} >>\nstream\n$b\nendstream',
+    if (illustrated)
+      '<< /Type /XObject /Subtype /Image /Width 2 /Height 2 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /ASCIIHexDecode /Length 25 >>\nstream\nff000000ff000000ffffffff>\nendstream',
   ];
   final pdf = StringBuffer('%PDF-1.4\n');
   final offsets = <int>[0];

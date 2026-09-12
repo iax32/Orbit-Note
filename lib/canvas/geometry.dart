@@ -55,6 +55,23 @@ class CanvasBounds {
   );
 }
 
+class CanvasGuideLine {
+  const CanvasGuideLine({required this.isVertical, required this.position});
+  final bool isVertical;
+  final double position;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CanvasGuideLine &&
+          runtimeType == other.runtimeType &&
+          isVertical == other.isVertical &&
+          position == other.position;
+
+  @override
+  int get hashCode => Object.hash(isVertical, position);
+}
+
 class CanvasCamera {
   const CanvasCamera({this.x = 0, this.y = 0, this.zoom = 1});
   factory CanvasCamera.fromJson(Map<String, dynamic>? data) => CanvasCamera(

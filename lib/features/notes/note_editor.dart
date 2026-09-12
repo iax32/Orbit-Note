@@ -42,6 +42,11 @@ class NoteEditor extends StatefulWidget {
     this.onViewStateChanged,
     this.linkBindings = const {},
     this.onClosePane,
+    this.onCreateTask,
+    this.icon,
+    this.cover,
+    this.onIconChanged,
+    this.onCoverChanged,
   });
 
   final String noteId;
@@ -66,6 +71,11 @@ class NoteEditor extends StatefulWidget {
   final Map<String, String> linkBindings;
   final VoidCallback? onClosePane;
   final ValueChanged<Map<String, dynamic>>? onViewStateChanged;
+  final Future<void> Function(String title)? onCreateTask;
+  final String? icon;
+  final String? cover;
+  final ValueChanged<String?>? onIconChanged;
+  final ValueChanged<String?>? onCoverChanged;
 
   @override
   State<NoteEditor> createState() => _NoteEditorState();
@@ -598,6 +608,240 @@ class _NoteEditorState extends State<NoteEditor> {
     return KeyEventResult.ignored;
   }
 
+  static const _coverPresets = [
+    (
+      'gradient:violet',
+      'Violet Aurora',
+      [Color(0xFF8B7CF6), Color(0xFF6366F1), Color(0xFF4C1D95)],
+    ),
+    (
+      'gradient:sunset',
+      'Sunset Glow',
+      [Color(0xFFF97316), Color(0xFFEC4899), Color(0xFF8B5CF6)],
+    ),
+    (
+      'gradient:ocean',
+      'Ocean Deep',
+      [Color(0xFF06B6D4), Color(0xFF3B82F6), Color(0xFF1E3A8A)],
+    ),
+    (
+      'gradient:forest',
+      'Forest Emerald',
+      [Color(0xFF10B981), Color(0xFF059669), Color(0xFF064E3B)],
+    ),
+    (
+      'gradient:amber',
+      'Amber Horizon',
+      [Color(0xFFF59E0B), Color(0xFFD97706), Color(0xFF78350F)],
+    ),
+    (
+      'gradient:graphite',
+      'Graphite Sleek',
+      [Color(0xFF374151), Color(0xFF1F2937), Color(0xFF111827)],
+    ),
+  ];
+
+  static const _emojiPresets = [
+    '📝',
+    '💡',
+    '🚀',
+    '🎯',
+    '📚',
+    '🔬',
+    '🎨',
+    '📌',
+    '⚙️',
+    '📁',
+    '🌟',
+    '🏷️',
+    '🧠',
+    '💻',
+    '⚡',
+    '☕',
+    '📅',
+    '📊',
+    '🔍',
+    '💎',
+    '🔑',
+    '💬',
+    '📖',
+    '✨',
+  ];
+
+  void _showIconPicker() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Choose Note Icon'),
+        content: SizedBox(
+          width: 300,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final emoji in _emojiPresets)
+                InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    widget.onIconChanged?.call(emoji);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: widget.icon == emoji
+                          ? Theme.of(context).colorScheme.primaryContainer
+                          : null,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(emoji, style: const TextStyle(fontSize: 22)),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          if (widget.icon != null)
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                widget.onIconChanged?.call(null);
+              },
+              child: const Text('Remove icon'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCoverPicker() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Choose Note Cover'),
+        content: SizedBox(
+          width: 320,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final preset in _coverPresets)
+                  ListTile(
+                    leading: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: preset.$3),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ),
+                    title: Text(preset.$2),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      widget.onCoverChanged?.call(preset.$1);
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          if (widget.cover != null)
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                widget.onCoverChanged?.call(null);
+              },
+              child: const Text('Remove cover'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCoverBanner() {
+    if (widget.cover == null || widget.cover!.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final match = _coverPresets.where((p) => p.$1 == widget.cover);
+    final colors = match.isNotEmpty
+        ? match.first.$3
+        : const [Color(0xFF374151), Color(0xFF1F2937)];
+    return Container(
+      height: 120,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: colors,
+        ),
+      ),
+      alignment: Alignment.bottomRight,
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FilledButton.tonalIcon(
+            onPressed: _showCoverPicker,
+            icon: const Icon(Icons.palette_outlined, size: 16),
+            label: const Text('Change cover', style: TextStyle(fontSize: 12)),
+          ),
+          const SizedBox(width: 8),
+          IconButton.filledTonal(
+            tooltip: 'Remove cover',
+            onPressed: () => widget.onCoverChanged?.call(null),
+            icon: const Icon(Icons.close, size: 16),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPageHeader() {
+    final hasIcon = widget.icon != null && widget.icon!.isNotEmpty;
+    final hasCover = widget.cover != null && widget.cover!.isNotEmpty;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 2),
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 8,
+        runSpacing: 4,
+        children: [
+          if (hasIcon)
+            InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: _showIconPicker,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Text(widget.icon!, style: const TextStyle(fontSize: 32)),
+              ),
+            ),
+          if (!hasIcon)
+            TextButton.icon(
+              onPressed: _showIconPicker,
+              icon: const Icon(Icons.add_reaction_outlined, size: 16),
+              label: const Text('Add icon', style: TextStyle(fontSize: 12)),
+            ),
+          if (!hasCover)
+            TextButton.icon(
+              onPressed: _showCoverPicker,
+              icon: const Icon(Icons.image_outlined, size: 16),
+              label: const Text('Add cover', style: TextStyle(fontSize: 12)),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
@@ -649,7 +893,10 @@ class _NoteEditorState extends State<NoteEditor> {
                 padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
                 child: Row(
                   children: [
-                    const Icon(Icons.description_outlined, size: 16),
+                    if (widget.icon != null && widget.icon!.isNotEmpty)
+                      Text(widget.icon!, style: const TextStyle(fontSize: 16))
+                    else
+                      const Icon(Icons.description_outlined, size: 16),
                     const SizedBox(width: 8),
                     if (constraints.maxWidth > 650)
                       Text('Markdown', style: theme.textTheme.labelMedium),
@@ -751,30 +998,37 @@ class _NoteEditorState extends State<NoteEditor> {
                   ],
                 ),
               ),
+              _buildCoverBanner(),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 28),
                 child: Align(
                   alignment: Alignment.center,
                   child: ConstrainedBox(
                     constraints: BoxConstraints(maxWidth: widget.contentWidth),
-                    child: TextField(
-                      key: const ValueKey('note-title'),
-                      focusNode: _titleFocus,
-                      controller: _title,
-                      style: theme.textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                      decoration: const InputDecoration(
-                        hintText: 'Untitled note',
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        filled: false,
-                        contentPadding: EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      onChanged: widget.onTitleChanged,
-                      textInputAction: TextInputAction.next,
-                      onSubmitted: (_) => _bodyFocus.requestFocus(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildPageHeader(),
+                        TextField(
+                          key: const ValueKey('note-title'),
+                          focusNode: _titleFocus,
+                          controller: _title,
+                          style: theme.textTheme.headlineMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                          decoration: const InputDecoration(
+                            hintText: 'Untitled note',
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            filled: false,
+                            contentPadding: EdgeInsets.symmetric(vertical: 8),
+                          ),
+                          onChanged: widget.onTitleChanged,
+                          textInputAction: TextInputAction.next,
+                          onSubmitted: (_) => _bodyFocus.requestFocus(),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -901,6 +1155,7 @@ class _NoteEditorState extends State<NoteEditor> {
                         imageBuilder: widget.imageBuilder,
                         onInsertAttachment: widget.onInsertAttachment,
                         onPasteImage: widget.onPasteImage,
+                        onCreateTask: widget.onCreateTask,
                       )
                     : _source(),
               ),

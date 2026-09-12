@@ -338,4 +338,8 @@ class _FailingStore implements WorkspaceStore {
     if (failWrites) throw const WorkspaceFailure('Simulated full disk.');
     return delegate.write(relativePath, bytes, expectedHash: expectedHash);
   }
+
+  @override
+  Future<void> deleteFile(String relativePath) =>
+      delegate.deleteFile(relativePath);
 }

@@ -33,10 +33,29 @@ enum _Tool {
   frame,
 }
 
+enum CanvasAlignment {
+  left,
+  centerH,
+  right,
+  top,
+  middleV,
+  bottom,
+  distributeH,
+  distributeV,
+}
+
+class CanvasBreadcrumb {
+  const CanvasBreadcrumb({required this.id, required this.title});
+  final String id;
+  final String title;
+}
+
 class CanvasEditor extends StatefulWidget {
   const CanvasEditor({
     super.key,
     required this.canvasId,
+    this.title = '',
+    this.onTitleChanged,
     required this.data,
     required this.onChanged,
     required this.objects,
@@ -47,8 +66,11 @@ class CanvasEditor extends StatefulWidget {
     this.onInsertImage,
     this.onPasteImage,
     this.onOpenExternal,
+    this.breadcrumbs,
   });
   final String canvasId;
+  final String title;
+  final ValueChanged<String>? onTitleChanged;
   final Map<String, dynamic> data;
   final ValueChanged<Map<String, dynamic>> onChanged;
   final List<CanvasObjectReference> objects;
@@ -58,6 +80,7 @@ class CanvasEditor extends StatefulWidget {
   final Future<Uint8List?> Function(String)? imageLoader;
   final Future<CanvasImageReference?> Function()? onInsertImage, onPasteImage;
   final ValueChanged<Uri>? onOpenExternal;
+  final List<CanvasBreadcrumb>? breadcrumbs;
 
   @override
   State<CanvasEditor> createState() => _CanvasEditorState();
@@ -66,6 +89,8 @@ class CanvasEditor extends StatefulWidget {
 class _CanvasEditorState extends State<CanvasEditor> {
   late CanvasHistory _history;
   late CanvasCamera _camera;
+  late final TextEditingController _titleController;
+  final _titleFocus = FocusNode(debugLabel: 'CanvasTitle');
   final _focus = FocusNode(debugLabel: 'Canvas');
   final _text = TextEditingController();
   final _textFocus = FocusNode();
@@ -85,6 +110,8 @@ class _CanvasEditorState extends State<CanvasEditor> {
   bool _resizing = false;
   bool _spacePressed = false;
   bool _snap = false;
+  bool _showMinimap = false;
+  final List<CanvasGuideLine> _activeGuides = [];
   int _color = 0xff8b7cf6;
   Size _viewport = Size.zero;
   Map<String, dynamic>? _lastEmitted;
@@ -104,6 +131,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
   @override
   void initState() {
     super.initState();
+    _titleController = TextEditingController(text: widget.title);
     _history = CanvasHistory(CanvasScene.fromJson(widget.data));
     _camera = CanvasCamera.fromJson(widget.camera);
     _objects = {for (final object in widget.objects) object.id: object};
@@ -129,6 +157,9 @@ class _CanvasEditorState extends State<CanvasEditor> {
       _editingId = null;
       _clearGesture();
       _lastEmitted = null;
+      _titleController.text = widget.title;
+    } else if (oldWidget.title != widget.title && !_titleFocus.hasFocus) {
+      _titleController.text = widget.title;
     } else if (!identical(oldWidget.data, widget.data) &&
         !identical(widget.data, _lastEmitted) &&
         !jsonValuesEqual(widget.data, _lastEmitted ?? oldWidget.data) &&
@@ -141,6 +172,8 @@ class _CanvasEditorState extends State<CanvasEditor> {
 
   @override
   void dispose() {
+    _titleController.dispose();
+    _titleFocus.dispose();
     _images?.dispose();
     _textCache.dispose();
     _focus.dispose();
@@ -198,6 +231,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
     if (_tool == _Tool.select) {
       final single = _selection.length == 1 ? _scene[_selection.first] : null;
       if (single != null &&
+          !single.locked &&
           single.type != 'ink' &&
           (_start! -
                       CanvasPoint(
@@ -209,7 +243,11 @@ class _CanvasEditorState extends State<CanvasEditor> {
         _resizing = true;
         _original[single.id] = single;
       } else {
-        final hit = _scene.hit(_start!, tolerance: 6 / _camera.zoom);
+        final hit = _scene.hit(
+          _start!,
+          tolerance: 6 / _camera.zoom,
+          includeLocked: true,
+        );
         if (hit != null) {
           if (_shift && _selection.contains(hit.id)) {
             _selection.remove(hit.id);
@@ -303,6 +341,86 @@ class _CanvasEditorState extends State<CanvasEditor> {
             (delta.x / 24).round() * 24,
             (delta.y / 24).round() * 24,
           );
+        }
+        _activeGuides.clear();
+        if (!HardwareKeyboard.instance.isAltPressed && _original.isNotEmpty) {
+          CanvasBounds movingBounds = _original.values.first.bounds;
+          for (final orig in _original.values.skip(1)) {
+            movingBounds = movingBounds.union(orig.bounds);
+          }
+          final currentBounds = CanvasBounds(
+            movingBounds.left + delta.x,
+            movingBounds.top + delta.y,
+            movingBounds.width,
+            movingBounds.height,
+          );
+          final threshold = 6.0 / _camera.zoom;
+          final candidates = _scene.elements
+              .where((e) => e.renderable && !_original.containsKey(e.id))
+              .toList();
+
+          double? snapDx;
+          double? snapGuideX;
+          final movingX = [
+            currentBounds.left,
+            currentBounds.center.x,
+            currentBounds.right,
+          ];
+          for (final cand in candidates) {
+            final candX = [
+              cand.bounds.left,
+              cand.bounds.center.x,
+              cand.bounds.right,
+            ];
+            for (final mx in movingX) {
+              for (final cx in candX) {
+                final diff = cx - mx;
+                if (diff.abs() <= threshold &&
+                    (snapDx == null || diff.abs() < snapDx.abs())) {
+                  snapDx = diff;
+                  snapGuideX = cx;
+                }
+              }
+            }
+          }
+
+          double? snapDy;
+          double? snapGuideY;
+          final movingY = [
+            currentBounds.top,
+            currentBounds.center.y,
+            currentBounds.bottom,
+          ];
+          for (final cand in candidates) {
+            final candY = [
+              cand.bounds.top,
+              cand.bounds.center.y,
+              cand.bounds.bottom,
+            ];
+            for (final my in movingY) {
+              for (final cy in candY) {
+                final diff = cy - my;
+                if (diff.abs() <= threshold &&
+                    (snapDy == null || diff.abs() < snapDy.abs())) {
+                  snapDy = diff;
+                  snapGuideY = cy;
+                }
+              }
+            }
+          }
+
+          if (snapDx != null) {
+            delta = CanvasPoint(delta.x + snapDx, delta.y);
+            _activeGuides.add(
+              CanvasGuideLine(isVertical: true, position: snapGuideX!),
+            );
+          }
+          if (snapDy != null) {
+            delta = CanvasPoint(delta.x, delta.y + snapDy);
+            _activeGuides.add(
+              CanvasGuideLine(isVertical: false, position: snapGuideY!),
+            );
+          }
         }
         for (final original in _original.values) {
           _history.put(original.translated(delta));
@@ -463,6 +581,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _original.clear();
     _panning = false;
     _resizing = false;
+    _activeGuides.clear();
   }
 
   void _cancelGesture() {
@@ -595,6 +714,173 @@ class _CanvasEditorState extends State<CanvasEditor> {
     }
   }
 
+  void _duplicate() {
+    if (_scene.readOnly || _selection.isEmpty) return;
+    final ids = {..._selection};
+    for (final id in _selection) {
+      if (_scene[id]?.type == 'column') {
+        ids.addAll(columnMembers(_scene, id).map((e) => e.id));
+      }
+    }
+    final originals = ids
+        .map((id) => _scene[id])
+        .whereType<CanvasElement>()
+        .where((e) => e.renderable && !e.locked)
+        .toList();
+    if (originals.isEmpty) return;
+
+    final newIds = {for (final original in originals) original.id: _id()};
+    final newSelection = <String>{};
+
+    _history.begin();
+    for (final original in originals) {
+      final shiftedPoints = original.points
+          .map((p) => CanvasPoint(p.x + 20, p.y + 20))
+          .map((p) => {'x': p.x, 'y': p.y})
+          .toList();
+      final duplicate = original.copy({
+        'id': newIds[original.id],
+        'columnId': newIds[original.data['columnId']],
+        'x': original.x + 20,
+        'y': original.y + 20,
+        'locked': false,
+        if (shiftedPoints.isNotEmpty) 'points': shiftedPoints,
+      });
+      _history.put(duplicate);
+      if (_selection.contains(original.id)) {
+        newSelection.add(duplicate.id);
+      }
+    }
+    _commit();
+    setState(() {
+      _selection
+        ..clear()
+        ..addAll(newSelection);
+    });
+  }
+
+  void _align(CanvasAlignment alignment) {
+    if (_scene.readOnly || _selection.length < 2) return;
+    final selectedElements = _selection
+        .map((id) => _scene[id])
+        .whereType<CanvasElement>()
+        .where((e) => e.renderable)
+        .toList();
+    if (selectedElements.length < 2) return;
+
+    if (alignment == CanvasAlignment.distributeH ||
+        alignment == CanvasAlignment.distributeV) {
+      if (selectedElements.length < 3) return;
+      _history.begin();
+      if (alignment == CanvasAlignment.distributeH) {
+        final sorted = [...selectedElements]
+          ..sort((a, b) => a.bounds.left.compareTo(b.bounds.left));
+        final minL = sorted.first.bounds.left;
+        final maxR = sorted.last.bounds.right;
+        final totalWidth = sorted.fold<double>(
+          0.0,
+          (sum, e) => sum + e.bounds.width,
+        );
+        final gap = (maxR - minL - totalWidth) / (sorted.length - 1);
+        var curX = minL;
+        for (final e in sorted) {
+          if (!e.locked) {
+            final dx = curX - e.bounds.left;
+            if (dx != 0) {
+              if (e.points.isNotEmpty) {
+                final shiftedPoints = e.points
+                    .map((p) => CanvasPoint(p.x + dx, p.y))
+                    .map((p) => {'x': p.x, 'y': p.y})
+                    .toList();
+                _history.put(e.copy({'x': e.x + dx, 'points': shiftedPoints}));
+              } else {
+                _history.put(e.copy({'x': e.x + dx}));
+              }
+            }
+          }
+          curX += e.bounds.width + gap;
+        }
+      } else {
+        final sorted = [...selectedElements]
+          ..sort((a, b) => a.bounds.top.compareTo(b.bounds.top));
+        final minT = sorted.first.bounds.top;
+        final maxB = sorted.last.bounds.bottom;
+        final totalHeight = sorted.fold<double>(
+          0.0,
+          (sum, e) => sum + e.bounds.height,
+        );
+        final gap = (maxB - minT - totalHeight) / (sorted.length - 1);
+        var curY = minT;
+        for (final e in sorted) {
+          if (!e.locked) {
+            final dy = curY - e.bounds.top;
+            if (dy != 0) {
+              if (e.points.isNotEmpty) {
+                final shiftedPoints = e.points
+                    .map((p) => CanvasPoint(p.x, p.y + dy))
+                    .map((p) => {'x': p.x, 'y': p.y})
+                    .toList();
+                _history.put(e.copy({'y': e.y + dy, 'points': shiftedPoints}));
+              } else {
+                _history.put(e.copy({'y': e.y + dy}));
+              }
+            }
+          }
+          curY += e.bounds.height + gap;
+        }
+      }
+      _commit();
+      setState(() {});
+      return;
+    }
+
+    CanvasBounds unionBox = selectedElements.first.bounds;
+    for (final e in selectedElements.skip(1)) {
+      unionBox = unionBox.union(e.bounds);
+    }
+
+    final movable = selectedElements.where((e) => !e.locked).toList();
+    if (movable.isEmpty) return;
+
+    _history.begin();
+    for (final e in movable) {
+      double newX = e.x;
+      double newY = e.y;
+      switch (alignment) {
+        case CanvasAlignment.left:
+          newX = unionBox.left;
+        case CanvasAlignment.centerH:
+          newX = unionBox.left + (unionBox.width - e.width) / 2;
+        case CanvasAlignment.right:
+          newX = unionBox.right - e.width;
+        case CanvasAlignment.top:
+          newY = unionBox.top;
+        case CanvasAlignment.middleV:
+          newY = unionBox.top + (unionBox.height - e.height) / 2;
+        case CanvasAlignment.bottom:
+          newY = unionBox.bottom - e.height;
+        case CanvasAlignment.distributeH:
+        case CanvasAlignment.distributeV:
+          break;
+      }
+      final dx = newX - e.x;
+      final dy = newY - e.y;
+      if (dx == 0 && dy == 0) continue;
+
+      if (e.points.isNotEmpty) {
+        final shiftedPoints = e.points
+            .map((p) => CanvasPoint(p.x + dx, p.y + dy))
+            .map((p) => {'x': p.x, 'y': p.y})
+            .toList();
+        _history.put(e.copy({'x': newX, 'y': newY, 'points': shiftedPoints}));
+      } else {
+        _history.put(e.copy({'x': newX, 'y': newY}));
+      }
+    }
+    _commit();
+    setState(() {});
+  }
+
   void _notice(String text) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 
@@ -618,6 +904,12 @@ class _CanvasEditorState extends State<CanvasEditor> {
       }
       return;
     }
+    if (element.type == 'swatch') {
+      final hex =
+          '#${(element.color & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
+      Clipboard.setData(ClipboardData(text: hex));
+      _notice('Color $hex copied to clipboard');
+    }
     if (_scene.readOnly ||
         !{
           'text',
@@ -627,6 +919,8 @@ class _CanvasEditorState extends State<CanvasEditor> {
           'diamond',
           'frame',
           'column',
+          'section',
+          'swatch',
         }.contains(element.type)) {
       return;
     }
@@ -656,6 +950,9 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   KeyEventResult _key(FocusNode node, KeyEvent event) {
+    if (_titleFocus.hasFocus) {
+      return KeyEventResult.ignored;
+    }
     if (_editingId != null) {
       if (event is KeyDownEvent &&
           event.logicalKey == LogicalKeyboardKey.escape) {
@@ -694,6 +991,8 @@ class _CanvasEditorState extends State<CanvasEditor> {
       _copy(cut: true);
     } else if (_command && key == LogicalKeyboardKey.keyV) {
       _paste();
+    } else if (_command && key == LogicalKeyboardKey.keyD) {
+      _duplicate();
     } else if (_command && key == LogicalKeyboardKey.keyA) {
       setState(() {
         _selection.addAll(
@@ -760,6 +1059,25 @@ class _CanvasEditorState extends State<CanvasEditor> {
       _camera = _camera.zoomAt(
         CanvasPoint(_viewport.width / 2, _viewport.height / 2),
         factor,
+      );
+    });
+    _cameraChanged();
+  }
+
+  void _onMinimapTap(Offset localPos, Size minimapSize) {
+    final (contentRect, scale, offsetX, offsetY) = CanvasMinimapPainter.layout(
+      _scene,
+      _camera,
+      _viewport,
+      minimapSize,
+    );
+    final worldX = contentRect.left + (localPos.dx - offsetX) / scale;
+    final worldY = contentRect.top + (localPos.dy - offsetY) / scale;
+    setState(() {
+      _camera = CanvasCamera(
+        x: worldX - (_viewport.width / _camera.zoom) / 2,
+        y: worldY - (_viewport.height / _camera.zoom) / 2,
+        zoom: _camera.zoom,
       );
     });
     _cameraChanged();
@@ -936,10 +1254,8 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   Future<void> _contextMenu(PointerDownEvent event) async {
-    final hit = _scene.hit(
-      _world(event.localPosition),
-      tolerance: 6 / _camera.zoom,
-    );
+    final worldPos = _world(event.localPosition);
+    final hit = _scene.hit(worldPos, tolerance: 6 / _camera.zoom);
     if (hit != null && !_selection.contains(hit.id)) {
       setState(() {
         _selection
@@ -949,6 +1265,125 @@ class _CanvasEditorState extends State<CanvasEditor> {
     }
     final overlay =
         Overlay.of(context).context.findRenderObject()! as RenderBox;
+
+    if (hit == null) {
+      final hasSelection = _selection.isNotEmpty;
+      final action = await showMenu<String>(
+        context: context,
+        position: RelativeRect.fromRect(
+          Rect.fromLTWH(event.position.dx, event.position.dy, 1, 1),
+          Offset.zero & overlay.size,
+        ),
+        items: [
+          if (!_scene.readOnly) ...[
+            const PopupMenuItem(
+              value: 'add_text',
+              child: Row(
+                children: [
+                  Icon(Icons.title, size: 16),
+                  SizedBox(width: 8),
+                  Text('Add Text'),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'add_sticky',
+              child: Row(
+                children: [
+                  Icon(Icons.sticky_note_2_outlined, size: 16),
+                  SizedBox(width: 8),
+                  Text('Add Sticky'),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'add_section',
+              child: Row(
+                children: [
+                  Icon(Icons.view_agenda_outlined, size: 16),
+                  SizedBox(width: 8),
+                  Text('Add Section'),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'add_swatch',
+              child: Row(
+                children: [
+                  Icon(Icons.palette_outlined, size: 16),
+                  SizedBox(width: 8),
+                  Text('Add Color Swatch'),
+                ],
+              ),
+            ),
+            const PopupMenuDivider(),
+            const PopupMenuItem(
+              value: 'paste',
+              child: Row(
+                children: [
+                  Icon(Icons.paste_outlined, size: 16),
+                  SizedBox(width: 8),
+                  Text('Paste'),
+                ],
+              ),
+            ),
+            const PopupMenuDivider(),
+          ],
+          const PopupMenuItem(
+            value: 'fit_all',
+            child: Row(
+              children: [
+                Icon(Icons.crop_free, size: 16),
+                SizedBox(width: 8),
+                Text('Fit All'),
+              ],
+            ),
+          ),
+          if (hasSelection)
+            const PopupMenuItem(
+              value: 'fit_selection',
+              child: Row(
+                children: [
+                  Icon(Icons.filter_center_focus, size: 16),
+                  SizedBox(width: 8),
+                  Text('Fit Selection'),
+                ],
+              ),
+            ),
+          const PopupMenuItem(
+            value: 'zoom_100',
+            child: Row(
+              children: [
+                Icon(Icons.zoom_in, size: 16),
+                SizedBox(width: 8),
+                Text('100% Zoom'),
+              ],
+            ),
+          ),
+        ],
+      );
+      if (!mounted || action == null) return;
+      switch (action) {
+        case 'add_text':
+          _addText(at: worldPos);
+        case 'add_sticky':
+          _addSticky(at: worldPos);
+        case 'add_section':
+          _addSection(at: worldPos);
+        case 'add_swatch':
+          _addSwatch(at: worldPos);
+        case 'paste':
+          _paste();
+        case 'fit_all':
+          _fit();
+        case 'fit_selection':
+          _fit(selectionOnly: true);
+        case 'zoom_100':
+          _zoom(1 / _camera.zoom);
+      }
+      return;
+    }
+
     final action = await showMenu<String>(
       context: context,
       position: RelativeRect.fromRect(
@@ -960,27 +1395,111 @@ class _CanvasEditorState extends State<CanvasEditor> {
           const PopupMenuItem(value: 'edit', child: Text('Open / edit')),
         if (_selection.isNotEmpty)
           const PopupMenuItem(value: 'copy', child: Text('Copy placements')),
+        if (_selection.isNotEmpty && !_scene.readOnly)
+          const PopupMenuItem(
+            value: 'duplicate',
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Duplicate'),
+                SizedBox(width: 16),
+                Text(
+                  'Ctrl+D',
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
         const PopupMenuItem(value: 'paste', child: Text('Paste')),
+        if (_selection.length >= 2 && !_scene.readOnly) ...[
+          const PopupMenuDivider(),
+          const PopupMenuItem(
+            enabled: false,
+            height: 24,
+            child: Text(
+              'ALIGNMENT',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ),
+          const PopupMenuItem(value: 'align_left', child: Text('Align Left')),
+          const PopupMenuItem(
+            value: 'align_center_h',
+            child: Text('Horizontal Center'),
+          ),
+          const PopupMenuItem(value: 'align_right', child: Text('Align Right')),
+          const PopupMenuItem(value: 'align_top', child: Text('Align Top')),
+          const PopupMenuItem(
+            value: 'align_middle_v',
+            child: Text('Vertical Middle'),
+          ),
+          const PopupMenuItem(
+            value: 'align_bottom',
+            child: Text('Align Bottom'),
+          ),
+          if (_selection.length >= 3) ...[
+            const PopupMenuItem(
+              value: 'distribute_h',
+              child: Text('Distribute Horizontally'),
+            ),
+            const PopupMenuItem(
+              value: 'distribute_v',
+              child: Text('Distribute Vertically'),
+            ),
+          ],
+          const PopupMenuDivider(),
+        ],
         if (_selection.isNotEmpty && !_scene.readOnly)
           const PopupMenuItem(
             value: 'delete',
             child: Text('Remove from Canvas'),
           ),
-        const PopupMenuItem(value: 'fit', child: Text('Fit content')),
+        if (_selection.isNotEmpty)
+          const PopupMenuItem(
+            value: 'fit_selection',
+            child: Text('Fit Selection'),
+          ),
+        const PopupMenuItem(value: 'fit_all', child: Text('Fit All')),
+        const PopupMenuItem(value: 'zoom_100', child: Text('100% Zoom')),
       ],
     );
-    if (!mounted) return;
+    if (!mounted || action == null) return;
     switch (action) {
       case 'edit':
         if (_selection.length == 1) _edit(_scene[_selection.first]!);
       case 'copy':
         _copy();
+      case 'duplicate':
+        _duplicate();
       case 'paste':
         _paste();
+      case 'align_left':
+        _align(CanvasAlignment.left);
+      case 'align_center_h':
+        _align(CanvasAlignment.centerH);
+      case 'align_right':
+        _align(CanvasAlignment.right);
+      case 'align_top':
+        _align(CanvasAlignment.top);
+      case 'align_middle_v':
+        _align(CanvasAlignment.middleV);
+      case 'align_bottom':
+        _align(CanvasAlignment.bottom);
+      case 'distribute_h':
+        _align(CanvasAlignment.distributeH);
+      case 'distribute_v':
+        _align(CanvasAlignment.distributeV);
       case 'delete':
         _delete();
-      case 'fit':
+      case 'fit_selection':
+        _fit(selectionOnly: true);
+      case 'fit_all':
         _fit();
+      case 'zoom_100':
+        _zoom(1 / _camera.zoom);
     }
   }
 
@@ -997,7 +1516,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
     },
     child: Column(
       children: [
-        _toolbar(context),
+        if (!_presentationMode) _toolbar(context),
         if (_scene.readOnly)
           const MaterialBanner(
             content: Text(
@@ -1038,6 +1557,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                               ? SystemMouseCursors.basic
                               : SystemMouseCursors.precise,
                           child: Listener(
+                            behavior: HitTestBehavior.opaque,
                             onPointerDown: _down,
                             onPointerMove: _move,
                             onPointerUp: _up,
@@ -1093,6 +1613,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                                 final hit = _scene.hit(
                                   _world(details.localPosition),
                                   tolerance: 6 / _camera.zoom,
+                                  includeLocked: true,
                                 );
                                 if (hit != null) _edit(hit);
                               },
@@ -1108,6 +1629,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                                   region: _region,
                                   preview: _preview,
                                   editingId: _editingId,
+                                  guides: _activeGuides,
                                 ),
                                 child: const SizedBox.expand(),
                               ),
@@ -1162,6 +1684,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                           child: Padding(
                             padding: const EdgeInsets.all(8),
                             child: TextField(
+                              key: const ValueKey('canvas-element-text-field'),
                               controller: _text,
                               focusNode: _textFocus,
                               maxLines: null,
@@ -1185,6 +1708,207 @@ class _CanvasEditorState extends State<CanvasEditor> {
                           ),
                         ),
                       ),
+                    if (!_presentationMode)
+                      Positioned(
+                        top: 16,
+                        left: 16,
+                        child: Material(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHigh
+                              .withValues(alpha: 0.94),
+                          borderRadius: BorderRadius.circular(16),
+                          elevation: 2,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.space_dashboard_outlined,
+                                  size: 16,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                                if (widget.breadcrumbs != null &&
+                                    widget.breadcrumbs!.length > 1) ...[
+                                  const SizedBox(width: 8),
+                                  for (
+                                    int i = 0;
+                                    i < widget.breadcrumbs!.length - 1;
+                                    i++
+                                  ) ...[
+                                    InkWell(
+                                      borderRadius: BorderRadius.circular(4),
+                                      onTap: () => widget.onOpenObject(
+                                        widget.breadcrumbs![i].id,
+                                      ),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 4,
+                                          vertical: 2,
+                                        ),
+                                        child: Text(
+                                          widget.breadcrumbs![i].title.isEmpty
+                                              ? 'Untitled'
+                                              : widget.breadcrumbs![i].title,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.primary,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const Padding(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                      ),
+                                      child: Icon(
+                                        Icons.chevron_right,
+                                        size: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                                const SizedBox(width: 6),
+                                if (widget.onTitleChanged != null) ...[
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      minWidth: 70,
+                                      maxWidth: 240,
+                                    ),
+                                    child: IntrinsicWidth(
+                                      child: TextField(
+                                        key: const ValueKey(
+                                          'canvas-title-field',
+                                        ),
+                                        controller: _titleController,
+                                        focusNode: _titleFocus,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        decoration: InputDecoration(
+                                          hintText: 'Untitled canvas',
+                                          hintStyle: TextStyle(
+                                            fontSize: 13,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurface
+                                                .withValues(alpha: 0.4),
+                                            fontWeight: FontWeight.normal,
+                                          ),
+                                          isDense: true,
+                                          border: InputBorder.none,
+                                          focusedBorder: UnderlineInputBorder(
+                                            borderSide: BorderSide(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .primary
+                                                  .withValues(alpha: 0.6),
+                                              width: 1.5,
+                                            ),
+                                          ),
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 4,
+                                                vertical: 4,
+                                              ),
+                                        ),
+                                        onChanged: widget.onTitleChanged,
+                                        onSubmitted: (_) {
+                                          _titleFocus.unfocus();
+                                          _focus.requestFocus();
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                  Tooltip(
+                                    message: 'Rename canvas',
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(12),
+                                      onTap: () {
+                                        _titleFocus.requestFocus();
+                                        _titleController.selection =
+                                            TextSelection(
+                                              baseOffset: 0,
+                                              extentOffset:
+                                                  _titleController.text.length,
+                                            );
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(4),
+                                        child: Icon(
+                                          Icons.edit_outlined,
+                                          size: 13,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurface
+                                              .withValues(alpha: 0.5),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ] else ...[
+                                  Text(
+                                    widget.title.isEmpty
+                                        ? 'Untitled canvas'
+                                        : widget.title,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (_presentationMode)
+                      Positioned(
+                        top: 16,
+                        right: 16,
+                        child: Material(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHigh
+                              .withValues(alpha: 0.92),
+                          borderRadius: BorderRadius.circular(20),
+                          elevation: 3,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: () =>
+                                setState(() => _presentationMode = false),
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 8,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.fullscreen_exit, size: 18),
+                                  SizedBox(width: 6),
+                                  Text(
+                                    'Exit presentation',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     Positioned(
                       right: 16,
                       bottom: 16,
@@ -1201,9 +1925,12 @@ class _CanvasEditorState extends State<CanvasEditor> {
                               onPressed: () => _zoom(.8),
                               icon: const Icon(Icons.remove, size: 18),
                             ),
-                            TextButton(
-                              onPressed: () => _zoom(1 / _camera.zoom),
-                              child: Text('${(_camera.zoom * 100).round()}%'),
+                            Tooltip(
+                              message: 'Reset zoom (100%)',
+                              child: TextButton(
+                                onPressed: () => _zoom(1 / _camera.zoom),
+                                child: Text('${(_camera.zoom * 100).round()}%'),
+                              ),
                             ),
                             IconButton(
                               tooltip: 'Zoom in',
@@ -1215,10 +1942,100 @@ class _CanvasEditorState extends State<CanvasEditor> {
                               onPressed: _fit,
                               icon: const Icon(Icons.fit_screen, size: 18),
                             ),
+                            IconButton(
+                              tooltip: 'Fit selection',
+                              onPressed: _selection.isEmpty
+                                  ? null
+                                  : () => _fit(selectionOnly: true),
+                              icon: const Icon(
+                                Icons.filter_center_focus,
+                                size: 18,
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: _presentationMode
+                                  ? 'Exit presentation'
+                                  : 'Presentation mode',
+                              onPressed: () => setState(() {
+                                _presentationMode = !_presentationMode;
+                              }),
+                              icon: Icon(
+                                _presentationMode
+                                    ? Icons.fullscreen_exit
+                                    : Icons.slideshow_outlined,
+                                size: 18,
+                              ),
+                            ),
+                            IconButton(
+                              key: const ValueKey('canvas-minimap-toggle'),
+                              tooltip: _showMinimap
+                                  ? 'Hide minimap'
+                                  : 'Show minimap',
+                              isSelected: _showMinimap,
+                              onPressed: () => setState(() {
+                                _showMinimap = !_showMinimap;
+                              }),
+                              icon: Icon(
+                                _showMinimap ? Icons.map : Icons.map_outlined,
+                                size: 18,
+                              ),
+                            ),
                           ],
                         ),
                       ),
                     ),
+                    if (_showMinimap && !_presentationMode && _scene.length > 0)
+                      Positioned(
+                        key: const ValueKey('canvas-minimap-card'),
+                        right: 16,
+                        bottom: 64,
+                        child: Material(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHigh
+                              .withValues(alpha: 0.94),
+                          elevation: 3,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            side: BorderSide(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .outlineVariant
+                                  .withValues(alpha: 0.5),
+                            ),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: SizedBox(
+                              width: 160,
+                              height: 110,
+                              child: GestureDetector(
+                                onTapDown: (d) => _onMinimapTap(
+                                  d.localPosition,
+                                  const Size(160, 110),
+                                ),
+                                onPanStart: (d) => _onMinimapTap(
+                                  d.localPosition,
+                                  const Size(160, 110),
+                                ),
+                                onPanUpdate: (d) => _onMinimapTap(
+                                  d.localPosition,
+                                  const Size(160, 110),
+                                ),
+                                onPanEnd: (_) => _cameraChanged(),
+                                child: CustomPaint(
+                                  painter: CanvasMinimapPainter(
+                                    scene: _scene,
+                                    camera: _camera,
+                                    viewportSize: _viewport,
+                                    colors: Theme.of(context).colorScheme,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     if (_selection.isNotEmpty)
                       Positioned(
                         left: 16,
@@ -1418,6 +2235,106 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _commit();
   }
 
+  bool _presentationMode = false;
+
+  void _addText({CanvasPoint? at}) {
+    final pos =
+        at ??
+        _camera.toWorld(CanvasPoint(_viewport.width / 2, _viewport.height / 2));
+    final element = CanvasElement({
+      'id': _id(),
+      'type': 'text',
+      'x': pos.x,
+      'y': pos.y,
+      'width': 220.0,
+      'height': 100.0,
+      'color': _color,
+      'text': 'Text',
+    });
+    _history.put(element);
+    _selection
+      ..clear()
+      ..add(element.id);
+    _commit();
+    _edit(element);
+  }
+
+  void _addSticky({CanvasPoint? at}) {
+    final pos =
+        at ??
+        _camera.toWorld(CanvasPoint(_viewport.width / 2, _viewport.height / 2));
+    final element = CanvasElement({
+      'id': _id(),
+      'type': 'sticky',
+      'x': pos.x,
+      'y': pos.y,
+      'width': 220.0,
+      'height': 180.0,
+      'color': _color,
+      'text': 'An idea…',
+    });
+    _history.put(element);
+    _selection
+      ..clear()
+      ..add(element.id);
+    _commit();
+    _edit(element);
+  }
+
+  void _addSection({CanvasPoint? at}) {
+    final pos =
+        at ??
+        _camera.toWorld(CanvasPoint(_viewport.width / 2, _viewport.height / 2));
+    final element = CanvasElement({
+      'id': _id(),
+      'type': 'section',
+      'x': pos.x - 180,
+      'y': pos.y - 20,
+      'width': 360.0,
+      'height': 40.0,
+      'text': 'SECTION TITLE',
+      'color': _color,
+    });
+    _history.put(element);
+    _selection
+      ..clear()
+      ..add(element.id);
+    _commit();
+    _edit(element);
+  }
+
+  void _addSwatch({CanvasPoint? at}) {
+    final pos =
+        at ??
+        _camera.toWorld(CanvasPoint(_viewport.width / 2, _viewport.height / 2));
+    final element = CanvasElement({
+      'id': _id(),
+      'type': 'swatch',
+      'x': pos.x - 70,
+      'y': pos.y - 80,
+      'width': 140.0,
+      'height': 160.0,
+      'text': 'Color',
+      'color': _color,
+    });
+    _history.put(element);
+    _selection
+      ..clear()
+      ..add(element.id);
+    _commit();
+  }
+
+  void _toggleLock() {
+    final allLocked = _selection.every((id) => _scene[id]?.locked == true);
+    for (final id in _selection) {
+      final element = _scene[id];
+      if (element != null) {
+        _history.put(element.copy({'locked': !allLocked}));
+      }
+    }
+    _commit();
+  }
+
   Widget _toolbar(BuildContext context) {
     final tools = <(_Tool, IconData, String)>[
       (_Tool.select, Icons.near_me_outlined, 'Select (V)'),
@@ -1501,6 +2418,29 @@ class _CanvasEditorState extends State<CanvasEditor> {
                       enabled: _scene[_selection.first]?.locked != true,
                       child: const Text('Edit selected link'),
                     ),
+                  const PopupMenuItem(
+                    value: 'section',
+                    child: Text('Section divider'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'swatch',
+                    child: Text('Color swatch card'),
+                  ),
+                  if (_selection.isNotEmpty)
+                    PopupMenuItem(
+                      value: 'toggleLock',
+                      child: Text(
+                        _selection.every((id) => _scene[id]?.locked == true)
+                            ? 'Unlock selection'
+                            : 'Lock selection',
+                      ),
+                    ),
+                  if (_selection.length == 1 &&
+                      _scene[_selection.first]?.type == 'swatch')
+                    const PopupMenuItem(
+                      value: 'copyHex',
+                      child: Text('Copy HEX code'),
+                    ),
                   if (_selection.length == 1 &&
                       _scene[_selection.first]?.type == 'column')
                     const PopupMenuItem(
@@ -1520,6 +2460,18 @@ class _CanvasEditorState extends State<CanvasEditor> {
                     _addLink();
                   }
                   if (action == 'editLink') _addLink(_scene[_selection.single]);
+                  if (action == 'section') _addSection();
+                  if (action == 'swatch') _addSwatch();
+                  if (action == 'toggleLock') _toggleLock();
+                  if (action == 'copyHex') {
+                    final element = _scene[_selection.single];
+                    if (element != null) {
+                      final hex =
+                          '#${(element.color & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
+                      Clipboard.setData(ClipboardData(text: hex));
+                      _notice('Color $hex copied to clipboard');
+                    }
+                  }
                   if (action == 'column') {
                     _createColumn();
                   }
@@ -1544,6 +2496,98 @@ class _CanvasEditorState extends State<CanvasEditor> {
                   }
                 },
               ),
+              if (_selection.length >= 2 && !_scene.readOnly)
+                PopupMenuButton<CanvasAlignment>(
+                  tooltip: 'Align selected elements',
+                  icon: const Icon(Icons.align_horizontal_left, size: 20),
+                  onSelected: _align,
+                  itemBuilder: (_) => [
+                    PopupMenuItem(
+                      value: CanvasAlignment.left,
+                      child: Row(
+                        children: [
+                          Icon(Icons.align_horizontal_left, size: 16),
+                          SizedBox(width: 8),
+                          Text('Align Left'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: CanvasAlignment.centerH,
+                      child: Row(
+                        children: [
+                          Icon(Icons.align_horizontal_center, size: 16),
+                          SizedBox(width: 8),
+                          Text('Horizontal Center'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: CanvasAlignment.right,
+                      child: Row(
+                        children: [
+                          Icon(Icons.align_horizontal_right, size: 16),
+                          SizedBox(width: 8),
+                          Text('Align Right'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuDivider(),
+                    PopupMenuItem(
+                      value: CanvasAlignment.top,
+                      child: Row(
+                        children: [
+                          Icon(Icons.align_vertical_top, size: 16),
+                          SizedBox(width: 8),
+                          Text('Align Top'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: CanvasAlignment.middleV,
+                      child: Row(
+                        children: [
+                          Icon(Icons.align_vertical_center, size: 16),
+                          SizedBox(width: 8),
+                          Text('Vertical Middle'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: CanvasAlignment.bottom,
+                      child: Row(
+                        children: [
+                          Icon(Icons.align_vertical_bottom, size: 16),
+                          SizedBox(width: 8),
+                          Text('Align Bottom'),
+                        ],
+                      ),
+                    ),
+                    if (_selection.length >= 3) ...[
+                      const PopupMenuDivider(),
+                      const PopupMenuItem(
+                        value: CanvasAlignment.distributeH,
+                        child: Row(
+                          children: [
+                            Icon(Icons.horizontal_distribute, size: 16),
+                            SizedBox(width: 8),
+                            Text('Distribute Horizontally'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: CanvasAlignment.distributeV,
+                        child: Row(
+                          children: [
+                            Icon(Icons.vertical_distribute, size: 16),
+                            SizedBox(width: 8),
+                            Text('Distribute Vertically'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               TextButton.icon(
                 onPressed: _scene.readOnly ? null : _chooseObject,
                 icon: const Icon(Icons.add_link, size: 19),
@@ -1665,4 +2709,104 @@ class _CanvasEditorState extends State<CanvasEditor> {
       ),
     );
   }
+}
+
+class CanvasMinimapPainter extends CustomPainter {
+  const CanvasMinimapPainter({
+    required this.scene,
+    required this.camera,
+    required this.viewportSize,
+    required this.colors,
+  });
+
+  final CanvasScene scene;
+  final CanvasCamera camera;
+  final Size viewportSize;
+  final ColorScheme colors;
+
+  static (Rect contentRect, double scale, double offsetX, double offsetY)
+  layout(
+    CanvasScene scene,
+    CanvasCamera camera,
+    Size viewportSize,
+    Size minimapSize,
+  ) {
+    CanvasBounds? bounds = scene.contentBounds;
+    final viewWorld = camera.viewport(viewportSize.width, viewportSize.height);
+    bounds = bounds == null ? viewWorld : bounds.union(viewWorld);
+    const margin = 80.0;
+    final contentRect = Rect.fromLTRB(
+      bounds.left - margin,
+      bounds.top - margin,
+      bounds.right + margin,
+      bounds.bottom + margin,
+    );
+    final scaleX = (minimapSize.width - 12) / math.max(1.0, contentRect.width);
+    final scaleY =
+        (minimapSize.height - 12) / math.max(1.0, contentRect.height);
+    final scale = math.min(scaleX, scaleY);
+    final offsetX =
+        6.0 + (minimapSize.width - 12 - contentRect.width * scale) / 2;
+    final offsetY =
+        6.0 + (minimapSize.height - 12 - contentRect.height * scale) / 2;
+    return (contentRect, scale, offsetX, offsetY);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final (contentRect, scale, offsetX, offsetY) = layout(
+      scene,
+      camera,
+      viewportSize,
+      size,
+    );
+
+    for (final element in scene.elements) {
+      if (!element.renderable || element.hidden) continue;
+      final elRect = Rect.fromLTWH(
+        offsetX + (element.bounds.left - contentRect.left) * scale,
+        offsetY + (element.bounds.top - contentRect.top) * scale,
+        math.max(2.0, element.bounds.width * scale),
+        math.max(2.0, element.bounds.height * scale),
+      );
+      final elPaint = Paint()
+        ..color = Color(element.color).withValues(alpha: 0.55)
+        ..style = PaintingStyle.fill;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(elRect, const Radius.circular(1.5)),
+        elPaint,
+      );
+    }
+
+    final vpRect = Rect.fromLTWH(
+      offsetX + (camera.x - contentRect.left) * scale,
+      offsetY + (camera.y - contentRect.top) * scale,
+      (viewportSize.width / camera.zoom) * scale,
+      (viewportSize.height / camera.zoom) * scale,
+    );
+    final vpFill = Paint()
+      ..color = colors.primary.withValues(alpha: 0.15)
+      ..style = PaintingStyle.fill;
+    final vpStroke = Paint()
+      ..color = colors.primary.withValues(alpha: 0.8)
+      ..strokeWidth = 1.2
+      ..style = PaintingStyle.stroke;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(vpRect, const Radius.circular(2)),
+      vpFill,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(vpRect, const Radius.circular(2)),
+      vpStroke,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CanvasMinimapPainter oldDelegate) =>
+      scene.revision != oldDelegate.scene.revision ||
+      camera.x != oldDelegate.camera.x ||
+      camera.y != oldDelegate.camera.y ||
+      camera.zoom != oldDelegate.camera.zoom ||
+      viewportSize != oldDelegate.viewportSize ||
+      colors != oldDelegate.colors;
 }

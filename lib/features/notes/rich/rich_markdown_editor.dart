@@ -32,6 +32,7 @@ class RichMarkdownEditor extends StatefulWidget {
     this.imageBuilder,
     this.onInsertAttachment,
     this.onPasteImage,
+    this.onCreateTask,
   });
   final String body;
   final ValueChanged<String> onChanged, onOpenLink;
@@ -43,6 +44,7 @@ class RichMarkdownEditor extends StatefulWidget {
   final ValueChanged<Map<String, dynamic>>? onState;
   final Widget Function(BuildContext, String)? imageBuilder;
   final Future<String?> Function()? onInsertAttachment, onPasteImage;
+  final Future<void> Function(String title)? onCreateTask;
   @override
   State<RichMarkdownEditor> createState() => RichMarkdownEditorState();
 }
@@ -63,9 +65,19 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
   );
   late int caret = widget.initialState['caret'] as int? ?? 0;
   late int selectionBase = widget.initialState['base'] as int? ?? caret;
+  MarkdownBlock? _draggingBlock;
+  MarkdownBlock? _dropTargetBlock;
+  bool _dropOnTop = true;
+  final Set<String> _collapsedHeadings = {};
+  static final List<String> _recentCommands = [];
+
   @override
   void initState() {
     super.initState();
+    final initialCollapsed = widget.initialState['collapsed'];
+    if (initialCollapsed is List) {
+      _collapsedHeadings.addAll(initialCollapsed.whereType<String>());
+    }
     scroll.addListener(record);
   }
 
@@ -74,6 +86,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     'caret': caret,
     'base': selectionBase,
     'scroll': scroll.hasClients ? scroll.offset : 0,
+    'collapsed': _collapsedHeadings.toList(),
   });
   @override
   void dispose() {
@@ -435,6 +448,9 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
         anchors[block]?.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
     final point = box.localToGlobal(Offset.zero);
+    final validRecents = _recentCommands
+        .where((c) => commands.contains(c))
+        .toList();
     final result = await showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(
@@ -443,11 +459,40 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
         point.dx + 260,
         0,
       ),
-      items: commands
-          .map((c) => PopupMenuItem(value: c, child: Text(c)))
-          .toList(),
+      items: [
+        if (validRecents.isNotEmpty) ...[
+          const PopupMenuItem<String>(
+            enabled: false,
+            height: 24,
+            child: Text(
+              'RECENT',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ),
+          for (final c in validRecents)
+            PopupMenuItem(
+              value: c,
+              child: Row(
+                children: [
+                  const Icon(Icons.history, size: 16),
+                  const SizedBox(width: 8),
+                  Text(c),
+                ],
+              ),
+            ),
+          const PopupMenuDivider(),
+        ],
+        for (final c in commands) PopupMenuItem(value: c, child: Text(c)),
+      ],
     );
     if (!mounted || result == null || !document.blocks.contains(block)) return;
+    _recentCommands.remove(result);
+    _recentCommands.insert(0, result);
+    if (_recentCommands.length > 4) _recentCommands.removeLast();
     active = document.blocks.indexOf(block);
     await command(result, fromSlash: true);
   }
@@ -875,140 +920,764 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) => Scrollbar(
-    controller: scroll,
-    child: SingleChildScrollView(
-      controller: scroll,
-      padding: const EdgeInsets.fromLTRB(28, 8, 28, 80),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: widget.contentWidth),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+  List<MarkdownBlock> get movableBlocks {
+    final result = <MarkdownBlock>[];
+    for (var i = 0; i < document.blocks.length; i++) {
+      final b = document.blocks[i];
+      if (b.kind == MarkdownBlockKind.blank) continue;
+      // Pinned index 0 frontmatter raw block cannot be moved
+      if (i == 0 &&
+          b.kind == MarkdownBlockKind.raw &&
+          b.source.startsWith('---')) {
+        continue;
+      }
+      result.add(b);
+    }
+    return result;
+  }
+
+  String _serializeBlocks(List<MarkdownBlock> blocks) {
+    final buffer = StringBuffer();
+    for (var i = 0; i < blocks.length; i++) {
+      final b = blocks[i];
+      var s = b.source;
+      if (s.isEmpty) continue;
+      final eol = s.contains('\r\n') ? '\r\n' : '\n';
+      buffer.write(s);
+      if (!s.endsWith('\n')) buffer.write(eol);
+      if (i < blocks.length - 1) {
+        final next = blocks[i + 1];
+        final isCompactPair =
+            (b.kind == MarkdownBlockKind.list &&
+                next.kind == MarkdownBlockKind.list) ||
+            (b.kind == MarkdownBlockKind.quote &&
+                next.kind == MarkdownBlockKind.quote);
+        if (!isCompactPair) {
+          buffer.write(eol);
+        }
+      }
+    }
+    return buffer.toString();
+  }
+
+  void _moveBlock(
+    MarkdownBlock sourceBlock,
+    MarkdownBlock targetBlock, {
+    required bool after,
+  }) {
+    if (sourceBlock == targetBlock) return;
+    final allContent = <MarkdownBlock>[];
+    MarkdownBlock? frontmatter;
+    for (var i = 0; i < document.blocks.length; i++) {
+      final b = document.blocks[i];
+      if (b.kind == MarkdownBlockKind.blank) continue;
+      if (i == 0 &&
+          b.kind == MarkdownBlockKind.raw &&
+          b.source.startsWith('---')) {
+        frontmatter = b;
+        continue;
+      }
+      allContent.add(b);
+    }
+
+    final fromIdx = allContent.indexOf(sourceBlock);
+    final toIdx = allContent.indexOf(targetBlock);
+    if (fromIdx < 0 || toIdx < 0) return;
+
+    allContent.removeAt(fromIdx);
+    var insertIdx = allContent.indexOf(targetBlock);
+    if (insertIdx < 0) return;
+    if (after) {
+      insertIdx += 1;
+    }
+    allContent.insert(insertIdx, sourceBlock);
+
+    final finalList = <MarkdownBlock>[?frontmatter, ...allContent];
+
+    final newSource = _serializeBlocks(finalList);
+    _load(newSource);
+    widget.onChanged(newSource);
+
+    var newActive = 0;
+    for (var i = 0; i < document.blocks.length; i++) {
+      if (document.blocks[i].source == sourceBlock.source &&
+          document.blocks[i].kind == sourceBlock.kind) {
+        newActive = i;
+        break;
+      }
+    }
+    active = newActive;
+    record();
+    setState(() {});
+    _focusOffset(document.offsetOf(newActive));
+  }
+
+  void _turnInto(MarkdownBlock block, String type) {
+    final content = block.content;
+    final eol = block.source.contains('\r\n') ? '\r\n' : '\n';
+    final ending = block.source.endsWith('\n') ? eol : '';
+    if (type == 'Code block') {
+      _replace(
+        block,
+        '```text$eol$content$eol```$ending',
+        structural: true,
+        focusOffset: 7 + content.length,
+      );
+      return;
+    }
+    final prefix = switch (type) {
+      'Text' => '',
+      'Heading 1' => '# ',
+      'Heading 2' => '## ',
+      'Heading 3' => '### ',
+      'Bullet list' => '- ',
+      'Numbered list' => '1. ',
+      'Checklist' => '- [ ] ',
+      'Quote' => '> ',
+      'Callout' => '> [!NOTE]$eol> ',
+      _ => null,
+    };
+    if (prefix != null) {
+      _replace(
+        block,
+        '$prefix$content$ending',
+        structural: true,
+        focusOffset: prefix.length + content.length,
+      );
+    }
+  }
+
+  Future<void> _createTaskFromBlock(MarkdownBlock block) async {
+    final title = block.content.trim().split('\n').first;
+    if (title.isEmpty) return;
+    if (widget.onCreateTask != null) {
+      await widget.onCreateTask!(title);
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(
+            content: Text('Created task: $title'),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } else {
+      _turnInto(block, 'Checklist');
+    }
+  }
+
+  Future<void> _showTurnIntoMenu(
+    BuildContext context,
+    MarkdownBlock block,
+  ) async {
+    final box =
+        anchors[block]?.currentContext?.findRenderObject() as RenderBox?;
+    final point = box != null ? box.localToGlobal(Offset.zero) : Offset.zero;
+
+    final type = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        point.dx + 48,
+        point.dy + 28,
+        point.dx + 260,
+        0,
+      ),
+      items: const [
+        PopupMenuItem(value: 'Text', child: Text('Text (Paragraph)')),
+        PopupMenuItem(value: 'Heading 1', child: Text('Heading 1 (#)')),
+        PopupMenuItem(value: 'Heading 2', child: Text('Heading 2 (##)')),
+        PopupMenuItem(value: 'Heading 3', child: Text('Heading 3 (###)')),
+        PopupMenuItem(value: 'Bullet list', child: Text('Bullet list (-)')),
+        PopupMenuItem(
+          value: 'Numbered list',
+          child: Text('Numbered list (1.)'),
+        ),
+        PopupMenuItem(value: 'Checklist', child: Text('Checklist (- [ ])')),
+        PopupMenuItem(value: 'Quote', child: Text('Quote (>)')),
+        PopupMenuItem(value: 'Callout', child: Text('Callout (> [!NOTE])')),
+        PopupMenuItem(value: 'Code block', child: Text('Code block (```)')),
+      ],
+    );
+    if (type == null || !mounted) return;
+    _turnInto(block, type);
+  }
+
+  Future<void> _showBlockContextMenu(
+    BuildContext context,
+    MarkdownBlock block,
+  ) async {
+    final box =
+        anchors[block]?.currentContext?.findRenderObject() as RenderBox?;
+    final point = box != null ? box.localToGlobal(Offset.zero) : Offset.zero;
+
+    final allMovable = movableBlocks;
+    final idx = allMovable.indexOf(block);
+    final canMoveUp = idx > 0;
+    final canMoveDown = idx >= 0 && idx < allMovable.length - 1;
+
+    final action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        point.dx + 48,
+        point.dy + 28,
+        point.dx + 260,
+        0,
+      ),
+      items: [
+        PopupMenuItem(
+          value: 'move_up',
+          enabled: canMoveUp,
+          child: const Row(
             children: [
-              for (final block in document.blocks)
-                Container(
-                  key: anchors.putIfAbsent(block, () => GlobalKey()),
-                  child: Listener(
-                    onPointerDown: (_) {
-                      active = document.blocks.indexOf(block);
-                      record();
-                    },
-                    child:
-                        block.kind == MarkdownBlockKind.blank ||
-                            block.kind == MarkdownBlockKind.raw
-                        ? cache.putIfAbsent(block, () => blockView(block))
-                        : HoverChrome(
-                            content: cache.putIfAbsent(
-                              block,
-                              () => blockView(block),
-                            ),
-                            child: SizedBox(
-                              width: 28,
-                              height: 28,
-                              child: PopupMenuButton<String>(
-                                tooltip: 'Block actions',
-                                padding: EdgeInsets.zero,
-                                icon: const Icon(Icons.more_horiz, size: 16),
-                                constraints: const BoxConstraints(
-                                  minWidth: 170,
-                                ),
-                                itemBuilder: (_) => const [
-                                  PopupMenuItem(
-                                    value: 'below',
-                                    child: Text('Insert paragraph below'),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'above',
-                                    child: Text('Insert paragraph above'),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'copy',
-                                    child: Text('Copy Markdown'),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'duplicate',
-                                    child: Text('Duplicate block'),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'delete',
-                                    child: Text('Delete block'),
-                                  ),
-                                ],
-                                onSelected: (action) {
-                                  final eol = block.source.contains('\r\n')
-                                      ? '\r\n'
-                                      : '\n';
-                                  if (action == 'copy') {
-                                    Clipboard.setData(
-                                      ClipboardData(text: block.source),
-                                    );
-                                  } else if (action == 'delete') {
-                                    _replace(
-                                      block,
-                                      '',
-                                      structural: true,
-                                      focusOffset: 0,
-                                    );
-                                  } else if (action == 'duplicate') {
-                                    _replace(
-                                      block,
-                                      '${block.source}$eol$eol${block.source}',
-                                      structural: true,
-                                      focusOffset: 0,
-                                    );
-                                  } else if (action == 'above') {
-                                    _replace(
-                                      block,
-                                      '$eol$eol${block.source}',
-                                      structural: true,
-                                      focusOffset: 0,
-                                    );
-                                  } else {
-                                    final ending = block.source.endsWith(eol)
-                                        ? ''
-                                        : eol;
-                                    _replace(
-                                      block,
-                                      '${block.source}$ending$eol$eol$eol',
-                                      structural: true,
-                                      focusOffset:
-                                          block.source.length +
-                                          ending.length +
-                                          eol.length,
-                                    );
-                                  }
-                                },
-                              ),
-                            ),
-                          ),
-                  ),
-                ),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: HoverChrome(
-                  child: TextButton.icon(
-                    onPressed: () {
-                      final last = document.blocks.last;
-                      _replace(
-                        last,
-                        '${last.source}${last.source.endsWith('\n') ? '\n' : '\n\n'}',
-                        structural: true,
-                        focusOffset: last.source.length + 2,
-                      );
-                    },
-                    icon: const Icon(Icons.add, size: 16),
-                    label: const Text('New paragraph'),
-                  ),
+              Icon(Icons.arrow_upward, size: 18),
+              SizedBox(width: 10),
+              Flexible(child: Text('Move up')),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'move_down',
+          enabled: canMoveDown,
+          child: const Row(
+            children: [
+              Icon(Icons.arrow_downward, size: 18),
+              SizedBox(width: 10),
+              Flexible(child: Text('Move down')),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
+        const PopupMenuItem(
+          value: 'duplicate',
+          child: Row(
+            children: [
+              Icon(Icons.copy_all, size: 18),
+              SizedBox(width: 10),
+              Flexible(child: Text('Duplicate')),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'copy',
+          child: Row(
+            children: [
+              Icon(Icons.content_copy, size: 18),
+              SizedBox(width: 10),
+              Flexible(child: Text('Copy Markdown')),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'copy_link',
+          child: Row(
+            children: [
+              Icon(Icons.link, size: 18),
+              SizedBox(width: 10),
+              Flexible(child: Text('Copy link to block')),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'turn_into',
+          child: Row(
+            children: [
+              Icon(Icons.swap_horiz, size: 18),
+              SizedBox(width: 10),
+              Flexible(child: Text('Turn into...')),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'create_task',
+          child: Row(
+            children: [
+              Icon(Icons.task_alt, size: 18),
+              SizedBox(width: 10),
+              Flexible(child: Text('Create Task from block')),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(
+                Icons.delete_outline,
+                size: 18,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                  'Delete',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
               ),
             ],
           ),
         ),
+      ],
+    );
+
+    if (action == null || !mounted) return;
+
+    switch (action) {
+      case 'move_up':
+        if (canMoveUp) {
+          _moveBlock(block, allMovable[idx - 1], after: false);
+        }
+      case 'move_down':
+        if (canMoveDown) {
+          _moveBlock(block, allMovable[idx + 1], after: true);
+        }
+      case 'duplicate':
+        final eol = block.source.contains('\r\n') ? '\r\n' : '\n';
+        final isList = block.kind == MarkdownBlockKind.list;
+        final sep = isList ? '' : eol;
+        final ending = block.source.endsWith('\n') ? '' : eol;
+        _replace(
+          block,
+          '${block.source}$ending$sep${block.source}',
+          structural: true,
+          focusOffset: block.source.length + ending.length + sep.length,
+        );
+      case 'copy':
+        Clipboard.setData(ClipboardData(text: block.source));
+        if (mounted) {
+          ScaffoldMessenger.maybeOf(this.context)?.showSnackBar(
+            const SnackBar(
+              content: Text('Markdown copied to clipboard'),
+              duration: Duration(seconds: 1),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      case 'copy_link':
+        final slug = block.content
+            .trim()
+            .replaceAll(RegExp(r'[^\w\s-]'), '')
+            .replaceAll(RegExp(r'\s+'), '-')
+            .toLowerCase();
+        final link = 'orbit://note#$slug';
+        Clipboard.setData(ClipboardData(text: link));
+        if (mounted) {
+          ScaffoldMessenger.maybeOf(this.context)?.showSnackBar(
+            const SnackBar(
+              content: Text('Link to block copied to clipboard'),
+              duration: Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      case 'turn_into':
+        if (context.mounted) _showTurnIntoMenu(context, block);
+      case 'create_task':
+        _createTaskFromBlock(block);
+      case 'delete':
+        _replace(block, '', structural: true, focusOffset: 0);
+    }
+  }
+
+  Future<void> _showAddBelowMenu(
+    BuildContext context,
+    MarkdownBlock block,
+  ) async {
+    final box =
+        anchors[block]?.currentContext?.findRenderObject() as RenderBox?;
+    final point = box != null ? box.localToGlobal(Offset.zero) : Offset.zero;
+
+    final choice = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        point.dx + 24,
+        point.dy + 28,
+        point.dx + 220,
+        0,
       ),
-    ),
-  );
+      items: const [
+        PopupMenuItem(value: 'Text', child: Text('Text')),
+        PopupMenuItem(value: 'Heading 1', child: Text('Heading 1')),
+        PopupMenuItem(value: 'Heading 2', child: Text('Heading 2')),
+        PopupMenuItem(value: 'Heading 3', child: Text('Heading 3')),
+        PopupMenuItem(value: 'Bullet list', child: Text('Bullet list')),
+        PopupMenuItem(value: 'Numbered list', child: Text('Numbered list')),
+        PopupMenuItem(value: 'Checklist', child: Text('Checklist')),
+        PopupMenuItem(value: 'Quote', child: Text('Quote')),
+        PopupMenuItem(value: 'Callout', child: Text('Callout')),
+        PopupMenuItem(value: 'Code block', child: Text('Code block')),
+        PopupMenuItem(value: 'Table', child: Text('Table')),
+        PopupMenuItem(value: 'Inline equation', child: Text('Inline equation')),
+        PopupMenuItem(value: 'Block equation', child: Text('Block equation')),
+        PopupMenuItem(value: 'Horizontal rule', child: Text('Divider')),
+      ],
+    );
+    if (choice == null || !mounted) return;
+    _insertBlockBelow(block, choice);
+  }
+
+  void _insertBlockBelow(MarkdownBlock block, String type) {
+    final eol = block.source.contains('\r\n') ? '\r\n' : '\n';
+    final syntax = switch (type) {
+      'Text' => '',
+      'Heading 1' => '# ',
+      'Heading 2' => '## ',
+      'Heading 3' => '### ',
+      'Bullet list' => '- ',
+      'Numbered list' => '1. ',
+      'Checklist' => '- [ ] ',
+      'Quote' => '> ',
+      'Callout' => '> [!NOTE]$eol> A useful observation.',
+      'Code block' => '```text${eol}code$eol```',
+      'Table' =>
+        '| Column 1 | Column 2 |$eol| --- | --- |$eol| Value 1 | Value 2 |',
+      'Inline equation' => r'$x^2$',
+      'Block equation' => '\$\$$eol\\frac{a}{b}$eol\$\$',
+      'Horizontal rule' => '---',
+      _ => '',
+    };
+
+    final isList =
+        type == 'Bullet list' || type == 'Numbered list' || type == 'Checklist';
+    final bothLists = block.kind == MarkdownBlockKind.list && isList;
+    final bothQuotes = block.kind == MarkdownBlockKind.quote && type == 'Quote';
+    final sep = (bothLists || bothQuotes) ? eol : '$eol$eol';
+    final ending = block.source.endsWith(eol) ? '' : eol;
+
+    final insertion = '$ending$sep$syntax$eol';
+    final focusOffset =
+        block.source.length + ending.length + sep.length + syntax.length;
+    _replace(
+      block,
+      '${block.source}$insertion',
+      structural: true,
+      focusOffset: focusOffset,
+    );
+  }
+
+  Widget _buildDropIndicator(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Container(
+        height: 2.5,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primary,
+          borderRadius: BorderRadius.circular(2),
+          boxShadow: [
+            BoxShadow(
+              color: theme.colorScheme.primary.withValues(alpha: 0.4),
+              blurRadius: 4,
+              spreadRadius: 0.5,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDragFeedback(BuildContext context, MarkdownBlock block) {
+    final theme = Theme.of(context);
+    final preview = block.content.trim().isEmpty
+        ? (block.kind == MarkdownBlockKind.code
+              ? 'Code block'
+              : block.kind == MarkdownBlockKind.table
+              ? 'Table'
+              : block.kind == MarkdownBlockKind.math
+              ? 'Equation'
+              : 'Empty block')
+        : block.content.trim().split('\n').first;
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 280),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.95),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: theme.colorScheme.primary.withValues(alpha: 0.6),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.25),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.drag_indicator,
+              size: 16,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                preview,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBlockHandleRow(BuildContext context, MarkdownBlock block) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, right: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 22,
+            height: 24,
+            child: IconButton(
+              tooltip: 'Add block below',
+              padding: EdgeInsets.zero,
+              iconSize: 15,
+              icon: Icon(
+                Icons.add,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+              hoverColor: theme.colorScheme.primary.withValues(alpha: 0.12),
+              onPressed: () => _showAddBelowMenu(context, block),
+            ),
+          ),
+          SizedBox(
+            width: 22,
+            height: 24,
+            child: Draggable<MarkdownBlock>(
+              data: block,
+              onDragStarted: () => setState(() => _draggingBlock = block),
+              onDragEnd: (_) => setState(() {
+                _draggingBlock = null;
+                _dropTargetBlock = null;
+              }),
+              onDraggableCanceled: (_, _) => setState(() {
+                _draggingBlock = null;
+                _dropTargetBlock = null;
+              }),
+              feedback: _buildDragFeedback(context, block),
+              childWhenDragging: const SizedBox.shrink(),
+              child: Tooltip(
+                message: 'Drag to move · Click for options',
+                waitDuration: const Duration(milliseconds: 500),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(4),
+                  mouseCursor: SystemMouseCursors.grab,
+                  onTap: () => _showBlockContextMenu(context, block),
+                  child: Center(
+                    child: Icon(
+                      Icons.drag_indicator,
+                      size: 16,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (block.kind == MarkdownBlockKind.heading) ...[
+            SizedBox(
+              width: 22,
+              height: 24,
+              child: IconButton(
+                tooltip:
+                    _collapsedHeadings.contains(
+                      '${block.level}:${block.content.trim()}',
+                    )
+                    ? 'Expand section'
+                    : 'Collapse section',
+                padding: EdgeInsets.zero,
+                iconSize: 16,
+                icon: Icon(
+                  _collapsedHeadings.contains(
+                        '${block.level}:${block.content.trim()}',
+                      )
+                      ? Icons.chevron_right
+                      : Icons.keyboard_arrow_down,
+                  color: theme.colorScheme.primary,
+                ),
+                onPressed: () {
+                  setState(() {
+                    final key = '${block.level}:${block.content.trim()}';
+                    if (_collapsedHeadings.contains(key)) {
+                      _collapsedHeadings.remove(key);
+                    } else {
+                      _collapsedHeadings.add(key);
+                    }
+                  });
+                  record();
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hiddenBlocks = <MarkdownBlock>{};
+    int? collapsedLevel;
+    for (int i = 0; i < document.blocks.length; i++) {
+      final b = document.blocks[i];
+      if (b.kind == MarkdownBlockKind.heading) {
+        if (collapsedLevel != null && b.level <= collapsedLevel) {
+          collapsedLevel = null;
+        }
+        final key = '${b.level}:${b.content.trim()}';
+        if (_collapsedHeadings.contains(key)) {
+          collapsedLevel = b.level;
+          continue;
+        }
+      }
+      if (collapsedLevel != null) {
+        hiddenBlocks.add(b);
+      }
+    }
+
+    return Scrollbar(
+      controller: scroll,
+      child: SingleChildScrollView(
+        controller: scroll,
+        padding: const EdgeInsets.fromLTRB(28, 8, 28, 80),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: widget.contentWidth),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final block in document.blocks)
+                  if (!hiddenBlocks.contains(block))
+                    Container(
+                      key: anchors.putIfAbsent(block, () => GlobalKey()),
+                      child: Listener(
+                        onPointerDown: (_) {
+                          active = document.blocks.indexOf(block);
+                          record();
+                        },
+                        child: () {
+                          final isFrontmatter =
+                              document.blocks.indexOf(block) == 0 &&
+                              block.kind == MarkdownBlockKind.raw &&
+                              block.source.startsWith('---');
+                          final isBlank = block.kind == MarkdownBlockKind.blank;
+                          final blockContent = cache.putIfAbsent(
+                            block,
+                            () => blockView(block),
+                          );
+
+                          if (isBlank || isFrontmatter) {
+                            return blockContent;
+                          }
+
+                          return DragTarget<MarkdownBlock>(
+                            onWillAcceptWithDetails: (details) =>
+                                details.data != block,
+                            onMove: (details) {
+                              final box =
+                                  anchors[block]?.currentContext
+                                          ?.findRenderObject()
+                                      as RenderBox?;
+                              if (box != null) {
+                                final local = box.globalToLocal(details.offset);
+                                final isTop = local.dy < (box.size.height / 2);
+                                if (_dropTargetBlock != block ||
+                                    _dropOnTop != isTop) {
+                                  setState(() {
+                                    _dropTargetBlock = block;
+                                    _dropOnTop = isTop;
+                                  });
+                                }
+                              }
+                            },
+                            onLeave: (_) {
+                              if (_dropTargetBlock == block) {
+                                setState(() {
+                                  _dropTargetBlock = null;
+                                });
+                              }
+                            },
+                            onAcceptWithDetails: (details) {
+                              final sourceBlock = details.data;
+                              final after = !_dropOnTop;
+                              setState(() {
+                                _dropTargetBlock = null;
+                              });
+                              _moveBlock(sourceBlock, block, after: after);
+                            },
+                            builder: (context, candidateData, rejectedData) {
+                              final showTopIndicator =
+                                  _dropTargetBlock == block && _dropOnTop;
+                              final showBottomIndicator =
+                                  _dropTargetBlock == block && !_dropOnTop;
+                              final isBeingDragged = _draggingBlock == block;
+
+                              return Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  if (showTopIndicator)
+                                    _buildDropIndicator(context),
+                                  Opacity(
+                                    opacity: isBeingDragged ? 0.35 : 1.0,
+                                    child: HoverChrome(
+                                      content: blockContent,
+                                      child: _buildBlockHandleRow(
+                                        context,
+                                        block,
+                                      ),
+                                    ),
+                                  ),
+                                  if (showBottomIndicator)
+                                    _buildDropIndicator(context),
+                                ],
+                              );
+                            },
+                          );
+                        }(),
+                      ),
+                    ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: HoverChrome(
+                    child: TextButton.icon(
+                      onPressed: () {
+                        final last = document.blocks.last;
+                        _replace(
+                          last,
+                          '${last.source}${last.source.endsWith('\n') ? '\n' : '\n\n'}',
+                          structural: true,
+                          focusOffset: last.source.length + 2,
+                        );
+                      },
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text('New paragraph'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _StyledController extends TextEditingController {
@@ -1258,10 +1927,31 @@ class _RichTextBlockState extends State<_RichTextBlock> {
         widget.onRedo();
         return KeyEventResult.handled;
       }
-      if (event.logicalKey == LogicalKeyboardKey.keyV &&
-          widget.onPasteImage != null) {
+      if (event.logicalKey == LogicalKeyboardKey.keyV) {
         Clipboard.getData(Clipboard.kTextPlain).then((data) {
-          if (mounted && (data?.text ?? '').isEmpty) widget.onPasteImage!();
+          final text = data?.text?.trim() ?? '';
+          final isUrl =
+              Uri.tryParse(text)?.hasScheme == true &&
+              (text.startsWith('http://') || text.startsWith('https://'));
+          if (mounted && isUrl && !controller.selection.isCollapsed) {
+            final sel = controller.selection;
+            final selectedText = controller.text.substring(sel.start, sel.end);
+            final replacement = '[$selectedText]($text)';
+            final newText = controller.text.replaceRange(
+              sel.start,
+              sel.end,
+              replacement,
+            );
+            controller.value = TextEditingValue(
+              text: newText,
+              selection: TextSelection.collapsed(
+                offset: sel.start + replacement.length,
+              ),
+            );
+            widget.onChanged(newText);
+          } else if (mounted && text.isEmpty && widget.onPasteImage != null) {
+            widget.onPasteImage!();
+          }
         });
       }
     }

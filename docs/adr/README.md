@@ -28,3 +28,4 @@ for the earlier decision. Routine files, widgets and bug fixes do not need ADRs.
 - [0013 — Local PDF reader](0013-local-pdf-reader.md): repository-owned bytes, local PDFium viewing, portable page references and quote notes.
 
 - [0014 — PDF highlight notes](0014-pdf-highlight-notes.md): source-versioned regions using Canvas rectangles and linkable Markdown notes.
+- [0015 — PDF form drafts](0015-pdf-form-drafts.md): source-versioned field drafts, isolated native editing and separate filled copies.

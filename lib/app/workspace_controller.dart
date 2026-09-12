@@ -266,6 +266,32 @@ class WorkspaceController extends Notifier<int> {
     notify();
   }
 
+  final List<String> _navHistory = [];
+  int _navIndex = -1;
+  bool _navigatingHistory = false;
+
+  bool get canNavigateBack => _navIndex > 0;
+  bool get canNavigateForward =>
+      _navIndex >= 0 && _navIndex < _navHistory.length - 1;
+
+  void navigateBack() {
+    if (!canNavigateBack) return;
+    _navIndex--;
+    _navigatingHistory = true;
+    openObject(_navHistory[_navIndex]);
+    _navigatingHistory = false;
+    notify();
+  }
+
+  void navigateForward() {
+    if (!canNavigateForward) return;
+    _navIndex++;
+    _navigatingHistory = true;
+    openObject(_navHistory[_navIndex]);
+    _navigatingHistory = false;
+    notify();
+  }
+
   void openObject(String id, {bool secondary = false}) {
     final object = find(id);
     if (object == null || object.isDeleted) return;
@@ -279,6 +305,16 @@ class WorkspaceController extends Notifier<int> {
       session.secondaryId = id;
     } else {
       session.activeId = id;
+      if (!_navigatingHistory) {
+        if (_navIndex >= 0 && _navIndex < _navHistory.length - 1) {
+          _navHistory.removeRange(_navIndex + 1, _navHistory.length);
+        }
+        if (_navHistory.isEmpty || _navHistory.last != id) {
+          _navHistory.add(id);
+          if (_navHistory.length > 50) _navHistory.removeAt(0);
+          _navIndex = _navHistory.length - 1;
+        }
+      }
     }
     session.tabs = {...session.tabs, id}.toList();
     session.recent = [
@@ -295,13 +331,128 @@ class WorkspaceController extends Notifier<int> {
     notify();
   }
 
+  bool isPinned(String id) => session.pinnedTabs.contains(id);
+
+  void pinTab(String id) {
+    if (!session.tabs.contains(id)) return;
+    if (!session.pinnedTabs.contains(id)) {
+      session.pinnedTabs.add(id);
+    }
+    final pinned = session.tabs
+        .where((t) => session.pinnedTabs.contains(t))
+        .toList();
+    final unpinned = session.tabs
+        .where((t) => !session.pinnedTabs.contains(t))
+        .toList();
+    session.tabs = [...pinned, ...unpinned];
+    persistSession();
+    notify();
+  }
+
+  void unpinTab(String id) {
+    session.pinnedTabs.remove(id);
+    final pinned = session.tabs
+        .where((t) => session.pinnedTabs.contains(t))
+        .toList();
+    final unpinned = session.tabs
+        .where((t) => !session.pinnedTabs.contains(t))
+        .toList();
+    session.tabs = [...pinned, ...unpinned];
+    persistSession();
+    notify();
+  }
+
   void closeTab(String id) {
+    if (dirty.contains(id)) flush(id);
     lastClosed = id;
+    session.closedTabs.remove(id);
+    session.closedTabs.add(id);
+    if (session.closedTabs.length > 20) {
+      session.closedTabs.removeAt(0);
+    }
+    session.pinnedTabs.remove(id);
     session.tabs = session.tabs.where((v) => v != id).toList();
     if (session.activeId == id) session.activeId = session.tabs.lastOrNull;
     if (session.secondaryId == id) session.secondaryId = null;
+    if (session.secondaryId == session.activeId) session.secondaryId = null;
     persistSession();
     notify();
+  }
+
+  void closeOtherTabs(String id) {
+    if (!session.tabs.contains(id)) return;
+    final toClose = session.tabs
+        .where((t) => t != id && !session.pinnedTabs.contains(t))
+        .toList();
+    for (final closing in toClose) {
+      if (dirty.contains(closing)) {
+        flush(closing);
+      }
+      session.closedTabs.remove(closing);
+      session.closedTabs.add(closing);
+    }
+    while (session.closedTabs.length > 20) {
+      session.closedTabs.removeAt(0);
+    }
+    session.tabs = session.tabs
+        .where((t) => t == id || session.pinnedTabs.contains(t))
+        .toList();
+    session.activeId = id;
+    if (session.secondaryId != null &&
+        !session.tabs.contains(session.secondaryId)) {
+      session.secondaryId = null;
+    }
+    if (session.secondaryId == session.activeId) session.secondaryId = null;
+    persistSession();
+    notify();
+  }
+
+  void closeTabsToTheRight(String id) {
+    final index = session.tabs.indexOf(id);
+    if (index < 0) return;
+    final toClose = session.tabs
+        .sublist(index + 1)
+        .where((t) => !session.pinnedTabs.contains(t))
+        .toList();
+    for (final closing in toClose) {
+      if (dirty.contains(closing)) {
+        flush(closing);
+      }
+      session.closedTabs.remove(closing);
+      session.closedTabs.add(closing);
+    }
+    while (session.closedTabs.length > 20) {
+      session.closedTabs.removeAt(0);
+    }
+    session.tabs = session.tabs.where((t) => !toClose.contains(t)).toList();
+    if (toClose.contains(session.activeId)) {
+      session.activeId = id;
+    }
+    if (toClose.contains(session.secondaryId)) {
+      session.secondaryId = null;
+    }
+    if (session.secondaryId == session.activeId) {
+      session.secondaryId = null;
+    }
+    persistSession();
+    notify();
+  }
+
+  bool reopenClosedTab() {
+    while (session.closedTabs.isNotEmpty) {
+      final candidateId = session.closedTabs.removeLast();
+      final object = find(candidateId);
+      if (object != null && !object.isDeleted) {
+        if (!session.tabs.contains(candidateId)) {
+          session.tabs.add(candidateId);
+        }
+        openObject(candidateId);
+        persistSession();
+        notify();
+        return true;
+      }
+    }
+    return false;
   }
 
   void cycleTab({bool reverse = false, bool secondary = false}) {
@@ -315,11 +466,75 @@ class WorkspaceController extends Notifier<int> {
   }
 
   void reorderTab(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= session.tabs.length) return;
+    final movingId = session.tabs[oldIndex];
+    final isMovingPinned = session.pinnedTabs.contains(movingId);
+    final pinnedCount = session.tabs
+        .where((t) => session.pinnedTabs.contains(t))
+        .length;
+
+    int targetIndex = newIndex;
+    if (isMovingPinned) {
+      targetIndex = targetIndex.clamp(0, pinnedCount - 1);
+    } else {
+      targetIndex = targetIndex.clamp(pinnedCount, session.tabs.length - 1);
+    }
+
     final tabs = List.of(session.tabs);
-    tabs.insert(newIndex, tabs.removeAt(oldIndex));
+    tabs.insert(targetIndex, tabs.removeAt(oldIndex));
     session.tabs = tabs;
     persistSession();
     notify();
+  }
+
+  Future<UniversalObject?> openTodayNote() async {
+    final now = DateTime.now();
+    final dateSlug =
+        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final existing = activeObjects.cast<UniversalObject?>().firstWhere(
+      (o) =>
+          o != null &&
+          o.typeId == 'orbit.note' &&
+          !o.isDeleted &&
+          (o.title == dateSlug || o.properties['dailyDate'] == dateSlug),
+      orElse: () => null,
+    );
+    if (existing != null) {
+      openObject(existing.id);
+      return existing;
+    }
+    final weekdayNames = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
+    final monthNames = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    final weekday = weekdayNames[now.weekday - 1];
+    final month = monthNames[now.month - 1];
+    final header = '# $weekday, $month ${now.day}, ${now.year}\n\n';
+    return create(
+      'orbit.note',
+      title: dateSlug,
+      body: header,
+      properties: {'icon': '📅', 'dailyDate': dateSlug},
+    );
   }
 
   Future<UniversalObject?> saveEvent({
@@ -368,7 +583,12 @@ class WorkspaceController extends Notifier<int> {
     }
   }
 
-  Future<UniversalObject?> create(String type, {String? title}) async {
+  Future<UniversalObject?> create(
+    String type, {
+    String? title,
+    String body = '',
+    Map<String, dynamic> properties = const {},
+  }) async {
     try {
       final now = DateTime.now();
       final today = calendarDate(now);
@@ -383,14 +603,18 @@ class WorkspaceController extends Notifier<int> {
               'orbit.event' => 'Untitled event',
               _ => 'Untitled note',
             },
-        properties: switch (type) {
-          'orbit.task' => {'completed': false, 'priority': 'medium'},
-          'orbit.event' => {
-            'allDay': true,
-            'startDate': today,
-            'endDate': tomorrow,
+        body: body,
+        properties: {
+          ...switch (type) {
+            'orbit.task' => {'completed': false, 'priority': 'medium'},
+            'orbit.event' => {
+              'allDay': true,
+              'startDate': today,
+              'endDate': tomorrow,
+            },
+            _ => const {},
           },
-          _ => const {},
+          ...properties,
         },
         data: type == 'orbit.canvas'
             ? {'schemaVersion': 1, 'elements': <dynamic>[]}
@@ -686,6 +910,37 @@ class WorkspaceController extends Notifier<int> {
       notify();
     }
   }
+
+  Future<void> deleteFolder(String folder) =>
+      organize(() => repository.deleteFolder(folder));
+
+  Future<void> deletePermanently(String id) async {
+    await flush(id);
+    try {
+      await repository.deletePermanently(id);
+      mergeRepositoryObjects();
+      closeTab(id);
+      notify();
+    } catch (e) {
+      error = '$e';
+      notify();
+    }
+  }
+
+  Future<void> emptyTrash() async {
+    try {
+      await repository.emptyTrash();
+      mergeRepositoryObjects();
+      notify();
+    } catch (e) {
+      error = '$e';
+      notify();
+    }
+  }
+
+  bool get showAttachments => session.showAttachments;
+  void toggleShowAttachments() =>
+      updateSession((s) => s.showAttachments = !s.showAttachments);
 
   Future<void> refresh() async {
     if (!await flushAll()) return;

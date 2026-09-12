@@ -12,6 +12,7 @@ import '../../domain/pdf_annotation.dart';
 import '../../canvas/scene.dart';
 import '../../platform/pdf_forms.dart';
 import 'pdf_work_widgets.dart';
+import 'pdf_content_fit.dart';
 
 List<CanvasElement> pdfSelectionRegions(
   List<PdfPageTextRange> ranges,
@@ -116,6 +117,61 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   Timer? _saveTimer;
   bool _ready = false;
   bool _forms = false, _comfort = false, _savingCopy = false;
+  bool _textOnly = false;
+  int _fitGeneration = 0;
+  final _contentWidths = <int, Future<Rect>>{};
+
+  Future<void> _fitComfort({bool keepVerticalPosition = false}) async {
+    if (!_ready || !_viewer.isReady || !_comfort || _textOnly) return;
+    final generation = ++_fitGeneration;
+    final pageNumber = _page.clamp(1, _viewer.pageCount);
+    try {
+      if (!_contentWidths.containsKey(pageNumber) &&
+          _contentWidths.length >= 32) {
+        _contentWidths.remove(_contentWidths.keys.first);
+      }
+      final area = await (_contentWidths[pageNumber] ??= measurePdfContentWidth(
+        _viewer.document.pages[pageNumber - 1],
+      ));
+      if (!mounted ||
+          generation != _fitGeneration ||
+          !_comfort ||
+          _textOnly ||
+          !_viewer.isReady ||
+          _page != pageNumber) {
+        return;
+      }
+      final page = _viewer.layout.pageLayouts[pageNumber - 1];
+      final zoom = ((_viewer.viewSize.width - 16) / (page.width * area.width))
+          .clamp(_viewer.minScale, _viewer.maxScale);
+      final top = keepVerticalPosition
+          ? _viewer.centerPosition.dy -
+                _viewer.viewSize.height / (2 * _viewer.currentZoom)
+          : page.top;
+      await _viewer.goTo(
+        _viewer.calcMatrixFor(
+          Offset(
+            page.left + page.width * area.center.dx,
+            top + (_viewer.viewSize.height / 2 - 8) / zoom,
+          ),
+          zoom: zoom,
+        ),
+        duration: Duration.zero,
+      );
+    } catch (_) {
+      if (mounted &&
+          generation == _fitGeneration &&
+          _comfort &&
+          !_textOnly &&
+          _viewer.isReady) {
+        await _viewer.goTo(
+          _viewer.calcMatrixFitWidthForPage(pageNumber: pageNumber),
+          duration: Duration.zero,
+        );
+      }
+    }
+  }
+
   bool _thumbnails = false;
   bool _finding = false;
   bool _showAnnotations = false;
@@ -180,6 +236,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
 
   void _find() {
     _comfort = false;
+    _textOnly = false;
     setState(() => _finding = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -568,16 +625,47 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                     IconButton(
                       tooltip: _comfort ? 'Original page' : 'Comfort reading',
                       isSelected: _comfort,
+                      onPressed: _ready
+                          ? () {
+                              setState(() {
+                                _comfort = !_comfort;
+                                _textOnly = false;
+                                _forms = false;
+                              });
+                              if (_comfort) {
+                                _fitComfort();
+                              } else {
+                                _fitGeneration++;
+                                _viewer.goTo(
+                                  _viewer.calcMatrixFitWidthForPage(
+                                    pageNumber: _page,
+                                  ),
+                                  duration: Duration.zero,
+                                );
+                              }
+                            }
+                          : null,
+                      icon: const Icon(Icons.chrome_reader_mode_outlined),
+                    ),
+                    IconButton(
+                      tooltip: _textOnly
+                          ? 'Return to visual reading'
+                          : 'Text-only reading',
+                      isSelected: _textOnly,
                       onPressed:
                           _ready &&
                               (_viewer.document.permissions?.allowsCopying ??
                                   true)
-                          ? () => setState(() {
-                              _comfort = !_comfort;
-                              _forms = false;
-                            })
+                          ? () {
+                              setState(() {
+                                _textOnly = !_textOnly;
+                                _comfort = true;
+                                _forms = false;
+                              });
+                              if (!_textOnly) _fitComfort();
+                            }
                           : null,
-                      icon: const Icon(Icons.chrome_reader_mode_outlined),
+                      icon: const Icon(Icons.text_fields),
                     ),
                     if (widget.onFormChanged != null)
                       IconButton(
@@ -587,6 +675,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                             ? () => setState(() {
                                 _forms = !_forms;
                                 _comfort = false;
+                                _textOnly = false;
                               })
                             : null,
                         icon: const Icon(Icons.check_box_outlined),
@@ -850,6 +939,18 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                             initialPageNumber: widget.initialPage,
                             passwordProvider: _password,
                             params: PdfViewerParams(
+                              onViewSizeChanged: (size, oldSize, controller) {
+                                if (oldSize != null &&
+                                    oldSize.width != size.width) {
+                                  WidgetsBinding.instance.addPostFrameCallback((
+                                    _,
+                                  ) {
+                                    if (mounted) {
+                                      _fitComfort(keepVerticalPosition: true);
+                                    }
+                                  });
+                                }
+                              },
                               pageOverlaysBuilder:
                                   _forms && widget.onFormChanged != null
                                   ? (context, rect, page) => [
@@ -874,13 +975,14 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                                   _search = PdfTextSearcher(controller)
                                     ..addListener(_refresh);
                                   _ready = true;
-                                  if (MediaQuery.sizeOf(context).width < 600 &&
-                                      (document.permissions?.allowsCopying ??
-                                          true)) {
+                                  if (controller.viewSize.width < 600) {
                                     _comfort = true;
                                   }
                                 });
-                                final zoom = widget.initialZoom;
+                                if (_comfort) await _fitComfort();
+                                final zoom = _comfort
+                                    ? null
+                                    : widget.initialZoom;
                                 if (zoom != null && zoom.isFinite) {
                                   await controller.setZoom(
                                     controller.centerPosition,
@@ -902,11 +1004,13 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                               },
                               onPageChanged: (page) {
                                 if (mounted && page != null) {
+                                  final changed = _page != page;
                                   setState(() {
                                     _page = page;
                                     _pageInput.text = '$page';
                                   });
                                   _positionChanged();
+                                  if (changed) _fitComfort();
                                 }
                               },
                               errorBannerBuilder: (_, error, _, _) => _fallback(
@@ -984,7 +1088,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                         ),
                       ],
                     ),
-                    if (_comfort && _ready)
+                    if (_textOnly && _ready)
                       Positioned.fill(
                         child: PdfComfortPage(
                           key: ValueKey('comfort:$_page'),

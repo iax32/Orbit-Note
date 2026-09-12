@@ -113,9 +113,9 @@ void main() {
     tester,
   ) async {
     await open(tester, 'First\n\nSecond');
-    await tester.tap(find.byTooltip('Block actions').first);
+    await tester.tap(find.byTooltip('Drag to move · Click for options').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Duplicate block'));
+    await tester.tap(find.text('Duplicate'));
     await tester.pumpAndSettle();
     expect(body.split('First'), hasLength(3));
     expect(body.endsWith('Second'), isTrue);

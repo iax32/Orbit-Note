@@ -125,11 +125,16 @@ class _CommandPaletteState extends State<_CommandPalette> {
         icon: Icons.fullscreen,
         run: () => c.updateSession((s) => s.focusMode = !s.focusMode),
       ),
-      if (c.lastClosed != null)
+      (
+        title: "Today's note",
+        icon: Icons.today_outlined,
+        run: () => c.openTodayNote(),
+      ),
+      if (c.session.closedTabs.isNotEmpty || c.lastClosed != null)
         (
           title: 'Reopen closed tab',
           icon: Icons.tab,
-          run: () => c.openObject(c.lastClosed!),
+          run: () => c.reopenClosedTab(),
         ),
       (
         title: 'Save all changes',
@@ -191,6 +196,7 @@ class _CommandPaletteState extends State<_CommandPalette> {
                   ...objects.map(
                     (o) => ObjectRow(
                       object: o,
+                      query: query,
                       onTap: () => run(() => c.openObject(o.id)),
                     ),
                   ),

@@ -20,6 +20,7 @@ class FileReplacement {
 abstract interface class WorkspaceFolderStore {
   Future<List<String>> listFolders();
   Future<void> createFolder(String path);
+  Future<void> deleteFolder(String path);
   Future<void> movePath(
     String source,
     String target,
@@ -41,5 +42,6 @@ abstract interface class WorkspaceStore {
     Uint8List bytes, {
     required String? expectedHash,
   });
+  Future<void> deleteFile(String relativePath);
   Future<void> close();
 }

@@ -246,6 +246,27 @@ class NativeWorkspaceStore
   }
 
   @override
+  Future<void> deleteFolder(String path) async {
+    validateNotesPath(path);
+    if (!path.startsWith('Notes/')) {
+      throw const WorkspaceFailure('Folders belong inside Notes.');
+    }
+    final directory = Directory((await _file(path)).path);
+    if (await directory.exists()) {
+      await directory.delete();
+    }
+  }
+
+  @override
+  Future<void> deleteFile(String relativePath) async {
+    validateRelativePath(relativePath);
+    final file = await _file(relativePath);
+    if (await file.exists()) {
+      await file.delete();
+    }
+  }
+
+  @override
   Future<void> movePath(
     String source,
     String target,

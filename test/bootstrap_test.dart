@@ -42,7 +42,7 @@ void main() {
     expect(repository.objects.single.body, 'A real local note');
     c.navigate(OrbitDestination.tasks);
     await tester.pumpAndSettle();
-    expect(find.text('Add a task and press Enter'), findsOneWidget);
+    expect(find.text('New task'), findsOneWidget);
     c.navigate(OrbitDestination.home);
     tester.view.physicalSize = const Size(390, 844);
     tester.platformDispatcher.textScaleFactorTestValue = 2;
