@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'equation_editor.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -83,9 +84,18 @@ class NoteMath extends StatelessWidget {
     return onEdit == null
         ? content
         : Tooltip(
-            message: 'Edit equation',
+            message: 'Click to edit equation · Right-click to copy LaTeX',
             child: InkWell(
               onTap: () => edit(context),
+              onSecondaryTap: () {
+                Clipboard.setData(ClipboardData(text: source));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('LaTeX copied to clipboard'),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+              },
               borderRadius: BorderRadius.circular(6),
               child: Padding(padding: const EdgeInsets.all(5), child: content),
             ),

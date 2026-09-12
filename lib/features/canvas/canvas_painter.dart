@@ -77,6 +77,7 @@ class OrbitCanvasPainter extends CustomPainter {
     this.editingId,
     this.guides = const [],
     this.images = const {},
+    this.backgroundStyle = 'dots',
     required this.textCache,
   }) : sceneRevision = scene.revision;
   final CanvasTextCache textCache;
@@ -91,6 +92,7 @@ class OrbitCanvasPainter extends CustomPainter {
   final String? editingId;
   final List<CanvasGuideLine> guides;
   final Map<String, ui.Image> images;
+  final String backgroundStyle;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -214,15 +216,38 @@ class OrbitCanvasPainter extends CustomPainter {
   }
 
   void _grid(Canvas canvas, Size size) {
+    if (backgroundStyle == 'blank') return;
+
     var step = 24 * camera.zoom;
     while (step < 15) {
       step *= 4;
     }
     final origin = camera.toScreen(const CanvasPoint(0, 0));
-    final paint = Paint()..color = colors.onSurface.withValues(alpha: .11);
-    for (var x = origin.x % step; x < size.width; x += step) {
+
+    if (backgroundStyle == 'grid') {
+      final linePaint = Paint()
+        ..color = colors.onSurface.withValues(alpha: .08)
+        ..strokeWidth = 1.0;
+      for (var x = origin.x % step; x < size.width; x += step) {
+        canvas.drawLine(Offset(x, 0), Offset(x, size.height), linePaint);
+      }
       for (var y = origin.y % step; y < size.height; y += step) {
-        canvas.drawCircle(Offset(x, y), .75, paint);
+        canvas.drawLine(Offset(0, y), Offset(size.width, y), linePaint);
+      }
+    } else if (backgroundStyle == 'lines') {
+      final linePaint = Paint()
+        ..color = colors.onSurface.withValues(alpha: .09)
+        ..strokeWidth = 1.0;
+      for (var y = origin.y % step; y < size.height; y += step) {
+        canvas.drawLine(Offset(0, y), Offset(size.width, y), linePaint);
+      }
+    } else {
+      // 'dots' (default)
+      final paint = Paint()..color = colors.onSurface.withValues(alpha: .11);
+      for (var x = origin.x % step; x < size.width; x += step) {
+        for (var y = origin.y % step; y < size.height; y += step) {
+          canvas.drawCircle(Offset(x, y), .75, paint);
+        }
       }
     }
   }
@@ -654,5 +679,6 @@ class OrbitCanvasPainter extends CustomPainter {
       region != oldDelegate.region ||
       preview != oldDelegate.preview ||
       editingId != oldDelegate.editingId ||
+      backgroundStyle != oldDelegate.backgroundStyle ||
       !listEquals(guides, oldDelegate.guides);
 }

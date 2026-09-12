@@ -14,6 +14,7 @@ import 'rich_table_editor.dart';
 import 'rich_math_block.dart';
 import 'callout_block.dart';
 import 'hover_chrome.dart';
+import 'math_grid_editor.dart';
 
 class RichMarkdownEditor extends StatefulWidget {
   const RichMarkdownEditor({
@@ -291,10 +292,19 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     'Checklist',
     'Quote',
     'Callout',
+    'Definition',
+    'Theorem',
+    'Lemma',
+    'Proof',
+    'Example',
+    'Question',
     'Code block',
     'Table',
     'Inline equation',
     'Block equation',
+    'Matrix',
+    'Cases',
+    'Math symbols',
     'Image / file',
     'Horizontal rule',
   ];
@@ -357,11 +367,55 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
       );
       return;
     }
+    if (name == 'Matrix') {
+      final code = await showMathGrid(
+        context,
+        initial: MathGrid('pmatrix', [
+          ['1', '0'],
+          ['0', '1'],
+        ]),
+      );
+      if (code == null || !mounted) return;
+      final syntax = '\$\$\n$code\n\$\$\n';
+      _replace(
+        block,
+        block.source.isEmpty ? syntax : '${block.source}\n$syntax',
+        structural: true,
+      );
+      return;
+    }
+    if (name == 'Cases') {
+      const code =
+          '\\begin{cases}\n\\square & \\text{if } \\square \\\\\n\\square & \\text{if } \\square\n\\end{cases}';
+      final syntax = '\$\$\n$code\n\$\$\n';
+      _replace(
+        block,
+        block.source.isEmpty ? syntax : '${block.source}\n$syntax',
+        structural: true,
+      );
+      return;
+    }
+    if (name == 'Math symbols') {
+      await _showMathSymbolsPalette(block);
+      return;
+    }
     var syntax = switch (name) {
       'Code block' => '```text\n${content.isEmpty ? 'code' : content}\n```\n',
       'Horizontal rule' => '---\n',
       'Callout' =>
         '> [!NOTE]\n> ${content.isEmpty ? 'A useful observation.' : content}\n',
+      'Definition' =>
+        '> [!DEFINITION]\n> ${content.isEmpty ? 'A definition statement.' : content}\n',
+      'Theorem' =>
+        '> [!THEOREM]\n> ${content.isEmpty ? 'A theorem statement.' : content}\n',
+      'Lemma' =>
+        '> [!LEMMA]\n> ${content.isEmpty ? 'A lemma statement.' : content}\n',
+      'Proof' =>
+        '> [!PROOF]\n> ${content.isEmpty ? 'Proof of the statement.' : content}\n',
+      'Example' =>
+        '> [!EXAMPLE]\n> ${content.isEmpty ? 'An example.' : content}\n',
+      'Question' =>
+        '> [!QUESTION]\n> ${content.isEmpty ? 'A question or unclear item.' : content}\n',
       _ => '',
     };
     if (name == 'Table') {
@@ -435,10 +489,103 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     if (fromSlash ||
         block.content.isEmpty ||
         name == 'Code block' ||
-        name == 'Callout') {
+        name == 'Callout' ||
+        name == 'Definition' ||
+        name == 'Theorem' ||
+        name == 'Lemma' ||
+        name == 'Proof' ||
+        name == 'Example' ||
+        name == 'Question') {
       _replace(block, syntax, structural: true);
     } else {
       insertMarkdown(syntax);
+    }
+  }
+
+  Future<void> _showMathSymbolsPalette(MarkdownBlock block) async {
+    const symbols = [
+      '∀',
+      '∃',
+      '∈',
+      '∉',
+      '⊂',
+      '⊆',
+      '∪',
+      '∩',
+      '⇒',
+      '⇔',
+      '¬',
+      '∧',
+      '∨',
+      'ℕ',
+      'ℤ',
+      'ℚ',
+      'ℝ',
+      '∑',
+      '∏',
+      '√',
+      '∞',
+      '∫',
+      '≈',
+      '≠',
+      '≤',
+      '≥',
+      '×',
+      '·',
+      '±',
+      '∅',
+    ];
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Math symbols'),
+        content: SizedBox(
+          width: 340,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.center,
+            children: [
+              for (final sym in symbols)
+                InkWell(
+                  onTap: () => Navigator.pop(ctx, sym),
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: Theme.of(
+                          ctx,
+                        ).colorScheme.outlineVariant.withValues(alpha: 0.5),
+                      ),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      sym,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+    if (selected != null && mounted && document.blocks.contains(block)) {
+      keys[block]?.currentState?.insert(selected);
+      _replace(block, block.source, structural: true);
+      setState(() => cache.remove(block));
     }
   }
 
@@ -1305,10 +1452,17 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
         PopupMenuItem(value: 'Checklist', child: Text('Checklist')),
         PopupMenuItem(value: 'Quote', child: Text('Quote')),
         PopupMenuItem(value: 'Callout', child: Text('Callout')),
+        PopupMenuItem(value: 'Definition', child: Text('Definition')),
+        PopupMenuItem(value: 'Theorem', child: Text('Theorem')),
+        PopupMenuItem(value: 'Proof', child: Text('Proof')),
+        PopupMenuItem(value: 'Example', child: Text('Example')),
+        PopupMenuItem(value: 'Question', child: Text('Question')),
         PopupMenuItem(value: 'Code block', child: Text('Code block')),
         PopupMenuItem(value: 'Table', child: Text('Table')),
         PopupMenuItem(value: 'Inline equation', child: Text('Inline equation')),
         PopupMenuItem(value: 'Block equation', child: Text('Block equation')),
+        PopupMenuItem(value: 'Matrix', child: Text('Matrix')),
+        PopupMenuItem(value: 'Cases', child: Text('Cases')),
         PopupMenuItem(value: 'Horizontal rule', child: Text('Divider')),
       ],
     );
@@ -1328,11 +1482,20 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
       'Checklist' => '- [ ] ',
       'Quote' => '> ',
       'Callout' => '> [!NOTE]$eol> A useful observation.',
+      'Definition' => '> [!DEFINITION]$eol> A definition statement.',
+      'Theorem' => '> [!THEOREM]$eol> A theorem statement.',
+      'Proof' => '> [!PROOF]$eol> Proof of the statement.',
+      'Example' => '> [!EXAMPLE]$eol> An example.',
+      'Question' => '> [!QUESTION]$eol> A question or unclear item.',
       'Code block' => '```text${eol}code$eol```',
       'Table' =>
         '| Column 1 | Column 2 |$eol| --- | --- |$eol| Value 1 | Value 2 |',
       'Inline equation' => r'$x^2$',
       'Block equation' => '\$\$$eol\\frac{a}{b}$eol\$\$',
+      'Matrix' =>
+        '\$\$$eol\\begin{pmatrix}$eol 1 & 0 \\\\$eol 0 & 1$eol\\end{pmatrix}$eol\$\$',
+      'Cases' =>
+        '\$\$$eol\\begin{cases}$eol \\square & \\text{if } \\square \\\\$eol \\square & \\text{if } \\square$eol\\end{cases}$eol\$\$',
       'Horizontal rule' => '---',
       _ => '',
     };

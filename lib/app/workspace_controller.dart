@@ -633,6 +633,788 @@ class WorkspaceController extends Notifier<int> {
     }
   }
 
+  Future<UniversalObject?> createUniversityCourse(
+    String courseName, {
+    String semester = 'WS 2026',
+    int ects = 5,
+    String lecturer = '',
+    String targetParentFolder = 'Notes',
+  }) async {
+    final cleanName = courseName.trim().isEmpty ? 'Course' : courseName.trim();
+    final courseFolder = targetParentFolder == 'Notes'
+        ? 'University/$cleanName'
+        : '$targetParentFolder/$cleanName';
+
+    // 1. Create folder structure
+    await repository.createFolder(courseFolder);
+    await repository.createFolder('$courseFolder/Lectures');
+    await repository.createFolder('$courseFolder/Exercises');
+    await repository.createFolder('$courseFolder/Exam Preparation');
+
+    // 2. Create Course Overview Note
+    final overviewBody =
+        '''# $cleanName Overview
+
+**Course:** $cleanName | **Semester:** $semester | **ECTS:** $ects${lecturer.isNotEmpty ? ' | **Lecturer:** $lecturer' : ''}
+
+## Course Summary & Goals
+Welcome to $cleanName. This course workspace contains your lectures, exercise sheets, tasks, deadlines, and exam preparations.
+
+## Course Structure
+- **Lectures:** Lecture notes, definitions, theorems, and proofs.
+- **Exercises:** Practice sheets, interactive canvas calculations, and solutions.
+- **Exam Preparation:** Summaries, weak topics review, and mock exams.
+
+## Quick References & Core Foundations
+> [!DEFINITION] 1.1 Course Foundations
+> Key course definitions and core principles.
+
+> [!THEOREM] 1.2 Main Result
+> Fundamental theorem of $cleanName.
+''';
+
+    final overviewNote = await create(
+      'orbit.note',
+      title: '$cleanName Overview',
+      body: overviewBody,
+      properties: {
+        'folder': courseFolder,
+        'course': cleanName,
+        'courseCode': cleanName,
+        'semester': semester,
+        'ects': ects,
+        'lecturer': lecturer,
+        'isCourseOverview': true,
+      },
+    );
+
+    // 3. Create starter Lecture Note
+    final lectureBody =
+        '''# Lecture 01 — Foundations
+
+**Date:** ${calendarDate(DateTime.now())} | **Course:** $cleanName${lecturer.isNotEmpty ? ' | **Lecturer:** $lecturer' : ''}
+
+## Topics
+- Introduction to $cleanName
+- Basic notation and fundamentals
+
+## Definitions
+> [!DEFINITION] 1.1 Fundamental Concept
+> A relation or concept is defined as...
+
+## Theorems
+> [!THEOREM] 1.2 Key Property
+> If conditions hold, then...
+
+## Proofs
+> [!PROOF]
+> Direct proof by definitions and established lemmas.
+
+## Examples
+> [!EXAMPLE]
+> Consider the standard set...
+
+## Questions & Unclear Items
+> [!QUESTION]
+> Question to ask in the next exercise session:
+
+## Exercises
+- Complete Sheet 1 practice problems.
+
+## Summary
+Core foundations introduced. Review definitions before the exercise session.
+''';
+
+    await create(
+      'orbit.note',
+      title: 'Lecture 01 - Foundations',
+      body: lectureBody,
+      properties: {
+        'folder': '$courseFolder/Lectures',
+        'course': cleanName,
+        'topic': 'Foundations',
+      },
+    );
+
+    // 4. Create starter Exercise Canvas
+    await create(
+      'orbit.canvas',
+      title: 'Exercise 01 - Practice Sheet',
+      properties: {
+        'folder': '$courseFolder/Exercises',
+        'course': cleanName,
+        'topic': 'Foundations',
+        'exerciseStatus': 'not_started',
+        'difficulty': 'medium',
+        'confidence': 'medium',
+        'backgroundStyle': 'grid',
+      },
+    );
+
+    // 5. Create Scoped Views
+    await create(
+      'orbit.view',
+      title: '$cleanName Tasks',
+      properties: {
+        'folder': courseFolder,
+        'scope': cleanName,
+        'viewType': 'tasks',
+        'preset': 'university',
+      },
+    );
+
+    await create(
+      'orbit.view',
+      title: '$cleanName Board',
+      properties: {
+        'folder': courseFolder,
+        'scope': cleanName,
+        'viewType': 'board',
+        'preset': 'university',
+      },
+    );
+
+    await create(
+      'orbit.view',
+      title: '$cleanName Calendar',
+      properties: {
+        'folder': courseFolder,
+        'scope': cleanName,
+        'viewType': 'calendar',
+      },
+    );
+
+    await create(
+      'orbit.view',
+      title: '$cleanName Timeline',
+      properties: {
+        'folder': courseFolder,
+        'scope': cleanName,
+        'viewType': 'timeline',
+      },
+    );
+
+    await create(
+      'orbit.view',
+      title: '$cleanName Exercises',
+      properties: {
+        'folder': courseFolder,
+        'scope': cleanName,
+        'viewType': 'exercises',
+      },
+    );
+
+    if (overviewNote != null) {
+      openObject(overviewNote.id);
+    }
+    return overviewNote;
+  }
+
+  Future<UniversalObject?> createLectureNote({
+    required String folder,
+    String? title,
+    String course = '',
+    String topic = '',
+  }) async {
+    final cleanTitle = title?.trim().isNotEmpty == true
+        ? title!.trim()
+        : 'Lecture Notes';
+    final body =
+        '''# $cleanTitle
+
+**Date:** ${calendarDate(DateTime.now())}${course.isNotEmpty ? ' | **Course:** $course' : ''}
+
+## Topics
+
+## Definitions
+> [!DEFINITION] 
+
+## Theorems
+> [!THEOREM] 
+
+## Proofs
+> [!PROOF] 
+
+## Examples
+> [!EXAMPLE] 
+
+## Questions
+> [!QUESTION] 
+
+## Summary
+''';
+    return create(
+      'orbit.note',
+      title: cleanTitle,
+      body: body,
+      properties: {
+        'folder': folder,
+        if (course.isNotEmpty) 'course': course,
+        if (topic.isNotEmpty) 'topic': topic,
+      },
+    );
+  }
+
+  Future<UniversalObject?> createExerciseCanvas({
+    required String folder,
+    String? title,
+    String course = '',
+    String topic = '',
+  }) async {
+    final cleanTitle = title?.trim().isNotEmpty == true
+        ? title!.trim()
+        : 'Exercise Canvas';
+    return create(
+      'orbit.canvas',
+      title: cleanTitle,
+      properties: {
+        'folder': folder,
+        if (course.isNotEmpty) 'course': course,
+        if (topic.isNotEmpty) 'topic': topic,
+        'exerciseStatus': 'not_started',
+        'difficulty': 'medium',
+        'confidence': 'medium',
+        'backgroundStyle': 'grid',
+      },
+    );
+  }
+
+  Future<UniversalObject?> createGameProject(
+    String projectName, {
+    String genre = 'Action RPG',
+    String targetPlatform = 'PC / Steam',
+    String targetEngine = 'Godot / Unity / Custom',
+    String targetParentFolder = 'Notes',
+  }) async {
+    final cleanName = projectName.trim().isEmpty
+        ? 'GameProject'
+        : projectName.trim();
+    final projectFolder = targetParentFolder == 'Notes'
+        ? 'Games/$cleanName'
+        : '$targetParentFolder/$cleanName';
+
+    // 1. Create folder structure
+    await repository.createFolder(projectFolder);
+    await repository.createFolder('$projectFolder/Design');
+    await repository.createFolder('$projectFolder/Art');
+    await repository.createFolder('$projectFolder/Programming');
+    await repository.createFolder('$projectFolder/Audio');
+    await repository.createFolder('$projectFolder/Production');
+    await repository.createFolder('$projectFolder/Playtests');
+
+    // 2. Create GDD
+    final gddBody =
+        '''# $cleanName — Game Design Document
+
+**Genre:** $genre | **Target Platform:** $targetPlatform | **Engine:** $targetEngine
+**Status:** In Pre-Production / Prototype
+
+## 1. High Concept & Pillars
+- **High Concept:** A concise one-liner describing the game.
+- **Pillar 1:** Core fantasy or unique selling proposition.
+- **Pillar 2:** Distinct gameplay feel or mechanical hook.
+- **Pillar 3:** Visual and atmospheric identity.
+
+## 2. Core Game Loop
+1. **Explore / Encounter:** Player moves through environment and faces challenge.
+2. **Action / Solve:** Player applies skills, combat, or puzzle solving.
+3. **Reward / Loot:** Player gains experience, items, or unlocks.
+4. **Upgrade / Progress:** Player upgrades gear/abilities and opens new areas.
+
+See visual diagram: [[Core Loop]]
+
+## 3. Core Mechanics & Controls
+- **Player Controller:** Movement, jump, sprint, dodge, interaction.
+- **Combat / Interaction:** Primary attack, secondary ability, resource management (Stamina/Mana).
+- **Camera & Perspective:** Third-person / Top-down / First-person camera behavior.
+
+## 4. World & Narrative
+- **Setting:** World lore, theme, and tone.
+- **Protagonist:** Player character motivations and arc.
+- **Factions / NPCs:** Major factions and quest-givers.
+
+## 5. Art & Audio Direction
+- **Visual Style:** See [[Art Direction & Moodboard]].
+- **Audio Palette:** Dynamic soundtrack, Foley priorities, UI feedback sounds.
+
+## 6. Milestones & Production Targets
+- **Prototype:** Core mechanics, graybox player controller, basic combat loop.
+- **Vertical Slice:** One polished level, final art style test, complete audio pass.
+- **Alpha:** All gameplay systems implemented, content complete.
+- **Beta:** Bug fixing, balance pass, performance optimization.
+- **Release:** Day-one patch ready, platform certifications.
+''';
+
+    final gddNote = await create(
+      'orbit.note',
+      title: '$cleanName GDD',
+      body: gddBody,
+      properties: {
+        'folder': '$projectFolder/Design',
+        'project': cleanName,
+        'genre': genre,
+        'platform': targetPlatform,
+        'engine': targetEngine,
+        'isGdd': true,
+        'category': 'Design',
+      },
+    );
+
+    // 3. Create Mechanics Spec
+    final mechanicsBody =
+        '''# Core Mechanics Specification — $cleanName
+
+**Project:** $cleanName | **Discipline:** Game Design
+
+## Overview
+Detailed breakdown of player movement physics, combat mechanics, and interaction rules.
+
+## State Machine
+- **Idle:** Default state, transitions to Walk/Run on input.
+- **Move:** Ground acceleration, max velocity, braking friction.
+- **Jump / Fall:** Apex gravity float, coyote time (120ms), jump buffer (150ms).
+- **Action / Attack:** Startup frames, active hit window, recovery / cancel frames.
+
+## Numbers & Tuning
+- Move Speed: 6.0 m/s
+- Jump Velocity: 9.8 m/s
+- Gravity Multiplier: 2.2x
+''';
+
+    await create(
+      'orbit.note',
+      title: 'Core Mechanics Spec',
+      body: mechanicsBody,
+      properties: {
+        'folder': '$projectFolder/Design',
+        'project': cleanName,
+        'discipline': 'Game Design',
+        'category': 'Specification',
+      },
+    );
+
+    // 4. Create Canvases: Core Loop & Moodboard
+    await create(
+      'orbit.canvas',
+      title: 'Core Loop',
+      properties: {
+        'folder': '$projectFolder/Design',
+        'project': cleanName,
+        'canvasPreset': 'core_loop',
+        'backgroundStyle': 'grid',
+      },
+    );
+
+    await create(
+      'orbit.canvas',
+      title: 'Art Direction & Moodboard',
+      properties: {
+        'folder': '$projectFolder/Art',
+        'project': cleanName,
+        'canvasPreset': 'moodboard',
+        'backgroundStyle': 'dots',
+      },
+    );
+
+    // 5. Create Scoped Views
+    await create(
+      'orbit.view',
+      title: '$cleanName Dashboard',
+      properties: {
+        'folder': projectFolder,
+        'project': cleanName,
+        'scope': cleanName,
+        'viewType': 'game_dashboard',
+        'genre': genre,
+        'platform': targetPlatform,
+        'engine': targetEngine,
+      },
+    );
+
+    await create(
+      'orbit.view',
+      title: '$cleanName Board',
+      properties: {
+        'folder': projectFolder,
+        'project': cleanName,
+        'scope': cleanName,
+        'viewType': 'board',
+        'preset': 'gamedev',
+      },
+    );
+
+    await create(
+      'orbit.view',
+      title: '$cleanName Backlog',
+      properties: {
+        'folder': projectFolder,
+        'project': cleanName,
+        'scope': cleanName,
+        'viewType': 'tasks',
+      },
+    );
+
+    await create(
+      'orbit.view',
+      title: '$cleanName Bugs',
+      properties: {
+        'folder': projectFolder,
+        'project': cleanName,
+        'scope': cleanName,
+        'viewType': 'board',
+        'preset': 'bugs',
+      },
+    );
+
+    await create(
+      'orbit.view',
+      title: '$cleanName Milestones',
+      properties: {
+        'folder': projectFolder,
+        'project': cleanName,
+        'scope': cleanName,
+        'viewType': 'milestones',
+      },
+    );
+
+    await create(
+      'orbit.view',
+      title: '$cleanName Roadmap',
+      properties: {
+        'folder': projectFolder,
+        'project': cleanName,
+        'scope': cleanName,
+        'viewType': 'timeline',
+      },
+    );
+
+    // 6. Create Starter Tasks across disciplines with dependencies
+    final repoTask = await create(
+      'orbit.task',
+      title: 'Initialize repository & game engine template',
+      body:
+          '- [ ] Create Git repository\n- [ ] Configure .gitignore for engine binaries\n- [ ] Setup initial scene and project settings',
+      properties: {
+        'folder': '$projectFolder/Programming',
+        'project': cleanName,
+        'discipline': 'Programming',
+        'milestone': 'Prototype',
+        'priority': 'high',
+        'estimate': '2',
+      },
+    );
+
+    await create(
+      'orbit.task',
+      title: 'Implement player movement & camera rig',
+      body:
+          '- [ ] Implement 8-direction movement\n- [ ] Add smooth camera follow & collision avoidance\n- [ ] Tune acceleration and friction',
+      properties: {
+        'folder': '$projectFolder/Programming',
+        'project': cleanName,
+        'discipline': 'Gameplay',
+        'milestone': 'Prototype',
+        'priority': 'high',
+        'estimate': '5',
+        if (repoTask != null) 'blockedBy': repoTask.id,
+      },
+    );
+
+    await create(
+      'orbit.task',
+      title: 'Hero character concept art & turnaround',
+      body:
+          '- [ ] Silhouette exploration (5 sketches)\n- [ ] Color palette definition\n- [ ] 3-view turnaround for 3D modeling',
+      properties: {
+        'folder': '$projectFolder/Art',
+        'project': cleanName,
+        'discipline': 'Art',
+        'milestone': 'Prototype',
+        'priority': 'medium',
+        'estimate': '5',
+      },
+    );
+
+    await create(
+      'orbit.task',
+      title: 'Movement Foley & ambiance prototype',
+      body:
+          '- [ ] Footstep sounds (concrete, dirt, wood)\n- [ ] Jump & landing SFX\n- [ ] Background wind / room tone loop',
+      properties: {
+        'folder': '$projectFolder/Audio',
+        'project': cleanName,
+        'discipline': 'Audio',
+        'milestone': 'Prototype',
+        'priority': 'low',
+        'estimate': '3',
+      },
+    );
+
+    if (gddNote != null) {
+      openObject(gddNote.id);
+    }
+    return gddNote;
+  }
+
+  Future<UniversalObject?> createGameDesignDocument({
+    required String folder,
+    String? title,
+    String project = '',
+    String genre = 'Action RPG',
+  }) async {
+    final cleanTitle = title?.trim().isNotEmpty == true
+        ? title!.trim()
+        : 'Game Design Document';
+    final body =
+        '''# $cleanTitle
+
+**Project:** $project | **Genre:** $genre
+**Date:** ${calendarDate(DateTime.now())}
+
+## 1. Vision & Core Pillars
+- 
+
+## 2. Core Game Loop
+- 
+
+## 3. Mechanics & Systems
+- 
+
+## 4. Content & Level Progression
+- 
+
+## 5. Narrative & Setting
+- 
+''';
+    return create(
+      'orbit.note',
+      title: cleanTitle,
+      body: body,
+      properties: {
+        'folder': folder,
+        if (project.isNotEmpty) 'project': project,
+        'isGdd': true,
+        'category': 'Design',
+      },
+    );
+  }
+
+  Future<UniversalObject?> createFeatureSpec({
+    required String folder,
+    String? title,
+    String project = '',
+    String discipline = 'Gameplay',
+  }) async {
+    final cleanTitle = title?.trim().isNotEmpty == true
+        ? title!.trim()
+        : 'Feature Spec';
+    final body =
+        '''# $cleanTitle
+
+**Project:** $project | **Discipline:** $discipline
+**Date:** ${calendarDate(DateTime.now())}
+
+## Problem & Goal
+What player experience or system need does this feature address?
+
+## Detailed Specification
+- User flow / control flow
+- Edge cases and failure conditions
+- Dependencies on other systems
+
+## Acceptance Criteria
+- [ ] Core interaction works smoothly
+- [ ] Sound effects and visual feedback hooked up
+- [ ] No regression on performance or physics
+''';
+    return create(
+      'orbit.note',
+      title: cleanTitle,
+      body: body,
+      properties: {
+        'folder': folder,
+        if (project.isNotEmpty) 'project': project,
+        'discipline': discipline,
+        'category': 'Feature Spec',
+      },
+    );
+  }
+
+  Future<UniversalObject?> createBugReport({
+    required String folder,
+    String? title,
+    String project = '',
+    String severity = 'major',
+    String build = 'v0.1.0',
+    String platform = 'PC',
+    String discipline = 'QA',
+  }) async {
+    final cleanTitle = title?.trim().isNotEmpty == true
+        ? title!.trim()
+        : 'Bug Report';
+    final body =
+        '''# $cleanTitle
+
+**Severity:** ${severity.toUpperCase()} | **Build:** $build | **Platform:** $platform
+**Discipline:** $discipline | **Reported:** ${calendarDate(DateTime.now())}
+
+## Summary & Expected vs Actual
+- **Expected:** 
+- **Actual:** 
+
+## Steps to Reproduce
+1. Start game on build $build.
+2. 
+3. 
+
+## Reproduction Rate
+- [x] 100% (Every time)
+- [ ] 50% (Intermittent)
+- [ ] Once only
+
+## System Specs / Logs
+Attach crash dump, engine console output, or screenshots here.
+''';
+    return create(
+      'orbit.task',
+      title: cleanTitle,
+      body: body,
+      properties: {
+        'folder': folder,
+        if (project.isNotEmpty) 'project': project,
+        'isBug': true,
+        'severity': severity,
+        'build': build,
+        'platform': platform,
+        'discipline': discipline,
+        'category': 'Bug',
+        'status': 'new',
+      },
+    );
+  }
+
+  Future<UniversalObject?> createPlaytestSession({
+    required String folder,
+    String? title,
+    String project = '',
+    String build = 'v0.1.0',
+  }) async {
+    final cleanTitle = title?.trim().isNotEmpty == true
+        ? title!.trim()
+        : 'Playtest Session';
+    final body =
+        '''# $cleanTitle
+
+**Project:** $project | **Build Tested:** $build | **Date:** ${calendarDate(DateTime.now())}
+**Tester / Cohort:** 
+
+## Objectives
+What questions did this session aim to answer?
+- Is the tutorial intuitive?
+- Where do players get stuck or lost?
+
+## Observations
+- **Positive Moments:** 
+- **Friction Points:** 
+- **Confusion / Rage Quits:** 
+
+## Feedback Summary
+- Controls: (1-5)
+- Fun Factor: (1-5)
+- Difficulty: Too easy / Just right / Too hard
+
+## Action Items
+- [ ] Task / fix to file
+''';
+    return create(
+      'orbit.note',
+      title: cleanTitle,
+      body: body,
+      properties: {
+        'folder': folder,
+        if (project.isNotEmpty) 'project': project,
+        'category': 'Playtest',
+        'build': build,
+      },
+    );
+  }
+
+  Future<UniversalObject?> createDevLog({
+    required String folder,
+    String? title,
+    String project = '',
+  }) async {
+    final cleanTitle = title?.trim().isNotEmpty == true
+        ? title!.trim()
+        : 'Dev Log — ${calendarDate(DateTime.now())}';
+    final body =
+        '''# $cleanTitle
+
+**Date:** ${calendarDate(DateTime.now())}${project.isNotEmpty ? ' | **Project:** $project' : ''}
+
+## Completed Today
+- 
+
+## Blockers & Roadblocks
+- None
+
+## Next Focus
+- 
+''';
+    return create(
+      'orbit.note',
+      title: cleanTitle,
+      body: body,
+      properties: {
+        'folder': folder,
+        if (project.isNotEmpty) 'project': project,
+        'category': 'DevLog',
+      },
+    );
+  }
+
+  Future<UniversalObject?> createLevelDesignDoc({
+    required String folder,
+    String? title,
+    String project = '',
+  }) async {
+    final cleanTitle = title?.trim().isNotEmpty == true
+        ? title!.trim()
+        : 'Level Design Document';
+    final body =
+        '''# $cleanTitle
+
+**Project:** $project | **Discipline:** Level Design
+**Date:** ${calendarDate(DateTime.now())}
+
+## Level Theme & Setting
+- 
+
+## Flow & Beats (Pacing)
+1. **Introduction / Spawn:** Teach mechanics in safe zone.
+2. **First Encounter:** Low-stakes challenge.
+3. **Pacing Valley / Exploration:** Secret paths, collectibles, lore.
+4. **Climax / Boss Arena:** High intensity test of player mastery.
+5. **Exit / Transition:** Reward room and transition to next area.
+
+## Metrics & Restrictions
+- Corridor Width: 3.5m min
+- Ceiling Height: 4.0m min
+- Sightlines: Max 40m before break
+''';
+    return create(
+      'orbit.note',
+      title: cleanTitle,
+      body: body,
+      properties: {
+        'folder': folder,
+        if (project.isNotEmpty) 'project': project,
+        'discipline': 'Level Design',
+        'category': 'Level Design',
+      },
+    );
+  }
+
   bool isArchivedFolder(String folder) => session.archivedFolders.any(
     (f) => folder == f || folder.startsWith('$f/'),
   );

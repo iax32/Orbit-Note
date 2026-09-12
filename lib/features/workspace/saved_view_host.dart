@@ -3,6 +3,10 @@ import '../../app/orbit_theme.dart';
 import '../../app/workspace_controller.dart';
 import '../../domain/universal_object.dart';
 import 'calendar_view.dart';
+import 'course_dashboard_view.dart';
+import 'exercise_table_view.dart';
+import 'game_dashboard_view.dart';
+import 'milestone_view.dart';
 import 'timeline_view.dart';
 import 'workspace_views.dart';
 
@@ -104,6 +108,28 @@ class _SavedViewHostState extends State<SavedViewHost> {
         ? 0
         : ((completedTasks * 100) ~/ totalTasks);
 
+    final isCourse =
+        preset == 'university' ||
+        viewType == 'exercises' ||
+        viewType == 'overview' ||
+        v.properties['course'] != null ||
+        (folder != null && folder.toLowerCase().contains('university'));
+
+    final isGame =
+        preset == 'gamedev' ||
+        preset == 'bugs' ||
+        viewType == 'game_dashboard' ||
+        viewType == 'milestones' ||
+        v.properties['project'] != null ||
+        (folder != null &&
+            (folder.toLowerCase().contains('game') ||
+                folder.toLowerCase().contains('games')));
+
+    final showCourseTabs =
+        isCourse || viewType == 'exercises' || viewType == 'overview';
+    final showGameTabs =
+        isGame || viewType == 'game_dashboard' || viewType == 'milestones';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -124,6 +150,10 @@ class _SavedViewHostState extends State<SavedViewHost> {
                       'board' => Icons.view_kanban_outlined,
                       'calendar' => Icons.calendar_month_outlined,
                       'timeline' => Icons.timeline_outlined,
+                      'exercises' => Icons.table_chart_outlined,
+                      'overview' => Icons.dashboard_outlined,
+                      'game_dashboard' => Icons.sports_esports_outlined,
+                      'milestones' => Icons.flag_outlined,
                       _ => Icons.checklist_outlined,
                     },
                     size: 20,
@@ -243,7 +273,45 @@ class _SavedViewHostState extends State<SavedViewHost> {
                     onTap: () => _updateProperty('viewType', 'timeline'),
                     colors: colors,
                   ),
+                  if (showCourseTabs) ...[
+                    const SizedBox(width: 4),
+                    _ViewTab(
+                      icon: Icons.table_chart_outlined,
+                      label: 'Exercises',
+                      selected: viewType == 'exercises',
+                      onTap: () => _updateProperty('viewType', 'exercises'),
+                      colors: colors,
+                    ),
+                    const SizedBox(width: 4),
+                    _ViewTab(
+                      icon: Icons.dashboard_outlined,
+                      label: 'Overview',
+                      selected: viewType == 'overview',
+                      onTap: () => _updateProperty('viewType', 'overview'),
+                      colors: colors,
+                    ),
+                  ],
+                  if (showGameTabs) ...[
+                    const SizedBox(width: 4),
+                    _ViewTab(
+                      icon: Icons.sports_esports_outlined,
+                      label: 'Dashboard',
+                      selected: viewType == 'game_dashboard',
+                      onTap: () =>
+                          _updateProperty('viewType', 'game_dashboard'),
+                      colors: colors,
+                    ),
+                    const SizedBox(width: 4),
+                    _ViewTab(
+                      icon: Icons.flag_outlined,
+                      label: 'Milestones',
+                      selected: viewType == 'milestones',
+                      onTap: () => _updateProperty('viewType', 'milestones'),
+                      colors: colors,
+                    ),
+                  ],
                   const Spacer(),
+                  const SizedBox(width: 8),
                   // Preset dropdown if in Board mode
                   if (viewType == 'board') ...[
                     DropdownButton<String>(
@@ -270,6 +338,10 @@ class _SavedViewHostState extends State<SavedViewHost> {
                         DropdownMenuItem(
                           value: 'gamedev',
                           child: Text('Game Dev'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'bugs',
+                          child: Text('Bug Tracker'),
                         ),
                         DropdownMenuItem(
                           value: 'university',
@@ -332,6 +404,37 @@ class _SavedViewHostState extends State<SavedViewHost> {
               viewObject: v,
               folderFilter: folder,
               scope: scope,
+            ),
+            'exercises' => ExerciseTableView(
+              key: ValueKey('exercises-${v.id}'),
+              controller: c,
+              viewObject: v,
+              folderFilter: folder,
+              scope: scope,
+            ),
+            'overview' => CourseDashboardView(
+              key: ValueKey('overview-${v.id}'),
+              controller: c,
+              viewObject: v,
+              folderFilter: folder,
+              scope: scope,
+              onSelectViewType: (vt) => _updateProperty('viewType', vt),
+            ),
+            'game_dashboard' => GameDashboardView(
+              key: ValueKey('game_dashboard-${v.id}'),
+              controller: c,
+              viewObject: v,
+              folderFilter: folder,
+              scope: scope,
+              onSelectViewType: (vt) => _updateProperty('viewType', vt),
+            ),
+            'milestones' => MilestoneView(
+              key: ValueKey('milestones-${v.id}'),
+              controller: c,
+              viewObject: v,
+              folderFilter: folder,
+              scope: scope,
+              onSelectViewType: (vt) => _updateProperty('viewType', vt),
             ),
             _ => TasksView(
               key: ValueKey('tasks-${v.id}'),

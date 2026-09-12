@@ -44,6 +44,24 @@ enum CalloutType {
     icon: Icons.chat_bubble_outline,
     color: Color(0xFFB6B2C2),
   ),
+  corollary(
+    name: 'COROLLARY',
+    label: 'Corollary',
+    icon: Icons.subdirectory_arrow_right,
+    color: Color(0xFF6F7FEA),
+  ),
+  counterexample(
+    name: 'COUNTEREXAMPLE',
+    label: 'Counterexample',
+    icon: Icons.cancel_outlined,
+    color: Color(0xFFE57582),
+  ),
+  question(
+    name: 'QUESTION',
+    label: 'Question',
+    icon: Icons.help_outline,
+    color: Color(0xFF38BDF8),
+  ),
   note(
     name: 'NOTE',
     label: 'Note',
@@ -145,6 +163,20 @@ class ParsedCallout {
       title: title,
       body: bodyLines.join('\n').trim(),
     );
+  }
+
+  String get headerDisplay {
+    if (title.isEmpty) return type.label;
+    final lowerTitle = title.toLowerCase();
+    final lowerLabel = type.label.toLowerCase();
+    if (lowerTitle.startsWith(lowerLabel)) {
+      return title;
+    }
+    final startsWithNumber = RegExp(r'^[0-9]+(\.[0-9]+)*').hasMatch(title);
+    if (startsWithNumber) {
+      return '${type.label} $title';
+    }
+    return '${type.label}: $title';
   }
 
   String toMarkdown() {
@@ -257,7 +289,7 @@ class _CalloutBlockState extends State<CalloutBlock> {
                         Icon(type.icon, size: 16, color: effectiveColor),
                         const SizedBox(width: 8),
                         Text(
-                          _parsed.title.isNotEmpty ? _parsed.title : type.label,
+                          _parsed.headerDisplay,
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,

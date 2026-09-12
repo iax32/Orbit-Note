@@ -1032,6 +1032,29 @@ class TaskViewConfig {
   bool showProject;
 }
 
+const gameDevDisciplines = [
+  'Game Design',
+  'Programming',
+  'Gameplay',
+  'AI',
+  'Level Design',
+  'Art',
+  '3D',
+  '2D',
+  'Animation',
+  'VFX',
+  'Audio',
+  'Music',
+  'Narrative',
+  'UI/UX',
+  'QA',
+  'Production',
+  'Tools',
+  'Build / Release',
+];
+
+const bugSeverities = ['blocker', 'critical', 'major', 'minor'];
+
 enum KanbanPreset {
   universal('universal', 'Universal', [
     ('backlog', 'Backlog'),
@@ -1048,10 +1071,17 @@ enum KanbanPreset {
   ]),
   gamedev('gamedev', 'Game Dev', [
     ('concept', 'Concept'),
-    ('assets', 'Asset Production'),
-    ('in-progress', 'In Dev'),
-    ('testing', 'Testing'),
+    ('assets', 'Assets / Art'),
+    ('in-progress', 'In Progress'),
+    ('testing', 'Testing / QA'),
     ('done', 'Done'),
+  ]),
+  bugs('bugs', 'Bug Tracker', [
+    ('new', 'New'),
+    ('confirmed', 'Confirmed'),
+    ('in-progress', 'In Progress'),
+    ('verify', 'Verify'),
+    ('done', 'Closed'),
   ]),
   university('university', 'University Course', [
     ('syllabus', 'Syllabus / Topics'),
@@ -1098,9 +1128,16 @@ class _TasksViewState extends State<TasksView> {
       'dueDate'; // 'dueDate', 'priority', 'title', 'created', 'manual'
   String? filterPriority;
   String? filterProject;
+  String? filterDiscipline;
+  String? filterMilestone;
+  bool filterBugsOnly = false;
+  bool filterBlockedOnly = false;
   bool showDueDate = true;
   bool showPriority = true;
   bool showProject = true;
+  bool showDiscipline = true;
+  bool showMilestone = true;
+  bool showEstimate = true;
   final Map<String, List<String>> _manualOrderPerTab = {};
   final List<TaskViewConfig> _customViews = [];
 
@@ -1141,6 +1178,14 @@ class _TasksViewState extends State<TasksView> {
         (widget.viewObject?.properties['folder'] as String?);
     final effectiveScope =
         widget.scope ?? (widget.viewObject?.properties['scope'] as String?);
+    final effectiveDiscipline =
+        filterDiscipline ??
+        (widget.viewObject?.properties['discipline'] as String?);
+    final effectiveMilestone =
+        filterMilestone ??
+        (widget.viewObject?.properties['milestone'] as String?);
+    final isBugPreset =
+        widget.viewObject?.properties['preset'] == 'bugs' || filterBugsOnly;
     final isDone = activeTab == 'done' || targetStatus == 'done';
     final props = <String, dynamic>{
       if (activeTab == 'today') 'dueDate': today,
@@ -1153,6 +1198,11 @@ class _TasksViewState extends State<TasksView> {
         'project': effectiveScope,
       if (effectiveFolder != null && effectiveFolder.isNotEmpty)
         'folder': effectiveFolder,
+      if (effectiveDiscipline != null && effectiveDiscipline.isNotEmpty)
+        'discipline': effectiveDiscipline,
+      if (effectiveMilestone != null && effectiveMilestone.isNotEmpty)
+        'milestone': effectiveMilestone,
+      if (isBugPreset) 'isBug': true,
       if (widget.viewObject?.properties['contextId'] != null)
         'contextId': widget.viewObject?.properties['contextId'],
     };
@@ -1283,6 +1333,46 @@ class _TasksViewState extends State<TasksView> {
           .toList();
     }
 
+    // Filter by discipline
+    final activeDiscipline =
+        filterDiscipline ??
+        (widget.viewObject?.properties['discipline'] as String?);
+    if (activeDiscipline != null && activeDiscipline.isNotEmpty) {
+      final target = activeDiscipline.toLowerCase();
+      visibleTasks = visibleTasks.where((t) {
+        final d = (t.properties['discipline'] ?? t.properties['category'])
+            ?.toString()
+            .toLowerCase();
+        return d == target;
+      }).toList();
+    }
+
+    // Filter by milestone
+    final activeMilestone =
+        filterMilestone ??
+        (widget.viewObject?.properties['milestone'] as String?);
+    if (activeMilestone != null && activeMilestone.isNotEmpty) {
+      final target = activeMilestone.toLowerCase();
+      visibleTasks = visibleTasks.where((t) {
+        final m = t.properties['milestone']?.toString().toLowerCase();
+        return m == target;
+      }).toList();
+    }
+
+    // Filter by bugs only
+    if (filterBugsOnly || widget.viewObject?.properties['preset'] == 'bugs') {
+      visibleTasks = visibleTasks.where((t) {
+        return t.properties['isBug'] == true ||
+            t.properties['category'] == 'Bug' ||
+            t.properties['severity'] != null;
+      }).toList();
+    }
+
+    // Filter by blocked only
+    if (filterBlockedOnly) {
+      visibleTasks = visibleTasks.where(_isTaskBlocked).toList();
+    }
+
     // Sort
     visibleTasks.sort((a, b) {
       if (sortOption == 'manual') {
@@ -1322,13 +1412,39 @@ class _TasksViewState extends State<TasksView> {
       return a.title.compareTo(b.title);
     });
 
-    // Available projects for filter
+    // Available projects, disciplines, and milestones for filter
     final projects = allTasks
         .map((t) => t.properties['project'] as String?)
         .whereType<String>()
         .where((p) => p.isNotEmpty)
         .toSet()
         .toList();
+
+    final availableDisciplines = allTasks
+        .map(
+          (t) =>
+              (t.properties['discipline'] ?? t.properties['category'])
+                  as String?,
+        )
+        .whereType<String>()
+        .where((d) => d.isNotEmpty)
+        .toSet()
+        .toList();
+
+    final availableMilestones = allTasks
+        .map((t) => t.properties['milestone'] as String?)
+        .whereType<String>()
+        .where((m) => m.isNotEmpty)
+        .toSet()
+        .toList();
+
+    final isAnyFilterActive =
+        filterPriority != null ||
+        filterProject != null ||
+        filterDiscipline != null ||
+        filterMilestone != null ||
+        filterBugsOnly ||
+        filterBlockedOnly;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1415,32 +1531,53 @@ class _TasksViewState extends State<TasksView> {
                   PopupMenuButton<String>(
                     tooltip: 'Filter tasks',
                     icon: Icon(
-                      filterPriority != null || filterProject != null
+                      isAnyFilterActive
                           ? Icons.filter_alt
                           : Icons.filter_alt_outlined,
                       size: 18,
-                      color: filterPriority != null || filterProject != null
-                          ? colors.accent
-                          : colors.subtle,
+                      color: isAnyFilterActive ? colors.accent : colors.subtle,
                     ),
                     onSelected: (v) {
                       if (v == 'clear') {
                         setState(() {
                           filterPriority = null;
                           filterProject = null;
+                          filterDiscipline = null;
+                          filterMilestone = null;
+                          filterBugsOnly = false;
+                          filterBlockedOnly = false;
                         });
                       } else if (v.startsWith('p:')) {
                         setState(() => filterPriority = v.substring(2));
                       } else if (v.startsWith('proj:')) {
                         setState(() => filterProject = v.substring(5));
+                      } else if (v.startsWith('disc:')) {
+                        setState(() => filterDiscipline = v.substring(5));
+                      } else if (v.startsWith('ms:')) {
+                        setState(() => filterMilestone = v.substring(3));
+                      } else if (v == 'quick:blocked') {
+                        setState(() => filterBlockedOnly = !filterBlockedOnly);
+                      } else if (v == 'quick:bugs') {
+                        setState(() => filterBugsOnly = !filterBugsOnly);
                       }
                     },
                     itemBuilder: (_) => [
-                      if (filterPriority != null || filterProject != null)
+                      if (isAnyFilterActive)
                         const PopupMenuItem(
                           value: 'clear',
                           child: Text('Clear Filters'),
                         ),
+                      CheckedPopupMenuItem(
+                        value: 'quick:blocked',
+                        checked: filterBlockedOnly,
+                        child: const Text('Blocked Tasks Only'),
+                      ),
+                      CheckedPopupMenuItem(
+                        value: 'quick:bugs',
+                        checked: filterBugsOnly,
+                        child: const Text('Bugs Only'),
+                      ),
+                      const PopupMenuDivider(),
                       const PopupMenuItem(
                         enabled: false,
                         value: '_p_header',
@@ -1478,6 +1615,38 @@ class _TasksViewState extends State<TasksView> {
                         for (final pr in projects)
                           PopupMenuItem(value: 'proj:$pr', child: Text('#$pr')),
                       ],
+                      if (availableDisciplines.isNotEmpty) ...[
+                        const PopupMenuDivider(),
+                        const PopupMenuItem(
+                          enabled: false,
+                          value: '_disc_header',
+                          child: Text(
+                            'DISCIPLINE',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        for (final d in availableDisciplines)
+                          PopupMenuItem(value: 'disc:$d', child: Text(d)),
+                      ],
+                      if (availableMilestones.isNotEmpty) ...[
+                        const PopupMenuDivider(),
+                        const PopupMenuItem(
+                          enabled: false,
+                          value: '_ms_header',
+                          child: Text(
+                            'MILESTONE',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        for (final m in availableMilestones)
+                          PopupMenuItem(value: 'ms:$m', child: Text(m)),
+                      ],
                     ],
                   ),
                   // View options menu
@@ -1493,6 +1662,9 @@ class _TasksViewState extends State<TasksView> {
                         if (v == 'dueDate') showDueDate = !showDueDate;
                         if (v == 'priority') showPriority = !showPriority;
                         if (v == 'project') showProject = !showProject;
+                        if (v == 'discipline') showDiscipline = !showDiscipline;
+                        if (v == 'milestone') showMilestone = !showMilestone;
+                        if (v == 'estimate') showEstimate = !showEstimate;
                       });
                     },
                     itemBuilder: (_) => [
@@ -1510,6 +1682,21 @@ class _TasksViewState extends State<TasksView> {
                         value: 'project',
                         checked: showProject,
                         child: const Text('Project'),
+                      ),
+                      CheckedPopupMenuItem(
+                        value: 'discipline',
+                        checked: showDiscipline,
+                        child: const Text('Discipline'),
+                      ),
+                      CheckedPopupMenuItem(
+                        value: 'milestone',
+                        checked: showMilestone,
+                        child: const Text('Milestone'),
+                      ),
+                      CheckedPopupMenuItem(
+                        value: 'estimate',
+                        checked: showEstimate,
+                        child: const Text('Estimate'),
                       ),
                     ],
                   ),
@@ -1549,7 +1736,7 @@ class _TasksViewState extends State<TasksView> {
         // Main View Content
         Expanded(
           child: activeTab == 'board'
-              ? _buildKanbanBoard(allTasks, colors)
+              ? _buildKanbanBoard(visibleTasks, colors)
               : _buildTaskList(visibleTasks, colors),
         ),
       ],
@@ -1799,13 +1986,7 @@ class _TasksViewState extends State<TasksView> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, size: 14),
-                    tooltip: 'Cancel',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 24,
-                      minHeight: 24,
-                    ),
+                    icon: const Icon(Icons.close, size: 16),
                     onPressed: () => setState(() => _creatingTask = false),
                   ),
                 ],
@@ -2164,6 +2345,10 @@ class _TasksViewState extends State<TasksView> {
     final priority = t.properties['priority'] as String?;
     final estimate = t.properties['estimate'] as String?;
     final category = t.properties['category'] as String?;
+    final discipline = (t.properties['discipline'] ?? category) as String?;
+    final milestone = t.properties['milestone'] as String?;
+    final severity = t.properties['severity'] as String?;
+    final isBug = t.properties['isBug'] == true || severity != null;
     final isSelected = _peekTaskId == t.id;
 
     return Card(
@@ -2218,14 +2403,43 @@ class _TasksViewState extends State<TasksView> {
                   ),
                 ],
               ),
-              // Card Metadata Chips
+              // Card Metadata Chips (Codecks/Linear style compact badges)
               Padding(
                 padding: const EdgeInsets.only(left: 36, top: 4),
                 child: Wrap(
                   spacing: 6,
                   runSpacing: 4,
                   children: [
-                    if (t.properties['dueDate'] is String)
+                    if (isBug)
+                      _badge(
+                        severity?.toUpperCase() ?? 'BUG',
+                        icon: Icons.bug_report,
+                        color: switch (severity) {
+                          'blocker' => Colors.red.shade900,
+                          'critical' => Colors.red.shade600,
+                          'major' => Colors.orange.shade800,
+                          'minor' => Colors.blue.shade600,
+                          _ => Colors.red.shade400,
+                        },
+                        colors: colors,
+                      ),
+                    if (showDiscipline &&
+                        discipline != null &&
+                        discipline.isNotEmpty)
+                      _badge(
+                        discipline,
+                        icon: Icons.category_outlined,
+                        colors: colors,
+                      ),
+                    if (showMilestone &&
+                        milestone != null &&
+                        milestone.isNotEmpty)
+                      _badge(
+                        milestone,
+                        icon: Icons.flag_outlined,
+                        colors: colors,
+                      ),
+                    if (showDueDate && t.properties['dueDate'] is String)
                       _badge(
                         formatFriendlyDueDate(
                           parseCalendarDate(t.properties['dueDate']),
@@ -2246,11 +2460,14 @@ class _TasksViewState extends State<TasksView> {
                         icon: Icons.checklist,
                         colors: colors,
                       ),
-                    if (estimate != null && estimate.isNotEmpty)
+                    if (showEstimate && estimate != null && estimate.isNotEmpty)
                       _badge(estimate, icon: Icons.speed, colors: colors),
-                    if (category != null && category.isNotEmpty)
+                    if (category != null &&
+                        category.isNotEmpty &&
+                        category != discipline)
                       _badge(category, colors: colors),
-                    if (priority != null &&
+                    if (showPriority &&
+                        priority != null &&
                         priority != 'none' &&
                         priority != 'medium')
                       _badge(
@@ -2519,6 +2736,78 @@ class _TaskDetailState extends State<TaskDetail> {
                       ),
                 ],
                 onChanged: (v) => property('blockedBy', v),
+              ),
+            ),
+            SizedBox(
+              width: 150,
+              child: DropdownButtonFormField<String>(
+                initialValue:
+                    gameDevDisciplines.contains(o.properties['discipline'])
+                    ? o.properties['discipline'] as String
+                    : null,
+                decoration: const InputDecoration(labelText: 'Discipline'),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('None')),
+                  for (final d in gameDevDisciplines)
+                    DropdownMenuItem(value: d, child: Text(d)),
+                ],
+                onChanged: (v) => property('discipline', v),
+              ),
+            ),
+            SizedBox(
+              width: 140,
+              child: TextFormField(
+                initialValue: o.properties['milestone'] is String
+                    ? o.properties['milestone'] as String
+                    : '',
+                decoration: const InputDecoration(labelText: 'Milestone'),
+                onChanged: (v) =>
+                    property('milestone', v.trim().isEmpty ? null : v.trim()),
+              ),
+            ),
+            SizedBox(
+              width: 140,
+              child: DropdownButtonFormField<String>(
+                initialValue: bugSeverities.contains(o.properties['severity'])
+                    ? o.properties['severity'] as String
+                    : null,
+                decoration: const InputDecoration(labelText: 'Bug Severity'),
+                items: [
+                  const DropdownMenuItem(
+                    value: null,
+                    child: Text('Not a bug / None'),
+                  ),
+                  for (final s in bugSeverities)
+                    DropdownMenuItem(value: s, child: Text(s.toUpperCase())),
+                ],
+                onChanged: (v) {
+                  property('severity', v);
+                  if (v != null) {
+                    property('isBug', true);
+                  }
+                },
+              ),
+            ),
+            SizedBox(
+              width: 110,
+              child: TextFormField(
+                initialValue: o.properties['build'] is String
+                    ? o.properties['build'] as String
+                    : '',
+                decoration: const InputDecoration(labelText: 'Build / Ver'),
+                onChanged: (v) =>
+                    property('build', v.trim().isEmpty ? null : v.trim()),
+              ),
+            ),
+            SizedBox(
+              width: 110,
+              child: TextFormField(
+                initialValue: o.properties['platform'] is String
+                    ? o.properties['platform'] as String
+                    : '',
+                decoration: const InputDecoration(labelText: 'Platform'),
+                onChanged: (v) =>
+                    property('platform', v.trim().isEmpty ? null : v.trim()),
               ),
             ),
             OutlinedButton.icon(

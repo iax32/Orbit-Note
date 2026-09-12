@@ -1,4 +1,42 @@
-# Current task — M6 local-first Google Drive / WebDAV sync
+# Current task — Game Development Productivity and Production Workflow Pass
+
+Status: delivered and validated, 2026-09-12.
+
+Focused workflow pass making Orbit Note extraordinarily effective for organizing real-world game development projects across design, engineering, art, audio, and production under the invariant: "CREATE ONCE. VIEW ANYWHERE."
+
+### Delivered Capabilities
+1. **Game Development Disciplines, Severity & Agile Kanban**:
+   - Built-in 18 game development disciplines (`gameDevDisciplines`: Game Design, Level Design, Systems Design, Narrative Design, Gameplay Programming, Engine Programming, Graphics Programming, Tools Programming, 2D Art, 3D Art, Animation, VFX, Technical Art, UI/UX, Sound Design, Music, QA & Testing, Production).
+   - 4 industry-standard bug severities (`bugSeverities`: `blocker`, `critical`, `major`, `minor`).
+   - Kanban Presets: `KanbanPreset.gamedev` (`concept`, `assets`, `in-progress`, `testing`, `done`) and `KanbanPreset.bugs` (`new`, `confirmed`, `in-progress`, `verify`, `done`).
+   - Card badges with discipline tag chips, milestone badges, estimate points, subtask counts `[x/y]`, blocker warnings, and severity pills.
+   - Task detail editor with inline fields for Discipline, Milestone, Severity, Build / Target Version, Platform, and Blocker dependency tracking.
+2. **Project Scaffolding & Design Document Templates**:
+   - `createGameProject(projectName, ...)` in `WorkspaceController`: scaffolds structured folders (`Design`, `Art`, `Programming`, `Audio`, `Production`, `Playtests`), starter GDD note, core mechanics spec note, visual canvases (`Core Loop`, `Art Direction & Moodboard`), and 6 scoped views (`Dashboard`, `Board`, `Backlog`, `Bugs`, `Milestones`, `Roadmap`).
+   - Helper methods for game materials: `createGameDesignDocument`, `createFeatureSpec`, `createBugReport`, `createPlaytestSession`, `createDevLog`, `createLevelDesignDoc`.
+   - Explorer folder context menu integration: `New Game Project…`, `New GDD Note`, `New Feature Spec`, `New Bug Report`, `New Playtest Session`, `New Dev Log`, `New Level Design Doc`.
+3. **Canvas Game Dev Presets**:
+   - Presets toolbar extended with: `Game Roadmap`, `Core Loop`, `Level Design & Flow`, `AI State Machine`, and `Art Direction & Moodboard`.
+4. **Game Dashboard & Milestone Progress Views**:
+   - `GameDashboardView` (`viewType: 'game_dashboard'`): Comprehensive production dashboard featuring project metadata header, task completion & story points metrics, blocker watchdog, bug tracker status, interactive discipline breakdown progress bars, open tasks list, and recent game design materials.
+   - `MilestoneView` (`viewType: 'milestones'`): Scoped milestone overview grouping tasks by target release milestone with live progress metrics, estimate points sum, discipline breakdown, and quick inline task creation.
+5. **Contextual Saved View Host Tabs**:
+   - Tab switcher dynamically presents scoped view types based on workspace preset: Course views show `Exercises` and `Overview`; Game Dev views show `Dashboard` and `Milestones`; generic views show standard `List`, `Board`, `Calendar`, and `Timeline`.
+
+### Validation Evidence
+- `dart format lib test` & `dart format --output=none --set-exit-if-changed lib test`: 100% clean formatting.
+- `flutter analyze`: 0 issues found.
+- `flutter test --no-pub`: All 270 tests passed (including new `test/game_development_workflow_test.dart` and `test/university_study_workflow_test.dart`).
+
+---
+
+# Previous task — University, Mathematics, and Visual Study Workflow Pass
+
+Status: delivered and validated, 2026-09-12.
+
+Focused workflow pass empowering students with structured course environments, rich LaTeX/math ergonomics, multi-style visual canvases, and an integrated exercise practice system adhering strictly to "CREATE ONCE. VIEW ANYWHERE."
+
+# Previous task — M6 local-first Google Drive / WebDAV sync
 
 Owner-requested milestone, 2026-09-12. Status: pre-implementation audit and design.
 No production sync implementation is delivered. Preserve all local/PDF/polish work.

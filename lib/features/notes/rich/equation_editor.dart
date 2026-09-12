@@ -302,6 +302,19 @@ class _EquationEditorState extends State<EquationEditor> {
         ),
       ),
       actions: [
+        TextButton.icon(
+          onPressed: () {
+            Clipboard.setData(ClipboardData(text: input.text));
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('LaTeX copied to clipboard'),
+                duration: Duration(seconds: 1),
+              ),
+            );
+          },
+          icon: const Icon(Icons.copy, size: 16),
+          label: const Text('Copy LaTeX'),
+        ),
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),

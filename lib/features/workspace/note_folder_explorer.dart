@@ -17,6 +17,10 @@ IconData viewTypeIcon(String? viewType) => switch (viewType) {
   'board' => Icons.view_kanban_outlined,
   'calendar' => Icons.calendar_month_outlined,
   'timeline' => Icons.timeline_outlined,
+  'exercises' => Icons.table_chart_outlined,
+  'overview' => Icons.dashboard_outlined,
+  'game_dashboard' => Icons.sports_esports_outlined,
+  'milestones' => Icons.flag_outlined,
   _ => Icons.checklist_outlined,
 };
 
@@ -199,6 +203,75 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         title: '$base Timeline',
         properties: {'folder': folder, 'viewType': 'timeline'},
       );
+    } else if (action == 'new_game_project') {
+      final name = await _name(context, 'New Game Project', initial: 'MyGame');
+      if (name != null && name.trim().isNotEmpty) {
+        await widget.controller.createGameProject(
+          name.trim(),
+          targetParentFolder: folder,
+        );
+      }
+    } else if (action == 'new_gdd') {
+      final name = await _name(
+        context,
+        'New GDD Note',
+        initial: 'Game Design Document',
+      );
+      await widget.controller.createGameDesignDocument(
+        folder: folder,
+        title: name,
+      );
+    } else if (action == 'new_feature_spec') {
+      final name = await _name(
+        context,
+        'New Feature Spec',
+        initial: 'Feature Spec',
+      );
+      await widget.controller.createFeatureSpec(folder: folder, title: name);
+    } else if (action == 'new_bug_report') {
+      final name = await _name(context, 'New Bug Report', initial: 'Bug');
+      await widget.controller.createBugReport(folder: folder, title: name);
+    } else if (action == 'new_playtest') {
+      final name = await _name(
+        context,
+        'New Playtest Session',
+        initial: 'Playtest',
+      );
+      await widget.controller.createPlaytestSession(
+        folder: folder,
+        title: name,
+      );
+    } else if (action == 'new_dev_log') {
+      await widget.controller.createDevLog(folder: folder);
+    } else if (action == 'new_level_design') {
+      final name = await _name(
+        context,
+        'New Level Design Doc',
+        initial: 'Level 1',
+      );
+      await widget.controller.createLevelDesignDoc(folder: folder, title: name);
+    } else if (action == 'new_course') {
+      final name = await _name(
+        context,
+        'New University Course',
+        initial: 'AKMath',
+      );
+      if (name != null && name.trim().isNotEmpty) {
+        await widget.controller.createUniversityCourse(
+          name.trim(),
+          targetParentFolder: folder,
+        );
+      }
+    } else if (action == 'new_lecture') {
+      final name = await _name(context, 'New Lecture Note', initial: 'Lecture');
+      await widget.controller.createLectureNote(folder: folder, title: name);
+    } else if (action == 'new_exercise') {
+      final name = await _name(
+        context,
+        'New Exercise Canvas',
+        initial: 'Exercise',
+      );
+      await widget.controller.createExerciseCanvas(folder: folder, title: name);
     } else if (action == 'archive') {
       widget.controller.archiveFolder(folder);
     } else if (action == 'restore') {
@@ -510,6 +583,58 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                       enabled: !repo.readOnly,
                       value: 'new_timeline',
                       child: const Text('New Timeline'),
+                    ),
+                    const PopupMenuDivider(),
+                    PopupMenuItem(
+                      enabled: !repo.readOnly,
+                      value: 'new_game_project',
+                      child: const Text('New Game Project…'),
+                    ),
+                    PopupMenuItem(
+                      enabled: !repo.readOnly,
+                      value: 'new_gdd',
+                      child: const Text('New GDD Note'),
+                    ),
+                    PopupMenuItem(
+                      enabled: !repo.readOnly,
+                      value: 'new_feature_spec',
+                      child: const Text('New Feature Spec'),
+                    ),
+                    PopupMenuItem(
+                      enabled: !repo.readOnly,
+                      value: 'new_bug_report',
+                      child: const Text('New Bug Report'),
+                    ),
+                    PopupMenuItem(
+                      enabled: !repo.readOnly,
+                      value: 'new_playtest',
+                      child: const Text('New Playtest Session'),
+                    ),
+                    PopupMenuItem(
+                      enabled: !repo.readOnly,
+                      value: 'new_dev_log',
+                      child: const Text('New Dev Log'),
+                    ),
+                    PopupMenuItem(
+                      enabled: !repo.readOnly,
+                      value: 'new_level_design',
+                      child: const Text('New Level Design Doc'),
+                    ),
+                    const PopupMenuDivider(),
+                    PopupMenuItem(
+                      enabled: !repo.readOnly,
+                      value: 'new_course',
+                      child: const Text('New Course (University)…'),
+                    ),
+                    PopupMenuItem(
+                      enabled: !repo.readOnly,
+                      value: 'new_lecture',
+                      child: const Text('New Lecture Note'),
+                    ),
+                    PopupMenuItem(
+                      enabled: !repo.readOnly,
+                      value: 'new_exercise',
+                      child: const Text('New Exercise Canvas'),
                     ),
                     const PopupMenuDivider(),
                     PopupMenuItem(

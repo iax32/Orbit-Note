@@ -13,9 +13,12 @@ void main() {
           'THEOREM',
           'LEMMA',
           'PROPOSITION',
+          'COROLLARY',
           'PROOF',
           'EXAMPLE',
+          'COUNTEREXAMPLE',
           'REMARK',
+          'QUESTION',
         ]) {
           final source = '> [!$name]\n> A useful result.\n';
           expect(ParsedCallout.parse(source).type.name, name);
@@ -24,6 +27,22 @@ void main() {
         }
       },
     );
+
+    test('supports optional academic numbering in headerDisplay', () {
+      final def = ParsedCallout.parse('> [!DEFINITION] 3.2 Relations\n> Body');
+      expect(def.headerDisplay, 'Definition 3.2 Relations');
+
+      final thm = ParsedCallout.parse('> [!THEOREM] 4.1\n> Body');
+      expect(thm.headerDisplay, 'Theorem 4.1');
+
+      final ex = ParsedCallout.parse('> [!EXAMPLE] Equivalence\n> Body');
+      expect(ex.headerDisplay, 'Example: Equivalence');
+
+      final alreadyPrefixed = ParsedCallout.parse(
+        '> [!LEMMA] Lemma 2.1\n> Body',
+      );
+      expect(alreadyPrefixed.headerDisplay, 'Lemma 2.1');
+    });
     test('detects and parses standard callouts', () {
       const source =
           '> [!NOTE] Architecture Review\n> This is a crucial note.\n> Second line.\n';

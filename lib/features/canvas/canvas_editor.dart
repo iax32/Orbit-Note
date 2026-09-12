@@ -111,6 +111,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
   bool _spacePressed = false;
   bool _snap = false;
   bool _showMinimap = false;
+  String _backgroundStyle = 'dots';
   final List<CanvasGuideLine> _activeGuides = [];
   int _color = 0xff8b7cf6;
   Size _viewport = Size.zero;
@@ -134,6 +135,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _titleController = TextEditingController(text: widget.title);
     _history = CanvasHistory(CanvasScene.fromJson(widget.data));
     _camera = CanvasCamera.fromJson(widget.camera);
+    _backgroundStyle = widget.data['backgroundStyle'] as String? ?? 'dots';
     _objects = {for (final object in widget.objects) object.id: object};
     final loader = widget.imageLoader;
     if (loader != null) {
@@ -150,9 +152,14 @@ class _CanvasEditorState extends State<CanvasEditor> {
   void didUpdateWidget(covariant CanvasEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
     _objects = {for (final object in widget.objects) object.id: object};
+    if (widget.data['backgroundStyle'] is String &&
+        widget.data['backgroundStyle'] != _backgroundStyle) {
+      _backgroundStyle = widget.data['backgroundStyle'] as String;
+    }
     if (oldWidget.canvasId != widget.canvasId) {
       _history = CanvasHistory(CanvasScene.fromJson(widget.data));
       _camera = CanvasCamera.fromJson(widget.camera);
+      _backgroundStyle = widget.data['backgroundStyle'] as String? ?? 'dots';
       _selection.clear();
       _editingId = null;
       _clearGesture();
@@ -183,7 +190,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   void _emit() {
-    final data = _scene.toJson();
+    final data = {..._scene.toJson(), 'backgroundStyle': _backgroundStyle};
     _lastEmitted = data;
     widget.onChanged(data);
   }
@@ -1546,92 +1553,112 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 child: Stack(
                   children: [
                     Positioned.fill(
-                      child: Semantics(
-                        label:
-                            'Universal Canvas. Use the element list for keyboard selection. Space drag to pan, Control wheel to zoom.',
-                        child: MouseRegion(
-                          cursor:
-                              _panning || _tool == _Tool.pan || _spacePressed
-                              ? SystemMouseCursors.grab
-                              : _tool == _Tool.select
-                              ? SystemMouseCursors.basic
-                              : SystemMouseCursors.precise,
-                          child: Listener(
-                            behavior: HitTestBehavior.opaque,
-                            onPointerDown: _down,
-                            onPointerMove: _move,
-                            onPointerUp: _up,
-                            onPointerCancel: (_) => _cancelGesture(),
-                            onPointerPanZoomStart: (_) {
-                              _finishText();
-                            },
-                            onPointerPanZoomUpdate: (event) {
-                              setState(() {
-                                _camera = _camera
-                                    .pan(_point(event.panDelta))
-                                    .zoomAt(
-                                      _point(event.localPosition),
-                                      event.scale /
-                                          (_trackpadScale == 0
-                                              ? 1
-                                              : _trackpadScale),
-                                    );
-                                _trackpadScale = event.scale;
-                              });
-                            },
-                            onPointerPanZoomEnd: (_) {
-                              _trackpadScale = 1;
-                              _cameraChanged();
-                            },
-                            onPointerSignal: (event) {
-                              if (event is PointerScrollEvent) {
-                                GestureBinding.instance.pointerSignalResolver
-                                    .register(event, (event) {
-                                      final scroll =
-                                          event as PointerScrollEvent;
-                                      setState(() {
-                                        _camera = _command
-                                            ? _camera.zoomAt(
-                                                _point(scroll.localPosition),
-                                                math.exp(
-                                                  -scroll.scrollDelta.dy * .002,
-                                                ),
-                                              )
-                                            : _camera.pan(
-                                                CanvasPoint(
-                                                  -scroll.scrollDelta.dx,
-                                                  -scroll.scrollDelta.dy,
-                                                ),
-                                              );
-                                      });
-                                      _cameraChanged();
-                                    });
-                              }
-                            },
-                            child: GestureDetector(
-                              onDoubleTapDown: (details) {
-                                final hit = _scene.hit(
-                                  _world(details.localPosition),
-                                  tolerance: 6 / _camera.zoom,
-                                  includeLocked: true,
-                                );
-                                if (hit != null) _edit(hit);
+                      child: DragTarget<({String path, String? noteId})>(
+                        onWillAcceptWithDetails: (details) =>
+                            details.data.noteId != null && !_scene.readOnly,
+                        onAcceptWithDetails: (details) {
+                          final noteId = details.data.noteId;
+                          if (noteId == null) return;
+                          final renderBox =
+                              context.findRenderObject() as RenderBox?;
+                          if (renderBox == null) return;
+                          final localOffset = renderBox.globalToLocal(
+                            details.offset,
+                          );
+                          final worldPoint = _camera.toWorld(
+                            CanvasPoint(localOffset.dx, localOffset.dy),
+                          );
+                          _dropObjectOntoCanvas(noteId, worldPoint);
+                        },
+                        builder: (ctx, candidateData, rejectedData) => Semantics(
+                          label:
+                              'Universal Canvas. Use the element list for keyboard selection. Space drag to pan, Control wheel to zoom.',
+                          child: MouseRegion(
+                            cursor:
+                                _panning || _tool == _Tool.pan || _spacePressed
+                                ? SystemMouseCursors.grab
+                                : _tool == _Tool.select
+                                ? SystemMouseCursors.basic
+                                : SystemMouseCursors.precise,
+                            child: Listener(
+                              behavior: HitTestBehavior.opaque,
+                              onPointerDown: _down,
+                              onPointerMove: _move,
+                              onPointerUp: _up,
+                              onPointerCancel: (_) => _cancelGesture(),
+                              onPointerPanZoomStart: (_) {
+                                _finishText();
                               },
-                              child: CustomPaint(
-                                painter: OrbitCanvasPainter(
-                                  textCache: _textCache,
-                                  images: _images?.images ?? const {},
-                                  scene: _scene,
-                                  camera: _camera,
-                                  selection: Set.of(_selection),
-                                  objects: _objects,
-                                  colors: Theme.of(context).colorScheme,
-                                  region: _region,
-                                  preview: _preview,
-                                  editingId: _editingId,
-                                  guides: _activeGuides,
+                              onPointerPanZoomUpdate: (event) {
+                                setState(() {
+                                  _camera = _camera
+                                      .pan(_point(event.panDelta))
+                                      .zoomAt(
+                                        _point(event.localPosition),
+                                        event.scale /
+                                            (_trackpadScale == 0
+                                                ? 1
+                                                : _trackpadScale),
+                                      );
+                                  _trackpadScale = event.scale;
+                                });
+                              },
+                              onPointerPanZoomEnd: (_) {
+                                _trackpadScale = 1;
+                                _cameraChanged();
+                              },
+                              onPointerSignal: (event) {
+                                if (event is PointerScrollEvent) {
+                                  GestureBinding.instance.pointerSignalResolver
+                                      .register(event, (event) {
+                                        final scroll =
+                                            event as PointerScrollEvent;
+                                        setState(() {
+                                          _camera = _command
+                                              ? _camera.zoomAt(
+                                                  _point(scroll.localPosition),
+                                                  math.exp(
+                                                    -scroll.scrollDelta.dy *
+                                                        .002,
+                                                  ),
+                                                )
+                                              : _camera.pan(
+                                                  CanvasPoint(
+                                                    -scroll.scrollDelta.dx,
+                                                    -scroll.scrollDelta.dy,
+                                                  ),
+                                                );
+                                        });
+                                        _cameraChanged();
+                                      });
+                                }
+                              },
+                              child: GestureDetector(
+                                onDoubleTapDown: (details) {
+                                  final hit = _scene.hit(
+                                    _world(details.localPosition),
+                                    tolerance: 6 / _camera.zoom,
+                                    includeLocked: true,
+                                  );
+                                  if (hit != null) _edit(hit);
+                                },
+                                child: CustomPaint(
+                                  painter: OrbitCanvasPainter(
+                                    textCache: _textCache,
+                                    images: _images?.images ?? const {},
+                                    scene: _scene,
+                                    camera: _camera,
+                                    selection: Set.of(_selection),
+                                    objects: _objects,
+                                    colors: Theme.of(context).colorScheme,
+                                    region: _region,
+                                    preview: _preview,
+                                    editingId: _editingId,
+                                    guides: _activeGuides,
+                                    backgroundStyle: _backgroundStyle,
+                                  ),
+                                  child: const SizedBox.expand(),
                                 ),
-                                child: const SizedBox.expand(),
                               ),
                             ),
                           ),
@@ -2093,6 +2120,497 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _selection
       ..clear()
       ..add(element.id);
+    _commit();
+  }
+
+  void _dropObjectOntoCanvas(String objectId, CanvasPoint at) {
+    if (_scene.readOnly) return;
+    _finishText();
+    final obj = _objects[objectId];
+    final title = (obj != null && obj.title.isNotEmpty) ? obj.title : 'Object';
+    final element = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'objectId': objectId,
+      'x': at.x - 130,
+      'y': at.y - 60,
+      'width': 260.0,
+      'height': 120.0,
+      'text': title,
+      'color': _color,
+    });
+    _history.put(element);
+    _selection
+      ..clear()
+      ..add(element.id);
+    _commit();
+  }
+
+  void _applyExercisePreset() {
+    if (_scene.readOnly) return;
+    _finishText();
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final baseX = center.x - 350;
+    final baseY = center.y - 450;
+
+    final sec = CanvasElement({
+      'id': _id(),
+      'type': 'section',
+      'x': baseX,
+      'y': baseY,
+      'width': 700.0,
+      'height': 40.0,
+      'text': 'EXERCISE WORKBENCH',
+      'color': 0xff8b7cf6,
+    });
+    final problem = CanvasElement({
+      'id': _id(),
+      'type': 'sticky',
+      'x': baseX,
+      'y': baseY + 60,
+      'width': 700.0,
+      'height': 140.0,
+      'text': 'PROBLEM STATEMENT\n\nGiven:\n\nGoal:\n',
+      'color': 0xff6f7fea,
+    });
+    final workSec = CanvasElement({
+      'id': _id(),
+      'type': 'section',
+      'x': baseX,
+      'y': baseY + 220,
+      'width': 700.0,
+      'height': 40.0,
+      'text': 'WORK & CALCULATIONS (Freeform Math / Ink / Cards)',
+      'color': 0xff65c6a3,
+    });
+    final result = CanvasElement({
+      'id': _id(),
+      'type': 'sticky',
+      'x': baseX,
+      'y': baseY + 680,
+      'width': 340.0,
+      'height': 140.0,
+      'text': 'FINAL RESULT\n\n',
+      'color': 0xff65c6a3,
+    });
+    final mistakes = CanvasElement({
+      'id': _id(),
+      'type': 'sticky',
+      'x': baseX + 360,
+      'y': baseY + 680,
+      'width': 340.0,
+      'height': 140.0,
+      'text': 'NOTES & MISTAKES TO REVIEW\n\n',
+      'color': 0xffd8b56a,
+    });
+
+    _history.put(sec);
+    _history.put(problem);
+    _history.put(workSec);
+    _history.put(result);
+    _history.put(mistakes);
+    _commit();
+  }
+
+  void _applyStudyBoardPreset() {
+    if (_scene.readOnly) return;
+    _finishText();
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final baseX = center.x - 560;
+    final baseY = center.y - 250;
+
+    final col1 = CanvasElement({
+      'id': _id(),
+      'type': 'column',
+      'text': 'TOPICS',
+      'x': baseX,
+      'y': baseY,
+      'width': 260.0,
+      'height': 500.0,
+      'color': 0xff8b7cf6,
+    });
+    final col2 = CanvasElement({
+      'id': _id(),
+      'type': 'column',
+      'text': 'IMPORTANT (Definitions & Theorems)',
+      'x': baseX + 280,
+      'y': baseY,
+      'width': 300.0,
+      'height': 500.0,
+      'color': 0xff6f7fea,
+    });
+    final col3 = CanvasElement({
+      'id': _id(),
+      'type': 'column',
+      'text': 'TODO / EXERCISES',
+      'x': baseX + 600,
+      'y': baseY,
+      'width': 260.0,
+      'height': 500.0,
+      'color': 0xff65c6a3,
+    });
+    final col4 = CanvasElement({
+      'id': _id(),
+      'type': 'column',
+      'text': 'RESOURCES (PDFs & Notes)',
+      'x': baseX + 880,
+      'y': baseY,
+      'width': 260.0,
+      'height': 500.0,
+      'color': 0xffd8b56a,
+    });
+
+    _history.put(col1);
+    _history.put(col2);
+    _history.put(col3);
+    _history.put(col4);
+    _commit();
+  }
+
+  void _applyCourseMapPreset() {
+    if (_scene.readOnly) return;
+    _finishText();
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final root = CanvasElement({
+      'id': _id(),
+      'type': 'sticky',
+      'text': 'Course Overview',
+      'x': center.x - 110,
+      'y': center.y - 200,
+      'width': 220.0,
+      'height': 80.0,
+      'color': 0xff8b7cf6,
+    });
+    final topic1 = CanvasElement({
+      'id': _id(),
+      'type': 'sticky',
+      'text': 'Foundations & Logic',
+      'x': center.x - 360,
+      'y': center.y,
+      'width': 200.0,
+      'height': 80.0,
+      'color': 0xff6f7fea,
+    });
+    final topic2 = CanvasElement({
+      'id': _id(),
+      'type': 'sticky',
+      'text': 'Core Relations & Functions',
+      'x': center.x - 100,
+      'y': center.y,
+      'width': 200.0,
+      'height': 80.0,
+      'color': 0xff65c6a3,
+    });
+    final topic3 = CanvasElement({
+      'id': _id(),
+      'type': 'sticky',
+      'text': 'Advanced & Exam Prep',
+      'x': center.x + 160,
+      'y': center.y,
+      'width': 200.0,
+      'height': 80.0,
+      'color': 0xffd8b56a,
+    });
+
+    _history.put(root);
+    _history.put(topic1);
+    _history.put(topic2);
+    _history.put(topic3);
+    _commit();
+  }
+
+  void _applyGameRoadmapPreset() {
+    if (_scene.readOnly) return;
+    _finishText();
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final baseX = center.x - 600;
+    final baseY = center.y - 120;
+
+    final stages = [
+      (
+        'PROTOTYPE',
+        'Core mechanics, player controller, graybox loop',
+        0xff6f7fea,
+      ),
+      (
+        'VERTICAL SLICE',
+        '1 polished level, final art style, complete audio',
+        0xff8b7cf6,
+      ),
+      ('ALPHA', 'Feature complete, all systems in, content rough', 0xff65c6a3),
+      (
+        'BETA',
+        'Content complete, bug fixing, balance & optimization',
+        0xffd8b56a,
+      ),
+      ('RELEASE', 'Day-1 patch, store submissions, certifications', 0xfff87171),
+    ];
+
+    for (var i = 0; i < stages.length; i++) {
+      final s = stages[i];
+      final col = CanvasElement({
+        'id': _id(),
+        'type': 'sticky',
+        'text': '${s.$1}\n\n${s.$2}',
+        'x': baseX + (i * 245),
+        'y': baseY,
+        'width': 225.0,
+        'height': 160.0,
+        'color': s.$3,
+      });
+      _history.put(col);
+    }
+    _commit();
+  }
+
+  void _applyCoreLoopPreset() {
+    if (_scene.readOnly) return;
+    _finishText();
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final cx = center.x;
+    final cy = center.y;
+
+    final step1 = CanvasElement({
+      'id': _id(),
+      'type': 'sticky',
+      'text': '1. PLAYER ACTION\n\nMovement, attack, interaction, puzzle input',
+      'x': cx - 280,
+      'y': cy - 180,
+      'width': 240.0,
+      'height': 110.0,
+      'color': 0xff6f7fea,
+    });
+    final step2 = CanvasElement({
+      'id': _id(),
+      'type': 'sticky',
+      'text':
+          '2. SYSTEM FEEDBACK\n\nImpact frames, SFX, camera shake, damage numbers',
+      'x': cx + 40,
+      'y': cy - 180,
+      'width': 240.0,
+      'height': 110.0,
+      'color': 0xff8b7cf6,
+    });
+    final step3 = CanvasElement({
+      'id': _id(),
+      'type': 'sticky',
+      'text': '3. REWARD & LOOT\n\nXP, item drops, currency, ability unlock',
+      'x': cx + 40,
+      'y': cy + 60,
+      'width': 240.0,
+      'height': 110.0,
+      'color': 0xffd8b56a,
+    });
+    final step4 = CanvasElement({
+      'id': _id(),
+      'type': 'sticky',
+      'text':
+          '4. PROGRESSION & GOALS\n\nLevel up, stat upgrade, unlock new region/dungeon',
+      'x': cx - 280,
+      'y': cy + 60,
+      'width': 240.0,
+      'height': 110.0,
+      'color': 0xff65c6a3,
+    });
+
+    _history.put(step1);
+    _history.put(step2);
+    _history.put(step3);
+    _history.put(step4);
+    _commit();
+  }
+
+  void _applyLevelDesignPreset() {
+    if (_scene.readOnly) return;
+    _finishText();
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final baseX = center.x - 650;
+    final baseY = center.y - 200;
+
+    final beats = [
+      (
+        '1. SPAWN & TUTORIAL',
+        'Safe zone · Teach core moves · Introduce visual goal',
+        0xff6f7fea,
+      ),
+      (
+        '2. FIRST ENCOUNTER',
+        'Low-stakes challenge · 1-2 basic enemies · Checkpoint',
+        0xff8b7cf6,
+      ),
+      (
+        '3. PACING VALLEY',
+        'Exploration · Secret lore · Lock & Key puzzle',
+        0xff65c6a3,
+      ),
+      (
+        '4. CLIMAX ARENA',
+        'Mastery test · Mixed enemy waves · High tension',
+        0xfff87171,
+      ),
+      (
+        '5. REWARD & EXIT',
+        'Loot chest · Level transition · Story beat',
+        0xffd8b56a,
+      ),
+    ];
+
+    for (var i = 0; i < beats.length; i++) {
+      final b = beats[i];
+      final element = CanvasElement({
+        'id': _id(),
+        'type': 'column',
+        'text': '${b.$1}\n\n${b.$2}',
+        'x': baseX + (i * 265),
+        'y': baseY,
+        'width': 245.0,
+        'height': 420.0,
+        'color': b.$3,
+      });
+      _history.put(element);
+    }
+    _commit();
+  }
+
+  void _applyAiStateMachinePreset() {
+    if (_scene.readOnly) return;
+    _finishText();
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final cx = center.x;
+    final cy = center.y;
+
+    final s1 = CanvasElement({
+      'id': _id(),
+      'type': 'sticky',
+      'text':
+          'PATROL / IDLE\n\nWaypoint loop · 90° vision cone · Relaxed audio',
+      'x': cx - 360,
+      'y': cy - 140,
+      'width': 220.0,
+      'height': 100.0,
+      'color': 0xff6f7fea,
+    });
+    final s2 = CanvasElement({
+      'id': _id(),
+      'type': 'sticky',
+      'text':
+          'SUSPICIOUS / SEARCH\n\nFootstep heard · Turn to noise · 3s search timer',
+      'x': cx - 100,
+      'y': cy - 140,
+      'width': 220.0,
+      'height': 100.0,
+      'color': 0xffd8b56a,
+    });
+    final s3 = CanvasElement({
+      'id': _id(),
+      'type': 'sticky',
+      'text':
+          'COMBAT & CHASE\n\nDirect sight · Sprint speed · Call nearby allies',
+      'x': cx + 160,
+      'y': cy - 140,
+      'width': 220.0,
+      'height': 100.0,
+      'color': 0xfff87171,
+    });
+    final s4 = CanvasElement({
+      'id': _id(),
+      'type': 'sticky',
+      'text':
+          'ATTACK EXECUTION\n\nTelegraph 300ms · Hitbox active 150ms · 1s cooldown',
+      'x': cx + 160,
+      'y': cy + 40,
+      'width': 220.0,
+      'height': 100.0,
+      'color': 0xff8b7cf6,
+    });
+    final s5 = CanvasElement({
+      'id': _id(),
+      'type': 'sticky',
+      'text':
+          'STUN / RETREAT\n\nPosture broken · Low health (<20%) · Seek cover',
+      'x': cx - 100,
+      'y': cy + 40,
+      'width': 220.0,
+      'height': 100.0,
+      'color': 0xff65c6a3,
+    });
+
+    _history.put(s1);
+    _history.put(s2);
+    _history.put(s3);
+    _history.put(s4);
+    _history.put(s5);
+    _commit();
+  }
+
+  void _applyMoodboardPreset() {
+    if (_scene.readOnly) return;
+    _finishText();
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final baseX = center.x - 560;
+    final baseY = center.y - 250;
+
+    final col1 = CanvasElement({
+      'id': _id(),
+      'type': 'column',
+      'text': 'CHARACTER & CREATURES',
+      'x': baseX,
+      'y': baseY,
+      'width': 260.0,
+      'height': 520.0,
+      'color': 0xff8b7cf6,
+    });
+    final col2 = CanvasElement({
+      'id': _id(),
+      'type': 'column',
+      'text': 'ENVIRONMENT & ARCHITECTURE',
+      'x': baseX + 280,
+      'y': baseY,
+      'width': 260.0,
+      'height': 520.0,
+      'color': 0xff6f7fea,
+    });
+    final col3 = CanvasElement({
+      'id': _id(),
+      'type': 'column',
+      'text': 'COLOR PALETTE & LIGHTING',
+      'x': baseX + 560,
+      'y': baseY,
+      'width': 260.0,
+      'height': 520.0,
+      'color': 0xffd8b56a,
+    });
+    final col4 = CanvasElement({
+      'id': _id(),
+      'type': 'column',
+      'text': 'UI, VFX & AUDIO VIBES',
+      'x': baseX + 840,
+      'y': baseY,
+      'width': 260.0,
+      'height': 520.0,
+      'color': 0xff65c6a3,
+    });
+
+    _history.put(col1);
+    _history.put(col2);
+    _history.put(col3);
+    _history.put(col4);
     _commit();
   }
 
@@ -2665,6 +3183,157 @@ class _CanvasEditorState extends State<CanvasEditor> {
                   _snap = !_snap;
                 }),
                 icon: const Icon(Icons.grid_4x4, size: 20),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'Canvas paper style',
+                icon: const Icon(Icons.grain, size: 20),
+                initialValue: _backgroundStyle,
+                onSelected: (val) {
+                  setState(() {
+                    _backgroundStyle = val;
+                  });
+                  _emit();
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: 'dots',
+                    child: Text('Dot grid (Default)'),
+                  ),
+                  PopupMenuItem(value: 'grid', child: Text('Math graph paper')),
+                  PopupMenuItem(
+                    value: 'lines',
+                    child: Text('Ruled notebook lines'),
+                  ),
+                  PopupMenuItem(value: 'blank', child: Text('Blank paper')),
+                ],
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'Apply workspace preset (Study / Game Dev)',
+                icon: const Icon(Icons.dashboard_customize_outlined, size: 20),
+                enabled: !_scene.readOnly,
+                onSelected: (preset) {
+                  switch (preset) {
+                    case 'exercise':
+                      _applyExercisePreset();
+                    case 'study_board':
+                      _applyStudyBoardPreset();
+                    case 'course_map':
+                      _applyCourseMapPreset();
+                    case 'game_roadmap':
+                      _applyGameRoadmapPreset();
+                    case 'core_loop':
+                      _applyCoreLoopPreset();
+                    case 'level_design':
+                      _applyLevelDesignPreset();
+                    case 'ai_state_machine':
+                      _applyAiStateMachinePreset();
+                    case 'moodboard':
+                      _applyMoodboardPreset();
+                  }
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    enabled: false,
+                    child: Text(
+                      'STUDY / MATH PRESETS',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'exercise',
+                    child: Row(
+                      children: [
+                        Icon(Icons.edit_note, size: 16),
+                        SizedBox(width: 8),
+                        Text('Exercise canvas'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'study_board',
+                    child: Row(
+                      children: [
+                        Icon(Icons.dashboard_outlined, size: 16),
+                        SizedBox(width: 8),
+                        Text('Study board (Milanote style)'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'course_map',
+                    child: Row(
+                      children: [
+                        Icon(Icons.account_tree_outlined, size: 16),
+                        SizedBox(width: 8),
+                        Text('Visual course map'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuDivider(),
+                  PopupMenuItem(
+                    enabled: false,
+                    child: Text(
+                      'GAME DEV PRESETS',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'game_roadmap',
+                    child: Row(
+                      children: [
+                        Icon(Icons.timeline, size: 16),
+                        SizedBox(width: 8),
+                        Text('Milestone Roadmap'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'core_loop',
+                    child: Row(
+                      children: [
+                        Icon(Icons.autorenew, size: 16),
+                        SizedBox(width: 8),
+                        Text('Core Game Loop'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'level_design',
+                    child: Row(
+                      children: [
+                        Icon(Icons.alt_route, size: 16),
+                        SizedBox(width: 8),
+                        Text('Level Design & Pacing'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'ai_state_machine',
+                    child: Row(
+                      children: [
+                        Icon(Icons.psychology_outlined, size: 16),
+                        SizedBox(width: 8),
+                        Text('AI State Machine'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'moodboard',
+                    child: Row(
+                      children: [
+                        Icon(Icons.palette_outlined, size: 16),
+                        SizedBox(width: 8),
+                        Text('Art Direction & Moodboard'),
+                      ],
+                    ),
+                  ),
+                ],
               ),
               IconButton(
                 tooltip: 'Undo (Ctrl+Z)',

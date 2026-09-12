@@ -4,6 +4,9 @@ cmake_minimum_required(VERSION 3.14)
 if(POLICY CMP0149)
   cmake_policy(SET CMP0149 NEW)
 endif()
+if(WIN32 AND EXISTS "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/mt.exe")
+  set(CMAKE_SYSTEM_VERSION "10.0.26100.0" CACHE STRING "Windows SDK Version" FORCE)
+endif()
 project(orbit_note LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
