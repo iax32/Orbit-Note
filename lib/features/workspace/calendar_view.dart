@@ -24,8 +24,17 @@ const _months = [
 ];
 
 class CalendarView extends StatefulWidget {
-  const CalendarView({super.key, required this.controller});
+  const CalendarView({
+    super.key,
+    required this.controller,
+    this.viewObject,
+    this.scope,
+    this.folderFilter,
+  });
   final WorkspaceController controller;
+  final UniversalObject? viewObject;
+  final String? scope;
+  final String? folderFilter;
 
   @override
   State<CalendarView> createState() => _CalendarViewState();
@@ -34,6 +43,40 @@ class CalendarView extends StatefulWidget {
 class _CalendarViewState extends State<CalendarView> {
   late DateTime _visibleMonth;
   late DateTime _selectedDay;
+
+  List<UniversalObject> get _scopedObjects {
+    final effectiveScope =
+        widget.scope ??
+        (widget.viewObject?.properties['scope'] as String?)?.trim();
+    final effectiveFolder =
+        widget.folderFilter ??
+        (widget.viewObject?.properties['folder'] as String?)?.trim();
+
+    return widget.controller.objects.where((o) {
+      if (effectiveFolder != null && effectiveFolder.isNotEmpty) {
+        final f = o.properties['folder'];
+        if (f is String && f == effectiveFolder) return true;
+        final p = widget.controller.repository.objectPath(o.id);
+        if (p != null && p.startsWith('$effectiveFolder/')) return true;
+      }
+      if (effectiveScope != null && effectiveScope.isNotEmpty) {
+        final course = o.properties['course']?.toString().toLowerCase();
+        final project = o.properties['project']?.toString().toLowerCase();
+        final contextVal = o.properties['context']?.toString().toLowerCase();
+        final lowerScope = effectiveScope.toLowerCase();
+        if (course == lowerScope ||
+            project == lowerScope ||
+            contextVal == lowerScope) {
+          return true;
+        }
+      }
+      if ((effectiveFolder == null || effectiveFolder.isEmpty) &&
+          (effectiveScope == null || effectiveScope.isEmpty)) {
+        return true;
+      }
+      return false;
+    }).toList();
+  }
 
   @override
   void initState() {
@@ -85,7 +128,7 @@ class _CalendarViewState extends State<CalendarView> {
   Widget build(BuildContext context) {
     final colors = OrbitColors.of(context);
     final days = _daysForGrid();
-    final dayEntries = entriesOn(widget.controller.objects, _selectedDay);
+    final dayEntries = entriesOn(_scopedObjects, _selectedDay);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -234,7 +277,7 @@ class _CalendarViewState extends State<CalendarView> {
               day.month == _selectedDay.month &&
               day.day == _selectedDay.day;
 
-          final entries = entriesOn(widget.controller.objects, day);
+          final entries = entriesOn(_scopedObjects, day);
           final eventCount = entries
               .where((e) => e.object.typeId == 'orbit.event')
               .length;

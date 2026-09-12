@@ -42,6 +42,8 @@ abstract interface class WorkspaceStore {
     Uint8List bytes, {
     required String? expectedHash,
   });
-  Future<void> deleteFile(String relativePath);
+
+  /// Deletes only the version inspected by the caller. Null expects absence.
+  Future<void> deleteFile(String relativePath, {required String? expectedHash});
   Future<void> close();
 }

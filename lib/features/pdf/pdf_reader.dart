@@ -118,6 +118,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   bool _ready = false;
   bool _forms = false, _comfort = false, _savingCopy = false;
   bool _textOnly = false;
+  int _zoomPercent = 100;
   int _fitGeneration = 0;
   final _contentWidths = <int, Future<Rect>>{};
 
@@ -180,6 +181,39 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   int _page = 1;
   List<PdfOutlineNode> _outline = const [];
 
+  Future<void> _readingTool(String tool) async {
+    if (!_ready || !_viewer.isReady) return;
+    _fitGeneration++;
+    setState(() {
+      _textOnly = false;
+      _comfort = tool == 'content';
+    });
+    if (tool == 'content') {
+      await _fitComfort();
+      return;
+    }
+    if (tool == 'page' || tool == 'width') {
+      await _viewer.goTo(
+        tool == 'page'
+            ? _viewer.calcMatrixForFit(pageNumber: _page)
+            : _viewer.calcMatrixFitWidthForPage(pageNumber: _page),
+        duration: Duration.zero,
+      );
+    } else {
+      final zoom = double.tryParse(tool);
+      if (zoom != null) {
+        await _viewer.setZoom(
+          _viewer.centerPosition,
+          zoom.clamp(_viewer.minScale, _viewer.maxScale),
+          duration: Duration.zero,
+        );
+      }
+    }
+    if (mounted && _viewer.isReady) {
+      setState(() => _zoomPercent = (_viewer.currentZoom * 100).round());
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -208,6 +242,8 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 350), () {
       if (mounted && _viewer.isReady) {
+        final percent = (_viewer.currentZoom * 100).round();
+        if (percent != _zoomPercent) setState(() => _zoomPercent = percent);
         widget.onReadingState(_viewer.pageNumber ?? _page, _viewer.currentZoom);
       }
     });
@@ -606,6 +642,20 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   Widget build(BuildContext context) => CallbackShortcuts(
     bindings: {
       const SingleActivator(LogicalKeyboardKey.keyF, control: true): _find,
+      const SingleActivator(LogicalKeyboardKey.digit0, control: true): () =>
+          _readingTool('page'),
+      const SingleActivator(LogicalKeyboardKey.digit1, control: true): () =>
+          _readingTool('1'),
+      const SingleActivator(LogicalKeyboardKey.digit2, control: true): () =>
+          _readingTool('width'),
+      const SingleActivator(LogicalKeyboardKey.arrowRight, alt: true): () =>
+          _go(_page + 1),
+      const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true): () =>
+          _go(_page - 1),
+      const SingleActivator(LogicalKeyboardKey.f3): () =>
+          _search?.goToNextMatch(),
+      const SingleActivator(LogicalKeyboardKey.f3, shift: true): () =>
+          _search?.goToPrevMatch(),
     },
     child: Focus(
       child: Column(
@@ -746,14 +796,40 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                     ),
                     IconButton(
                       tooltip: 'Fit page width',
-                      onPressed: _ready
-                          ? () => _viewer.setZoom(
-                              _viewer.centerPosition,
-                              _viewer.coverScale,
-                              duration: Duration.zero,
-                            )
-                          : null,
+                      onPressed: _ready ? () => _readingTool('width') : null,
                       icon: const Icon(Icons.fit_screen),
+                    ),
+                    PopupMenuButton<String>(
+                      tooltip: 'PDF zoom and reading tools',
+                      enabled: _ready,
+                      onSelected: _readingTool,
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: 'content',
+                          child: Text('Fit content · images and tables'),
+                        ),
+                        PopupMenuItem(
+                          value: 'page',
+                          child: Text('Fit entire page · Ctrl+0'),
+                        ),
+                        PopupMenuItem(
+                          value: 'width',
+                          child: Text('Fit page width · Ctrl+2'),
+                        ),
+                        PopupMenuDivider(),
+                        PopupMenuItem(value: '0.5', child: Text('50%')),
+                        PopupMenuItem(value: '0.75', child: Text('75%')),
+                        PopupMenuItem(value: '1', child: Text('100% · Ctrl+1')),
+                        PopupMenuItem(value: '1.5', child: Text('150%')),
+                        PopupMenuItem(value: '2', child: Text('200%')),
+                      ],
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        child: Text('$_zoomPercent%'),
+                      ),
                     ),
                     IconButton(
                       tooltip: 'Zoom in',
@@ -939,6 +1015,12 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                             initialPageNumber: widget.initialPage,
                             passwordProvider: _password,
                             params: PdfViewerParams(
+                              sizeDelegateProvider:
+                                  const PdfViewerSizeDelegateProviderLegacy(
+                                    minScale: .1,
+                                    maxScale: 8,
+                                    useAlternativeFitScaleAsMinScale: false,
+                                  ),
                               onViewSizeChanged: (size, oldSize, controller) {
                                 if (oldSize != null &&
                                     oldSize.width != size.width) {

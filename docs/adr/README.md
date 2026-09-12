@@ -29,3 +29,4 @@ for the earlier decision. Routine files, widgets and bug fixes do not need ADRs.
 
 - [0014 — PDF highlight notes](0014-pdf-highlight-notes.md): source-versioned regions using Canvas rectangles and linkable Markdown notes.
 - [0015 — PDF form drafts](0015-pdf-form-drafts.md): source-versioned field drafts, isolated native editing and separate filled copies.
+- [0016 — Provider-neutral sync](0016-provider-neutral-sync.md): proposed protocol, Google Drive/WebDAV priority, audit and production release gates.

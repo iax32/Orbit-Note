@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import 'package:path/path.dart' as p;
 
 import '../domain/calendar_event.dart';
+import '../domain/object_tombstone.dart';
 import '../domain/universal_object.dart';
 import '../domain/wiki_links.dart';
 import '../domain/note_path_links.dart';
@@ -18,6 +19,7 @@ import '../infrastructure/storage/object_index.dart';
 import '../infrastructure/storage/path_safety.dart';
 import '../infrastructure/storage/store_factory.dart';
 import '../infrastructure/storage/workspace_store.dart';
+import 'workspace_deletions.dart';
 
 /// Coordinates durable content before updating the disposable query index.
 /// UI/controllers use this boundary, never the platform store or SQLite directly.
@@ -250,6 +252,16 @@ class WorkspaceRepository {
       );
     }
     _initialized = true;
+    if (!_readOnly) {
+      try {
+        await WorkspaceDeletions(_store, workspaceId).recover();
+      } on Object catch (error) {
+        _readOnly = true;
+        _addIssue(
+          'An interrupted deletion needs review. All remaining files are preserved. $error',
+        );
+      }
+    }
     await _refresh();
     final selectionStore = _store;
     if (selectionStore is WorkspaceSelectionStore) {
@@ -341,7 +353,32 @@ class WorkspaceRepository {
     final paths = <String, String>{};
     final sources = <String, String>{};
     final hashes = <String, String>{};
+    final tombstones = <String>{};
     for (final path in await _store.listFiles()) {
+      if (WorkspaceDeletions.isJournal(path)) {
+        _readOnly = true;
+        _addIssue(
+          'An interrupted deletion is retained at $path. Reopen the Vault to retry recovery.',
+        );
+      }
+      if (path.startsWith('.orbit/tombstones/')) {
+        try {
+          final bytes = await _store.read(path);
+          final record = ObjectTombstone.fromJson(
+            jsonDecode(utf8.decode(bytes!)) as Map<String, dynamic>,
+          );
+          if (record.workspaceId != workspaceId || record.storagePath != path) {
+            throw const FormatException('Tombstone identity mismatch.');
+          }
+          tombstones.add(record.objectId);
+        } on Object catch (error) {
+          _readOnly = true;
+          _addIssue(
+            'An unsupported deletion record is preserved at $path. $error',
+          );
+        }
+        continue;
+      }
       if (path.startsWith('.orbit/recovery/') && path.endsWith('.move.json')) {
         _readOnly = true;
         _addIssue(
@@ -381,6 +418,12 @@ class WorkspaceRepository {
           'Could not open $path; its original file is preserved. $error',
         );
       }
+    }
+    if (objects.keys.any(tombstones.contains)) {
+      _readOnly = true;
+      _addIssue(
+        'An object and its permanent deletion record both exist. Both are preserved for review.',
+      );
     }
     _objects
       ..clear()
@@ -540,20 +583,14 @@ class WorkspaceRepository {
     await _verifyManifest();
     final object = _objects[id];
     if (object == null) return;
-    final path = _paths[id];
-    if (path != null) {
-      await _store.deleteFile(path);
-    }
-    _objects.remove(id);
-    _paths.remove(id);
-    _sources.remove(id);
-    _hashes.remove(id);
-    if (_indexReady) {
-      try {
-        await _index.replaceAll(objects);
-      } on Object {
-        _indexReady = false;
-      }
+    _validate(object);
+    try {
+      await WorkspaceDeletions(
+        _store,
+        workspaceId,
+      ).delete(id, _paths[id]!, _hashes[id]!);
+    } finally {
+      await _refresh();
     }
   });
 
@@ -561,22 +598,16 @@ class WorkspaceRepository {
     _requireWritable();
     await _verifyManifest();
     final trashed = _objects.values.where((o) => o.isDeleted).toList();
-    for (final object in trashed) {
-      final path = _paths[object.id];
-      if (path != null) {
-        await _store.deleteFile(path);
+    try {
+      for (final object in trashed) {
+        _validate(object);
+        await WorkspaceDeletions(
+          _store,
+          workspaceId,
+        ).delete(object.id, _paths[object.id]!, _hashes[object.id]!);
       }
-      _objects.remove(object.id);
-      _paths.remove(object.id);
-      _sources.remove(object.id);
-      _hashes.remove(object.id);
-    }
-    if (_indexReady) {
-      try {
-        await _index.replaceAll(objects);
-      } on Object {
-        _indexReady = false;
-      }
+    } finally {
+      await _refresh();
     }
   });
 

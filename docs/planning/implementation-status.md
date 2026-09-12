@@ -1,5 +1,23 @@
 # Implementation status — CURRENT
 
+## M6 sync audit — 2026-09-12
+
+Completed a [current-code audit](sync-audit-2026-09-12.md),
+[provider-neutral design proposal](../architecture/sync-design.md), proposed
+ADR-0016, and Google developer setup/example configuration. Google Drive now
+precedes WebDAV; older Supabase-first preferences are superseded. No auth, sync
+engine, provider or cloud UI has been implemented. The owner's received brief
+ends at `ARCHIVED CONTENT`; the missing requirements have been requested.
+
+Verified current baseline: analyzer clean, 237 tests passed, Windows release build
+passed in 7.1 seconds. Logs: `.local/sync-audit-tests.log` and
+`.local/sync-audit-build.log`. Documentation links/example JSON/diff check passed.
+Existing PDF edits are preserved. No application source was changed in this audit
+phase. Next: settle the missing requirements, then implement local coordination,
+deletion/recovery and durable sync state before enabling provider writes.
+
+## Earlier implementation record
+
 Updated 2026-09-11. This is the single current capability/completion map.
 The [backlog](feature-backlog.md) owns requirement IDs and release classifications;
 the [roadmap](roadmap.md) owns milestone gates. Implemented subsets do not mean an
@@ -273,3 +291,24 @@ Windows release build passed in 59.3 seconds. Executable:
 `build/windows/x64/runner/Release/orbit_note.exe` (keep the Release folder together).
 Documentation links and git diff --check pass. No physical phone build/test or
 interactive Windows smoke launch was performed in this resumed validation.
+
+## Visual PDF comfort reading — 2026-09-12
+
+Narrow readers now default to live PDF pages fitted to conservative visual content
+bounds, retaining images, tables, equations and scans. Text-only reading remains
+an explicit option. This supersedes the automatic text view described above.
+Added content/page/width fitting, 50–200% zoom presets and focused-reader keyboard
+shortcuts. Fixed width fitting and minimum zoom clamping. Original PDF bytes are
+unchanged; this is viewport fitting, not OCR or semantic layout reflow.
+
+Regression coverage includes illustrated phone-sized pages, optional text mode,
+pixel-bound safety, zoom presets and fitting shortcuts. The 390×844 capture was
+visually inspected with its image and table visible. Full suite: 237 tests passed;
+analyzer clean; format and zero-change check passed for 133 lib/test/tool files.
+Windows release build passed in 42.4 seconds; executable:
+`build/windows/x64/runner/Release/orbit_note.exe` (keep Release contents together).
+Evidence: `.local/pdf-visual-reading-tests.log`,
+`.local/pdf-visual-reading-build.log`, `work/ui/pdf-phone-visual.png`.
+Physical phone acceptance is the next task. Dense columns can still require
+pinch/pan; precise highlight-region navigation and semantic reflow remain planned.
+No interactive Windows smoke launch was performed in this batch.

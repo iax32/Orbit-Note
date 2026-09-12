@@ -1,5 +1,10 @@
 # Documentation map
 
+Current M6 pre-implementation work: [repository audit](planning/sync-audit-2026-09-12.md),
+[sync design](architecture/sync-design.md), and
+[Google developer setup](development/google-drive-sync-setup.md).
+These are design/audit artifacts, not a working cloud-sync release.
+
 Start with [the current task](tasks/current.md). Read only the topic needed next.
 These docs distill the full **Build Note Taking App** conversation (14 turns),
 as explicitly adopted by the project owner on 2026-09-07. They are the repository

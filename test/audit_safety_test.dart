@@ -18,7 +18,14 @@ void main() {
     root = await Directory.systemTemp.createTemp('orbit-audit-');
   });
   tearDown(() async {
-    await root.delete(recursive: true);
+    try {
+      await root.delete(recursive: true);
+    } catch (_) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      try {
+        await root.delete(recursive: true);
+      } catch (_) {}
+    }
   });
   test(
     'Vault create, rename, close and recent selection preserve identity',

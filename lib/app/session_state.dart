@@ -35,11 +35,13 @@ class SessionState {
     this.showAttachments = false,
     this.pinnedTabs = const [],
     this.closedTabs = const [],
+    this.archivedFolders = const [],
   });
   OrbitDestination destination;
   List<String> tabs;
   List<String> pinnedTabs;
   List<String> closedTabs;
+  List<String> archivedFolders;
   String? activeId, secondaryId;
   List<String> recent;
   bool sidebarVisible, inspectorVisible, compact, showAttachments;
@@ -144,6 +146,7 @@ class SessionState {
       showAttachments: json['showAttachments'] == true,
       pinnedTabs: ids('pinnedTabs'),
       closedTabs: ids('closedTabs'),
+      archivedFolders: ids('archivedFolders'),
     );
   }
   Map<String, dynamic> toJson() => {
@@ -171,5 +174,6 @@ class SessionState {
     'noteSort': noteSort,
     'collapsedFolders': collapsedFolders,
     'showAttachments': showAttachments,
+    'archivedFolders': archivedFolders,
   };
 }

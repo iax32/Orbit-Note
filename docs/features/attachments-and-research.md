@@ -138,3 +138,25 @@ complex diagrams retain the original-page view; text order follows PDF extractio
 Font size/mode are session-local and not yet restored across launches. Physical
 phone validation remains required; a 390×844 widget test covers the narrow layout.
 See ADR-0015 and implemented-formats for the safety contract.
+
+### Visual comfort reading and reader tools — 2026-09-12
+
+Supersedes the text-only default described above. Below 600 logical pixels, comfort
+reading now retains the live PDF page: embedded images, tables, equations, scans,
+links and annotation painting remain available. Content-width fitting samples a
+bounded preview of all rendered content, with 3% padding and at most 20% blank-margin
+reduction on each side. Blank/failed previews fall back to full-page width. This
+changes only the viewport; original page content remains accessible by panning or
+Original page. It is not a destructive crop or semantic multi-column reflow.
+
+Text-only reading remains an explicit separate action with adjustable font size.
+Visual comfort refits for a new page or viewport width. Measurement futures are
+bounded to 32 pages, previews to 640 pixels on the longer axis, and render buffers
+are disposed. No storage format or migration changes.
+
+The zoom menu offers Fit content, Fit entire page, Fit page width, and 50/75/100/150/
+200% presets. The live percentage follows zoom changes. Keyboard shortcuts within
+the focused reader: Ctrl+0 whole page, Ctrl+1 100%, Ctrl+2 page width, Alt+Left/Right
+page navigation, F3/Shift+F3 search matches. Narrow-screen controls scroll horizontally.
+Physical phone/high-DPI gesture validation and advanced Acrobat tools remain future
+acceptance work. Dense multi-column pages can still require pinch zoom and panning.

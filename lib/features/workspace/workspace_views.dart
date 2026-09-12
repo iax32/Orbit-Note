@@ -16,6 +16,7 @@ IconData objectIcon(String type) => switch (type) {
   'orbit.task' => Icons.check_circle_outline,
   'orbit.event' => Icons.event_outlined,
   'orbit.file' => Icons.attach_file,
+  'orbit.view' => Icons.view_quilt_outlined,
   _ => Icons.description_outlined,
 };
 
@@ -1031,9 +1032,61 @@ class TaskViewConfig {
   bool showProject;
 }
 
+enum KanbanPreset {
+  universal('universal', 'Universal', [
+    ('backlog', 'Backlog'),
+    ('todo', 'To Do'),
+    ('in-progress', 'In Progress'),
+    ('done', 'Done'),
+  ]),
+  software('software', 'Software', [
+    ('backlog', 'Backlog'),
+    ('ready', 'Ready'),
+    ('in-progress', 'In Dev'),
+    ('in-review', 'In Review'),
+    ('done', 'Done'),
+  ]),
+  gamedev('gamedev', 'Game Dev', [
+    ('concept', 'Concept'),
+    ('assets', 'Asset Production'),
+    ('in-progress', 'In Dev'),
+    ('testing', 'Testing'),
+    ('done', 'Done'),
+  ]),
+  university('university', 'University Course', [
+    ('syllabus', 'Syllabus / Topics'),
+    ('assignments', 'Assignments'),
+    ('exam-prep', 'Exam Prep'),
+    ('review', 'Review'),
+    ('done', 'Done'),
+  ]);
+
+  const KanbanPreset(this.id, this.label, this.columns);
+  final String id;
+  final String label;
+  final List<(String id, String label)> columns;
+
+  static KanbanPreset fromId(String? id) =>
+      KanbanPreset.values.where((p) => p.id == id).firstOrNull ??
+      KanbanPreset.universal;
+}
+
 class TasksView extends StatefulWidget {
-  const TasksView({super.key, required this.controller});
+  const TasksView({
+    super.key,
+    required this.controller,
+    this.viewObject,
+    this.scope,
+    this.folderFilter,
+    this.initialTab,
+  });
+
   final WorkspaceController controller;
+  final UniversalObject? viewObject;
+  final String? scope;
+  final String? folderFilter;
+  final String? initialTab;
+
   @override
   State<TasksView> createState() => _TasksViewState();
 }
@@ -1055,22 +1108,53 @@ class _TasksViewState extends State<TasksView> {
   final _newTaskController = TextEditingController();
   final _newTaskFocus = FocusNode();
 
+  String? _peekTaskId;
+  String? _inlineAddColumnId;
+  final _inlineAddController = TextEditingController();
+  final _inlineAddFocus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialTab != null) {
+      activeTab = widget.initialTab!;
+    } else if (widget.viewObject?.properties['viewType'] == 'board') {
+      activeTab = 'board';
+    }
+  }
+
   @override
   void dispose() {
     _newTaskController.dispose();
     _newTaskFocus.dispose();
+    _inlineAddController.dispose();
+    _inlineAddFocus.dispose();
     super.dispose();
   }
 
-  void _submitNewTask(String text) async {
+  void _submitNewTask(String text, {String? targetStatus}) async {
     final title = text.trim();
     if (title.isEmpty) return;
     final today = calendarDate(DateTime.now());
+    final effectiveFolder =
+        widget.folderFilter ??
+        (widget.viewObject?.properties['folder'] as String?);
+    final effectiveScope =
+        widget.scope ?? (widget.viewObject?.properties['scope'] as String?);
+    final isDone = activeTab == 'done' || targetStatus == 'done';
     final props = <String, dynamic>{
       if (activeTab == 'today') 'dueDate': today,
-      if (activeTab == 'done') 'completed': true,
+      if (isDone) 'completed': true,
+      'status': ?targetStatus,
       if (filterPriority != null) 'priority': filterPriority,
-      if (filterProject != null) 'project': filterProject,
+      if (filterProject != null)
+        'project': filterProject
+      else if (effectiveScope != null && effectiveScope.isNotEmpty)
+        'project': effectiveScope,
+      if (effectiveFolder != null && effectiveFolder.isNotEmpty)
+        'folder': effectiveFolder,
+      if (widget.viewObject?.properties['contextId'] != null)
+        'contextId': widget.viewObject?.properties['contextId'],
     };
     final created = await widget.controller.create(
       'orbit.task',
@@ -1080,6 +1164,8 @@ class _TasksViewState extends State<TasksView> {
     if (created != null && mounted) {
       _newTaskController.clear();
       _newTaskFocus.requestFocus();
+      _inlineAddController.clear();
+      setState(() => _inlineAddColumnId = null);
     }
   }
 
@@ -1089,7 +1175,47 @@ class _TasksViewState extends State<TasksView> {
     final colors = OrbitColors.of(context);
     final today = calendarDate(DateTime.now());
 
-    final allTasks = c.ofType('orbit.task').where((t) => !t.isDeleted).toList();
+    final effectiveFolder =
+        widget.folderFilter ??
+        (widget.viewObject?.properties['folder'] as String?);
+    final effectiveScope =
+        widget.scope ?? (widget.viewObject?.properties['scope'] as String?);
+
+    bool matchesScope(UniversalObject t) {
+      if (effectiveFolder != null && effectiveFolder.isNotEmpty) {
+        final f = t.properties['folder'];
+        if (f is String &&
+            (f == effectiveFolder || f.startsWith('$effectiveFolder/'))) {
+          return true;
+        }
+        final p = c.repository.objectPath(t.id);
+        if (p != null &&
+            (p == effectiveFolder || p.startsWith('$effectiveFolder/'))) {
+          return true;
+        }
+      }
+      if (effectiveScope != null && effectiveScope.isNotEmpty) {
+        final course = t.properties['course']?.toString().toLowerCase();
+        final project = t.properties['project']?.toString().toLowerCase();
+        final contextVal = t.properties['context']?.toString().toLowerCase();
+        final lowerScope = effectiveScope.toLowerCase();
+        if (course == lowerScope ||
+            project == lowerScope ||
+            contextVal == lowerScope) {
+          return true;
+        }
+      }
+      if ((effectiveFolder == null || effectiveFolder.isEmpty) &&
+          (effectiveScope == null || effectiveScope.isEmpty)) {
+        return true;
+      }
+      return false;
+    }
+
+    final allTasks = c
+        .ofType('orbit.task')
+        .where((t) => !t.isDeleted && matchesScope(t))
+        .toList();
 
     // Tab counts
     final todoCount = allTasks.where((t) => !t.isCompleted).length;
@@ -1691,150 +1817,518 @@ class _TasksViewState extends State<TasksView> {
   }
 
   Widget _buildKanbanBoard(List<UniversalObject> allTasks, OrbitColors colors) {
-    final todo = allTasks
-        .where((t) => !t.isCompleted && t.properties['status'] != 'in-progress')
-        .toList();
-    final inProgress = allTasks
-        .where((t) => !t.isCompleted && t.properties['status'] == 'in-progress')
-        .toList();
-    final done = allTasks.where((t) => t.isCompleted).toList();
+    final preset = KanbanPreset.fromId(
+      widget.viewObject?.properties['preset'] as String?,
+    );
+    final columns = preset.columns;
 
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(child: _buildKanbanColumn('To Do', todo, null, colors)),
-          const SizedBox(width: 14),
-          Expanded(
-            child: _buildKanbanColumn(
-              'In Progress',
-              inProgress,
-              'in-progress',
-              colors,
+    // Distribute tasks across columns
+    final colTasks = <String, List<UniversalObject>>{};
+    for (final col in columns) {
+      colTasks[col.$1] = [];
+    }
+
+    for (final t in allTasks) {
+      if (t.isCompleted) {
+        if (colTasks.containsKey('done')) {
+          colTasks['done']!.add(t);
+        } else {
+          colTasks[columns.last.$1]!.add(t);
+        }
+      } else {
+        final status = t.properties['status'] as String?;
+        if (status != null && colTasks.containsKey(status)) {
+          colTasks[status]!.add(t);
+        } else if (colTasks.containsKey('todo')) {
+          colTasks['todo']!.add(t);
+        } else {
+          colTasks[columns.first.$1]!.add(t);
+        }
+      }
+    }
+
+    final peekTask = _peekTaskId != null
+        ? widget.controller.find(_peekTaskId!)
+        : null;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Kanban Columns
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < columns.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildKanbanColumn(
+                      columns[i].$1,
+                      columns[i].$2,
+                      colTasks[columns[i].$1] ?? [],
+                      colors,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
-          const SizedBox(width: 14),
-          Expanded(child: _buildKanbanColumn('Done', done, 'done', colors)),
+        ),
+
+        // Slide-in Task Preview Peek Panel
+        if (peekTask != null) ...[
+          VerticalDivider(width: 1, color: colors.divider),
+          SizedBox(
+            width: 380,
+            child: Material(
+              color: colors.panel,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      border: Border(bottom: BorderSide(color: colors.divider)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.visibility_outlined,
+                          size: 16,
+                          color: colors.accent,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Task Preview',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: colors.text,
+                          ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          tooltip: 'Open in tab',
+                          icon: const Icon(Icons.open_in_new, size: 16),
+                          onPressed: () =>
+                              widget.controller.openObject(peekTask.id),
+                        ),
+                        IconButton(
+                          tooltip: 'Close preview (Esc)',
+                          icon: const Icon(Icons.close, size: 16),
+                          onPressed: () => setState(() => _peekTaskId = null),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: TaskDetail(
+                      key: ValueKey(peekTask.id),
+                      object: peekTask,
+                      controller: widget.controller,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildKanbanColumn(
+    String colId,
+    String title,
+    List<UniversalObject> tasks,
+    OrbitColors colors,
+  ) {
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (details) => true,
+      onAcceptWithDetails: (details) {
+        final taskId = details.data;
+        final task = widget.controller.find(taskId);
+        if (task == null) return;
+        final isDone = colId == 'done';
+        widget.controller.edit(
+          taskId,
+          properties: {
+            ...task.properties,
+            'status': colId,
+            'completed': isDone,
+          },
+        );
+      },
+      builder: (context, candidates, rejected) {
+        final isTargeted = candidates.isNotEmpty;
+        return Container(
+          decoration: BoxDecoration(
+            color: isTargeted
+                ? colors.accent.withValues(alpha: .08)
+                : colors.panel,
+            borderRadius: BorderRadius.circular(8),
+            border: isTargeted
+                ? Border.all(color: colors.accent, width: 1.5)
+                : null,
+          ),
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Column Header
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colors.raised,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${tasks.length}',
+                      style: TextStyle(fontSize: 10, color: colors.subtle),
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: 'Add task to $title',
+                    icon: const Icon(Icons.add, size: 16),
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints(
+                      minWidth: 20,
+                      minHeight: 20,
+                    ),
+                    onPressed: () {
+                      setState(() => _inlineAddColumnId = colId);
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        _inlineAddFocus.requestFocus();
+                      });
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              // Column Task Cards
+              Expanded(
+                child: ListView.builder(
+                  itemCount: tasks.length,
+                  itemBuilder: (context, index) {
+                    final t = tasks[index];
+                    return Draggable<String>(
+                      data: t.id,
+                      feedback: Material(
+                        elevation: 6,
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          width: 240,
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: colors.raised,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            t.title.isEmpty ? 'Untitled' : t.title,
+                            style: const TextStyle(fontSize: 12.5),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                      childWhenDragging: Opacity(
+                        opacity: 0.3,
+                        child: _buildKanbanCard(t, colors),
+                      ),
+                      child: _buildKanbanCard(t, colors),
+                    );
+                  },
+                ),
+              ),
+
+              // Inline Quick Add at Column Bottom
+              if (_inlineAddColumnId == colId) ...[
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colors.raised,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _inlineAddController,
+                          focusNode: _inlineAddFocus,
+                          style: const TextStyle(fontSize: 12),
+                          decoration: const InputDecoration(
+                            hintText: 'Task title…',
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(vertical: 4),
+                            border: InputBorder.none,
+                          ),
+                          onSubmitted: (text) =>
+                              _submitNewTask(text, targetStatus: colId),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.check, size: 14),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 20,
+                          minHeight: 20,
+                        ),
+                        onPressed: () => _submitNewTask(
+                          _inlineAddController.text,
+                          targetStatus: colId,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 14),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 20,
+                          minHeight: 20,
+                        ),
+                        onPressed: () =>
+                            setState(() => _inlineAddColumnId = null),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else ...[
+                const SizedBox(height: 4),
+                InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () {
+                    setState(() => _inlineAddColumnId = colId);
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      _inlineAddFocus.requestFocus();
+                    });
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 6,
+                      horizontal: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.add, size: 14, color: colors.subtle),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Add task',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: colors.subtle,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildKanbanCard(UniversalObject t, OrbitColors colors) {
+    final isBlocked = _isTaskBlocked(t);
+    final subtasks = _getSubtaskProgress(t.body);
+    final priority = t.properties['priority'] as String?;
+    final estimate = t.properties['estimate'] as String?;
+    final category = t.properties['category'] as String?;
+    final isSelected = _peekTaskId == t.id;
+
+    return Card(
+      elevation: 0,
+      color: isSelected ? colors.hover : colors.raised,
+      margin: const EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(6),
+        side: isSelected
+            ? BorderSide(color: colors.accent, width: 1.5)
+            : BorderSide.none,
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: () => setState(() => _peekTaskId = t.id),
+        onDoubleTap: () => widget.controller.openObject(t.id),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Checkbox(
+                    value: t.isCompleted,
+                    activeColor: colors.accent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    onChanged: (val) {
+                      widget.controller.edit(
+                        t.id,
+                        properties: {...t.properties, 'completed': val},
+                      );
+                    },
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        t.title.isEmpty ? 'Untitled' : t.title,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w500,
+                          decoration: t.isCompleted
+                              ? TextDecoration.lineThrough
+                              : null,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              // Card Metadata Chips
+              Padding(
+                padding: const EdgeInsets.only(left: 36, top: 4),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    if (t.properties['dueDate'] is String)
+                      _badge(
+                        formatFriendlyDueDate(
+                          parseCalendarDate(t.properties['dueDate']),
+                        ),
+                        icon: Icons.calendar_today_outlined,
+                        colors: colors,
+                      ),
+                    if (isBlocked)
+                      _badge(
+                        'Blocked',
+                        icon: Icons.lock_outline,
+                        color: Colors.amber.shade700,
+                        colors: colors,
+                      ),
+                    if (subtasks != null)
+                      _badge(
+                        '${subtasks.$1}/${subtasks.$2}',
+                        icon: Icons.checklist,
+                        colors: colors,
+                      ),
+                    if (estimate != null && estimate.isNotEmpty)
+                      _badge(estimate, icon: Icons.speed, colors: colors),
+                    if (category != null && category.isNotEmpty)
+                      _badge(category, colors: colors),
+                    if (priority != null &&
+                        priority != 'none' &&
+                        priority != 'medium')
+                      _badge(
+                        priority.toUpperCase(),
+                        color: priority == 'urgent' || priority == 'high'
+                            ? Colors.red.shade400
+                            : colors.subtle,
+                        colors: colors,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _badge(
+    String text, {
+    IconData? icon,
+    Color? color,
+    required OrbitColors colors,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+      decoration: BoxDecoration(
+        color: (color ?? colors.subtle).withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 10, color: color ?? colors.subtle),
+            const SizedBox(width: 3),
+          ],
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+              color: color ?? colors.subtle,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildKanbanColumn(
-    String title,
-    List<UniversalObject> tasks,
-    String? targetStatus,
-    OrbitColors colors,
-  ) {
-    return Container(
-      decoration: BoxDecoration(
-        color: colors.panel,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                decoration: BoxDecoration(
-                  color: colors.raised,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '${tasks.length}',
-                  style: TextStyle(fontSize: 10, color: colors.subtle),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Expanded(
-            child: ListView.builder(
-              itemCount: tasks.length,
-              itemBuilder: (context, index) {
-                final t = tasks[index];
-                return Card(
-                  elevation: 0,
-                  color: colors.raised,
-                  margin: const EdgeInsets.only(bottom: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(6),
-                    onTap: () => widget.controller.openObject(t.id),
-                    child: Padding(
-                      padding: const EdgeInsets.all(10),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Checkbox(
-                                value: t.isCompleted,
-                                activeColor: colors.accent,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                onChanged: (val) {
-                                  widget.controller.edit(
-                                    t.id,
-                                    properties: {
-                                      ...t.properties,
-                                      'completed': val,
-                                    },
-                                  );
-                                },
-                              ),
-                              Expanded(
-                                child: Text(
-                                  t.title.isEmpty ? 'Untitled' : t.title,
-                                  style: TextStyle(
-                                    fontSize: 12.5,
-                                    decoration: t.isCompleted
-                                        ? TextDecoration.lineThrough
-                                        : null,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (t.properties['dueDate'] is String)
-                            Padding(
-                              padding: const EdgeInsets.only(left: 32, top: 4),
-                              child: Text(
-                                formatFriendlyDueDate(
-                                  parseCalendarDate(t.properties['dueDate']),
-                                ),
-                                style: TextStyle(
-                                  fontSize: 10.5,
-                                  color: colors.subtle,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
+  bool _isTaskBlocked(UniversalObject t) {
+    final raw = t.properties['blockedBy'];
+    if (raw == null) return false;
+    final List<String> ids = switch (raw) {
+      List l => l.map((e) => e.toString()).toList(),
+      String s =>
+        s.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
+      _ => const [],
+    };
+    if (ids.isEmpty) return false;
+    for (final id in ids) {
+      final blocker = widget.controller.find(id);
+      if (blocker != null && !blocker.isDeleted && !blocker.isCompleted) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  (int, int)? _getSubtaskProgress(String body) {
+    final matches = RegExp(
+      r'^\s*-\s*\[([ xX])\]',
+      multiLine: true,
+    ).allMatches(body).toList();
+    if (matches.isEmpty) return null;
+    final done = matches.where((m) => m.group(1)?.toLowerCase() == 'x').length;
+    return (done, matches.length);
   }
 }
 
@@ -1905,14 +2399,19 @@ class _TaskDetailState extends State<TaskDetail> {
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             SizedBox(
-              width: 200,
+              width: 150,
               child: DropdownButtonFormField<String>(
                 initialValue:
-                    ['low', 'medium', 'high'].contains(o.properties['priority'])
+                    [
+                      'low',
+                      'medium',
+                      'high',
+                      'urgent',
+                    ].contains(o.properties['priority'])
                     ? o.properties['priority'] as String
                     : 'medium',
                 decoration: const InputDecoration(labelText: 'Priority'),
-                items: ['low', 'medium', 'high']
+                items: ['low', 'medium', 'high', 'urgent']
                     .map(
                       (v) => DropdownMenuItem(
                         value: v,
@@ -1921,6 +2420,105 @@ class _TaskDetailState extends State<TaskDetail> {
                     )
                     .toList(),
                 onChanged: (v) => property('priority', v),
+              ),
+            ),
+            SizedBox(
+              width: 140,
+              child: DropdownButtonFormField<String>(
+                initialValue: o.properties['status'] is String
+                    ? o.properties['status'] as String
+                    : (o.isCompleted ? 'done' : 'todo'),
+                decoration: const InputDecoration(labelText: 'Status'),
+                items: const [
+                  DropdownMenuItem(value: 'backlog', child: Text('Backlog')),
+                  DropdownMenuItem(value: 'todo', child: Text('To Do')),
+                  DropdownMenuItem(
+                    value: 'in-progress',
+                    child: Text('In Progress'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'in-review',
+                    child: Text('In Review'),
+                  ),
+                  DropdownMenuItem(value: 'done', child: Text('Done')),
+                ],
+                onChanged: (v) {
+                  if (v != null) {
+                    property('status', v);
+                    if (v == 'done') {
+                      property('completed', true);
+                    } else if (o.isCompleted) {
+                      property('completed', false);
+                    }
+                  }
+                },
+              ),
+            ),
+            SizedBox(
+              width: 110,
+              child: DropdownButtonFormField<String>(
+                initialValue: o.properties['estimate'] is String
+                    ? o.properties['estimate'] as String
+                    : null,
+                decoration: const InputDecoration(labelText: 'Estimate'),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('None')),
+                  for (final est in [
+                    '1',
+                    '2',
+                    '3',
+                    '5',
+                    '8',
+                    '13',
+                    'XS',
+                    'S',
+                    'M',
+                    'L',
+                    'XL',
+                  ])
+                    DropdownMenuItem(value: est, child: Text(est)),
+                ],
+                onChanged: (v) => property('estimate', v),
+              ),
+            ),
+            SizedBox(
+              width: 140,
+              child: TextFormField(
+                initialValue: o.properties['category'] is String
+                    ? o.properties['category'] as String
+                    : '',
+                decoration: const InputDecoration(labelText: 'Category'),
+                onChanged: (v) =>
+                    property('category', v.trim().isEmpty ? null : v.trim()),
+              ),
+            ),
+            SizedBox(
+              width: 180,
+              child: DropdownButtonFormField<String>(
+                initialValue: o.properties['blockedBy'] is String
+                    ? o.properties['blockedBy'] as String
+                    : (o.properties['blockedBy'] is List &&
+                              (o.properties['blockedBy'] as List).isNotEmpty
+                          ? (o.properties['blockedBy'] as List).first.toString()
+                          : null),
+                decoration: const InputDecoration(labelText: 'Blocked by'),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('None')),
+                  ...widget.controller
+                      .ofType('orbit.task')
+                      .where((t) => t.id != o.id && !t.isDeleted)
+                      .map(
+                        (t) => DropdownMenuItem(
+                          value: t.id,
+                          child: Text(
+                            t.title.isEmpty ? 'Untitled' : t.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                ],
+                onChanged: (v) => property('blockedBy', v),
               ),
             ),
             OutlinedButton.icon(

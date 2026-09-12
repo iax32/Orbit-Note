@@ -1,5 +1,10 @@
 # Local-first and future sync
 
+2026-09-12 direction update: the owner now prioritizes Google Drive, then WebDAV.
+Read the [current audit](../planning/sync-audit-2026-09-12.md) and
+[proposed implementation design](sync-design.md). Supabase-first statements below
+are historical; no provider has been implemented. ADR-0016 records this transition.
+
 Status: local-first accepted; sync protocol/provider integration deferred to M6.
 Supabase hosted/self-hosted is the intended first backend candidate, not an
 installed dependency or a ready-made conflict-resolution engine.

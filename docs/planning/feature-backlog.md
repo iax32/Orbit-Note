@@ -1,5 +1,10 @@
 # Canonical feature backlog
 
+2026-09-12 priority override: the owner authorized M6 now, Google Drive first and
+WebDAV second. Existing SYNC requirement IDs retain their behavioral meaning;
+this changes execution order, not claims of completion. See the
+[sync audit](sync-audit-2026-09-12.md) and current task.
+
 Status: canonical release classification. Requirements describe full target behavior.
 Working subsets are tracked in [implementation status](implementation-status.md). The
 [current task](../tasks/current.md) defines active scope. Do not duplicate requirements.

@@ -1,4 +1,12 @@
-# Current milestone — durable local core
+# Current milestone — M6 optional local-first sync
+
+2026-09-12: owner explicitly selected Google Drive first and WebDAV second. The
+[audit](sync-audit-2026-09-12.md) and [design](../architecture/sync-design.md) are
+pre-implementation work. No cloud capability is shipped. Exit requires durable
+queue/base/deletion state, conflict recovery, safe provider writes and real
+Windows/Android two-device acceptance. Preserve the delivered local/PDF baseline.
+
+## Historical local-core milestone
 
 Updated 2026-09-09. The owner expanded the original Foundation/M0 task to recover
 existing implementation and deliver usable high-priority local features.

@@ -57,5 +57,9 @@ app.*.map.json
 *.keystore
 *.p12
 *.mobileprovision
+# Private Google developer downloads/configuration (public examples stay tracked).
+/config/*.local.json
+/config/client_secret*.json
+/android/app/google-services.json
 # Keep pubspec.lock, .metadata and platform source. Test fixtures are not
 # broadly ignored by extension: JSON, Markdown and database fixtures can be tracked.

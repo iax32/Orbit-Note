@@ -340,6 +340,8 @@ class _FailingStore implements WorkspaceStore {
   }
 
   @override
-  Future<void> deleteFile(String relativePath) =>
-      delegate.deleteFile(relativePath);
+  Future<void> deleteFile(
+    String relativePath, {
+    required String? expectedHash,
+  }) => delegate.deleteFile(relativePath, expectedHash: expectedHash);
 }

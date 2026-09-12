@@ -179,6 +179,33 @@ void main() async {
       await tester.tap(find.byTooltip('Bookmark page'));
       await tester.pump();
       expect(bookmarks, [2]);
+      await tester.tap(find.byTooltip('PDF zoom and reading tools'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('200%'));
+      await tester.pumpAndSettle();
+      final toolViewer = tester
+          .widget<PdfViewer>(find.byType(PdfViewer))
+          .controller!;
+      expect(toolViewer.currentZoom, closeTo(2, .01));
+      await tester.tap(find.byTooltip('Fit page width'));
+      await tester.pumpAndSettle();
+      expect(
+        toolViewer.currentZoom,
+        closeTo(
+          (toolViewer.viewSize.width - toolViewer.params.margin * 2) /
+              toolViewer.layout.pageLayouts[1].width,
+          .01,
+        ),
+      );
+      await tester.tap(find.byType(TextField).first);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.digit0);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+      expect(
+        toolViewer.layout.pageLayouts[1].height * toolViewer.currentZoom,
+        lessThanOrEqualTo(toolViewer.viewSize.height),
+      );
       await tester.tap(find.byTooltip('Copy page reference'));
       await tester.pump();
       expect(clipboard, '[[paper#page=2|Research · p. 2]]');
@@ -339,6 +366,12 @@ void main() async {
         tester,
         () => viewer.currentZoom > fullWidthZoom * 1.02,
       );
+      for (var i = 0; i < 3; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 200)),
+        );
+        await tester.pump(const Duration(milliseconds: 200));
+      }
       await captureUi(tester, 'pdf-phone-visual');
       await tester.tap(find.byTooltip('Text-only reading'));
       await tester.pump();

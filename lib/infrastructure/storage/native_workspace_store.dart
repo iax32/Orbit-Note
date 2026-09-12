@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import '../../domain/workspace_failure.dart';
 import 'path_safety.dart';
 import 'native_path_moves.dart';
+import 'native_vault_lock.dart';
 import 'workspace_store.dart';
 
 WorkspaceStore createWorkspaceStore() =>
@@ -101,6 +102,7 @@ class NativeWorkspaceStore
   }
 
   late Directory _root;
+  NativeVaultLock? _ownership;
   @override
   String get location => _root.path;
   @override
@@ -126,6 +128,16 @@ class NativeWorkspaceStore
 
   @override
   Future<void> initialize({String? path}) async {
+    await close();
+    try {
+      await _initialize(path: path);
+    } on Object {
+      await close();
+      rethrow;
+    }
+  }
+
+  Future<void> _initialize({String? path}) async {
     if (path == null && rememberWorkspace) {
       final file = await _selectionFile();
       if (await file.exists()) {
@@ -170,6 +182,9 @@ class NativeWorkspaceStore
     _root = Directory(p.normalize(p.absolute(selected)));
     await _root.create(recursive: true);
     _root = Directory(await _root.resolveSymbolicLinks());
+    _ownership = await NativeVaultLock.acquire(
+      await _file('.orbit/device/vault.lock'),
+    );
     await _file('.orbit/workspace.sqlite');
     final manifest = await read('workspace.json');
     // Recovery must not mutate an unsupported newer workspace.
@@ -258,9 +273,13 @@ class NativeWorkspaceStore
   }
 
   @override
-  Future<void> deleteFile(String relativePath) async {
+  Future<void> deleteFile(
+    String relativePath, {
+    required String? expectedHash,
+  }) async {
     validateRelativePath(relativePath);
     final file = await _file(relativePath);
+    await _checkExpected(relativePath, expectedHash);
     if (await file.exists()) {
       await file.delete();
     }
@@ -544,5 +563,9 @@ class NativeWorkspaceStore
   }
 
   @override
-  Future<void> close() async {}
+  Future<void> close() async {
+    final ownership = _ownership;
+    _ownership = null;
+    await ownership?.close();
+  }
 }

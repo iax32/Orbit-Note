@@ -1,5 +1,11 @@
 # Optional sync and future collaboration
 
+2026-09-12 owner update: Google Drive is now the primary M6 provider, WebDAV the
+second. This supersedes the Supabase-first preference and deferred Drive/WebDAV
+ordering in SYNC-11 below, without changing the local-first requirements. See
+[audit](../planning/sync-audit-2026-09-12.md) and
+[design proposal](../architecture/sync-design.md). Implementation is not delivered.
+
 Status: sync planned M6; shared/concurrent collaboration exploratory after M6.
 Sources: S02, S03, S04 in the [source map](../product/conversation-extraction.md).
 Architecture: [local-first/sync](../architecture/local-first-sync.md).

@@ -45,7 +45,14 @@ class MemoryStore implements WorkspaceStore {
   }
 
   @override
-  Future<void> deleteFile(String relativePath) async {
+  Future<void> deleteFile(
+    String relativePath, {
+    required String? expectedHash,
+  }) async {
+    final old = files[relativePath];
+    if ((old == null ? null : sha256.convert(old).toString()) != expectedHash) {
+      throw const WorkspaceConflict('External edit before deletion');
+    }
     files.remove(relativePath);
   }
 }

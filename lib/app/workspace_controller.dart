@@ -601,6 +601,7 @@ class WorkspaceController extends Notifier<int> {
               'orbit.canvas' => 'Untitled canvas',
               'orbit.task' => 'Untitled task',
               'orbit.event' => 'Untitled event',
+              'orbit.view' => 'Untitled view',
               _ => 'Untitled note',
             },
         body: body,
@@ -612,6 +613,7 @@ class WorkspaceController extends Notifier<int> {
               'startDate': today,
               'endDate': tomorrow,
             },
+            'orbit.view' => {'viewType': 'tasks'},
             _ => const {},
           },
           ...properties,
@@ -629,6 +631,46 @@ class WorkspaceController extends Notifier<int> {
       notify();
       return null;
     }
+  }
+
+  bool isArchivedFolder(String folder) => session.archivedFolders.any(
+    (f) => folder == f || folder.startsWith('$f/'),
+  );
+
+  void archiveFolder(String folder) {
+    if (!session.archivedFolders.contains(folder)) {
+      session.archivedFolders.add(folder);
+      persistSession();
+      notify();
+    }
+  }
+
+  void restoreFolder(String folder) {
+    if (session.archivedFolders.remove(folder)) {
+      persistSession();
+      notify();
+    }
+  }
+
+  Future<UniversalObject?> duplicateView(String viewId) async {
+    final view = find(viewId);
+    if (view == null) return null;
+    return create(
+      'orbit.view',
+      title: '${view.title} (Copy)',
+      properties: Map<String, dynamic>.from(view.properties),
+    );
+  }
+
+  Future<void> moveObjectToFolder(String id, String folder) async {
+    final obj = find(id);
+    if (obj == null) return;
+    if (obj.typeId == 'orbit.note') {
+      try {
+        await repository.moveNote(id, folder);
+      } catch (_) {}
+    }
+    edit(id, properties: {...obj.properties, 'folder': folder});
   }
 
   Future<bool> savePdfFormField(

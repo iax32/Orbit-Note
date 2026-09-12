@@ -1,4 +1,25 @@
-# Current task — Task/List UX, Movable Note Blocks, Folder Deletion & Vault Files
+# Current task — M6 local-first Google Drive / WebDAV sync
+
+Owner-requested milestone, 2026-09-12. Status: pre-implementation audit and design.
+No production sync implementation is delivered. Preserve all local/PDF/polish work.
+The received brief stops at `ARCHIVED CONTENT`; its remaining requirements have
+been requested. Resolve that missing tail before finalizing archive/deletion policy.
+
+Required starting points: [audit](../planning/sync-audit-2026-09-12.md),
+[design](../architecture/sync-design.md), [ADR-0016](../adr/0016-provider-neutral-sync.md),
+[Google setup](../development/google-drive-sync-setup.md).
+
+Next implementation stage: local Vault coordination, durable deletion intent and
+recovery, explicit canonical inventory, separate durable sync state. Then build
+the engine, Drive auth/provider/UI and WebDAV in that order with failure tests.
+No cloud writes, credentials or new dependencies were introduced during the audit.
+Audit baseline validation: flutter analyze clean; all 237 tests passed; Windows
+release build passed (7.1 seconds). Logs: `.local/sync-audit-tests.log` and
+`.local/sync-audit-build.log`. New documentation links, example JSON and
+`git diff --check` passed. No Dart/platform source changed in this audit phase;
+real cloud/provider/device tests have not been performed.
+
+## Previous completed task — Task/List UX, Movable Note Blocks, Folder Deletion & Vault Files
 
 Status: delivered and validated, 2026-09-11.
 
@@ -254,4 +275,92 @@ Delivered the second focused Gemini-safe quality-of-life batch:
 - Code formatting: zero-change format check passed (`dart format --output=none --set-exit-if-changed lib test`).
 - Windows release executable compiled: `build\windows\x64\runner\Release\orbit_note.exe`.
 - Deployed executable and assets to `C:\Users\iax\Desktop\Orbit Note Windows App` and generated archive `C:\Users\iax\Desktop\OrbitNote-Windows-x64.zip`.
+
+
+## Visual PDF reading continuation — 2026-09-12
+
+Owner requested images/tables in comfort mode and additional PDF reading tools.
+Implemented a live-page visual comfort mode with conservative blank-side-margin
+fitting; text-only reading remains optional. Added full-page/width/content fitting,
+zoom presets and focused-reader keyboard shortcuts. Preserves existing PDF forms,
+research tools and unrelated work. No architecture/storage change.
+
+Targeted regressions pass for an image/table fixture, blank/edge pixel bounds,
+mode switching, zoom and fitting shortcuts, native form taps and filled-copy readback.
+The phone-sized screenshot was inspected with image and table visible. Validation:
+237 tests passed; flutter analyze clean; formatting and zero-change check passed
+for lib/test/tool (133 files). Windows release build passed in 42.4 seconds:
+`build/windows/x64/runner/Release/orbit_note.exe`. Logs are
+`.local/pdf-visual-reading-tests.log` and `.local/pdf-visual-reading-build.log`.
+No physical phone validation or interactive Windows smoke launch was performed.
+Next: physical phone acceptance,
+then precise highlight-region navigation; full Acrobat parity is not claimed.
+
+## Productivity, Project Management & University Workflows Pass — 2026-09-12
+
+Delivered a comprehensive productivity, project management, and university workflow pass based strictly on Orbit's core invariant: **"CREATE ONCE. VIEW ANYWHERE."**
+
+1. **Unified Folder & Project System**:
+   - Folders in the unified Explorer tree now contain Notes (`orbit.note`), Canvases (`orbit.canvas`), Saved Views (`orbit.view`), Attachments (`orbit.file`), and subfolders.
+   - Drag-and-drop support: drag Notes, Canvases, Saved Views, or Files directly into folders with instant path update.
+   - Rich Folder Context Menu with actions:
+     - `New Note`
+     - `New Canvas`
+     - `New Task List`
+     - `New Board` (defaults to university preset)
+     - `New Calendar`
+     - `New Timeline`
+     - `New folder` / `New subfolder`
+     - `Rename folder`
+     - `Move folder…`
+     - `Reveal in File Explorer`
+     - `Archive folder`
+     - `Delete folder`
+   - Non-destructive Folder Archiving: `isArchivedFolder(folder)`, `archiveFolder(folder)`, `restoreFolder(folder)` with collapsible "Archived" section in explorer sidebar; leaves underlying files intact.
+
+2. **Saved Views (`orbit.view`)**:
+   - Universal Object storing view configuration (`viewType`: `tasks`, `board`, `calendar`, `timeline`; `folder`, `scope`, `preset`) that scopes and views underlying Universal Objects without data duplication.
+   - `SavedViewHost` widget with:
+     - Icon and editable title bar.
+     - Folder scope chip.
+     - View switcher tabs (`List`, `Board`, `Calendar`, `Timeline`).
+     - Kanban preset dropdown selector (`Universal`, `Software`, `Game Dev`, `University`).
+     - Real-time Course / Project progress bar (`X / Y complete · Z%`).
+     - Duplicate view (duplicates view configuration only, zero task duplication) and Trash view.
+
+3. **Kanban Board Enhancements**:
+   - Customizable presets via `KanbanPreset`:
+     - **Universal**: Backlog, To Do, In Progress, Done
+     - **Software Dev**: Backlog, Ready, In Dev, In Review, Done
+     - **Game Dev**: Concept, Asset Production, In Dev, Testing, Done
+     - **University Course**: Syllabus / Topics, Assignments, Exam Prep, Review, Done
+   - Smooth drag-and-drop (`Draggable` / `DragTarget`) between columns updating task status and completion dynamically.
+   - Inline sequential quick add (`+ Add task`) per column with instant focus.
+   - Rich card metadata badges: estimate chip, category chip, subtle priority chip, blocker warning chip (`🔒 Blocked`), and subtask checklist completion ratio (`X / Y subtasks`).
+   - Side task preview peek panel (`_peekTaskId`) for immediate in-place inspection and editing.
+   - Full `TaskDetail` editing: added form fields for `status`, `estimate`, `category`, and `blockedBy`.
+
+4. **Timeline View (`TimelineView`)**:
+   - Chronological month/year timeline aggregating `orbit.event` and dated `orbit.task` Universal Objects.
+   - Scoped filtering by folder or course/project.
+   - In-view live search and interactive task completion toggle.
+
+5. **Scoped Calendar View**:
+   - `CalendarView` accepts `folderFilter` and `scope` to scope events and due tasks strictly to the active folder/project/course.
+
+### Validation Evidence
+- Comprehensive unit and widget test suite in `test/workflow_project_management_test.dart` (7/7 passing tests):
+  - Invariant verification: single task shared across List, Board, Calendar, and Timeline without cloning data.
+  - Non-destructive folder archiving and restoration.
+  - Saved view creation and configuration duplication without task cloning.
+  - `moveObjectToFolder` updates location for notes, canvases, and views.
+  - Kanban presets validation (`universal`, `software`, `gamedev`, `university`).
+  - `SavedViewHost` header, switcher, and viewType transitions.
+  - `SavedViewHost` course progress calculation and percentage display.
+- Full test suite: **255/255 tests passed (0 failures)** across all test files in the repository.
+- Static analysis: **0 issues found** (`flutter analyze`).
+- Code formatting: 139 files checked with 0 changes (`dart format --output=none --set-exit-if-changed lib test`).
+- Windows 64-bit release build compiled: `build\windows\x64\runner\Release\orbit_note.exe`.
+- Deployed executable and assets to `C:\Users\iax\Desktop\Orbit Note Windows App` and generated archive `C:\Users\iax\Desktop\OrbitNote-Windows-x64.zip`.
+- Android release APK compiled via OpenJDK 17 and Android SDK Platform 34: `build\app\outputs\flutter-apk\app-release.apk` (93.8MB) and copied to `C:\Users\iax\Desktop\OrbitNote-release.apk`.
 

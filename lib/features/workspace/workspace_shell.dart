@@ -37,6 +37,7 @@ import 'calendar_view.dart';
 import 'workspace_views.dart';
 import 'note_folder_explorer.dart';
 import 'graph_view.dart';
+import 'saved_view_host.dart';
 
 class WorkspaceShell extends ConsumerStatefulWidget {
   const WorkspaceShell({super.key});
@@ -2260,6 +2261,11 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       'orbit.event' => EventDetail(
         key: ValueKey(object.id),
         object: object,
+        controller: c,
+      ),
+      'orbit.view' => SavedViewHost(
+        key: ValueKey('$pane:view-${object.id}'),
+        viewObject: object,
         controller: c,
       ),
       'orbit.file' when object.properties['mimeType'] == 'application/pdf' =>

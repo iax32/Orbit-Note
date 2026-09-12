@@ -9,9 +9,17 @@ import '../../domain/object_reference.dart';
 import '../../app/orbit_components.dart';
 import '../../app/orbit_theme.dart';
 import '../../platform/open_attachment.dart';
+import '../../domain/object_sort.dart';
 import 'orbit_explorer_row.dart';
 
 /// Real on-disk Notes folders. Objects keep their identity when their owner moves.
+IconData viewTypeIcon(String? viewType) => switch (viewType) {
+  'board' => Icons.view_kanban_outlined,
+  'calendar' => Icons.calendar_month_outlined,
+  'timeline' => Icons.timeline_outlined,
+  _ => Icons.checklist_outlined,
+};
+
 class NoteFolderExplorer extends StatefulWidget {
   const NoteFolderExplorer({
     super.key,
@@ -32,6 +40,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
   String? _anchorNoteId;
   final FocusNode _focusNode = FocusNode();
   int _focusedIndex = 0;
+  bool _showArchived = false;
 
   @override
   void dispose() {
@@ -63,17 +72,21 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
               p.posix.dirname(source.path) != folder &&
               !folder.startsWith('${source.path}/');
         },
-        onAcceptWithDetails: (details) => widget.controller.organize(
-          () => details.data.noteId == null
-              ? widget.controller.repository.moveFolder(
-                  details.data.path,
-                  '$folder/${p.posix.basename(details.data.path)}',
-                )
-              : widget.controller.repository.moveNote(
-                  details.data.noteId!,
-                  folder,
-                ),
-        ),
+        onAcceptWithDetails: (details) async {
+          if (details.data.noteId == null) {
+            await widget.controller.organize(
+              () => widget.controller.repository.moveFolder(
+                details.data.path,
+                '$folder/${p.posix.basename(details.data.path)}',
+              ),
+            );
+          } else {
+            await widget.controller.moveObjectToFolder(
+              details.data.noteId!,
+              folder,
+            );
+          }
+        },
         builder: (context, candidates, rejected) => ColoredBox(
           color: candidates.isEmpty
               ? Colors.transparent
@@ -144,7 +157,53 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
     String folder,
     String action,
   ) async {
-    if (action == 'new') {
+    if (action == 'new_note') {
+      await widget.controller.create(
+        'orbit.note',
+        properties: {'folder': folder},
+      );
+    } else if (action == 'new_canvas') {
+      await widget.controller.create(
+        'orbit.canvas',
+        properties: {'folder': folder},
+      );
+    } else if (action == 'new_task_list') {
+      final base = p.posix.basename(folder);
+      await widget.controller.create(
+        'orbit.view',
+        title: '$base Tasks',
+        properties: {'folder': folder, 'viewType': 'tasks'},
+      );
+    } else if (action == 'new_board') {
+      final base = p.posix.basename(folder);
+      await widget.controller.create(
+        'orbit.view',
+        title: '$base Board',
+        properties: {
+          'folder': folder,
+          'viewType': 'board',
+          'preset': 'university',
+        },
+      );
+    } else if (action == 'new_calendar') {
+      final base = p.posix.basename(folder);
+      await widget.controller.create(
+        'orbit.view',
+        title: '$base Calendar',
+        properties: {'folder': folder, 'viewType': 'calendar'},
+      );
+    } else if (action == 'new_timeline') {
+      final base = p.posix.basename(folder);
+      await widget.controller.create(
+        'orbit.view',
+        title: '$base Timeline',
+        properties: {'folder': folder, 'viewType': 'timeline'},
+      );
+    } else if (action == 'archive') {
+      widget.controller.archiveFolder(folder);
+    } else if (action == 'restore') {
+      widget.controller.restoreFolder(folder);
+    } else if (action == 'new') {
       final name = await _name(context, 'New folder');
       if (name != null) {
         await widget.controller.organize(
@@ -317,20 +376,58 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
     final visibleEntries = <({bool isFolder, String id, String folderPath})>[];
     final visibleNoteIds = <String>[];
 
+    bool isFolderArchived(String f) => widget.controller.isArchivedFolder(f);
+
+    bool objectInFolder(UniversalObject o, String folder) {
+      if (o.isDeleted) return false;
+      if (o.typeId == 'orbit.file' && !widget.controller.showAttachments) {
+        return false;
+      }
+      final f = o.properties['folder'];
+      if (f is String && f.isNotEmpty) {
+        return f == folder;
+      }
+      final pth = repo.objectPath(o.id);
+      if (pth != null && pth.isNotEmpty) {
+        return p.posix.dirname(pth) == folder;
+      }
+      if (folder == 'Notes') {
+        return o.typeId == 'orbit.note' ||
+            o.typeId == 'orbit.canvas' ||
+            o.typeId == 'orbit.view';
+      }
+      return false;
+    }
+
+    final allItems = widget.controller.activeObjects
+        .where(
+          (o) =>
+              !o.isDeleted &&
+              (o.typeId == 'orbit.note' ||
+                  o.typeId == 'orbit.canvas' ||
+                  o.typeId == 'orbit.view' ||
+                  o.typeId == 'orbit.file'),
+        )
+        .toList();
+
     void collect(String folder) {
+      if (isFolderArchived(folder)) return;
       visibleEntries.add((isFolder: true, id: folder, folderPath: folder));
       final collapsed =
           !widget.filtering &&
           widget.controller.session.collapsedFolders.contains(folder);
       if (collapsed) return;
       for (final child in repo.folders.where(
-        (f) => f != folder && p.posix.dirname(f) == folder,
+        (f) =>
+            f != folder && p.posix.dirname(f) == folder && !isFolderArchived(f),
       )) {
         collect(child);
       }
-      for (final note in widget.notes.where(
-        (o) => p.posix.dirname(repo.objectPath(o.id) ?? '') == folder,
-      )) {
+      final folderObjects = allItems
+          .where((o) => objectInFolder(o, folder))
+          .toList();
+      sortObjects(folderObjects, widget.controller.session.noteSort);
+      for (final note in folderObjects) {
         visibleEntries.add((isFolder: false, id: note.id, folderPath: folder));
         visibleNoteIds.add(note.id);
       }
@@ -386,8 +483,41 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                   itemBuilder: (_) => [
                     PopupMenuItem(
                       enabled: !repo.readOnly,
+                      value: 'new_note',
+                      child: const Text('New Note'),
+                    ),
+                    PopupMenuItem(
+                      enabled: !repo.readOnly,
+                      value: 'new_canvas',
+                      child: const Text('New Canvas'),
+                    ),
+                    PopupMenuItem(
+                      enabled: !repo.readOnly,
+                      value: 'new_task_list',
+                      child: const Text('New Task List'),
+                    ),
+                    PopupMenuItem(
+                      enabled: !repo.readOnly,
+                      value: 'new_board',
+                      child: const Text('New Board'),
+                    ),
+                    PopupMenuItem(
+                      enabled: !repo.readOnly,
+                      value: 'new_calendar',
+                      child: const Text('New Calendar'),
+                    ),
+                    PopupMenuItem(
+                      enabled: !repo.readOnly,
+                      value: 'new_timeline',
+                      child: const Text('New Timeline'),
+                    ),
+                    const PopupMenuDivider(),
+                    PopupMenuItem(
+                      enabled: !repo.readOnly,
                       value: 'new',
-                      child: const Text('New folder'),
+                      child: Text(
+                        folder == 'Notes' ? 'New folder' : 'New subfolder',
+                      ),
                     ),
                     if (folder != 'Notes') ...[
                       PopupMenuItem(
@@ -405,6 +535,11 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                           value: 'reveal',
                           child: Text('Reveal in File Explorer'),
                         ),
+                      PopupMenuItem(
+                        enabled: !repo.readOnly,
+                        value: 'archive',
+                        child: const Text('Archive folder'),
+                      ),
                       PopupMenuItem(
                         enabled: !repo.readOnly,
                         value: 'delete',
@@ -425,33 +560,60 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
       );
       if (collapsed) return;
       for (final child in repo.folders.where(
-        (f) => f != folder && p.posix.dirname(f) == folder,
+        (f) =>
+            f != folder && p.posix.dirname(f) == folder && !isFolderArchived(f),
       )) {
         visit(child, depth + 1);
       }
-      for (final note in widget.notes.where(
-        (o) => p.posix.dirname(repo.objectPath(o.id) ?? '') == folder,
-      )) {
+      final folderObjects = allItems
+          .where((o) => objectInFolder(o, folder))
+          .toList();
+      sortObjects(folderObjects, widget.controller.session.noteSort);
+      for (final note in folderObjects) {
         final isMulti = _selectedNoteIds.contains(note.id);
         final hasBatch = _selectedNoteIds.length > 1 && isMulti;
+        final isPdf =
+            note.typeId == 'orbit.file' &&
+            note.properties['mimeType'] == 'application/pdf';
+        final leadingWidget =
+            note.properties['icon'] != null &&
+                note.properties['icon'].toString().isNotEmpty
+            ? Text(
+                note.properties['icon'].toString(),
+                style: const TextStyle(fontSize: 14),
+              )
+            : note.typeId == 'orbit.canvas'
+            ? const Icon(Icons.dashboard_outlined, size: 16)
+            : note.typeId == 'orbit.view'
+            ? Icon(
+                viewTypeIcon(note.properties['viewType'] as String?),
+                size: 16,
+              )
+            : note.typeId == 'orbit.file'
+            ? Icon(
+                isPdf
+                    ? Icons.picture_as_pdf_outlined
+                    : Icons.insert_drive_file_outlined,
+                size: 16,
+                color: isPdf ? Theme.of(context).colorScheme.error : null,
+              )
+            : const Icon(Icons.description_outlined, size: 16);
+
         rows.add(
           Padding(
             padding: EdgeInsets.only(left: (depth + 1) * 12.0),
             child: _drag(
-              repo.objectPath(note.id)!,
+              repo.objectPath(note.id) ?? note.title,
               note.id,
               OrbitExplorerRow(
-                key: ValueKey('folder-note:${note.id}'),
+                key: ValueKey(
+                  note.typeId == 'orbit.note'
+                      ? 'folder-note:${note.id}'
+                      : 'folder-item:${note.id}',
+                ),
                 selected: widget.controller.session.activeId == note.id,
                 multiSelected: isMulti,
-                leading:
-                    note.properties['icon'] != null &&
-                        note.properties['icon'].toString().isNotEmpty
-                    ? Text(
-                        note.properties['icon'].toString(),
-                        style: const TextStyle(fontSize: 14),
-                      )
-                    : const Icon(Icons.description_outlined, size: 16),
+                leading: leadingWidget,
                 title: Text(
                   note.title.isEmpty ? 'Untitled' : note.title,
                   maxLines: 1,
@@ -473,7 +635,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                       if (!context.mounted) return;
                       final name = await _name(
                         context,
-                        'Rename note',
+                        'Rename',
                         initial: note.title,
                       );
                       if (name != null &&
@@ -489,6 +651,10 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                       );
                     } else if (action == 'split') {
                       widget.controller.openObject(note.id, secondary: true);
+                    } else if (action == 'duplicate') {
+                      if (note.typeId == 'orbit.view') {
+                        await widget.controller.duplicateView(note.id);
+                      }
                     } else if (action == 'reveal') {
                       final relPath = repo.objectPath(note.id);
                       if (relPath != null) {
@@ -504,8 +670,9 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                       if (!context.mounted) return;
                       final target = await _destination(context);
                       if (target != null && target != folder) {
-                        await widget.controller.organize(
-                          () => repo.moveNote(note.id, target),
+                        await widget.controller.moveObjectToFolder(
+                          note.id,
+                          target,
                         );
                       }
                     }
@@ -515,7 +682,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                       PopupMenuItem(
                         value: 'batch_move',
                         child: Text(
-                          'Move ${_selectedNoteIds.length} notes to folder…',
+                          'Move ${_selectedNoteIds.length} items to folder…',
                         ),
                       ),
                       PopupMenuItem(
@@ -526,24 +693,33 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                       ),
                       PopupMenuItem(
                         value: 'batch_trash',
-                        child: Text(
-                          'Move ${_selectedNoteIds.length} notes to Trash',
-                        ),
+                        child: Text('Move ${_selectedNoteIds.length} to Trash'),
                       ),
                       const PopupMenuDivider(),
                     ],
                     PopupMenuItem(
                       enabled: !repo.readOnly && !note.isReadOnly,
                       value: 'rename',
-                      child: const Text('Rename note'),
+                      child: Text(
+                        note.typeId == 'orbit.note' ? 'Rename note' : 'Rename',
+                      ),
                     ),
+                    if (note.typeId == 'orbit.view')
+                      const PopupMenuItem(
+                        value: 'duplicate',
+                        child: Text('Duplicate View'),
+                      ),
                     const PopupMenuItem(
                       value: 'split',
                       child: Text('Open beside'),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'copy',
-                      child: Text('Copy note reference'),
+                      child: Text(
+                        note.typeId == 'orbit.note'
+                            ? 'Copy note reference'
+                            : 'Copy reference',
+                      ),
                     ),
                     PopupMenuItem(
                       enabled: !repo.readOnly && !note.isReadOnly,
@@ -567,68 +743,80 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
           ),
         );
       }
-      if (folder == 'Notes' && widget.controller.showAttachments) {
-        final files = widget.controller
-            .ofType('orbit.file')
-            .where((f) => !f.isDeleted)
-            .toList();
-        for (final file in files) {
-          final isPdf = file.properties['mimeType'] == 'application/pdf';
+    }
+
+    visit('Notes', 0);
+
+    // Archived Folders section
+    final archivedFolders = repo.folders
+        .where((f) => isFolderArchived(f))
+        .toList();
+    if (archivedFolders.isNotEmpty) {
+      rows.add(const SizedBox(height: 8));
+      rows.add(
+        OrbitExplorerRow(
+          key: const ValueKey('archived-header'),
+          leading: Icon(
+            _showArchived ? Icons.expand_more : Icons.chevron_right,
+            size: 16,
+          ),
+          title: Text(
+            'Archived (${archivedFolders.length})',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Theme.of(context).colorScheme.outline,
+            ),
+          ),
+          onTap: () => setState(() => _showArchived = !_showArchived),
+          menu: PopupMenuButton<String>(
+            tooltip: 'Archived options',
+            icon: const Icon(Icons.more_horiz, size: 16),
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'toggle',
+                child: Text(_showArchived ? 'Collapse' : 'Expand'),
+              ),
+            ],
+            onSelected: (_) => setState(() => _showArchived = !_showArchived),
+          ),
+        ),
+      );
+
+      if (_showArchived) {
+        for (final archFolder in archivedFolders) {
           rows.add(
             Padding(
-              padding: EdgeInsets.only(left: (depth + 1) * 12.0),
+              padding: const EdgeInsets.only(left: 12.0),
               child: OrbitExplorerRow(
-                key: ValueKey('vault-file:${file.id}'),
-                selected: widget.controller.session.activeId == file.id,
-                leading: Icon(
-                  isPdf
-                      ? Icons.picture_as_pdf_outlined
-                      : Icons.insert_drive_file_outlined,
-                  size: 16,
-                  color: isPdf ? Theme.of(context).colorScheme.error : null,
-                ),
+                key: ValueKey('archived-folder:$archFolder'),
+                leading: const Icon(Icons.archive_outlined, size: 16),
                 title: Text(
-                  file.title.isEmpty ? 'Untitled file' : file.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12),
+                  p.posix.basename(archFolder),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
                 ),
-                onTap: () => widget.controller.openObject(file.id),
+                onTap: () {},
                 menu: PopupMenuButton<String>(
-                  tooltip: 'File actions',
+                  tooltip: 'Archived folder actions',
                   icon: const Icon(Icons.more_horiz, size: 16),
-                  onSelected: (action) async {
-                    if (action == 'split') {
-                      widget.controller.openObject(file.id, secondary: true);
-                    }
-                    if (action == 'reveal') {
-                      final relPath = repo.objectPath(file.id);
-                      if (relPath != null) {
-                        await openAttachment(
-                          repo.location,
-                          relPath,
-                          reveal: true,
-                        );
-                      }
-                    }
-                    if (action == 'trash') {
-                      await widget.controller.trash(file.id);
-                    }
-                  },
+                  onSelected: (action) =>
+                      _folderAction(context, archFolder, action),
                   itemBuilder: (_) => [
                     const PopupMenuItem(
-                      value: 'split',
-                      child: Text('Open beside'),
+                      value: 'restore',
+                      child: Text('Restore folder'),
                     ),
-                    if (repo.objectPath(file.id) != null && !kIsWeb)
+                    if (!kIsWeb)
                       const PopupMenuItem(
                         value: 'reveal',
                         child: Text('Reveal in File Explorer'),
                       ),
-                    PopupMenuItem(
-                      enabled: !repo.readOnly,
-                      value: 'trash',
-                      child: const Text('Move to Trash'),
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Text('Delete folder'),
                     ),
                   ],
                 ),
@@ -638,8 +826,6 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         }
       }
     }
-
-    visit('Notes', 0);
 
     return Focus(
       focusNode: _focusNode,

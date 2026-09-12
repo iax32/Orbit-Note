@@ -28,3 +28,11 @@ editing is disabled. Device-specific mobile form acceptance is still required.
 Comfort reading is a disposable current-page text projection with adjustable font
 size, not OCR, semantic multi-column reconstruction or Adobe Liquid Mode parity.
 It respects extraction permission and retains a route to original pages.
+
+## Visual comfort reading update — 2026-09-12
+
+The default on narrow screens now preserves the live PDF page and fits rendered
+content width, including images and tables. Text-only extraction is an explicit
+alternative. Zoom presets, page/content/width fitting and focused reader shortcuts
+are available. The form-draft decision above is unchanged. No OCR or semantic
+reconstruction of multi-column pages is introduced.

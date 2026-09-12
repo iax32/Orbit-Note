@@ -80,8 +80,15 @@ class BrowserWorkspaceStore implements WorkspaceStore {
   }
 
   @override
-  Future<void> deleteFile(String relativePath) async {
+  Future<void> deleteFile(
+    String relativePath, {
+    required String? expectedHash,
+  }) async {
     validateRelativePath(relativePath);
+    final old = await read(relativePath);
+    if ((old == null ? null : sha256.convert(old).toString()) != expectedHash) {
+      throw const WorkspaceConflict('The file changed before deletion.');
+    }
     web.window.localStorage.removeItem('$_prefix$relativePath');
   }
 
