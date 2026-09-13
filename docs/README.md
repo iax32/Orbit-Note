@@ -1,6 +1,10 @@
 # Documentation map
 
-Current M6 pre-implementation work: [repository audit](planning/sync-audit-2026-09-12.md),
+Cloud milestone: [implemented sync foundation](architecture/sync.md),
+[delivery/remaining work](features/cloud-sync.md),
+[local safety ADR](adr/0017-sync-foundation-safety.md).
+
+M6 background: [repository audit](planning/sync-audit-2026-09-12.md),
 [sync design](architecture/sync-design.md), and
 [Google developer setup](development/google-drive-sync-setup.md).
 These are design/audit artifacts, not a working cloud-sync release.

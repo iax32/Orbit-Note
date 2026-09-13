@@ -30,7 +30,15 @@ SearchSnippet? extractSearchSnippet(
   final q = query.trim().toLowerCase();
   if (q.isEmpty) return null;
 
-  // 1. Search in canvas text elements (if canvas object)
+  // 1. Search in title
+  if (object.title.isNotEmpty) {
+    final tIdx = object.title.toLowerCase().indexOf(q);
+    if (tIdx >= 0) {
+      return _window(object.title, tIdx, q.length, maxRadius, 'title');
+    }
+  }
+
+  // 2. Search in canvas text elements (if canvas object)
   if (object.typeId == 'orbit.canvas') {
     List? elements;
     if (object.data['elements'] is List) {
@@ -46,7 +54,12 @@ SearchSnippet? extractSearchSnippet(
     if (elements != null) {
       for (final element in elements) {
         if (element is Map && element['text'] is String) {
-          final text = cleanMarkdownNoise(element['text'] as String);
+          final raw = element['text'] as String;
+          final rawIdx = raw.toLowerCase().indexOf(q);
+          if (rawIdx >= 0) {
+            return _window(raw, rawIdx, q.length, maxRadius, 'canvas');
+          }
+          final text = cleanMarkdownNoise(raw);
           final idx = text.toLowerCase().indexOf(q);
           if (idx >= 0) {
             return _window(text, idx, q.length, maxRadius, 'canvas');
@@ -56,8 +69,12 @@ SearchSnippet? extractSearchSnippet(
     }
   }
 
-  // 2. Search in body (for non-canvas objects, or fallback)
+  // 3. Search in body (for non-canvas objects, or fallback)
   if (object.typeId != 'orbit.canvas' && object.body.isNotEmpty) {
+    final rawIdx = object.body.toLowerCase().indexOf(q);
+    if (rawIdx >= 0) {
+      return _window(object.body, rawIdx, q.length, maxRadius, 'body');
+    }
     final cleaned = cleanMarkdownNoise(object.body);
     final idx = cleaned.toLowerCase().indexOf(q);
     if (idx >= 0) {
@@ -69,7 +86,12 @@ SearchSnippet? extractSearchSnippet(
   if (object.typeId != 'orbit.canvas' && object.data['elements'] is List) {
     for (final element in object.data['elements'] as List) {
       if (element is Map && element['text'] is String) {
-        final text = cleanMarkdownNoise(element['text'] as String);
+        final raw = element['text'] as String;
+        final rawIdx = raw.toLowerCase().indexOf(q);
+        if (rawIdx >= 0) {
+          return _window(raw, rawIdx, q.length, maxRadius, 'canvas');
+        }
+        final text = cleanMarkdownNoise(raw);
         final idx = text.toLowerCase().indexOf(q);
         if (idx >= 0) {
           return _window(text, idx, q.length, maxRadius, 'canvas');
@@ -78,7 +100,7 @@ SearchSnippet? extractSearchSnippet(
     }
   }
 
-  // 3. Search in object properties
+  // 4. Search in object properties
   if (object.properties.isNotEmpty) {
     for (final entry in object.properties.entries) {
       if (entry.value == null) continue;
@@ -131,9 +153,12 @@ String searchableText(UniversalObject object) => [
 
 int searchRank(UniversalObject object, String query) {
   final title = object.title.toLowerCase(), term = query.toLowerCase();
-  return title == term
-      ? 0
-      : title.startsWith(term)
+  if (title == term) return 0;
+  final addr = object.properties['address']?.toString().toLowerCase();
+  final rva = object.properties['rva']?.toString().toLowerCase();
+  if (addr != null && (addr == term || addr == '0x$term')) return 0;
+  if (rva != null && (rva == term || rva == '0x$term')) return 0;
+  return title.startsWith(term)
       ? 1
       : title.contains(term)
       ? 2

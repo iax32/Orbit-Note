@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,10 +15,22 @@ import '../../platform/pdf_forms.dart';
 import 'pdf_work_widgets.dart';
 import 'pdf_content_fit.dart';
 
+enum PdfPageMode { continuous, single, twoPage }
+
+const pdfHighlightColors = <String, int>{
+  'Yellow': 0xffeab308,
+  'Green': 0xff22c55e,
+  'Blue': 0xff3b82f6,
+  'Purple': 0xff8b7cf6,
+  'Coral': 0xffef4444,
+};
+
 List<CanvasElement> pdfSelectionRegions(
   List<PdfPageTextRange> ranges,
-  List<PdfPage> pages,
-) => [
+  List<PdfPage> pages, {
+  int color = 0xff8b7cf6,
+  String style = 'highlight',
+}) => [
   for (final range in ranges)
     for (final fragment in range.enumerateFragmentBoundingRects())
       ...() {
@@ -40,7 +53,8 @@ List<CanvasElement> pdfSelectionRegions(
             'y': clipped.top,
             'width': clipped.width,
             'height': clipped.height,
-            'color': 0xff8b7cf6,
+            'color': color,
+            'style': style,
           }),
         ];
       }(),
@@ -121,6 +135,285 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   int _zoomPercent = 100;
   int _fitGeneration = 0;
   final _contentWidths = <int, Future<Rect>>{};
+  PdfPageMode _pageMode = PdfPageMode.continuous;
+  int _activeColor = 0xff8b7cf6;
+  String? _activeHighlightId;
+  Timer? _highlightPulseTimer;
+
+  PdfPageLayout _layoutPages(List<PdfPage> pages, PdfViewerParams params) {
+    if (_pageMode == PdfPageMode.single) {
+      final height =
+          pages.fold(0.0, (prev, page) => math.max(prev, page.height)) +
+          params.margin * 2;
+      final pageLayouts = <Rect>[];
+      var x = params.margin;
+      for (final page in pages) {
+        pageLayouts.add(
+          Rect.fromLTWH(x, (height - page.height) / 2, page.width, page.height),
+        );
+        x += page.width + params.margin;
+      }
+      return PdfPageLayout(
+        pageLayouts: pageLayouts,
+        documentSize: Size(x, height),
+      );
+    } else if (_pageMode == PdfPageMode.twoPage) {
+      double maxWidth = 0;
+      for (var i = 0; i < pages.length; i += 2) {
+        final p1 = pages[i];
+        final p2 = i + 1 < pages.length ? pages[i + 1] : null;
+        final pairWidth =
+            p1.width +
+            (p2 != null ? p2.width + params.margin : 0) +
+            params.margin * 2;
+        maxWidth = math.max(maxWidth, pairWidth);
+      }
+      final pageLayouts = <Rect>[];
+      var y = params.margin;
+      for (var i = 0; i < pages.length; i += 2) {
+        final p1 = pages[i];
+        final p2 = i + 1 < pages.length ? pages[i + 1] : null;
+        final pairWidth =
+            p1.width + (p2 != null ? p2.width + params.margin : 0);
+        final rowHeight = math.max(p1.height, p2?.height ?? 0);
+        final startX = (maxWidth - pairWidth) / 2;
+        pageLayouts.add(
+          Rect.fromLTWH(
+            startX,
+            y + (rowHeight - p1.height) / 2,
+            p1.width,
+            p1.height,
+          ),
+        );
+        if (p2 != null) {
+          pageLayouts.add(
+            Rect.fromLTWH(
+              startX + p1.width + params.margin,
+              y + (rowHeight - p2.height) / 2,
+              p2.width,
+              p2.height,
+            ),
+          );
+        }
+        y += rowHeight + params.margin;
+      }
+      return PdfPageLayout(
+        pageLayouts: pageLayouts,
+        documentSize: Size(maxWidth, y),
+      );
+    } else {
+      final width =
+          pages.fold(0.0, (w, p) => math.max(w, p.width)) + params.margin * 2;
+      final pageLayout = <Rect>[];
+      var y = params.margin;
+      for (var i = 0; i < pages.length; i++) {
+        final page = pages[i];
+        final rect = Rect.fromLTWH(
+          (width - page.width) / 2,
+          y,
+          page.width,
+          page.height,
+        );
+        pageLayout.add(rect);
+        y += page.height + params.margin;
+      }
+      return PdfPageLayout(
+        pageLayouts: pageLayout,
+        documentSize: Size(width, y),
+      );
+    }
+  }
+
+  void _setActiveHighlight(String id) {
+    _highlightPulseTimer?.cancel();
+    setState(() => _activeHighlightId = id);
+    if (_viewer.isReady) _viewer.invalidate();
+    _highlightPulseTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted && _activeHighlightId == id) {
+        setState(() => _activeHighlightId = null);
+        if (_viewer.isReady) _viewer.invalidate();
+      }
+    });
+  }
+
+  Future<void> _goToAnnotation(PdfAnnotation annotation) async {
+    final targetPage = annotation.source['page'] is int
+        ? annotation.source['page'] as int
+        : 1;
+    _setActiveHighlight(annotation.object.id);
+
+    if (!_viewer.isReady) {
+      _go(targetPage);
+      return;
+    }
+
+    final bounds = annotation.boundsForPage(targetPage);
+    if (bounds == null) {
+      _go(targetPage);
+      return;
+    }
+
+    final pageIndex = (targetPage - 1).clamp(
+      0,
+      _viewer.document.pages.length - 1,
+    );
+    final pageLayout = _viewer.layout.pageLayouts[pageIndex];
+
+    final regionRect = Rect.fromLTWH(
+      pageLayout.left + bounds.left * pageLayout.width,
+      pageLayout.top + bounds.top * pageLayout.height,
+      bounds.width * pageLayout.width,
+      bounds.height * pageLayout.height,
+    );
+
+    final viewWidth = _viewer.viewSize.width > 0
+        ? _viewer.viewSize.width
+        : 800.0;
+    final viewHeight = _viewer.viewSize.height > 0
+        ? _viewer.viewSize.height
+        : 600.0;
+
+    final desiredScaleW = (viewWidth - 80) / math.max(regionRect.width, 80);
+    final desiredScaleH = (viewHeight - 120) / math.max(regionRect.height, 60);
+    final idealZoom = math
+        .min(desiredScaleW, desiredScaleH)
+        .clamp(_viewer.minScale, 2.4);
+
+    try {
+      final matrix = _viewer.calcMatrixFor(regionRect.center, zoom: idealZoom);
+      await _viewer.goTo(matrix, duration: const Duration(milliseconds: 200));
+    } catch (_) {
+      _go(targetPage);
+    }
+  }
+
+  Future<void> _setPageMode(PdfPageMode mode) async {
+    if (_pageMode == mode) return;
+    setState(() {
+      _pageMode = mode;
+      _comfort = false;
+      _textOnly = false;
+    });
+  }
+
+  Future<void> _copyAllHighlights() async {
+    if (widget.annotations.isEmpty) {
+      _notice('No highlights to copy.');
+      return;
+    }
+    final buffer = StringBuffer();
+    buffer.writeln('# Highlights & Notes: ${widget.title}');
+    buffer.writeln();
+    final sorted = [...widget.annotations]
+      ..sort((a, b) {
+        final pa = a.source['page'] is int ? a.source['page'] as int : 0;
+        final pb = b.source['page'] is int ? b.source['page'] as int : 0;
+        return pa.compareTo(pb);
+      });
+    for (final a in sorted) {
+      buffer.writeln(a.summaryMarkdown(widget.title));
+      buffer.writeln();
+    }
+    await Clipboard.setData(ClipboardData(text: buffer.toString().trim()));
+    _notice('All highlights and notes copied as Markdown.');
+  }
+
+  void _showHighlightDetail(PdfAnnotation annotation) {
+    _setActiveHighlight(annotation.object.id);
+    final quote = annotation.source['quote'] is String
+        ? annotation.source['quote'] as String
+        : '';
+    final page = annotation.source['page'] is int
+        ? annotation.source['page'] as int
+        : 1;
+    final comment = annotation.object.body.trim();
+    final color = Color(annotation.color);
+    final style = annotation.style;
+
+    showDialog<void>(
+      context: context,
+      builder: (context) => OrbitDialog(
+        title: Row(
+          children: [
+            Container(
+              width: 14,
+              height: 14,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(
+                  style == 'underline' ? 1 : 7,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text('Highlight · p. $page ($style)'),
+          ],
+        ),
+        content: SizedBox(
+          width: 440,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (quote.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: OrbitColors.of(context).raised,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border(left: BorderSide(color: color, width: 3)),
+                  ),
+                  child: SelectableText(
+                    quote,
+                    style: const TextStyle(
+                      fontStyle: FontStyle.italic,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              if (comment.isNotEmpty && comment != quote) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Comment',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: OrbitColors.of(context).accent,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                SelectableText(comment),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: quote));
+              if (context.mounted) {
+                Navigator.pop(context);
+                _notice('Quote copied to clipboard.');
+              }
+            },
+            child: const Text('Copy quote'),
+          ),
+          if (widget.onOpenAnnotation != null)
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                widget.onOpenAnnotation!(annotation.object.id);
+              },
+              icon: const Icon(Icons.open_in_new, size: 16),
+              label: const Text('Open note & comments'),
+            )
+          else
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _fitComfort({bool keepVerticalPosition = false}) async {
     if (!_ready || !_viewer.isReady || !_comfort || _textOnly) return;
@@ -431,6 +724,8 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   Future<void> _highlight(
     PdfViewerContextMenuBuilderParams params, {
     required bool comment,
+    int? color,
+    String style = 'highlight',
   }) async {
     final save = widget.onHighlight;
     if (save == null) return;
@@ -438,7 +733,13 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
       final ranges = await params.textSelectionDelegate.getSelectedTextRanges();
       if (!mounted || ranges.isEmpty || !_viewer.isReady) return;
       final quote = ranges.map((r) => r.text).join('\n');
-      final regions = pdfSelectionRegions(ranges, _viewer.document.pages);
+      final highlightColor = color ?? _activeColor;
+      final regions = pdfSelectionRegions(
+        ranges,
+        _viewer.document.pages,
+        color: highlightColor,
+        style: style,
+      );
       params.dismissContextMenu();
       var text = '';
       if (comment) {
@@ -489,19 +790,96 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   void _paintAnnotations(Canvas canvas, Rect pageRect, PdfPage page) {
     for (final annotation in widget.annotations) {
       if (!annotation.matches(widget.checksum)) continue;
+      final isActive = _activeHighlightId == annotation.object.id;
+      final style = annotation.style;
+      final color = Color(annotation.color);
+
       for (final region in annotation.regions) {
         if (region.data['page'] != page.pageNumber) continue;
-        canvas.drawRect(
-          Rect.fromLTWH(
-            pageRect.left + region.x * pageRect.width,
-            pageRect.top + region.y * pageRect.height,
-            region.width * pageRect.width,
-            region.height * pageRect.height,
-          ),
-          Paint()..color = Color(region.color).withAlpha(72),
+        final rect = Rect.fromLTWH(
+          pageRect.left + region.x * pageRect.width,
+          pageRect.top + region.y * pageRect.height,
+          region.width * pageRect.width,
+          region.height * pageRect.height,
         );
+
+        if (style == 'underline') {
+          canvas.drawLine(
+            Offset(rect.left, rect.bottom - 1),
+            Offset(rect.right, rect.bottom - 1),
+            Paint()
+              ..color = color.withAlpha(220)
+              ..strokeWidth = 2.5
+              ..strokeCap = StrokeCap.round,
+          );
+        } else if (style == 'strikeout') {
+          canvas.drawLine(
+            Offset(rect.left, rect.center.dy),
+            Offset(rect.right, rect.center.dy),
+            Paint()
+              ..color = color.withAlpha(220)
+              ..strokeWidth = 2.0
+              ..strokeCap = StrokeCap.round,
+          );
+        } else {
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(rect, const Radius.circular(2)),
+            Paint()..color = color.withAlpha(75),
+          );
+        }
+
+        if (isActive) {
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(rect.inflate(3), const Radius.circular(4)),
+            Paint()
+              ..color = OrbitColors.of(context).accent
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 2.5,
+          );
+        }
       }
     }
+  }
+
+  List<Widget> _buildAnnotationOverlays(
+    BuildContext context,
+    Rect pageRect,
+    PdfPage page,
+  ) {
+    final overlays = <Widget>[];
+    for (final annotation in widget.annotations) {
+      if (!annotation.matches(widget.checksum)) continue;
+      final bounds = annotation.boundsForPage(page.pageNumber);
+      if (bounds == null) continue;
+
+      final left = bounds.left * pageRect.width;
+      final top = bounds.top * pageRect.height;
+      final width = bounds.width * pageRect.width;
+      final height = bounds.height * pageRect.height;
+
+      overlays.add(
+        Positioned(
+          left: left,
+          top: top,
+          width: math.max(width, 24),
+          height: math.max(height, 16),
+          child: Tooltip(
+            message: annotation.source['quote'] is String
+                ? '${annotation.source['quote']}'
+                : annotation.object.title,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(4),
+                hoverColor: Color(annotation.color).withAlpha(35),
+                onTap: () => _showHighlightDetail(annotation),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return overlays;
   }
 
   Widget _annotationPanel() {
@@ -537,6 +915,11 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                 ),
                 const Spacer(),
                 IconButton(
+                  tooltip: 'Copy all highlights as Markdown',
+                  onPressed: _copyAllHighlights,
+                  icon: const Icon(Icons.content_copy_rounded, size: 16),
+                ),
+                IconButton(
                   tooltip: 'Close highlights',
                   onPressed: () => setState(() => _showAnnotations = false),
                   icon: const Icon(Icons.close, size: 16),
@@ -568,13 +951,20 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                     itemBuilder: (context, index) {
                       final annotation = annotations[index];
                       final matches = annotation.matches(widget.checksum);
+                      final style = annotation.style;
                       return Material(
                         color: OrbitColors.of(context).raised,
                         child: ListTile(
                           dense: true,
                           leading: Icon(
-                            matches ? Icons.format_quote : Icons.history,
-                            color: OrbitColors.of(context).accent,
+                            matches
+                                ? (style == 'underline'
+                                      ? Icons.format_underlined
+                                      : style == 'strikeout'
+                                      ? Icons.format_strikethrough
+                                      : Icons.format_paint_outlined)
+                                : Icons.history,
+                            color: Color(annotation.color),
                           ),
                           title: Text(
                             annotation.source['quote'] is String
@@ -585,11 +975,11 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                           ),
                           subtitle: Text(
                             matches
-                                ? 'Page ${annotation.source['page']} · click to return'
+                                ? 'Page ${annotation.source['page']} · $style · click to view'
                                 : 'PDF version changed · review source before re-anchoring',
                           ),
-                          onTap: matches && annotation.source['page'] is int
-                              ? () => _go(annotation.source['page'] as int)
+                          onTap: matches
+                              ? () => _goToAnnotation(annotation)
                               : null,
                           trailing: IconButton(
                             tooltip: 'Open highlight note and comments',
@@ -755,6 +1145,30 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                       itemBuilder: (_) => _outlineItems(_outline),
                       onSelected: _go,
                     ),
+                    PopupMenuButton<PdfPageMode>(
+                      tooltip: 'Page display mode',
+                      initialValue: _pageMode,
+                      icon: Icon(switch (_pageMode) {
+                        PdfPageMode.continuous => Icons.view_day_outlined,
+                        PdfPageMode.single => Icons.crop_portrait_outlined,
+                        PdfPageMode.twoPage => Icons.menu_book_outlined,
+                      }),
+                      onSelected: _setPageMode,
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: PdfPageMode.continuous,
+                          child: Text('Continuous vertical scroll'),
+                        ),
+                        PopupMenuItem(
+                          value: PdfPageMode.single,
+                          child: Text('Single page (horizontal flow)'),
+                        ),
+                        PopupMenuItem(
+                          value: PdfPageMode.twoPage,
+                          child: Text('Two-page spread (facing pages)'),
+                        ),
+                      ],
+                    ),
                     IconButton(
                       tooltip: 'Previous page',
                       onPressed: _ready && _page > 1
@@ -869,6 +1283,51 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                       onPressed: () =>
                           setState(() => _showAnnotations = !_showAnnotations),
                       icon: const Icon(Icons.edit_note_rounded),
+                    ),
+                    PopupMenuButton<int>(
+                      tooltip: 'Highlight color',
+                      icon: Container(
+                        width: 16,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: Color(_activeColor),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: OrbitColors.of(context).border,
+                            width: 1.5,
+                          ),
+                        ),
+                      ),
+                      onSelected: (color) =>
+                          setState(() => _activeColor = color),
+                      itemBuilder: (_) => [
+                        for (final entry in pdfHighlightColors.entries)
+                          PopupMenuItem(
+                            value: entry.value,
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 14,
+                                  height: 14,
+                                  decoration: BoxDecoration(
+                                    color: Color(entry.value),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(entry.key),
+                                if (_activeColor == entry.value) ...[
+                                  const Spacer(),
+                                  Icon(
+                                    Icons.check,
+                                    size: 16,
+                                    color: OrbitColors.of(context).accent,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                      ],
                     ),
                     IconButton(
                       tooltip: widget.bookmarks.contains(_page)
@@ -1010,11 +1469,15 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                         Expanded(
                           child: PdfViewer.data(
                             snapshot.data!,
+                            key: ValueKey(
+                              '${widget.objectId}:${widget.key}:$_pageMode',
+                            ),
                             sourceName: '${widget.objectId}:${widget.key}',
                             controller: _viewer,
                             initialPageNumber: widget.initialPage,
                             passwordProvider: _password,
                             params: PdfViewerParams(
+                              layoutPages: _layoutPages,
                               sizeDelegateProvider:
                                   const PdfViewerSizeDelegateProviderLegacy(
                                     minScale: .1,
@@ -1033,20 +1496,24 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                                   });
                                 }
                               },
-                              pageOverlaysBuilder:
-                                  _forms && widget.onFormChanged != null
-                                  ? (context, rect, page) => [
-                                      PdfFormLayer(
-                                        key: ValueKey(
-                                          'forms:${page.pageNumber}',
-                                        ),
-                                        document: _viewer.document,
-                                        page: page,
-                                        values: widget.formValues,
-                                        onChanged: widget.onFormChanged!,
-                                      ),
-                                    ]
-                                  : null,
+                              pageOverlaysBuilder: (context, rect, page) {
+                                if (_forms && widget.onFormChanged != null) {
+                                  return [
+                                    PdfFormLayer(
+                                      key: ValueKey('forms:${page.pageNumber}'),
+                                      document: _viewer.document,
+                                      page: page,
+                                      values: widget.formValues,
+                                      onChanged: widget.onFormChanged!,
+                                    ),
+                                  ];
+                                }
+                                return _buildAnnotationOverlays(
+                                  context,
+                                  rect,
+                                  page,
+                                );
+                              },
                               backgroundColor: OrbitColors.of(context).panel,
                               onViewerReady: (document, controller) async {
                                 if (!mounted) {
@@ -1144,14 +1611,42 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                                           onPressed: () => _highlight(
                                             params,
                                             comment: false,
+                                            color: _activeColor,
+                                            style: 'highlight',
+                                          ),
+                                        ),
+                                      );
+                                      items.add(
+                                        ContextMenuButtonItem(
+                                          label: 'Underline',
+                                          onPressed: () => _highlight(
+                                            params,
+                                            comment: false,
+                                            color: _activeColor,
+                                            style: 'underline',
+                                          ),
+                                        ),
+                                      );
+                                      items.add(
+                                        ContextMenuButtonItem(
+                                          label: 'Strikeout',
+                                          onPressed: () => _highlight(
+                                            params,
+                                            comment: false,
+                                            color: _activeColor,
+                                            style: 'strikeout',
                                           ),
                                         ),
                                       );
                                       items.add(
                                         ContextMenuButtonItem(
                                           label: 'Highlight and comment',
-                                          onPressed: () =>
-                                              _highlight(params, comment: true),
+                                          onPressed: () => _highlight(
+                                            params,
+                                            comment: true,
+                                            color: _activeColor,
+                                            style: 'highlight',
+                                          ),
                                         ),
                                       );
                                     }

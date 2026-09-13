@@ -33,8 +33,9 @@ class NativePathMoves {
   Future<void> move(
     String source,
     String target,
-    Map<String, FileReplacement> replacements,
-  ) async {
+    Map<String, FileReplacement> replacements, {
+    void Function()? checkCurrent,
+  }) async {
     validateNotesPath(source);
     validateNotesPath(target);
     if (!source.startsWith('Notes/') || !target.startsWith('Notes/')) {
@@ -111,11 +112,16 @@ class NativePathMoves {
     };
     final journal = File(await _path('.orbit/recovery/$id.move.json'));
     await journal.parent.create(recursive: true);
+    checkCurrent?.call();
     await journal.writeAsString(jsonEncode(record), flush: true);
-    await _finish(journal, record);
+    await _finish(journal, record, checkCurrent: checkCurrent);
   }
 
-  Future<void> _finish(File journal, Map record) async {
+  Future<void> _finish(
+    File journal,
+    Map record, {
+    void Function()? checkCurrent,
+  }) async {
     final source = record['source'] as String,
         target = record['target'] as String;
     validateNotesPath(source);
@@ -191,6 +197,7 @@ class NativePathMoves {
       }
     }
     if (sourceExists) {
+      checkCurrent?.call();
       for (final entry in files) {
         if (entry['staged'] is! String) continue;
         final original = entry['path'] as String;
@@ -225,8 +232,10 @@ class NativePathMoves {
         );
       }
       if (record['directory'] == true) {
+        checkCurrent?.call();
         await Directory(from).rename(to);
       } else {
+        checkCurrent?.call();
         await File(from).rename(to);
       }
     }

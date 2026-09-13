@@ -5,6 +5,37 @@ import 'package:orbit_note/domain/workspace_failure.dart';
 import 'package:orbit_note/infrastructure/storage/native_workspace_store.dart';
 
 void main() {
+  test('a separate process cannot acquire an owned Vault', () async {
+    final sdk = Platform.environment['FLUTTER_ROOT'];
+    final cache = sdk == null
+        ? File(Platform.resolvedExecutable).parent.parent.parent.parent.path
+        : '$sdk/bin/cache';
+    final dart = File(
+      '$cache/dart-sdk/bin/dart${Platform.isWindows ? '.exe' : ''}',
+    );
+    expect(
+      await dart.exists(),
+      isTrue,
+      reason: 'Native lock conformance requires the Flutter Dart SDK.',
+    );
+    final root = await Directory.systemTemp.createTemp('orbit-process-lock-');
+    final store = NativeWorkspaceStore();
+    try {
+      await store.initialize(path: root.path);
+      final args = [
+        'tool/vault_lock_probe.dart',
+        '${root.path}/.orbit/device/vault.lock',
+      ];
+      final denied = await Process.run(dart.path, args);
+      expect(denied.exitCode, 2, reason: '${denied.stderr}');
+      await store.close();
+      final allowed = await Process.run(dart.path, args);
+      expect(allowed.exitCode, 0, reason: '${allowed.stderr}');
+    } finally {
+      await store.close();
+      await root.delete(recursive: true);
+    }
+  });
   test(
     'native Vault ownership rejects another store and releases on close',
     () async {

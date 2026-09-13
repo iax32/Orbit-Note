@@ -3,6 +3,7 @@ import '../../app/orbit_components.dart';
 import '../../app/orbit_theme.dart';
 import '../../domain/universal_object.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/workspace_controller.dart';
 import '../../app/session_state.dart';
 import 'workspace_views.dart';
@@ -14,17 +15,17 @@ Future<void> showCommandPalette(BuildContext context, WorkspaceController c) =>
         duration: OrbitMotionScope.duration(context, OrbitMotion.dialog),
         curve: OrbitMotion.ease,
       ),
-      builder: (context) => _CommandPalette(controller: c),
+      builder: (context) => CommandPalette(controller: c),
     );
 
-class _CommandPalette extends StatefulWidget {
-  const _CommandPalette({required this.controller});
+class CommandPalette extends ConsumerStatefulWidget {
+  const CommandPalette({super.key, required this.controller});
   final WorkspaceController controller;
   @override
-  State<_CommandPalette> createState() => _CommandPaletteState();
+  ConsumerState<CommandPalette> createState() => _CommandPaletteState();
 }
 
-class _CommandPaletteState extends State<_CommandPalette> {
+class _CommandPaletteState extends ConsumerState<CommandPalette> {
   String query = '';
   List<UniversalObject> results = [];
   Timer? _debounce;
@@ -65,8 +66,62 @@ class _CommandPaletteState extends State<_CommandPalette> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(workspaceProvider);
     final c = widget.controller;
+    final recentNote = c.session.recent
+        .map(c.find)
+        .whereType<UniversalObject>()
+        .where((o) => !o.isDeleted && o.typeId == 'orbit.note')
+        .firstOrNull;
+    final recentPdf = c.session.recent
+        .map(c.find)
+        .whereType<UniversalObject>()
+        .where(
+          (o) =>
+              !o.isDeleted &&
+              o.typeId == 'orbit.file' &&
+              o.title.toLowerCase().endsWith('.pdf'),
+        )
+        .firstOrNull;
     final commands = <({String title, IconData icon, VoidCallback run})>[
+      if (recentNote != null)
+        (
+          title:
+              'Continue writing: ${recentNote.title.isEmpty ? 'Untitled note' : recentNote.title}',
+          icon: Icons.edit_note_rounded,
+          run: () => c.openObject(recentNote.id),
+        ),
+      if (recentPdf != null)
+        (
+          title:
+              'Continue reading: ${recentPdf.title.isEmpty ? 'PDF Document' : recentPdf.title}',
+          icon: Icons.picture_as_pdf_outlined,
+          run: () => c.openObject(recentPdf.id),
+        ),
+      if (c.activeWorkSession != null) ...[
+        if (c.activeWorkSession!.isPaused)
+          (
+            title: 'Resume focus session: ${c.activeWorkSession!.title}',
+            icon: Icons.play_arrow_rounded,
+            run: () => c.resumeWorkSession(),
+          )
+        else
+          (
+            title: 'Pause focus session: ${c.activeWorkSession!.title}',
+            icon: Icons.pause_rounded,
+            run: () => c.pauseWorkSession(),
+          ),
+        (
+          title: 'End focus session: ${c.activeWorkSession!.title}',
+          icon: Icons.stop_rounded,
+          run: () => c.endWorkSession(),
+        ),
+      ] else
+        (
+          title: 'Start focus session',
+          icon: Icons.timer_outlined,
+          run: () => c.startWorkSession(),
+        ),
       (title: 'New note', icon: Icons.add, run: () => c.create('orbit.note')),
       (
         title: 'New canvas',
@@ -82,6 +137,40 @@ class _CommandPaletteState extends State<_CommandPalette> {
         title: 'New event',
         icon: Icons.event_outlined,
         run: () => c.create('orbit.event'),
+      ),
+      (
+        title: 'New function note',
+        icon: Icons.code_outlined,
+        run: () => c.createFunctionDoc(folder: 'Notes', name: 'sub_1400'),
+      ),
+      (
+        title: 'New finding note',
+        icon: Icons.check_circle_outline,
+        run: () => c.createFindingDoc(folder: 'Notes', title: 'New Finding'),
+      ),
+      (
+        title: 'New hypothesis note',
+        icon: Icons.lightbulb_outline,
+        run: () =>
+            c.createHypothesisDoc(folder: 'Notes', title: 'New Hypothesis'),
+      ),
+      (
+        title: 'New analysis session',
+        icon: Icons.terminal_outlined,
+        run: () => c.createAnalysisSessionDoc(
+          folder: 'Notes',
+          title: 'Analysis Session',
+        ),
+      ),
+      (
+        title: 'New structure note',
+        icon: Icons.table_rows_outlined,
+        run: () => c.createStructureDoc(folder: 'Notes', name: 'NewStruct'),
+      ),
+      (
+        title: 'New indicator (IOC)',
+        icon: Icons.fingerprint,
+        run: () => c.createIocDoc(folder: 'Notes', value: '198.51.100.1'),
       ),
       (
         title: 'Go to Home',
@@ -148,7 +237,9 @@ class _CommandPaletteState extends State<_CommandPalette> {
         .toList();
     final objects = results;
     void run(VoidCallback action) {
-      Navigator.pop(context);
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
       action();
     }
 

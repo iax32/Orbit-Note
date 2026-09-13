@@ -1,5 +1,9 @@
 # ADR-0016 — Provider-neutral sync around canonical workspace files
 
+Follow-up: the full owner brief is available; no missing-text approval gate remains.
+[ADR-0017](0017-sync-foundation-safety.md) implements local safety and tested engine
+foundations. The production provider publication/auth decisions remain open.
+
 - Status: proposed protocol; provider order accepted by owner
 - Date: 2026-09-12
 - Scope: M6, Google Drive first, WebDAV second

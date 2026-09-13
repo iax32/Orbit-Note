@@ -145,4 +145,28 @@ pre-migration backup and recover from interruption.
 
 The [compatibility contract](compatibility-and-migrations.md) adds explicit version,
 migration, backup and old-fixture requirements. File-first authority is unchanged;
-multi-file transactions and incremental Canvas journals still require design proof.
+general multi-file transactions and incremental Canvas journals still require design proof.
+
+## Implemented native folder command — 2026-09-13
+
+Folder membership uses the physical parent for Notes and `properties.folder` for
+other Universal Objects. Move/rename applies to all contained objects and nested
+folders; UUIDs and non-Note owner paths remain unchanged. Notes move physically and
+their relative links are rebased. Batch moves use the same repository boundary.
+Deleting a folder soft-deletes its contained objects and moves their membership to
+the root; restoring an object restores it there. Attachments are not erased.
+Unknown files and destination collisions stop the command before authored writes.
+
+`WorkspaceFolderCommandStore` is an explicit capability. Native storage stages
+encoded after-images and a `.orbit/recovery/<uuid>.folder.json` intent before
+changes. Format `orbit-note-folder-command`, version 1 records the workspace UUID,
+source/target paths, before/after SHA-256, staged payload paths and directory lists.
+Each owner replacement reuses existing before-image/write recovery. A Note is
+physically renamed before rewriting its metadata; a failed rewrite attempts to
+restore its original path. Only empty old directories are removed, never recursively.
+
+This is recoverable roll-forward, not an OS-wide atomic transaction. Interrupted
+commands keep the Vault read-only until reopening can finish them. Changed or
+missing recovery inputs are preserved for review rather than overwritten. Browser
+storage has no safe multi-file command capability and rejects these commands;
+there is no delete-before-write fallback. Device session state is separate.

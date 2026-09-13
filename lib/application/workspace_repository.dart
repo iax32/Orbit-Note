@@ -19,7 +19,15 @@ import '../infrastructure/storage/object_index.dart';
 import '../infrastructure/storage/path_safety.dart';
 import '../infrastructure/storage/store_factory.dart';
 import '../infrastructure/storage/workspace_store.dart';
+import '../infrastructure/storage/workspace_sync_state_store.dart';
 import 'workspace_deletions.dart';
+import 'sync/sync_inventory.dart';
+import 'sync/sync_policy.dart';
+import 'sync/sync_provider.dart';
+import '../domain/sync_entry.dart';
+
+part 'sync/workspace_sync_replica.dart';
+part 'workspace_folders.dart';
 
 /// Coordinates durable content before updating the disposable query index.
 /// UI/controllers use this boundary, never the platform store or SQLite directly.
@@ -38,6 +46,7 @@ class WorkspaceRepository {
   final _issues = <String>[];
   Future<void> _queue = Future.value();
   bool _initialized = false;
+  int _syncGeneration = 0;
   bool _indexReady = false;
   bool _readOnly = false;
   String _workspaceId = '';
@@ -55,109 +64,47 @@ class WorkspaceRepository {
     _folders = await (_store as WorkspaceFolderStore).listFolders();
   });
 
-  Future<void> deleteFolder(String folder) => _serial(() async {
-    _requireWritable();
-    await _verifyManifest();
-    if (folder == 'Notes' || !folder.startsWith('Notes/')) {
-      throw const WorkspaceFailure('Cannot remove the root Notes folder.');
-    }
-    final notesInFolder = _paths.entries
-        .where((e) => e.value == folder || e.value.startsWith('$folder/'))
-        .map((e) => e.key)
-        .toList();
-    final owned = _paths.values.toSet();
-    if ((await _store.listFiles()).any(
-      (path) => path.startsWith('$folder/') && !owned.contains(path),
-    )) {
-      throw const WorkspaceFailure(
-        'Move unrecognized files out before deleting this folder.',
-      );
-    }
-    for (final id in notesInFolder) {
-      final source = _paths[id]!;
-      await _moveNotes(source, 'Notes/${p.posix.basename(source)}');
-      final obj = _objects[id];
-      if (obj != null && !obj.isDeleted) {
-        await _save(obj.copyWith(deletedAt: DateTime.now().toUtc()));
-      }
-    }
-    if (_store is WorkspaceFolderStore) {
-      await (_store as WorkspaceFolderStore).deleteFolder(folder);
-      _folders = await (_store as WorkspaceFolderStore).listFolders();
-    }
-    await _refresh();
-  });
+  Future<void> deleteFolder(String folder) =>
+      _serial(() => _changeFolder(folder, null));
 
-  Future<void> moveNote(String id, String folder) => _serial(() async {
-    final source = _paths[id];
-    if (source == null || !source.startsWith('Notes/')) {
-      throw const WorkspaceFailure('Only text-backed notes can be moved.');
-    }
-    if (!_folders.contains(folder)) {
-      throw const WorkspaceFailure('Choose an existing folder.');
-    }
-    await _moveNotes(source, '$folder/${p.posix.basename(source)}');
-  });
-
-  Future<void> moveFolder(String source, String target) =>
-      _serial(() => _moveNotes(source, target));
-
-  Future<void> _moveNotes(String source, String target) async {
-    _requireWritable();
-    await _verifyManifest();
-    final replacements = <String, FileReplacement>{};
-    final owned = _paths.values.toSet();
-    for (final path in await _store.listFiles()) {
-      if ((path == source || path.startsWith('$source/')) &&
-          path.endsWith('.md') &&
-          !owned.contains(path)) {
-        throw const WorkspaceFailure(
-          'This folder contains unrecognized Markdown. Adopt or move those files separately before moving the folder.',
-        );
-      }
-    }
-    for (final entry in _paths.entries) {
-      if (entry.value != source && !entry.value.startsWith('$source/')) {
-        continue;
-      }
-      final object = _objects[entry.key]!;
-      _validate(object);
-      final nextPath = '$target${entry.value.substring(source.length)}';
-      final body = rebaseNoteLinks(
-        object.body,
-        entry.value,
-        nextPath,
-        movedSource: source,
-        movedTarget: target,
-      );
-      final next = body == object.body
-          ? object
-          : object.copyWith(
-              body: body,
-              revision: object.revision + 1,
-              updatedAt: DateTime.now().toUtc(),
-            );
-      replacements[entry.value] = FileReplacement(
-        _bytes(
-          body == object.body
-              ? _sources[entry.key]!
-              : _codec.encode(next, previousSource: _sources[entry.key]),
+  Future<void> moveNote(String id, String folder) {
+    if (_objects[id]?.typeId != 'orbit.note') {
+      return Future.error(
+        const WorkspaceFailure(
+          'Only text-backed notes can be moved through moveNote.',
         ),
-        _hashes[entry.key]!,
       );
     }
-    try {
-      await (_store as WorkspaceFolderStore).movePath(
-        source,
-        target,
-        replacements,
-      );
-    } finally {
-      await _refresh();
-    }
+    return moveObjectsToFolder([id], folder);
   }
 
+  Future<void> moveFolder(String source, String target) =>
+      _serial(() => _changeFolder(source, target));
   List<UniversalObject> get objects => List.unmodifiable(_objects.values);
+  Future<SyncInventory> syncInventory() => _serial(() async {
+    _requireWritable();
+    await _verifyManifest();
+    return captureSyncInventory(_store, workspaceId);
+  });
+
+  /// File-size metadata only: opening Settings never rehashes large attachments.
+  Future<SyncFootprint> syncFootprint() => _serial(() async {
+    final store = _store;
+    var count = 0, bytes = 0, largest = 0;
+    for (final path in await store.listFiles()) {
+      final role = syncPathRole(path);
+      if (role == SyncPathRole.excluded || role == SyncPathRole.unsupported) {
+        continue;
+      }
+      final size = store is WorkspaceFileSizeStore
+          ? await (store as WorkspaceFileSizeStore).fileSize(path)
+          : (await store.read(path))?.length ?? 0;
+      count++;
+      bytes += size;
+      if (size > largest) largest = size;
+    }
+    return SyncFootprint(count, bytes, largest);
+  });
   List<String> get issues => List.unmodifiable(_issues);
   String get workspaceId => _workspaceId;
   String get name => _name;
@@ -196,6 +143,7 @@ class WorkspaceRepository {
   }
 
   Future<void> initialize({String? path}) => _serial(() async {
+    _syncGeneration++;
     await _index.close();
     _indexReady = false;
     _initialized = false;
@@ -383,6 +331,13 @@ class WorkspaceRepository {
         _readOnly = true;
         _addIssue(
           'An interrupted folder move needs recovery review at $path. Vault opened read-only to preserve all versions.',
+        );
+      }
+      if (path.startsWith('.orbit/recovery/') &&
+          path.endsWith('.folder.json')) {
+        _readOnly = true;
+        _addIssue(
+          'An interrupted folder command needs recovery at $path. Reopen the Vault; changed files are preserved.',
         );
       }
       if (path.contains('.orbit-') && path.endsWith('.tmp') ||
@@ -802,6 +757,7 @@ class WorkspaceRepository {
   });
 
   Future<void> close() => _serial(() async {
+    _syncGeneration++;
     await _index.close();
     await _store.close();
     _initialized = false;
@@ -872,12 +828,25 @@ class WorkspaceRepository {
     jsonEncode({'object': object.toJson(), 'data': object.data});
   }
 
-  String _newPath(UniversalObject object) => switch (object.typeId) {
-    'orbit.note' => 'Notes/${_safeName(object.title)}-${object.id}.md',
-    'orbit.canvas' => 'Boards/${object.id}.board.json',
-    'orbit.drawing' => 'Drawings/${object.id}.drawing.json',
-    _ => 'Objects/${object.id}.object.json',
-  };
+  String _newPath(UniversalObject object) {
+    final folder = object.properties['folder'] as String?;
+    final safeTitle = _safeName(object.title);
+    if (object.typeId == 'orbit.note') {
+      if (folder != null && folder.isNotEmpty && folder != 'Notes') {
+        final effectiveFolder = folder.startsWith('Notes/')
+            ? folder
+            : 'Notes/$folder';
+        return '$effectiveFolder/$safeTitle-${object.id}.md';
+      }
+      return 'Notes/$safeTitle-${object.id}.md';
+    }
+    return switch (object.typeId) {
+      'orbit.canvas' => 'Boards/${object.id}.board.json',
+      'orbit.drawing' => 'Drawings/${object.id}.drawing.json',
+      _ => 'Objects/${object.id}.object.json',
+    };
+  }
+
   String _safeName(String name) {
     var clean = name.replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1f]'), '_').trim();
     clean = clean.replaceAll(RegExp(r'[. ]+$'), '');

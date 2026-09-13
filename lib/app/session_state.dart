@@ -36,6 +36,8 @@ class SessionState {
     this.pinnedTabs = const [],
     this.closedTabs = const [],
     this.archivedFolders = const [],
+    this.activeWorkSession,
+    this.completedWorkSessions = const [],
   });
   OrbitDestination destination;
   List<String> tabs;
@@ -44,6 +46,8 @@ class SessionState {
   List<String> archivedFolders;
   String? activeId, secondaryId;
   List<String> recent;
+  Map<String, dynamic>? activeWorkSession;
+  List<Map<String, dynamic>> completedWorkSessions;
   bool sidebarVisible, inspectorVisible, compact, showAttachments;
   double sidebarWidth, fontSize, contentWidth;
   String motion;
@@ -147,6 +151,17 @@ class SessionState {
       pinnedTabs: ids('pinnedTabs'),
       closedTabs: ids('closedTabs'),
       archivedFolders: ids('archivedFolders'),
+      activeWorkSession: json['activeWorkSession'] is Map
+          ? Map<String, dynamic>.from(json['activeWorkSession'] as Map)
+          : null,
+      completedWorkSessions:
+          (json['completedWorkSessions'] is List
+                  ? json['completedWorkSessions'] as List
+                  : const [])
+              .whereType<Map>()
+              .map((m) => Map<String, dynamic>.from(m))
+              .take(30)
+              .toList(),
     );
   }
   Map<String, dynamic> toJson() => {
@@ -158,6 +173,8 @@ class SessionState {
     'activeId': activeId,
     'secondaryId': secondaryId,
     'recent': recent,
+    'activeWorkSession': activeWorkSession,
+    'completedWorkSessions': completedWorkSessions,
     'sidebarVisible': sidebarVisible,
     'inspectorVisible': inspectorVisible,
     'sidebarWidth': sidebarWidth,

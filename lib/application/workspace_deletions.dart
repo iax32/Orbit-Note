@@ -65,6 +65,51 @@ class WorkspaceDeletions {
     }
   }
 
+  /// Called only after sync's common-base and draft checks. Preserve the exact
+  /// remote tombstone bytes so replay does not manufacture a different hash.
+  Future<void> applyRemote(
+    Uint8List bytes, {
+    required void Function() checkCurrent,
+  }) async {
+    final record = ObjectTombstone.fromJson(
+      jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>,
+    );
+    final current = await _validateSource(record, allowAbsent: true);
+    if (current != null) {
+      final backup =
+          '.orbit/sync-conflicts/delete-${record.operationId}.before';
+      final old = await store.read(backup);
+      if (old == null) {
+        await store.write(backup, current, expectedHash: null);
+      } else if (sha256.convert(old).toString() != record.beforeHash) {
+        throw const WorkspaceConflict('Deletion recovery copy differs.');
+      }
+    }
+    checkCurrent();
+    final journal = '.orbit/recovery/delete-${record.objectId}.json';
+    final intent = Uint8List.fromList(
+      utf8.encode(
+        jsonEncode({
+          'format': 'orbit-note-object-delete',
+          'version': 1,
+          'tombstone': record.toJson(),
+          'tombstoneSource': utf8.decode(bytes),
+        }),
+      ),
+    );
+    await store.write(journal, intent, expectedHash: null);
+    try {
+      checkCurrent();
+    } on Object {
+      await store.deleteFile(
+        journal,
+        expectedHash: sha256.convert(intent).toString(),
+      );
+      rethrow;
+    }
+    await _finish(journal, intent);
+  }
+
   Future<Uint8List?> _validateSource(
     ObjectTombstone record, {
     required bool allowAbsent,
@@ -113,9 +158,16 @@ class WorkspaceDeletions {
     if (journal != '.orbit/recovery/delete-${record.objectId}.json') {
       throw const FormatException('Deletion journal identity mismatch.');
     }
+    final raw = json['tombstoneSource'];
     final tombstoneBytes = Uint8List.fromList(
-      utf8.encode(jsonEncode(record.toJson())),
+      utf8.encode(raw is String ? raw : jsonEncode(record.toJson())),
     );
+    final decoded = ObjectTombstone.fromJson(
+      jsonDecode(utf8.decode(tombstoneBytes)) as Map<String, dynamic>,
+    );
+    if (jsonEncode(decoded.toJson()) != jsonEncode(record.toJson())) {
+      throw const FormatException('Deletion source differs from intent.');
+    }
     final prior = await store.read(record.storagePath);
     if (prior != null &&
         sha256.convert(prior).toString() !=

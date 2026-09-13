@@ -1,5 +1,10 @@
 # Provider-neutral multi-device sync — design proposal
 
+Current implementation/limits are in [sync.md](sync.md). The complete owner brief
+has been received: Archive retains and synchronizes content; offload stays deferred.
+ADR-0017 selects recoverable device files for the initial bounded operational state
+instead of the preliminary additional database below. No live provider is complete.
+
 Status: proposed implementation design, 2026-09-12. **Not shipped sync.**
 Read the [current-code audit](../planning/sync-audit-2026-09-12.md) first.
 Google Drive is primary; WebDAV is second. No Supabase integration in this milestone.

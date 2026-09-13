@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:markdown/markdown.dart' as md;
 import '../../../app/orbit_theme.dart';
+import 'note_highlight.dart';
+import 'note_underline.dart';
+import 'note_math.dart';
 
 enum CalloutType {
   definition(
@@ -66,13 +71,13 @@ enum CalloutType {
     name: 'NOTE',
     label: 'Note',
     icon: Icons.info_outline,
-    color: Color(0xFF8B7CF6),
+    color: Color(0xFF0284C7),
   ),
   tip(
     name: 'TIP',
     label: 'Tip',
     icon: Icons.lightbulb_outline,
-    color: Color(0xFF65C6A3),
+    color: Color(0xFF10B981),
   ),
   important(
     name: 'IMPORTANT',
@@ -84,7 +89,7 @@ enum CalloutType {
     name: 'WARNING',
     label: 'Warning',
     icon: Icons.warning_amber_rounded,
-    color: Color(0xFFD8B56A),
+    color: Color(0xFFF59E0B),
   ),
   caution(
     name: 'CAUTION',
@@ -351,6 +356,200 @@ class _CalloutBlockState extends State<CalloutBlock> {
                       onChanged: _onBodyChanged,
                     ),
                   ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Markdown block syntax for standard GitHub and Obsidian callouts:
+/// > [!NOTE]
+/// > Content
+class CalloutBlockSyntax extends md.BlockSyntax {
+  const CalloutBlockSyntax();
+
+  static final _calloutHeaderPattern = RegExp(
+    r'^\s*>\s*\[!([a-zA-Z]+)\][ \t]*(.*)$',
+  );
+
+  @override
+  RegExp get pattern => RegExp(r'^\s*>\s*\[![a-zA-Z]+\]');
+
+  @override
+  bool canParse(md.BlockParser parser) {
+    return _calloutHeaderPattern.hasMatch(parser.current.content);
+  }
+
+  @override
+  md.Node parse(md.BlockParser parser) {
+    final match = _calloutHeaderPattern.firstMatch(parser.current.content)!;
+    final typeStr = match.group(1)!;
+    final title = match.group(2)!.trim();
+    parser.advance();
+
+    final bodyLines = <String>[];
+    final quotePrefix = RegExp(r'^\s*>\s?');
+    while (!parser.isDone) {
+      final line = parser.current.content;
+      if (_calloutHeaderPattern.hasMatch(line)) {
+        break;
+      }
+      if (quotePrefix.hasMatch(line)) {
+        bodyLines.add(line.replaceFirst(quotePrefix, ''));
+        parser.advance();
+      } else if (line.trim().isEmpty) {
+        var lookahead = 1;
+        var hasMoreQuote = false;
+        while (true) {
+          final ahead = parser.peek(lookahead);
+          if (ahead == null) break;
+          if (ahead.content.trim().isEmpty) {
+            lookahead++;
+          } else {
+            if (_calloutHeaderPattern.hasMatch(ahead.content)) {
+              hasMoreQuote = false;
+            } else {
+              hasMoreQuote = quotePrefix.hasMatch(ahead.content);
+            }
+            break;
+          }
+        }
+        if (hasMoreQuote) {
+          bodyLines.add('');
+          parser.advance();
+        } else {
+          break;
+        }
+      } else {
+        break;
+      }
+    }
+
+    final element = md.Element('callout', [
+      md.Element.text('callout-body', bodyLines.join('\n').trim()),
+    ]);
+    element.attributes['type'] = typeStr;
+    element.attributes['title'] = title;
+    return element;
+  }
+}
+
+/// Element builder that renders callout boxes with colored side bar,
+/// prominent icon, bold colored header, and rich markdown body.
+class CalloutElementBuilder extends MarkdownElementBuilder {
+  CalloutElementBuilder();
+
+  @override
+  bool isBlockElement() => true;
+
+  @override
+  Widget? visitElementAfterWithContext(
+    BuildContext context,
+    md.Element element,
+    TextStyle? preferredStyle,
+    TextStyle? parentStyle,
+  ) {
+    final typeStr = element.attributes['type'] ?? 'NOTE';
+    final title = element.attributes['title'] ?? '';
+    final type = CalloutType.fromString(typeStr);
+    final body = element.children?.isNotEmpty == true
+        ? element.children!.first.textContent
+        : '';
+
+    final colors = OrbitColors.of(context);
+    final effectiveColor = type.color;
+    final headerDisplay = title.isNotEmpty
+        ? (title.toLowerCase().startsWith(type.name.toLowerCase()) ||
+                  title.toLowerCase().startsWith(type.label.toLowerCase())
+              ? title
+              : '${type.name}: $title')
+        : type.name;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 10),
+      decoration: BoxDecoration(
+        color: colors.panel,
+        borderRadius: BorderRadius.circular(OrbitRadius.control),
+        border: Border.all(color: colors.border.withValues(alpha: 0.6)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 4, color: effectiveColor),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 9,
+                    ),
+                    color: effectiveColor.withValues(alpha: 0.08),
+                    child: Row(
+                      children: [
+                        Icon(type.icon, size: 16, color: effectiveColor),
+                        const SizedBox(width: 8),
+                        Text(
+                          headerDisplay,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.3,
+                            color: effectiveColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (body.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      child: MarkdownBody(
+                        data: body,
+                        selectable: true,
+                        inlineSyntaxes: [
+                          HighlightInlineSyntax(),
+                          MarkTagInlineSyntax(),
+                          UnderlineInlineSyntax(),
+                          InsInlineSyntax(),
+                          MathInlineSyntax(),
+                        ],
+                        builders: {
+                          'mark': HighlightElementBuilder(),
+                          'u': UnderlineElementBuilder(),
+                          'ins': UnderlineElementBuilder(),
+                          'math-inline': MathElementBuilder(),
+                        },
+                        styleSheet:
+                            MarkdownStyleSheet.fromTheme(
+                              Theme.of(context),
+                            ).copyWith(
+                              p: TextStyle(
+                                fontSize: 14,
+                                color: colors.text,
+                                height: 1.55,
+                              ),
+                              code: TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 13,
+                                backgroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerHighest,
+                              ),
+                            ),
+                      ),
+                    ),
                 ],
               ),
             ),

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:crypto/crypto.dart';
+import 'package:orbit_note/domain/workspace_failure.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:orbit_note/app/workspace_controller.dart';
@@ -11,7 +13,35 @@ import 'package:orbit_note/features/workspace/saved_view_host.dart';
 import 'package:orbit_note/features/workspace/timeline_view.dart';
 import 'package:orbit_note/features/workspace/workspace_views.dart';
 
-class TestFolderStore extends MemoryStore implements WorkspaceFolderStore {
+class TestFolderStore extends MemoryStore
+    implements WorkspaceFolderStore, WorkspaceFolderCommandStore {
+  @override
+  Future<void> applyFolderCommand(
+    List<FolderFileChange> changes, {
+    required String workspaceId,
+    List<String> createFolders = const [],
+    List<String> removeFolders = const [],
+  }) async {
+    // Model the atomic command capability; native crash recovery is covered by
+    // universal_folder_safety_test against real temporary Vaults.
+    final next = Map.of(files);
+    for (final change in changes) {
+      final before = next[change.source];
+      if (before == null ||
+          sha256.convert(before).toString() != change.expectedHash ||
+          (change.source != change.target && next.containsKey(change.target))) {
+        throw const WorkspaceConflict('Folder command conflict');
+      }
+      next.remove(change.source);
+      next[change.target] = change.bytes;
+    }
+    files
+      ..clear()
+      ..addAll(next);
+    folders.removeWhere((f) => removeFolders.contains(f));
+    folders.addAll(createFolders.where((f) => !folders.contains(f)));
+  }
+
   final folders = <String>['Notes'];
   @override
   Future<List<String>> listFolders() async => List.of(folders);
@@ -272,9 +302,10 @@ void main() {
 
       final gamedev = KanbanPreset.fromId('gamedev');
       expect(gamedev.columns.map((c) => c.$1), [
-        'concept',
-        'assets',
+        'backlog',
+        'planned',
         'in-progress',
+        'review',
         'testing',
         'done',
       ]);

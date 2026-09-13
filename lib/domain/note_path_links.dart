@@ -8,8 +8,12 @@ String rebaseNoteLinks(
   String newPath, {
   String? movedSource,
   String? movedTarget,
+  Map<String, String> movedPaths = const {},
 }) {
-  if (p.posix.dirname(oldPath) == p.posix.dirname(newPath)) return source;
+  if (p.posix.dirname(oldPath) == p.posix.dirname(newPath) &&
+      movedPaths.isEmpty) {
+    return source;
+  }
   String destination(String raw) {
     final angle = raw.startsWith('<') && raw.endsWith('>');
     final value = angle ? raw.substring(1, raw.length - 1) : raw;
@@ -29,7 +33,9 @@ String rebaseNoteLinks(
       p.posix.join(p.posix.dirname(oldPath), path),
     );
     if (resolved == '..' || resolved.startsWith('../')) return raw;
-    if (movedSource != null &&
+    if (movedPaths.containsKey(resolved)) {
+      resolved = movedPaths[resolved]!;
+    } else if (movedSource != null &&
         movedTarget != null &&
         (resolved == movedSource || resolved.startsWith('$movedSource/'))) {
       resolved = '$movedTarget${resolved.substring(movedSource.length)}';

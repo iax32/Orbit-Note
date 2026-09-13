@@ -7,13 +7,16 @@ class ObjectTombstone {
     required this.path,
     required this.beforeHash,
     required this.deletedAt,
+    this.extra = const {},
   });
 
   final String workspaceId, objectId, operationId, path, beforeHash;
   final DateTime deletedAt;
+  final Map<String, dynamic> extra;
   String get storagePath => '.orbit/tombstones/$objectId.json';
 
   Map<String, dynamic> toJson() => {
+    ...extra,
     'format': 'orbit-note-tombstone',
     'version': 1,
     'workspaceId': workspaceId,
@@ -46,6 +49,20 @@ class ObjectTombstone {
       path: json['path'] as String,
       beforeHash: json['beforeHash'] as String,
       deletedAt: DateTime.parse(json['deletedAt'] as String).toUtc(),
+      extra: Map.unmodifiable(
+        Map<String, dynamic>.from(json)..removeWhere(
+          (key, _) => {
+            'format',
+            'version',
+            'workspaceId',
+            'objectId',
+            'operationId',
+            'path',
+            'beforeHash',
+            'deletedAt',
+          }.contains(key),
+        ),
+      ),
     );
   }
 }

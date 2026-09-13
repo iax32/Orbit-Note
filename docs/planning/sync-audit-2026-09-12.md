@@ -1,5 +1,12 @@
 # M6 sync audit — current repository, 2026-09-12
 
+Implementation follow-up: the full owner brief has now been received. The missing
+tail is resolved. See [current sync contract](../architecture/sync.md) and ADR-0017
+for implemented locks/deletion/engine foundations. Other concurrent changes added
+saved Views as ordinary object JSON and folder Archive in device SessionState;
+the historical inventory below predates them. Sync preflight includes the Views
+and flags device-only Archive metadata for migration.
+
 Status: pre-implementation audit. Cloud sync is **not implemented**. This report
 must not be used as evidence that Google Drive or WebDAV is ready for real Vaults.
 The owner's new provider order is Google Drive first, WebDAV second. It supersedes

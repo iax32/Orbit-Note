@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -70,6 +72,9 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
   MarkdownBlock? _dropTargetBlock;
   bool _dropOnTop = true;
   final Set<String> _collapsedHeadings = {};
+  final Map<MarkdownBlock, String> _headingIds = {};
+  int _nextHeadingId = 0;
+  String? _fingerprintSource, _fingerprint;
   static final List<String> _recentCommands = [];
 
   @override
@@ -79,7 +84,43 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     if (initialCollapsed is List) {
       _collapsedHeadings.addAll(initialCollapsed.whereType<String>());
     }
+    final saved = widget.initialState['headings'];
+    if (saved is List &&
+        widget.initialState['headingDocument'] == _documentFingerprint) {
+      for (final item in saved.whereType<Map>()) {
+        final index = item['block'], id = item['id'];
+        if (index is int &&
+            index >= 0 &&
+            index < document.blocks.length &&
+            id is String &&
+            !_headingIds.containsValue(id) &&
+            document.blocks[index].kind == MarkdownBlockKind.heading) {
+          _headingIds[document.blocks[index]] = id;
+        }
+      }
+    } else if (saved == null) {
+      // Migrate old text-based view state once, without changing Markdown.
+      final counts = <String, int>{};
+      for (final block in document.blocks) {
+        if (block.kind != MarkdownBlockKind.heading) continue;
+        final text = '${block.level}:${block.content.trim()}';
+        final ordinal = counts.update(text, (n) => n + 1, ifAbsent: () => 0);
+        final old = ordinal == 0 ? text : '$text#$ordinal';
+        if (_collapsedHeadings.remove(old)) {
+          _collapsedHeadings.add(_headingKey(block));
+        }
+      }
+    }
     scroll.addListener(record);
+  }
+
+  String get _documentFingerprint {
+    final source = document.source;
+    if (source != _fingerprintSource) {
+      _fingerprintSource = source;
+      _fingerprint = sha256.convert(utf8.encode(source)).toString();
+    }
+    return _fingerprint!;
   }
 
   void record() => widget.onState?.call({
@@ -88,6 +129,12 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     'base': selectionBase,
     'scroll': scroll.hasClients ? scroll.offset : 0,
     'collapsed': _collapsedHeadings.toList(),
+    'headingDocument': _documentFingerprint,
+    'headings': [
+      for (var i = 0; i < document.blocks.length; i++)
+        if (document.blocks[i].kind == MarkdownBlockKind.heading)
+          {'block': i, 'id': _headingKey(document.blocks[i])},
+    ],
   });
   @override
   void dispose() {
@@ -138,6 +185,10 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     if (a == b) {
       for (var i = prefix; i <= a; i++) {
         final old = document.blocks[i], replacement = next.blocks[i];
+        if (old.kind == MarkdownBlockKind.heading &&
+            replacement.kind == old.kind) {
+          _headingIds[replacement] = _headingKey(old);
+        }
         if (old.kind == MarkdownBlockKind.math &&
             replacement.kind == old.kind &&
             old.prefix == replacement.prefix &&
@@ -153,6 +204,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     keys.removeWhere((k, _) => !retained.contains(k));
     anchors.removeWhere((k, _) => !retained.contains(k));
     cache.removeWhere((k, _) => !retained.contains(k));
+    _headingIds.removeWhere((k, _) => !retained.contains(k));
     active = active.clamp(0, document.blocks.length - 1);
   }
 
@@ -253,8 +305,12 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
         field?.wrap('**');
       case NoteFormatAction.italic:
         field?.wrap('*');
+      case NoteFormatAction.underline:
+        field?.wrap('<u>', closing: '</u>');
       case NoteFormatAction.strike:
         field?.wrap('~~');
+      case NoteFormatAction.highlight:
+        field?.wrap('==');
       case NoteFormatAction.inlineCode:
         field?.wrap('`');
       case NoteFormatAction.heading:
@@ -282,6 +338,37 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     }
   }
 
+  void insertFootnote() {
+    final nextNum = _nextFootnoteIndex(document.source);
+    final ref = '[^$nextNum]';
+    final field = keys[current]?.currentState;
+    if (field != null) {
+      field.insert(ref);
+    }
+    final lastBlock = document.blocks.last;
+    final separator = lastBlock.source.endsWith('\n\n')
+        ? ''
+        : lastBlock.source.endsWith('\n')
+        ? '\n'
+        : '\n\n';
+    _replace(
+      lastBlock,
+      '${lastBlock.source}$separator[^$nextNum]: \n',
+      structural: true,
+    );
+  }
+
+  static int _nextFootnoteIndex(String text) {
+    var maxIndex = 0;
+    for (final match in RegExp(r'\[\^(\d+)\]').allMatches(text)) {
+      final n = int.tryParse(match.group(1) ?? '');
+      if (n != null && n > maxIndex) {
+        maxIndex = n;
+      }
+    }
+    return maxIndex + 1;
+  }
+
   static const commands = [
     'Text',
     'Heading 1',
@@ -292,6 +379,9 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     'Checklist',
     'Quote',
     'Callout',
+    'Highlight',
+    'Underline',
+    'Footnote',
     'Definition',
     'Theorem',
     'Lemma',
@@ -329,6 +419,18 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
         structural: true,
         focusOffset: prefix.length + content.length,
       );
+      return;
+    }
+    if (name == 'Highlight') {
+      await format(NoteFormatAction.highlight);
+      return;
+    }
+    if (name == 'Underline') {
+      await format(NoteFormatAction.underline);
+      return;
+    }
+    if (name == 'Footnote') {
+      insertFootnote();
       return;
     }
     if (name == 'Image / file') {
@@ -1083,76 +1185,90 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     return result;
   }
 
-  String _serializeBlocks(List<MarkdownBlock> blocks) {
-    final buffer = StringBuffer();
-    for (var i = 0; i < blocks.length; i++) {
-      final b = blocks[i];
-      var s = b.source;
-      if (s.isEmpty) continue;
-      final eol = s.contains('\r\n') ? '\r\n' : '\n';
-      buffer.write(s);
-      if (!s.endsWith('\n')) buffer.write(eol);
-      if (i < blocks.length - 1) {
-        final next = blocks[i + 1];
-        final isCompactPair =
-            (b.kind == MarkdownBlockKind.list &&
-                next.kind == MarkdownBlockKind.list) ||
-            (b.kind == MarkdownBlockKind.quote &&
-                next.kind == MarkdownBlockKind.quote);
-        if (!isCompactPair) {
-          buffer.write(eol);
-        }
-      }
-    }
-    return buffer.toString();
-  }
-
   void _moveBlock(
     MarkdownBlock sourceBlock,
     MarkdownBlock targetBlock, {
     required bool after,
   }) {
     if (sourceBlock == targetBlock) return;
-    final allContent = <MarkdownBlock>[];
-    MarkdownBlock? frontmatter;
+
+    final groups = <List<MarkdownBlock>>[];
+    final leadingBlanks = <MarkdownBlock>[];
+    List<MarkdownBlock>? frontmatterGroup;
+
     for (var i = 0; i < document.blocks.length; i++) {
       final b = document.blocks[i];
-      if (b.kind == MarkdownBlockKind.blank) continue;
       if (i == 0 &&
           b.kind == MarkdownBlockKind.raw &&
           b.source.startsWith('---')) {
-        frontmatter = b;
+        frontmatterGroup = [b];
         continue;
       }
-      allContent.add(b);
+      if (b.kind == MarkdownBlockKind.blank) {
+        if (groups.isNotEmpty) {
+          groups.last.add(b);
+        } else if (frontmatterGroup != null) {
+          frontmatterGroup.add(b);
+        } else {
+          leadingBlanks.add(b);
+        }
+      } else {
+        groups.add([b]);
+      }
     }
 
-    final fromIdx = allContent.indexOf(sourceBlock);
-    final toIdx = allContent.indexOf(targetBlock);
-    if (fromIdx < 0 || toIdx < 0) return;
+    final fromGroupIdx = groups.indexWhere((g) => g.first == sourceBlock);
+    final toGroupIdx = groups.indexWhere((g) => g.first == targetBlock);
+    if (fromGroupIdx < 0 || toGroupIdx < 0) return;
 
-    allContent.removeAt(fromIdx);
-    var insertIdx = allContent.indexOf(targetBlock);
+    final movingGroup = groups.removeAt(fromGroupIdx);
+    var insertIdx = groups.indexWhere((g) => g.first == targetBlock);
     if (insertIdx < 0) return;
     if (after) {
       insertIdx += 1;
     }
-    allContent.insert(insertIdx, sourceBlock);
+    groups.insert(insertIdx, movingGroup);
 
-    final finalList = <MarkdownBlock>[?frontmatter, ...allContent];
+    final finalBlocks = <MarkdownBlock>[
+      ...leadingBlanks,
+      ...?frontmatterGroup,
+      for (final g in groups) ...g,
+    ];
 
-    final newSource = _serializeBlocks(finalList);
-    _load(newSource);
-    widget.onChanged(newSource);
-
-    var newActive = 0;
-    for (var i = 0; i < document.blocks.length; i++) {
-      if (document.blocks[i].source == sourceBlock.source &&
-          document.blocks[i].kind == sourceBlock.kind) {
-        newActive = i;
-        break;
+    final buffer = StringBuffer();
+    var movedOffset = 0;
+    final headingIds = [
+      for (final b in finalBlocks)
+        if (b.kind == MarkdownBlockKind.heading) _headingKey(b),
+    ];
+    final eol = document.source.contains('\r\n') ? '\r\n' : '\n';
+    for (var i = 0; i < finalBlocks.length; i++) {
+      final b = finalBlocks[i];
+      if (identical(b, sourceBlock)) movedOffset = buffer.length;
+      buffer.write(b.source);
+      if (!b.source.endsWith('\n') && i < finalBlocks.length - 1) {
+        buffer.write(eol);
+      }
+      if (i < finalBlocks.length - 1 &&
+          b.kind == MarkdownBlockKind.text &&
+          finalBlocks[i + 1].kind == MarkdownBlockKind.text) {
+        // A moved final paragraph may have no trailing spacer. Keep it a
+        // separate paragraph without altering any existing blank lines.
+        buffer.write(eol);
       }
     }
+    final newSource = buffer.toString();
+    _load(newSource);
+    var headingIndex = 0;
+    for (final block in document.blocks) {
+      if (block.kind == MarkdownBlockKind.heading &&
+          headingIndex < headingIds.length) {
+        _headingIds[block] = headingIds[headingIndex++];
+      }
+    }
+    widget.onChanged(newSource);
+
+    final newActive = document.blockAt(movedOffset);
     active = newActive;
     record();
     setState(() {});
@@ -1658,25 +1774,20 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
               width: 22,
               height: 24,
               child: IconButton(
-                tooltip:
-                    _collapsedHeadings.contains(
-                      '${block.level}:${block.content.trim()}',
-                    )
+                tooltip: _collapsedHeadings.contains(_headingKey(block))
                     ? 'Expand section'
                     : 'Collapse section',
                 padding: EdgeInsets.zero,
                 iconSize: 16,
                 icon: Icon(
-                  _collapsedHeadings.contains(
-                        '${block.level}:${block.content.trim()}',
-                      )
+                  _collapsedHeadings.contains(_headingKey(block))
                       ? Icons.chevron_right
                       : Icons.keyboard_arrow_down,
                   color: theme.colorScheme.primary,
                 ),
                 onPressed: () {
                   setState(() {
-                    final key = '${block.level}:${block.content.trim()}';
+                    final key = _headingKey(block);
                     if (_collapsedHeadings.contains(key)) {
                       _collapsedHeadings.remove(key);
                     } else {
@@ -1693,6 +1804,17 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     );
   }
 
+  String _headingKey(MarkdownBlock block) {
+    return _headingIds.putIfAbsent(block, () {
+      String id;
+      do {
+        id = 'heading-${_nextHeadingId++}';
+      } while (_headingIds.containsValue(id) ||
+          _collapsedHeadings.contains(id));
+      return id;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final hiddenBlocks = <MarkdownBlock>{};
@@ -1703,7 +1825,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
         if (collapsedLevel != null && b.level <= collapsedLevel) {
           collapsedLevel = null;
         }
-        final key = '${b.level}:${b.content.trim()}';
+        final key = _headingKey(b);
         if (_collapsedHeadings.contains(key)) {
           collapsedLevel = b.level;
           continue;
@@ -1873,20 +1995,38 @@ class _StyledController extends TextEditingController {
         end++;
       }
       final marks = projection.styles[start];
+      final isDark = Theme.of(context).brightness == Brightness.dark;
       spans.add(
         TextSpan(
           text: text.substring(start, end),
           style: TextStyle(
-            fontWeight: marks.contains('bold') ? FontWeight.bold : null,
+            fontWeight: marks.contains('bold') || marks.contains('footnote')
+                ? FontWeight.bold
+                : null,
             fontStyle: marks.contains('italic') ? FontStyle.italic : null,
             fontFamily: marks.contains('code') ? 'monospace' : null,
-            decoration: marks.contains('strike')
-                ? TextDecoration.lineThrough
-                : marks.contains('link')
-                ? TextDecoration.underline
-                : null,
-            color: marks.contains('link')
+            fontSize: marks.contains('footnote') ? 11 : null,
+            decoration: () {
+              final decorations = <TextDecoration>[];
+              if (marks.contains('strike')) {
+                decorations.add(TextDecoration.lineThrough);
+              }
+              if (marks.contains('link') || marks.contains('underline')) {
+                decorations.add(TextDecoration.underline);
+              }
+              if (decorations.isEmpty) return null;
+              if (decorations.length == 1) return decorations.first;
+              return TextDecoration.combine(decorations);
+            }(),
+            color: marks.contains('footnote') || marks.contains('link')
                 ? Theme.of(context).colorScheme.primary
+                : marks.contains('highlight')
+                ? (isDark ? const Color(0xFFFDE047) : const Color(0xFF713F12))
+                : null,
+            backgroundColor: marks.contains('highlight')
+                ? (isDark
+                      ? const Color(0xFFEAB308).withValues(alpha: 0.35)
+                      : const Color(0xFFFEF08A))
                 : null,
           ),
         ),
@@ -2022,16 +2162,17 @@ class _RichTextBlockState extends State<_RichTextBlock> {
     focus.requestFocus();
   }
 
-  void wrap(String marker) {
+  void wrap(String marker, {String? closing}) {
     final sel = controller.selection;
     if (!sel.isValid) return;
     final p = controller.projection;
     final a = p.sourceOffset(sel.start),
         b = sel.isCollapsed ? a : p.sourceOffset(sel.end, end: true);
+    final close = closing ?? marker;
     source = source.replaceRange(
       a,
       b,
-      '$marker${sel.isCollapsed ? 'text' : source.substring(a, b)}$marker',
+      '$marker${sel.isCollapsed ? 'text' : source.substring(a, b)}$close',
     );
     _sync(caret: sel.end + (sel.isCollapsed ? 4 : 0));
     widget.onChanged(source);
@@ -2082,6 +2223,16 @@ class _RichTextBlockState extends State<_RichTextBlock> {
           : KeyEventResult.ignored;
     }
     if (keyboard.isControlPressed) {
+      if (keyboard.isShiftPressed &&
+          event.logicalKey == LogicalKeyboardKey.keyH) {
+        wrap('==');
+        return KeyEventResult.handled;
+      }
+      if (!keyboard.isShiftPressed &&
+          event.logicalKey == LogicalKeyboardKey.keyU) {
+        wrap('<u>', closing: '</u>');
+        return KeyEventResult.handled;
+      }
       if (event.logicalKey == LogicalKeyboardKey.keyZ) {
         keyboard.isShiftPressed ? widget.onRedo() : widget.onUndo();
         return KeyEventResult.handled;

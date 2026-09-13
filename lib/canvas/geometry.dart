@@ -12,6 +12,20 @@ class CanvasPoint {
       CanvasPoint(x - other.x, y - other.y);
   CanvasPoint operator *(double factor) => CanvasPoint(x * factor, y * factor);
   double get length => math.sqrt(x * x + y * y);
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CanvasPoint &&
+          runtimeType == other.runtimeType &&
+          x == other.x &&
+          y == other.y;
+
+  @override
+  int get hashCode => Object.hash(x, y);
+
+  @override
+  String toString() => 'CanvasPoint($x, $y)';
 }
 
 class CanvasBounds {
@@ -47,6 +61,7 @@ class CanvasBounds {
     width + delta * 2,
     height + delta * 2,
   );
+  CanvasBounds deflate(double delta) => inflate(-delta);
   CanvasBounds union(CanvasBounds other) => CanvasBounds(
     math.min(left, other.left),
     math.min(top, other.top),
@@ -176,4 +191,16 @@ class CanvasSpatialIndex {
     }
     return candidates.where((id) => _bounds[id]!.intersects(bounds)).toSet();
   }
+}
+
+/// Calculates the shortest Euclidean distance from point [p] to segment [a]-[b].
+double distanceToSegment(CanvasPoint p, CanvasPoint a, CanvasPoint b) {
+  final ab = b - a;
+  final lengthSquared = ab.x * ab.x + ab.y * ab.y;
+  if (lengthSquared == 0) return (p - a).length;
+  final ap = p - a;
+  final t = ((ap.x * ab.x + ap.y * ab.y) / lengthSquared)
+      .clamp(0, 1)
+      .toDouble();
+  return (p - (a + ab * t)).length;
 }

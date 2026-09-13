@@ -1,8 +1,44 @@
 # Google Drive developer setup
 
-Status: researched configuration plan, 2026-09-12. Auth and sync are **not yet
-implemented**. The example below documents proposed configuration keys; current
-Orbit builds do not consume them. Do not expect a Connect button from this guide.
+Status: 2026-09-13. Windows/Android account authorization, secure restoration,
+quota and Drive root/discovery are implemented. **Vault transfers and automatic
+sync remain incomplete.** Builds consume the configuration below. Real OAuth/Drive
+acceptance still needs your Google project and test account.
+
+## Consumer experience (required release behavior)
+
+On first launch, offer **Use Google Sync** and **Continue locally**. Google Sync
+opens the system account sign-in, then lets the user select an existing cloud
+Vault or sync a new/local Vault. Orbit creates or reuses its Drive folder and
+performs verified initial transfer before claiming the Vault is synced. On later
+launches, restore the account and selected Vault without repeating onboarding.
+Local use remains available during cancellation, sign-out and network failure.
+
+The distributor must ship the Google app identifiers with the application. Never
+ask consumers for Cloud projects, client IDs, credential JSON or API activation.
+Do not release a build advertised as Google-sync-ready with a disabled login
+button or with only account discovery implemented. Developer setup below is a
+one-time distribution prerequisite, not a user onboarding step.
+
+Every user's storage belongs to their signed-in Google account. The distributor's
+Cloud project identifies the application; it is never a common Vault or a source
+of end-user access tokens. Drive requests use that user's OAuth authorization;
+root IDs are stored separately by Google subject. Root/Vault discovery is limited
+to files owned by the current user, and a saved root whose ownership has changed
+is rejected. Shared/team storage is outside this personal-sync milestone.
+See Google's [ownership fields](https://developers.google.com/workspace/drive/api/reference/rest/v3/files)
+and [owner search filters](https://developers.google.com/workspace/drive/api/guides/search-files).
+
+## Registration progress — 2026-09-13
+
+Created the distributor project `orbit-note-508518` (Orbit Note) and submitted
+Drive API activation. The owner declined the proposed policy acceptance and use
+of their personal email as a visible support contact. The unsubmitted branding
+form was cancelled; the console confirms Auth Platform remains unconfigured.
+Do not reuse that email or accept the policy without new explicit authorization.
+An approved app support contact is still required. No OAuth client has been
+created or embedded yet; the existing
+Windows build remains unconfigured. Verify activation before live acceptance.
 
 ## Google Cloud project
 
@@ -12,7 +48,8 @@ Orbit builds do not consume them. Do not expect a Connect button from this guide
 3. Configure Google Auth Platform branding, support contact, audience and developer
    contact. Choose the appropriate internal/external audience; for development,
    add explicit test users. Public release needs accurate privacy/disclosure pages.
-4. Under Data Access request `https://www.googleapis.com/auth/drive.file`.
+4. Under Data Access request `openid`, `profile`, `email`, and
+   `https://www.googleapis.com/auth/drive.file`.
    It is the narrow per-file scope for files the app creates or the user opens
    with it. Do not request full `drive` merely to make discovery convenient.
    See [Drive scope guidance](https://developers.google.com/workspace/drive/api/guides/api-specific-auth).
@@ -54,23 +91,52 @@ Orbit builds do not consume them. Do not expect a Connect button from this guide
 
 ## Configuration and token custody
 
-Proposed public build configuration is in
+Public build configuration is in
 [`google-drive.example.json`](../../config/google-drive.example.json). Use separate
 development and release configuration files outside source control. These client
 IDs are public application identifiers, not access/refresh tokens. The runtime
-must reject missing configuration with an actionable message while local use works.
+disables unconfigured Google login with an explanation while local use works.
 
-The proposed secure-storage adapter is `flutter_secure_storage`, which lists both
-Windows and Android support. Verify the selected version's native mechanisms,
-minimum platform requirements and backup behavior before adding it. Tokens and
+Copy the example to ignored `config/google-drive.local.json`, or, after
+downloading the Desktop client JSON, run
+`./tool/configure_google.ps1 -DesktopCredentials 'C:/path/to/download.json'`.
+It validates the Desktop client type and saves only the required native build
+values into the ignored configuration, without printing them. Optionally pass
+`-AndroidServerClientId 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com'`.
+
+The configuration contains:
+
+- `ORBIT_GOOGLE_DESKTOP_CLIENT_ID`: Desktop OAuth client ID.
+- `ORBIT_GOOGLE_DESKTOP_CLIENT_SECRET`: the value from that Desktop credential
+  download if Google's token endpoint requires it. This is a distributed native
+  client value, **not a confidential server secret**. Leave empty if unnecessary;
+  never substitute a web/server client secret. Keep the download/private config
+  out of Git. PKCE and the exact redirect/state checks protect the native flow.
+- `ORBIT_GOOGLE_ANDROID_SERVER_CLIENT_ID`: the same project's Web OAuth client ID
+  required by the Android identity SDK. Only the ID, never its client secret.
+
+Build with `flutter build windows --release --dart-define-from-file=config/google-drive.local.json`
+or `flutter build apk --debug --dart-define-from-file=config/google-drive.local.json`.
+Use a separate ignored release file for distributor-owned production clients and
+the actual release signing certificate. A normal app user never configures these
+values or visits Google Cloud Console; the distributor supplies them at build time.
+
+After building: Settings → Sync → Continue with Google. Check the profile and
+Google storage, then use Prepare Orbit folder. This creates/reuses only the visible
+root folder; the UI still says Local only because Vault transfers are not enabled.
+
+The selected secure-storage adapter is `flutter_secure_storage` 11.1.1. The resolved
+Windows adapter uses DPAPI-protected application-support storage. Android uses
+Keystore-backed secure storage; Google services manage authorization token refresh.
+Its minimum API 23 is below the current Flutter app minimum. Tokens and
 WebDAV passwords belong in OS-protected device storage, never preferences, Vaults,
 sync metadata, exports or logs. Android authorization refresh should use its
 platform-supported path; do not invent a refresh token if the platform does not
 expose one. See [secure-storage platform setup](https://pub.dev/packages/flutter_secure_storage).
 
-Add Android release Internet permission when implementing networking. Exclude
-secure credential material and device identity from Android backup/transfer as
-required by the selected storage implementation. Do not disable TLS checks or
+Android release Internet permission is present. Automatic OS app backup is disabled
+to avoid transferring device-bound secure material; manual Orbit export remains
+available. Do not disable TLS checks or
 request broad external-storage access for an app-private local Vault.
 
 ## Development and public release acceptance

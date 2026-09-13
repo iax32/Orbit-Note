@@ -106,113 +106,157 @@ class _NoteCodeBlockState extends State<NoteCodeBlock> {
   }
 
   @override
-  Widget build(BuildContext context) => Container(
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surfaceContainer,
-      borderRadius: BorderRadius.circular(10),
-    ),
-    padding: const EdgeInsets.all(12),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                widget.language.isEmpty ? 'Code' : widget.language,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-            ),
-            TextButton.icon(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: controller.text));
-                if (!mounted) return;
-                setState(() => copied = true);
-                timer?.cancel();
-                timer = Timer(const Duration(seconds: 2), () {
-                  if (mounted) setState(() => copied = false);
-                });
-              },
-              icon: Icon(copied ? Icons.check : Icons.copy, size: 14),
-              label: AnimatedSwitcher(
-                duration: OrbitMotionScope.duration(context, OrbitMotion.micro),
+  Widget build(BuildContext context) {
+    final langLower = widget.language.toLowerCase();
+    final isBytes = langLower == 'hex' || langLower == 'bytes';
+    final isAsm =
+        langLower == 'asm' ||
+        langLower == 'disasm' ||
+        langLower == 'x86asm' ||
+        langLower == 'x86' ||
+        langLower == 'x64' ||
+        langLower == 'arm';
+
+    final displayLang = switch (langLower) {
+      'yara' => 'YARA Rule',
+      'sigma' => 'Sigma Rule',
+      'hex' || 'bytes' => 'Hex / Raw Bytes',
+      'asm' || 'disasm' || 'x86asm' || 'x86' || 'x64' => 'x86-64 Disassembly',
+      'arm' => 'ARM Disassembly',
+      _ => widget.language.isEmpty ? 'Code' : widget.language,
+    };
+
+    final copyLabel = copied
+        ? (isBytes
+              ? 'Copied Bytes ✓'
+              : isAsm
+              ? 'Copied Disasm ✓'
+              : 'Copied ✓')
+        : (isBytes
+              ? 'Copy Bytes'
+              : isAsm
+              ? 'Copy Disassembly'
+              : 'Copy code');
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
                 child: Text(
-                  copied ? 'Copied ✓' : 'Copy code',
-                  key: ValueKey(copied),
-                ),
-              ),
-            ),
-          ],
-        ),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final maxLine = controller.text
-                .split('\n')
-                .fold(0, (n, line) => n > line.length ? n : line.length);
-            return SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: (maxLine * 9.0 + 32).clamp(constraints.maxWidth, 100000),
-                child: Focus(
-                  onKeyEvent: (_, event) {
-                    if (event is KeyDownEvent &&
-                        HardwareKeyboard.instance.isControlPressed &&
-                        !controller.value.composing.isCollapsed &&
-                        {
-                          LogicalKeyboardKey.keyZ,
-                          LogicalKeyboardKey.keyY,
-                        }.contains(event.logicalKey)) {
-                      return KeyEventResult.handled;
-                    }
-                    if (event is KeyDownEvent &&
-                        HardwareKeyboard.instance.isControlPressed &&
-                        controller.value.composing.isCollapsed) {
-                      if (event.logicalKey == LogicalKeyboardKey.keyZ &&
-                          widget.onUndo != null) {
-                        HardwareKeyboard.instance.isShiftPressed
-                            ? widget.onRedo?.call()
-                            : widget.onUndo!();
-                        return KeyEventResult.handled;
-                      }
-                      if (event.logicalKey == LogicalKeyboardKey.keyY &&
-                          widget.onRedo != null) {
-                        widget.onRedo!();
-                        return KeyEventResult.handled;
-                      }
-                    }
-                    return KeyEventResult.ignored;
-                  },
-                  child: TextField(
-                    key: const ValueKey('rich-code'),
-                    controller: controller,
-                    focusNode: focus,
-                    readOnly: widget.onChanged == null,
-                    maxLines: null,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 14,
-                      height: 1.6,
-                    ),
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      filled: false,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                    onChanged: (v) {
-                      widget.onChanged?.call(v);
-                      setState(() {});
-                    },
+                  displayLang,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    fontWeight:
+                        (isBytes ||
+                            isAsm ||
+                            langLower == 'yara' ||
+                            langLower == 'sigma')
+                        ? FontWeight.bold
+                        : FontWeight.normal,
                   ),
                 ),
               ),
-            );
-          },
-        ),
-      ],
-    ),
-  );
+              TextButton.icon(
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: controller.text));
+                  if (!mounted) return;
+                  setState(() => copied = true);
+                  timer?.cancel();
+                  timer = Timer(const Duration(seconds: 2), () {
+                    if (mounted) setState(() => copied = false);
+                  });
+                },
+                icon: Icon(copied ? Icons.check : Icons.copy, size: 14),
+                label: AnimatedSwitcher(
+                  duration: OrbitMotionScope.duration(
+                    context,
+                    OrbitMotion.micro,
+                  ),
+                  child: Text(copyLabel, key: ValueKey(copied)),
+                ),
+              ),
+            ],
+          ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final maxLine = controller.text
+                  .split('\n')
+                  .fold(0, (n, line) => n > line.length ? n : line.length);
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width: (maxLine * 9.0 + 32).clamp(
+                    constraints.maxWidth,
+                    100000,
+                  ),
+                  child: Focus(
+                    onKeyEvent: (_, event) {
+                      if (event is KeyDownEvent &&
+                          HardwareKeyboard.instance.isControlPressed &&
+                          !controller.value.composing.isCollapsed &&
+                          {
+                            LogicalKeyboardKey.keyZ,
+                            LogicalKeyboardKey.keyY,
+                          }.contains(event.logicalKey)) {
+                        return KeyEventResult.handled;
+                      }
+                      if (event is KeyDownEvent &&
+                          HardwareKeyboard.instance.isControlPressed &&
+                          controller.value.composing.isCollapsed) {
+                        if (event.logicalKey == LogicalKeyboardKey.keyZ &&
+                            widget.onUndo != null) {
+                          HardwareKeyboard.instance.isShiftPressed
+                              ? widget.onRedo?.call()
+                              : widget.onUndo!();
+                          return KeyEventResult.handled;
+                        }
+                        if (event.logicalKey == LogicalKeyboardKey.keyY &&
+                            widget.onRedo != null) {
+                          widget.onRedo!();
+                          return KeyEventResult.handled;
+                        }
+                      }
+                      return KeyEventResult.ignored;
+                    },
+                    child: TextField(
+                      key: const ValueKey('rich-code'),
+                      controller: controller,
+                      focusNode: focus,
+                      readOnly: widget.onChanged == null,
+                      maxLines: null,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 14,
+                        height: 1.6,
+                      ),
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        filled: false,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      onChanged: (v) {
+                        widget.onChanged?.call(v);
+                        setState(() {});
+                      },
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class CodeElementBuilder extends MarkdownElementBuilder {

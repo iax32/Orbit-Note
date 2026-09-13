@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/orbit_components.dart';
 import '../../app/orbit_theme.dart';
 import '../../app/session_state.dart';
@@ -10,6 +11,7 @@ import '../../domain/calendar_event.dart';
 import '../../domain/search_text.dart';
 import '../../domain/universal_object.dart';
 import 'calendar_view.dart';
+import 'google_drive_settings.dart';
 
 IconData objectIcon(String type) => switch (type) {
   'orbit.canvas' => Icons.dashboard_outlined,
@@ -86,11 +88,12 @@ class EmptyWorkspace extends StatelessWidget {
   );
 }
 
-class HomeView extends StatelessWidget {
+class HomeView extends ConsumerWidget {
   const HomeView({super.key, required this.controller});
   final WorkspaceController controller;
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(workspaceProvider);
     final c = controller, colors = OrbitColors.of(context);
     final now = DateTime.now();
     final tasks = c.ofType('orbit.task').where((o) => !o.isCompleted).toList();
@@ -128,6 +131,48 @@ class HomeView extends StatelessWidget {
         if (entry.key.contains(recentPdf.id) && entry.value['page'] is num) {
           pdfPage = (entry.value['page'] as num).toInt();
           break;
+        }
+      }
+    }
+
+    // Check for a recently edited or active Note
+    final recentNote =
+        c.session.recent
+            .map(c.find)
+            .whereType<UniversalObject>()
+            .where((o) => !o.isDeleted && o.typeId == 'orbit.note')
+            .firstOrNull ??
+        c.activeObjects
+            .where((o) => !o.isDeleted && o.typeId == 'orbit.note')
+            .firstOrNull;
+
+    String? noteMode;
+    int? noteWords;
+    String noteSnippet = '';
+    if (recentNote != null) {
+      noteWords = RegExp(r'\S+').allMatches(recentNote.body).length;
+      for (final entry in c.session.noteViews.entries) {
+        if (entry.key.contains(recentNote.id) &&
+            entry.value['mode'] is String) {
+          final modeName = entry.value['mode'] as String;
+          noteMode = {
+            'rich': 'Rich',
+            'write': 'Source',
+            'split': 'Split',
+            'read': 'Read',
+          }[modeName];
+          break;
+        }
+      }
+      if (recentNote.body.isNotEmpty) {
+        final clean = recentNote.body
+            .replaceAll(RegExp(r'[#*`_>~=\[\]]'), '')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+        if (clean.isNotEmpty) {
+          noteSnippet = clean.length > 80
+              ? '${clean.substring(0, 80)}…'
+              : clean;
         }
       }
     }
@@ -232,8 +277,187 @@ class HomeView extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 32),
-            // Continue Session / Continue Reading
+            const SizedBox(height: 24),
+            // Focus & Work Session Card (CTX-04, CTX-12)
+            _FocusSessionCard(controller: c),
+            const SizedBox(height: 12),
+            // Where Was I? navigation trail
+            if (recent.length >= 2) ...[
+              Padding(
+                padding: const EdgeInsets.only(bottom: 20),
+                child: Row(
+                  children: [
+                    Icon(Icons.route_outlined, size: 16, color: colors.subtle),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Where was I:',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: colors.subtle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            for (var i = 0; i < recent.length; i++) ...[
+                              if (i > 0)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                  ),
+                                  child: Icon(
+                                    Icons.chevron_right,
+                                    size: 14,
+                                    color: colors.subtle.withValues(alpha: 0.5),
+                                  ),
+                                ),
+                              ActionChip(
+                                visualDensity: VisualDensity.compact,
+                                avatar: Icon(
+                                  recent[i].typeId == 'orbit.note'
+                                      ? Icons.description_outlined
+                                      : recent[i].typeId == 'orbit.canvas'
+                                      ? Icons.dashboard_outlined
+                                      : recent[i].title.toLowerCase().endsWith(
+                                          '.pdf',
+                                        )
+                                      ? Icons.picture_as_pdf_outlined
+                                      : Icons.article_outlined,
+                                  size: 14,
+                                  color: colors.accent,
+                                ),
+                                label: Text(
+                                  recent[i].title.isEmpty
+                                      ? 'Untitled'
+                                      : recent[i].title,
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                                onPressed: () => c.openObject(recent[i].id),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            // Continue Writing
+            if (recentNote != null) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 20),
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [colors.raised, colors.panel],
+                  ),
+                  border: Border.all(color: colors.border),
+                  borderRadius: BorderRadius.circular(OrbitRadius.card),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: colors.accent.withValues(alpha: .14),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.edit_note_rounded,
+                        color: colors.accent,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                'CONTINUE WRITING',
+                                style: TextStyle(
+                                  color: colors.accent,
+                                  fontSize: 10,
+                                  letterSpacing: 1.2,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              if (noteMode != null ||
+                                  (noteWords != null && noteWords > 0)) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: colors.panel,
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: colors.border),
+                                  ),
+                                  child: Text(
+                                    [
+                                      ?noteMode,
+                                      if (noteWords != null)
+                                        '$noteWords ${noteWords == 1 ? 'word' : 'words'}',
+                                    ].join(' · '),
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: colors.subtle,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            recentNote.title.isEmpty
+                                ? 'Untitled note'
+                                : recentNote.title,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (noteSnippet.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              noteSnippet,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colors.subtle,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    FilledButton.tonalIcon(
+                      onPressed: () => c.openObject(recentNote.id),
+                      icon: const Icon(Icons.edit_outlined, size: 16),
+                      label: const Text('Resume writing'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            // Continue Reading
             if (recentPdf != null) ...[
               Container(
                 margin: const EdgeInsets.only(bottom: 20),
@@ -328,7 +552,8 @@ class HomeView extends StatelessWidget {
               ),
             ],
             if (recent.isNotEmpty &&
-                (recentPdf == null || recent.first.id != recentPdf.id))
+                (recentPdf == null || recent.first.id != recentPdf.id) &&
+                (recentNote == null || recent.first.id != recentNote.id))
               Container(
                 margin: const EdgeInsets.only(bottom: 24),
                 padding: const EdgeInsets.all(22),
@@ -373,6 +598,421 @@ class HomeView extends StatelessWidget {
                   ],
                 ),
               ),
+
+            // Active Game Project Card
+            () {
+              UniversalObject? gdd;
+              for (final o in c.activeObjects) {
+                if (!o.isDeleted &&
+                    (o.properties['isGdd'] == true ||
+                        (o.typeId == 'orbit.view' &&
+                            o.properties['viewType'] == 'game_dashboard'))) {
+                  gdd = o;
+                  break;
+                }
+              }
+              if (gdd == null) return const SizedBox.shrink();
+
+              final pName =
+                  gdd.properties['project']?.toString() ??
+                  gdd.title
+                      .replaceAll('Dashboard', '')
+                      .replaceAll('GDD', '')
+                      .trim();
+              if (pName.isEmpty) return const SizedBox.shrink();
+
+              final gTasks = c.activeObjects
+                  .where(
+                    (o) =>
+                        !o.isDeleted &&
+                        o.typeId == 'orbit.task' &&
+                        (o.properties['project']?.toString().toLowerCase() ==
+                                pName.toLowerCase() ||
+                            (o.properties['folder'] as String?)
+                                    ?.toLowerCase()
+                                    .contains(pName.toLowerCase()) ==
+                                true),
+                  )
+                  .toList();
+              final gTotal = gTasks.length;
+              final gDone = gTasks.where((t) => t.isCompleted).length;
+              final gPercent = gTotal > 0 ? ((gDone * 100) ~/ gTotal) : 0;
+              final gBugs = gTasks
+                  .where(
+                    (t) =>
+                        !t.isCompleted &&
+                        (t.properties['isBug'] == true ||
+                            t.properties['category'] == 'Bug' ||
+                            t.properties['severity'] != null),
+                  )
+                  .length;
+              final gBlocked = gTasks.where((t) {
+                if (t.isCompleted) return false;
+                final raw = t.properties['blockedBy'];
+                if (raw == null) return false;
+                final List<String> ids = switch (raw) {
+                  List l => l.map((e) => e.toString()).toList(),
+                  String s =>
+                    s
+                        .split(',')
+                        .map((e) => e.trim())
+                        .where((e) => e.isNotEmpty)
+                        .toList(),
+                  _ => const [],
+                };
+                return ids.any((id) {
+                  final b = c.find(id);
+                  return b != null && !b.isDeleted && !b.isCompleted;
+                });
+              }).length;
+
+              final gDash = c.activeObjects
+                  .where(
+                    (o) =>
+                        !o.isDeleted &&
+                        o.typeId == 'orbit.view' &&
+                        o.properties['viewType'] == 'game_dashboard' &&
+                        o.properties['project']?.toString().toLowerCase() ==
+                            pName.toLowerCase(),
+                  )
+                  .firstOrNull;
+
+              final gBoard = c.activeObjects
+                  .where(
+                    (o) =>
+                        !o.isDeleted &&
+                        o.typeId == 'orbit.view' &&
+                        o.properties['preset'] == 'gamedev' &&
+                        o.properties['project']?.toString().toLowerCase() ==
+                            pName.toLowerCase(),
+                  )
+                  .firstOrNull;
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 24),
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [colors.raised, colors.panel],
+                  ),
+                  border: Border.all(color: colors.border),
+                  borderRadius: BorderRadius.circular(OrbitRadius.card),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.sports_esports_outlined,
+                          size: 18,
+                          color: colors.accent,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'GAME PROJECT',
+                          style: TextStyle(
+                            color: colors.accent,
+                            fontSize: 10.5,
+                            letterSpacing: 1.2,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          pName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const Spacer(),
+                        if (gBlocked > 0) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade900.withValues(
+                                alpha: .2,
+                              ),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.lock_outline,
+                                  size: 11,
+                                  color: Colors.amber.shade400,
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  '$gBlocked Blocked',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    color: Colors.amber.shade300,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
+                        if (gBugs > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade900.withValues(alpha: .2),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.bug_report,
+                                  size: 11,
+                                  color: Colors.red.shade400,
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  '$gBugs Bugs',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    color: Colors.red.shade300,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '$gDone / $gTotal Tasks Complete ($gPercent%)',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: colors.subtle,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: gTotal > 0 ? (gDone / gTotal) : 0,
+                                  backgroundColor: colors.raised,
+                                  valueColor: AlwaysStoppedAnimation(
+                                    colors.accent,
+                                  ),
+                                  minHeight: 5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 20),
+                        if (gDash != null)
+                          FilledButton.tonal(
+                            onPressed: () => c.openObject(gDash.id),
+                            child: const Text('Dashboard'),
+                          ),
+                        if (gBoard != null) ...[
+                          const SizedBox(width: 8),
+                          OutlinedButton(
+                            onPressed: () => c.openObject(gBoard.id),
+                            child: const Text('Board'),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }(),
+
+            // Active Reverse Engineering & Research Project Card
+            () {
+              UniversalObject? targetOverview;
+              for (final o in c.activeObjects) {
+                if (!o.isDeleted &&
+                    (o.properties['isTargetOverview'] == true ||
+                        (o.typeId == 'orbit.view' &&
+                            o.properties['viewType'] == 're_dashboard'))) {
+                  targetOverview = o;
+                  break;
+                }
+              }
+              if (targetOverview == null) return const SizedBox.shrink();
+
+              final tName =
+                  targetOverview.properties['target']?.toString() ??
+                  targetOverview.title
+                      .replaceAll('Overview', '')
+                      .replaceAll('Dashboard', '')
+                      .trim();
+              if (tName.isEmpty) return const SizedBox.shrink();
+
+              final arch =
+                  targetOverview.properties['architecture']?.toString() ??
+                  'x86-64';
+              final format =
+                  targetOverview.properties['format']?.toString() ?? 'PE';
+
+              final tObjects = c.activeObjects
+                  .where(
+                    (o) =>
+                        !o.isDeleted &&
+                        (o.properties['target']?.toString().toLowerCase() ==
+                                tName.toLowerCase() ||
+                            (o.properties['folder'] as String?)
+                                    ?.toLowerCase()
+                                    .contains(tName.toLowerCase()) ==
+                                true),
+                  )
+                  .toList();
+
+              final functionsCount = tObjects
+                  .where(
+                    (o) =>
+                        o.properties['category'] == 'Function' ||
+                        o.properties.containsKey('address'),
+                  )
+                  .length;
+              final hypotheses = tObjects
+                  .where((o) => o.properties['category'] == 'Hypothesis')
+                  .toList();
+              final openHypotheses = hypotheses
+                  .where(
+                    (h) =>
+                        (h.properties['status'] as String?)?.toLowerCase() !=
+                            'confirmed' &&
+                        (h.properties['status'] as String?)?.toLowerCase() !=
+                            'rejected',
+                  )
+                  .length;
+              final findingsCount = tObjects
+                  .where((o) => o.properties['category'] == 'Finding')
+                  .length;
+
+              final reDash = c.activeObjects
+                  .where(
+                    (o) =>
+                        !o.isDeleted &&
+                        o.typeId == 'orbit.view' &&
+                        o.properties['viewType'] == 're_dashboard' &&
+                        o.properties['target']?.toString().toLowerCase() ==
+                            tName.toLowerCase(),
+                  )
+                  .firstOrNull;
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 24),
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [colors.raised, colors.panel],
+                  ),
+                  border: Border.all(color: colors.border),
+                  borderRadius: BorderRadius.circular(OrbitRadius.card),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.biotech_outlined,
+                          size: 18,
+                          color: colors.accent,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'BINARY RESEARCH & REVERSE ENGINEERING',
+                          style: TextStyle(
+                            color: colors.accent,
+                            fontSize: 11,
+                            letterSpacing: 1.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colors.accent.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '$format · $arch',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: colors.accent,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      tName,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '$functionsCount functions documented · $openHypotheses open hypotheses · $findingsCount findings',
+                      style: TextStyle(color: colors.subtle),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        FilledButton.tonalIcon(
+                          onPressed: () {
+                            if (reDash != null) {
+                              c.openObject(reDash.id);
+                            } else {
+                              c.openObject(targetOverview!.id);
+                            }
+                          },
+                          icon: const Icon(Icons.analytics_outlined, size: 16),
+                          label: const Text('Open Research Dashboard'),
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: () => c.openObject(targetOverview!.id),
+                          icon: const Icon(
+                            Icons.description_outlined,
+                            size: 16,
+                          ),
+                          label: const Text('Target Overview'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }(),
             const SizedBox(height: 16),
             // Today's Tasks
             _heading(context, "Today's tasks", '${todayTasks.length} due'),
@@ -501,6 +1141,548 @@ class HomeView extends StatelessWidget {
       style: TextStyle(color: OrbitColors.of(context).subtle, height: 1.5),
     ),
   );
+}
+
+class _FocusSessionCard extends StatefulWidget {
+  const _FocusSessionCard({required this.controller});
+  final WorkspaceController controller;
+
+  @override
+  State<_FocusSessionCard> createState() => _FocusSessionCardState();
+}
+
+class _FocusSessionCardState extends State<_FocusSessionCard> {
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _updateTicker();
+  }
+
+  @override
+  void didUpdateWidget(covariant _FocusSessionCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _updateTicker();
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  void _updateTicker() {
+    final active = widget.controller.activeWorkSession;
+    if (active != null && !active.isPaused) {
+      _ticker ??= Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    } else {
+      _ticker?.cancel();
+      _ticker = null;
+    }
+  }
+
+  String _formatDuration(Duration d) {
+    final hours = d.inHours;
+    final minutes = d.inMinutes.remainder(60);
+    final seconds = d.inSeconds.remainder(60);
+    if (hours > 0) {
+      return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  void _showContinuationNoteDialog(BuildContext context) {
+    final c = widget.controller;
+    final textController = TextEditingController(
+      text: c.activeWorkSession?.continuationNote ?? '',
+    );
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Continuation Note'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Capture reflections or next steps for this session:',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: textController,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                hintText:
+                    'e.g. Completed step 1, tomorrow investigate cache invalidation...',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              c.setWorkSessionContinuationNote(textController.text.trim());
+              Navigator.of(context).pop();
+            },
+            child: const Text('Save Note'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEndSessionDialog(BuildContext context) {
+    final c = widget.controller;
+    final session = c.activeWorkSession;
+    if (session == null) return;
+    final duration = session.elapsedActiveDuration();
+    final textController = TextEditingController(
+      text: session.continuationNote,
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('End Focus Session'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Session Summary: ${session.title}',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 10),
+              Text('• Active Duration: ${_formatDuration(duration)}'),
+              Text('• Notes Referenced/Opened: ${session.notesOpened.length}'),
+              Text('• Notes Created: ${session.notesCreated.length}'),
+              Text('• Tasks Completed: ${session.tasksCompleted.length}'),
+              const SizedBox(height: 16),
+              const Text(
+                'Continuation Note / Reflection:',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                controller: textController,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  hintText: 'Where did you leave off? What should you do next?',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Keep Working'),
+          ),
+          FilledButton(
+            onPressed: () {
+              c.endWorkSession(continuationNote: textController.text.trim());
+              Navigator.of(context).pop();
+            },
+            child: const Text('Complete Session'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showStartSessionDialog(
+    BuildContext context, {
+    String initialCategory = 'work',
+  }) {
+    final c = widget.controller;
+    final titleController = TextEditingController();
+    var category = initialCategory;
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Start Focus Session'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: titleController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Session Goal / Title (optional)',
+                  hintText: 'e.g. Compiler Study, Game Loop Design',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Category',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'work', label: Text('Work')),
+                  ButtonSegment(value: 'study', label: Text('Study')),
+                  ButtonSegment(value: 'reading', label: Text('Reading')),
+                ],
+                selected: {category},
+                onSelectionChanged: (val) {
+                  setDialogState(() => category = val.first);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final text = titleController.text.trim();
+                c.startWorkSession(
+                  title: text.isEmpty ? null : text,
+                  category: category,
+                );
+                Navigator.of(context).pop();
+              },
+              child: const Text('Start Session'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.controller;
+    final colors = OrbitColors.of(context);
+    final active = c.activeWorkSession;
+
+    if (active != null) {
+      final duration = active.elapsedActiveDuration();
+      final isPaused = active.isPaused;
+      final accentColor = isPaused ? colors.warning : colors.success;
+
+      return Container(
+        margin: const EdgeInsets.only(bottom: 20),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [accentColor.withValues(alpha: 0.12), colors.panel],
+          ),
+          border: Border.all(
+            color: accentColor.withValues(alpha: 0.4),
+            width: 1.5,
+          ),
+          borderRadius: BorderRadius.circular(OrbitRadius.card),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: accentColor.withValues(alpha: .2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    isPaused
+                        ? Icons.pause_circle_outline_rounded
+                        : Icons.timer_rounded,
+                    color: accentColor,
+                    size: 26,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: accentColor.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              isPaused ? 'PAUSED' : 'ACTIVE FOCUS',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: accentColor,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colors.panel,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: colors.border),
+                            ),
+                            child: Text(
+                              active.category.toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: colors.subtle,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        active.title,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 2,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            _formatDuration(duration),
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'monospace',
+                              color: colors.text,
+                            ),
+                          ),
+                          Text(
+                            'Active time (paused excluded)',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: colors.subtle,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (isPaused)
+                  FilledButton.icon(
+                    onPressed: c.resumeWorkSession,
+                    icon: const Icon(Icons.play_arrow_rounded, size: 16),
+                    label: const Text('Resume'),
+                  )
+                else
+                  OutlinedButton.icon(
+                    onPressed: c.pauseWorkSession,
+                    icon: const Icon(Icons.pause_rounded, size: 16),
+                    label: const Text('Pause'),
+                  ),
+                OutlinedButton.icon(
+                  onPressed: () => _showContinuationNoteDialog(context),
+                  icon: const Icon(Icons.edit_note_rounded, size: 16),
+                  label: const Text('Note'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: () => _showEndSessionDialog(context),
+                  icon: const Icon(Icons.stop_rounded, size: 16),
+                  label: const Text('End session'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                _StatBadge(
+                  icon: Icons.description_outlined,
+                  label: '${active.notesOpened.length} opened',
+                  colors: colors,
+                ),
+                _StatBadge(
+                  icon: Icons.add_circle_outline,
+                  label: '${active.notesCreated.length} created',
+                  colors: colors,
+                ),
+                _StatBadge(
+                  icon: Icons.task_alt,
+                  label: '${active.tasksCompleted.length} tasks completed',
+                  colors: colors,
+                ),
+              ],
+            ),
+            if (active.continuationNote.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Continuation note: "${active.continuationNote}"',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                  color: colors.subtle,
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    // Idle state
+    final completed = c.completedWorkSessions;
+    final last = completed.isNotEmpty ? completed.first : null;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colors.panel,
+        border: Border.all(color: colors.border),
+        borderRadius: BorderRadius.circular(OrbitRadius.card),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.timer_outlined, size: 18, color: colors.accent),
+              const SizedBox(width: 8),
+              Text(
+                'FOCUS & WORK SESSIONS',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: colors.subtle,
+                ),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: () =>
+                    _showStartSessionDialog(context, initialCategory: 'work'),
+                icon: const Icon(Icons.play_arrow_rounded, size: 16),
+                label: const Text('Start Focus Session'),
+              ),
+            ],
+          ),
+          if (last != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colors.raised,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: colors.border.withValues(alpha: 0.5)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.history_rounded, size: 16, color: colors.subtle),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Last session: ${last.title} · ${_formatDuration(last.elapsedActiveDuration())} (${last.category})',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          '${last.tasksCompleted.length} tasks completed · ${last.notesOpened.length} notes referenced'
+                          '${last.continuationNote.isNotEmpty ? ' · "${last.continuationNote}"' : ''}',
+                          style: TextStyle(fontSize: 11, color: colors.subtle),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 4),
+            Text(
+              'Track honest active focus time across work, study, and reading without unrecorded background surveillance.',
+              style: TextStyle(fontSize: 12, color: colors.subtle),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _StatBadge extends StatelessWidget {
+  const _StatBadge({
+    required this.icon,
+    required this.label,
+    required this.colors,
+  });
+
+  final IconData icon;
+  final String label;
+  final OrbitColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: colors.panel,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: colors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: colors.accent),
+          const SizedBox(width: 4),
+          Text(label, style: TextStyle(fontSize: 11, color: colors.subtle)),
+        ],
+      ),
+    );
+  }
 }
 
 class ObjectRow extends StatelessWidget {
@@ -1055,6 +2237,22 @@ const gameDevDisciplines = [
 
 const bugSeverities = ['blocker', 'critical', 'major', 'minor'];
 
+String formatAddress(dynamic addr) {
+  if (addr == null) return '0x0';
+  final s = addr.toString().trim();
+  if (s.isEmpty) return '0x0';
+  if (s.startsWith('0x') || s.startsWith('0X')) return s;
+  final val = int.tryParse(s, radix: 16);
+  if (val != null) return '0x${val.toRadixString(16).toUpperCase()}';
+  return s;
+}
+
+String formatModuleOffset(String module, dynamic addr) {
+  final cleanMod = module.trim().isEmpty ? 'target.exe' : module.trim();
+  final cleanAddr = formatAddress(addr);
+  return '$cleanMod+$cleanAddr';
+}
+
 enum KanbanPreset {
   universal('universal', 'Universal', [
     ('backlog', 'Backlog'),
@@ -1070,9 +2268,10 @@ enum KanbanPreset {
     ('done', 'Done'),
   ]),
   gamedev('gamedev', 'Game Dev', [
-    ('concept', 'Concept'),
-    ('assets', 'Assets / Art'),
+    ('backlog', 'Backlog'),
+    ('planned', 'Planned'),
     ('in-progress', 'In Progress'),
+    ('review', 'Review'),
     ('testing', 'Testing / QA'),
     ('done', 'Done'),
   ]),
@@ -1089,6 +2288,20 @@ enum KanbanPreset {
     ('exam-prep', 'Exam Prep'),
     ('review', 'Review'),
     ('done', 'Done'),
+  ]),
+  hypotheses('hypotheses', 'Hypotheses', [
+    ('open', 'Open'),
+    ('testing', 'Testing'),
+    ('supported', 'Supported'),
+    ('confirmed', 'Confirmed'),
+    ('rejected', 'Rejected'),
+  ]),
+  functions('functions', 'Function Status', [
+    ('unknown', 'Unknown'),
+    ('interesting', 'Interesting'),
+    ('investigating', 'Investigating'),
+    ('partial', 'Partially Understood'),
+    ('confirmed', 'Confirmed'),
   ]);
 
   const KanbanPreset(this.id, this.label, this.columns);
@@ -1155,6 +2368,8 @@ class _TasksViewState extends State<TasksView> {
     super.initState();
     if (widget.initialTab != null) {
       activeTab = widget.initialTab!;
+    } else if (widget.viewObject?.properties['filter'] == 'focus') {
+      activeTab = 'focus';
     } else if (widget.viewObject?.properties['viewType'] == 'board') {
       activeTab = 'board';
     }
@@ -1247,10 +2462,12 @@ class _TasksViewState extends State<TasksView> {
       if (effectiveScope != null && effectiveScope.isNotEmpty) {
         final course = t.properties['course']?.toString().toLowerCase();
         final project = t.properties['project']?.toString().toLowerCase();
+        final target = t.properties['target']?.toString().toLowerCase();
         final contextVal = t.properties['context']?.toString().toLowerCase();
         final lowerScope = effectiveScope.toLowerCase();
         if (course == lowerScope ||
             project == lowerScope ||
+            target == lowerScope ||
             contextVal == lowerScope) {
           return true;
         }
@@ -1262,9 +2479,22 @@ class _TasksViewState extends State<TasksView> {
       return false;
     }
 
-    final allTasks = c
-        .ofType('orbit.task')
-        .where((t) => !t.isDeleted && matchesScope(t))
+    final currentPresetId = widget.viewObject?.properties['preset'] as String?;
+    final isHypothesesPreset = currentPresetId == 'hypotheses';
+    final isFunctionsPreset = currentPresetId == 'functions';
+
+    final allTasks = c.activeObjects
+        .where(
+          (t) =>
+              !t.isDeleted &&
+              matchesScope(t) &&
+              (t.typeId == 'orbit.task' ||
+                  (isHypothesesPreset &&
+                      t.properties['category'] == 'Hypothesis') ||
+                  (isFunctionsPreset &&
+                      (t.properties['category'] == 'Function' ||
+                          t.properties.containsKey('address')))),
+        )
         .toList();
 
     // Tab counts
@@ -1282,6 +2512,14 @@ class _TasksViewState extends State<TasksView> {
       if (d == null) return false;
       return calendarDate(d).compareTo(today) > 0;
     }).length;
+    final focusCount = allTasks.where((t) {
+      if (t.isCompleted) return false;
+      final status = t.properties['status'] as String?;
+      final priority = t.properties['priority'] as String?;
+      return status == 'in-progress' ||
+          priority == 'urgent' ||
+          _isTaskBlocked(t);
+    }).length;
 
     final activeCustom = _customViews
         .where((v) => v.id == activeTab)
@@ -1290,6 +2528,15 @@ class _TasksViewState extends State<TasksView> {
 
     // Filter by tab
     var visibleTasks = allTasks.where((t) {
+      if (effectiveBaseTab == 'focus' ||
+          widget.viewObject?.properties['filter'] == 'focus') {
+        if (t.isCompleted) return false;
+        final status = t.properties['status'] as String?;
+        final priority = t.properties['priority'] as String?;
+        return status == 'in-progress' ||
+            priority == 'urgent' ||
+            _isTaskBlocked(t);
+      }
       if (effectiveBaseTab == 'todo') return !t.isCompleted;
       if (effectiveBaseTab == 'done') return t.isCompleted;
       if (effectiveBaseTab == 'today') {
@@ -1383,6 +2630,13 @@ class _TasksViewState extends State<TasksView> {
         if (aIdx != -1) return -1;
         if (bIdx != -1) return 1;
         return 0;
+      }
+      if (sortOption == 'estimate') {
+        int eVal(String? e) => int.tryParse(e ?? '') ?? 0;
+        final eDiff = eVal(
+          b.properties['estimate'] as String?,
+        ).compareTo(eVal(a.properties['estimate'] as String?));
+        if (eDiff != 0) return eDiff;
       }
       if (sortOption == 'priority') {
         int pVal(String? p) => switch (p) {
@@ -1512,6 +2766,10 @@ class _TasksViewState extends State<TasksView> {
                       PopupMenuItem(
                         value: 'priority',
                         child: Text('Sort by Priority'),
+                      ),
+                      PopupMenuItem(
+                        value: 'estimate',
+                        child: Text('Sort by Estimate Points'),
                       ),
                       PopupMenuItem(
                         value: 'title',
@@ -1705,28 +2963,59 @@ class _TasksViewState extends State<TasksView> {
               const SizedBox(height: 14),
 
               // Clean View Tabs
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _buildTab('todo', 'To Do', todoCount, colors),
-                    _buildTab('today', 'Today', todayCount, colors),
-                    _buildTab('upcoming', 'Upcoming', upcomingCount, colors),
-                    _buildTab('done', 'Done', doneCount, colors),
-                    _buildTab('board', 'Board', null, colors),
-                    for (final cv in _customViews) _buildCustomTab(cv, colors),
-                    const SizedBox(width: 4),
-                    IconButton(
-                      tooltip: 'Duplicate current view',
-                      icon: Icon(
-                        Icons.add_to_photos_outlined,
-                        size: 16,
-                        color: colors.subtle,
-                      ),
-                      onPressed: _duplicateCurrentView,
+              Builder(
+                builder: (context) {
+                  final showFocusTab =
+                      activeTab == 'focus' ||
+                      widget.initialTab == 'focus' ||
+                      widget.viewObject?.properties['filter'] == 'focus' ||
+                      (widget.viewObject?.properties['project'] as String?)
+                              ?.isNotEmpty ==
+                          true ||
+                      allTasks.any(
+                        (t) =>
+                            t.properties['discipline'] != null ||
+                            t.properties['severity'] != null ||
+                            (t.properties['project'] as String?)?.isNotEmpty ==
+                                true,
+                      );
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _buildTab('todo', 'To Do', todoCount, colors),
+                        if (showFocusTab)
+                          _buildTab(
+                            'focus',
+                            'Current Focus',
+                            focusCount,
+                            colors,
+                          ),
+                        _buildTab('today', 'Today', todayCount, colors),
+                        _buildTab(
+                          'upcoming',
+                          'Upcoming',
+                          upcomingCount,
+                          colors,
+                        ),
+                        _buildTab('done', 'Done', doneCount, colors),
+                        _buildTab('board', 'Board', null, colors),
+                        for (final cv in _customViews)
+                          _buildCustomTab(cv, colors),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          tooltip: 'Duplicate current view',
+                          icon: Icon(
+                            Icons.add_to_photos_outlined,
+                            size: 16,
+                            color: colors.subtle,
+                          ),
+                          onPressed: _duplicateCurrentView,
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  );
+                },
               ),
               Divider(height: 1, color: colors.divider),
             ],
@@ -2010,16 +3299,24 @@ class _TasksViewState extends State<TasksView> {
     }
 
     for (final t in allTasks) {
-      if (t.isCompleted) {
+      if (t.isCompleted &&
+          preset != KanbanPreset.hypotheses &&
+          preset != KanbanPreset.functions) {
         if (colTasks.containsKey('done')) {
           colTasks['done']!.add(t);
         } else {
           colTasks[columns.last.$1]!.add(t);
         }
       } else {
-        final status = t.properties['status'] as String?;
-        if (status != null && colTasks.containsKey(status)) {
-          colTasks[status]!.add(t);
+        final rawStatus = (t.properties['status'] as String?)
+            ?.toLowerCase()
+            .replaceAll(' ', '-');
+        if (rawStatus != null && colTasks.containsKey(rawStatus)) {
+          colTasks[rawStatus]!.add(t);
+        } else if (rawStatus != null &&
+            rawStatus.contains('part') &&
+            colTasks.containsKey('partial')) {
+          colTasks['partial']!.add(t);
         } else if (colTasks.containsKey('todo')) {
           colTasks['todo']!.add(t);
         } else {
@@ -2112,6 +3409,7 @@ class _TasksViewState extends State<TasksView> {
                       key: ValueKey(peekTask.id),
                       object: peekTask,
                       controller: widget.controller,
+                      viewObject: widget.viewObject,
                     ),
                   ),
                 ],
@@ -2141,7 +3439,7 @@ class _TasksViewState extends State<TasksView> {
           properties: {
             ...task.properties,
             'status': colId,
-            'completed': isDone,
+            if (task.typeId == 'orbit.task') 'completed': isDone,
           },
         );
       },
@@ -2550,9 +3848,15 @@ class _TasksViewState extends State<TasksView> {
 }
 
 class TaskDetail extends StatefulWidget {
-  const TaskDetail({super.key, required this.object, required this.controller});
+  const TaskDetail({
+    super.key,
+    required this.object,
+    required this.controller,
+    this.viewObject,
+  });
   final UniversalObject object;
   final WorkspaceController controller;
+  final UniversalObject? viewObject;
   @override
   State<TaskDetail> createState() => _TaskDetailState();
 }
@@ -2582,11 +3886,46 @@ class _TaskDetailState extends State<TaskDetail> {
 
   void property(String key, dynamic value) => widget.controller.edit(
     widget.object.id,
-    properties: {...widget.object.properties, key: value},
+    properties: {
+      ...(widget.controller.find(widget.object.id) ?? widget.object).properties,
+      key: value,
+    },
   );
   @override
   Widget build(BuildContext context) {
     final o = widget.object;
+    final status = o.properties['status'] is String
+        ? o.properties['status'] as String
+        : (o.isCompleted ? 'done' : 'todo');
+    final statuses = <String, String>{
+      for (final column in KanbanPreset.fromId(
+        widget.viewObject?.properties['preset'] as String?,
+      ).columns)
+        column.$1: column.$2,
+    };
+    statuses.putIfAbsent(
+      status,
+      () => status.isEmpty ? 'Empty status' : status,
+    );
+    final rawBlocker = o.properties['blockedBy'];
+    final blockerId = rawBlocker is String
+        ? rawBlocker
+        : rawBlocker is List && rawBlocker.isNotEmpty
+        ? rawBlocker.first.toString()
+        : null;
+    final blockers = {
+      for (final task
+          in widget.controller.ofType('orbit.task').where((t) => t.id != o.id))
+        task.id: task.title,
+    };
+    if (blockerId != null && !blockers.containsKey(blockerId)) {
+      final broken = widget.controller.find(blockerId);
+      blockers[blockerId] = broken == null
+          ? 'Missing task'
+          : broken.isDeleted
+          ? 'Deleted task: ${broken.title}'
+          : 'Broken reference: ${broken.title}';
+    }
     return ListView(
       padding: const EdgeInsets.all(28),
       children: [
@@ -2628,6 +3967,7 @@ class _TaskDetailState extends State<TaskDetail> {
                     ? o.properties['priority'] as String
                     : 'medium',
                 decoration: const InputDecoration(labelText: 'Priority'),
+                isExpanded: true,
                 items: ['low', 'medium', 'high', 'urgent']
                     .map(
                       (v) => DropdownMenuItem(
@@ -2642,22 +3982,19 @@ class _TaskDetailState extends State<TaskDetail> {
             SizedBox(
               width: 140,
               child: DropdownButtonFormField<String>(
-                initialValue: o.properties['status'] is String
-                    ? o.properties['status'] as String
-                    : (o.isCompleted ? 'done' : 'todo'),
+                isExpanded: true,
+                key: ValueKey('status-${o.id}-$status'),
+                initialValue: status,
                 decoration: const InputDecoration(labelText: 'Status'),
-                items: const [
-                  DropdownMenuItem(value: 'backlog', child: Text('Backlog')),
-                  DropdownMenuItem(value: 'todo', child: Text('To Do')),
-                  DropdownMenuItem(
-                    value: 'in-progress',
-                    child: Text('In Progress'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'in-review',
-                    child: Text('In Review'),
-                  ),
-                  DropdownMenuItem(value: 'done', child: Text('Done')),
+                items: [
+                  for (final option in statuses.entries)
+                    DropdownMenuItem(
+                      value: option.key,
+                      child: Text(
+                        option.value,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                 ],
                 onChanged: (v) {
                   if (v != null) {
@@ -2678,6 +4015,7 @@ class _TaskDetailState extends State<TaskDetail> {
                     ? o.properties['estimate'] as String
                     : null,
                 decoration: const InputDecoration(labelText: 'Estimate'),
+                isExpanded: true,
                 items: [
                   const DropdownMenuItem(value: null, child: Text('None')),
                   for (final est in [
@@ -2712,28 +4050,22 @@ class _TaskDetailState extends State<TaskDetail> {
             SizedBox(
               width: 180,
               child: DropdownButtonFormField<String>(
-                initialValue: o.properties['blockedBy'] is String
-                    ? o.properties['blockedBy'] as String
-                    : (o.properties['blockedBy'] is List &&
-                              (o.properties['blockedBy'] as List).isNotEmpty
-                          ? (o.properties['blockedBy'] as List).first.toString()
-                          : null),
+                isExpanded: true,
+                key: ValueKey('blocker-${o.id}-$blockerId'),
+                initialValue: blockerId,
                 decoration: const InputDecoration(labelText: 'Blocked by'),
                 items: [
                   const DropdownMenuItem(value: null, child: Text('None')),
-                  ...widget.controller
-                      .ofType('orbit.task')
-                      .where((t) => t.id != o.id && !t.isDeleted)
-                      .map(
-                        (t) => DropdownMenuItem(
-                          value: t.id,
-                          child: Text(
-                            t.title.isEmpty ? 'Untitled' : t.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
+                  ...blockers.entries.map(
+                    (t) => DropdownMenuItem(
+                      value: t.key,
+                      child: Text(
+                        t.value.isEmpty ? 'Untitled' : t.value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
+                    ),
+                  ),
                 ],
                 onChanged: (v) => property('blockedBy', v),
               ),
@@ -2746,6 +4078,7 @@ class _TaskDetailState extends State<TaskDetail> {
                     ? o.properties['discipline'] as String
                     : null,
                 decoration: const InputDecoration(labelText: 'Discipline'),
+                isExpanded: true,
                 items: [
                   const DropdownMenuItem(value: null, child: Text('None')),
                   for (final d in gameDevDisciplines)
@@ -2772,6 +4105,7 @@ class _TaskDetailState extends State<TaskDetail> {
                     ? o.properties['severity'] as String
                     : null,
                 decoration: const InputDecoration(labelText: 'Bug Severity'),
+                isExpanded: true,
                 items: [
                   const DropdownMenuItem(
                     value: null,
@@ -3154,6 +4488,8 @@ class SettingsView extends StatelessWidget {
               'A few thoughtful controls. Always a way back.',
               style: TextStyle(color: OrbitColors.of(context).subtle),
             ),
+            const SizedBox(height: 28),
+            GoogleDriveSettings(workspace: controller),
             const SizedBox(height: 28),
             const Text(
               'APPEARANCE',

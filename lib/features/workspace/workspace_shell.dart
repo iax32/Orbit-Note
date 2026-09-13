@@ -17,6 +17,7 @@ import 'package:path/path.dart' as p;
 import '../../app/orbit_theme.dart';
 import '../../app/session_state.dart';
 import '../../app/workspace_controller.dart';
+import '../../app/google_cloud_controller.dart';
 import '../../domain/universal_object.dart';
 import '../../domain/attachment_safety.dart';
 import '../../domain/object_sort.dart';
@@ -55,6 +56,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   @override
   void initState() {
     super.initState();
+    ref.read(googleCloudProvider);
     lifecycle = AppLifecycleListener(
       onResume: () => unawaited(c.checkExternalChanges()),
       onInactive: () => unawaited(c.flushAll()),
@@ -658,6 +660,32 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
           key: {...?s.noteViews[key], 'page': reference.page},
         },
       );
+    } else if (object.typeId == 'orbit.note' &&
+        object.properties['pdfSource'] is Map) {
+      final source = object.properties['pdfSource'] as Map;
+      final fileId = source['objectId'] as String?;
+      final page = source['page'] as int?;
+      if (fileId != null && page != null) {
+        final pdfFile = c.find(fileId);
+        if (pdfFile != null && !pdfFile.isDeleted) {
+          final key = 'pdf:secondary:$fileId';
+          c.updateSession((s) {
+            s.secondaryId = fileId;
+            s.noteViews = {
+              ...s.noteViews,
+              key: {...?s.noteViews[key], 'page': page},
+            };
+          });
+          return;
+        }
+      }
+    }
+    final active = c.find(c.session.activeId);
+    if (active?.typeId == 'orbit.canvas' &&
+        reference.id != active?.id &&
+        object.typeId != 'orbit.canvas') {
+      c.updateSession((s) => s.secondaryId = reference.id);
+      return;
     }
     c.openObject(reference.id);
   }
@@ -2203,6 +2231,23 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
           }
           c.edit(object.id, properties: next);
         },
+        pdfSource: object.properties['pdfSource'] is Map
+            ? Map<String, dynamic>.from(object.properties['pdfSource'] as Map)
+            : null,
+        onOpenPdfSource: (fileId, page) {
+          final otherPane = pane == 'primary' ? 'secondary' : 'primary';
+          c.updateSession((s) {
+            if (pane == 'primary') {
+              s.secondaryId = fileId;
+            } else {
+              s.activeId = fileId;
+            }
+            s.noteViews = {
+              ...s.noteViews,
+              'pdf:$otherPane:$fileId': {'page': page},
+            };
+          });
+        },
       ),
       'orbit.canvas' => CanvasEditor(
         title: object.title,
@@ -2213,7 +2258,13 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         onInsertImage: selectCanvasImage,
         onPasteImage: pasteCanvasImage,
         canvasId: object.id,
-        data: object.data,
+        data: {
+          ...object.data,
+          if (object.properties['canvasPreset'] != null)
+            'canvasPreset': object.properties['canvasPreset'],
+          if (object.properties['backgroundStyle'] != null)
+            'backgroundStyle': object.properties['backgroundStyle'],
+        },
         onChanged: (v) => c.edit(object.id, data: v),
         objects: c.activeObjects
             .where((o) => o.id != object.id)
@@ -2223,29 +2274,43 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                 title: o.title,
                 typeId: o.typeId,
                 body: o.body,
+                properties: o.properties,
               ),
             )
             .toList(),
-        onOpenObject: c.openObject,
+        onOpenObject: openLinkedObject,
         breadcrumbs: () {
-          final parents = c.activeObjects
-              .where((o) => o.typeId == 'orbit.canvas' && o.id != object.id)
-              .where((o) {
-                final elements = o.data['elements'];
-                if (elements is List) {
-                  return elements.any(
-                    (e) => e is Map && e['objectId'] == object.id,
-                  );
-                }
-                return false;
-              })
-              .toList();
-          if (parents.isEmpty) return null;
-          final parent = parents.first;
-          return [
-            CanvasBreadcrumb(id: parent.id, title: parent.title),
+          final chain = <CanvasBreadcrumb>[
             CanvasBreadcrumb(id: object.id, title: object.title),
           ];
+          final visited = <String>{object.id};
+          var currentId = object.id;
+
+          while (true) {
+            final parents = c.activeObjects
+                .where(
+                  (o) => o.typeId == 'orbit.canvas' && !visited.contains(o.id),
+                )
+                .where((o) {
+                  final elements = o.data['elements'];
+                  if (elements is List) {
+                    return elements.any(
+                      (e) => e is Map && e['objectId'] == currentId,
+                    );
+                  }
+                  return false;
+                })
+                .toList();
+            if (parents.isEmpty) break;
+            final parent = parents.first;
+            visited.add(parent.id);
+            chain.insert(
+              0,
+              CanvasBreadcrumb(id: parent.id, title: parent.title),
+            );
+            currentId = parent.id;
+          }
+          return chain.length > 1 ? chain : null;
         }(),
         camera: c.session.cameras[object.id],
         onCameraChanged: (v) {

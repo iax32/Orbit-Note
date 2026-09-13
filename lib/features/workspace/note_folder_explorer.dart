@@ -11,6 +11,8 @@ import '../../app/orbit_theme.dart';
 import '../../platform/open_attachment.dart';
 import '../../domain/object_sort.dart';
 import 'orbit_explorer_row.dart';
+import '../../application/workspace_repository.dart';
+import '../../infrastructure/storage/path_safety.dart';
 
 /// Real on-disk Notes folders. Objects keep their identity when their owner moves.
 IconData viewTypeIcon(String? viewType) => switch (viewType) {
@@ -78,11 +80,9 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         },
         onAcceptWithDetails: (details) async {
           if (details.data.noteId == null) {
-            await widget.controller.organize(
-              () => widget.controller.repository.moveFolder(
-                details.data.path,
-                '$folder/${p.posix.basename(details.data.path)}',
-              ),
+            await widget.controller.moveFolder(
+              details.data.path,
+              '$folder/${p.posix.basename(details.data.path)}',
             );
           } else {
             await widget.controller.moveObjectToFolder(
@@ -103,19 +103,40 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
     BuildContext context,
     String title, {
     String initial = '',
+    bool? isFolder,
   }) async {
     final input = TextEditingController(text: initial);
+    final form = GlobalKey<FormState>();
+    final folderName =
+        isFolder ??
+        (title.toLowerCase().contains('folder') ||
+            title.toLowerCase().contains('project') ||
+            title.toLowerCase().contains('course'));
     final result = await showDialog<String>(
       context: context,
       builder: (context) => OrbitDialog(
         title: Text(title),
-        content: TextField(
-          controller: input,
-          autofocus: true,
-          decoration: InputDecoration(
-            labelText: title.toLowerCase().contains('folder')
-                ? 'Folder name'
-                : title,
+        content: Form(
+          key: form,
+          child: TextFormField(
+            controller: input,
+            autofocus: true,
+            autovalidateMode: AutovalidateMode.onUserInteraction,
+            validator: (value) {
+              final trimmed = (value ?? '').trim();
+              if (trimmed.isEmpty) return 'Enter a name.';
+              if (folderName) {
+                try {
+                  validateFolderName(value ?? '');
+                } catch (error) {
+                  return '$error'.replaceAll('WorkspaceFailure: ', '');
+                }
+              }
+              return null;
+            },
+            decoration: InputDecoration(
+              labelText: folderName ? 'Folder name' : title,
+            ),
           ),
         ),
         actions: [
@@ -125,8 +146,11 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
           ),
           FilledButton(
             onPressed: () {
-              if (input.text.trim().isNotEmpty) {
-                Navigator.pop(context, input.text.trim());
+              if (form.currentState!.validate()) {
+                Navigator.pop(
+                  context,
+                  folderName ? input.text : input.text.trim(),
+                );
               }
             },
             child: const Text('Continue'),
@@ -250,6 +274,96 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         initial: 'Level 1',
       );
       await widget.controller.createLevelDesignDoc(folder: folder, title: name);
+    } else if (action == 'new_mechanic_spec') {
+      final name = await _name(
+        context,
+        'New Mechanic Spec',
+        initial: 'Dash Mechanic',
+      );
+      await widget.controller.createMechanicDesignDoc(
+        folder: folder,
+        title: name,
+      );
+    } else if (action == 'new_enemy_design') {
+      final name = await _name(
+        context,
+        'New Enemy Design',
+        initial: 'Melee Drone',
+      );
+      await widget.controller.createEnemyDesignDoc(folder: folder, title: name);
+    } else if (action == 'new_character_design') {
+      final name = await _name(
+        context,
+        'New Character Profile',
+        initial: 'Hero',
+      );
+      await widget.controller.createCharacterDesignDoc(
+        folder: folder,
+        title: name,
+      );
+    } else if (action == 'new_item_design') {
+      final name = await _name(
+        context,
+        'New Item / Weapon',
+        initial: 'Relic Blade',
+      );
+      await widget.controller.createItemDesignDoc(folder: folder, title: name);
+    } else if (action == 'new_quest') {
+      final name = await _name(
+        context,
+        'New Quest / Mission',
+        initial: 'The Ancient Cipher',
+      );
+      await widget.controller.createQuestDesignDoc(folder: folder, title: name);
+    } else if (action == 'new_audio_plan') {
+      final name = await _name(
+        context,
+        'New Audio Plan',
+        initial: 'Audio Asset Plan',
+      );
+      await widget.controller.createAudioDesignDoc(folder: folder, title: name);
+    } else if (action == 'new_release_checklist') {
+      final name = await _name(
+        context,
+        'New Release Checklist',
+        initial: 'Release Checklist v1.0',
+      );
+      await widget.controller.createReleaseChecklist(
+        folder: folder,
+        title: name,
+      );
+    } else if (action == 'new_weekly_review') {
+      await widget.controller.createWeeklyReview(folder: folder);
+    } else if (action == 'new_risk') {
+      final name = await _name(
+        context,
+        'New Risk Assessment',
+        initial: 'Physics Latency',
+      );
+      await widget.controller.createRiskAssessmentDoc(
+        folder: folder,
+        title: name,
+      );
+    } else if (action == 'new_decision') {
+      final name = await _name(
+        context,
+        'New Architecture Decision',
+        initial: 'Render Pipeline',
+      );
+      await widget.controller.createDecisionDoc(folder: folder, title: name);
+    } else if (action == 'duplicate_project_structure') {
+      final base = p.posix.basename(folder);
+      final name = await _name(
+        context,
+        'New Project Name',
+        initial: '${base}Copy',
+      );
+      if (name != null && name.trim().isNotEmpty) {
+        await widget.controller.duplicateGameProjectStructure(
+          base,
+          name.trim(),
+        );
+      }
     } else if (action == 'new_course') {
       final name = await _name(
         context,
@@ -272,6 +386,102 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         initial: 'Exercise',
       );
       await widget.controller.createExerciseCanvas(folder: folder, title: name);
+    } else if (action == 'new_re_project') {
+      final name = await _name(
+        context,
+        'New Reverse Engineering Project',
+        initial: 'Target',
+      );
+      if (name != null && name.trim().isNotEmpty) {
+        await widget.controller.createReverseEngineeringProject(
+          name.trim(),
+          targetParentFolder: folder,
+        );
+      }
+    } else if (action == 'new_game_internals_project') {
+      final name = await _name(
+        context,
+        'New Game Internals Project',
+        initial: 'GameTitle',
+      );
+      if (name != null && name.trim().isNotEmpty) {
+        await widget.controller.createGameInternalsProject(
+          name.trim(),
+          targetParentFolder: folder,
+        );
+      }
+    } else if (action == 'new_malware_project') {
+      final name = await _name(
+        context,
+        'New Malware Analysis Project',
+        initial: 'Sample_01',
+      );
+      if (name != null && name.trim().isNotEmpty) {
+        await widget.controller.createMalwareAnalysisProject(
+          name.trim(),
+          targetParentFolder: folder,
+        );
+      }
+    } else if (action == 'new_function_doc') {
+      final name = await _name(
+        context,
+        'New Function Symbol',
+        initial: 'sub_1400',
+      );
+      if (name != null) {
+        await widget.controller.createFunctionDoc(folder: folder, name: name);
+      }
+    } else if (action == 'new_structure_doc') {
+      final name = await _name(
+        context,
+        'New Structure Name',
+        initial: 'EntityStruct',
+      );
+      if (name != null) {
+        await widget.controller.createStructureDoc(folder: folder, name: name);
+      }
+    } else if (action == 'new_finding_doc') {
+      final name = await _name(
+        context,
+        'New Finding Title',
+        initial: 'Finding',
+      );
+      if (name != null) {
+        await widget.controller.createFindingDoc(folder: folder, title: name);
+      }
+    } else if (action == 'new_hypothesis_doc') {
+      final name = await _name(
+        context,
+        'New Hypothesis',
+        initial: 'Hypothesis',
+      );
+      if (name != null) {
+        await widget.controller.createHypothesisDoc(
+          folder: folder,
+          title: name,
+        );
+      }
+    } else if (action == 'new_session_doc') {
+      final name = await _name(
+        context,
+        'New Analysis Session',
+        initial: 'Session',
+      );
+      if (name != null) {
+        await widget.controller.createAnalysisSessionDoc(
+          folder: folder,
+          title: name,
+        );
+      }
+    } else if (action == 'new_ioc_doc') {
+      final name = await _name(
+        context,
+        'New Indicator (IOC)',
+        initial: '198.51.100.1',
+      );
+      if (name != null) {
+        await widget.controller.createIocDoc(folder: folder, value: name);
+      }
     } else if (action == 'archive') {
       widget.controller.archiveFolder(folder);
     } else if (action == 'restore') {
@@ -290,11 +500,9 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         initial: p.posix.basename(folder),
       );
       if (name != null && name != p.posix.basename(folder)) {
-        await widget.controller.organize(
-          () => widget.controller.repository.moveFolder(
-            folder,
-            '${p.posix.dirname(folder)}/$name',
-          ),
+        await widget.controller.moveFolder(
+          folder,
+          '${p.posix.dirname(folder)}/$name',
         );
       }
     } else if (action == 'delete') {
@@ -303,7 +511,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         builder: (context) => OrbitDialog(
           title: const Text('Delete folder'),
           content: Text(
-            'Delete “${p.posix.basename(folder)}”? Notes inside this folder will be moved to Trash.',
+            'Delete “${p.posix.basename(folder)}”? All contained objects will move to Trash. Restoring them places them at the root.',
           ),
           actions: [
             TextButton(
@@ -329,11 +537,9 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
     } else if (action == 'move') {
       final parent = await _destination(context, exclude: folder);
       if (parent != null && parent != p.posix.dirname(folder)) {
-        await widget.controller.organize(
-          () => widget.controller.repository.moveFolder(
-            folder,
-            '$parent/${p.posix.basename(folder)}',
-          ),
+        await widget.controller.moveFolder(
+          folder,
+          '$parent/${p.posix.basename(folder)}',
         );
       }
     }
@@ -375,12 +581,11 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
     if (_selectedNoteIds.isEmpty) return;
     final target = await _destination(context);
     if (target != null) {
-      await widget.controller.organize(() async {
-        for (final id in List.of(_selectedNoteIds)) {
-          await widget.controller.repository.moveNote(id, target);
-        }
-      });
-      setState(() => _selectedNoteIds.clear());
+      final moved = await widget.controller.moveObjectsToFolder(
+        List.of(_selectedNoteIds),
+        target,
+      );
+      if (mounted && moved) setState(() => _selectedNoteIds.clear());
     }
   }
 
@@ -456,20 +661,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
       if (o.typeId == 'orbit.file' && !widget.controller.showAttachments) {
         return false;
       }
-      final f = o.properties['folder'];
-      if (f is String && f.isNotEmpty) {
-        return f == folder;
-      }
-      final pth = repo.objectPath(o.id);
-      if (pth != null && pth.isNotEmpty) {
-        return p.posix.dirname(pth) == folder;
-      }
-      if (folder == 'Notes') {
-        return o.typeId == 'orbit.note' ||
-            o.typeId == 'orbit.canvas' ||
-            o.typeId == 'orbit.view';
-      }
-      return false;
+      return repo.objectFolder(o.id) == folder;
     }
 
     final allItems = widget.controller.activeObjects
@@ -483,6 +675,44 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         )
         .toList();
 
+    String normalizeFolder(String f) {
+      if (f == 'Notes' || f.startsWith('Notes/')) return f;
+      return 'Notes/$f';
+    }
+
+    final allKnownFolders = <String>{'Notes'};
+    for (final raw in repo.folders) {
+      if (raw.isEmpty) continue;
+      final f = normalizeFolder(raw);
+      allKnownFolders.add(f);
+      var parent = p.posix.dirname(f);
+      while (parent.isNotEmpty && parent != '.' && parent != 'Notes') {
+        allKnownFolders.add(parent);
+        parent = p.posix.dirname(parent);
+      }
+    }
+    for (final o in allItems) {
+      final raw = repo.objectFolder(o.id);
+      if (raw.isNotEmpty) {
+        final f = normalizeFolder(raw);
+        allKnownFolders.add(f);
+        var parent = p.posix.dirname(f);
+        while (parent.isNotEmpty && parent != '.' && parent != 'Notes') {
+          allKnownFolders.add(parent);
+          parent = p.posix.dirname(parent);
+        }
+      }
+    }
+
+    final rootFolders = [
+      'Notes',
+      ...allKnownFolders
+          .where((f) => f != 'Notes' && p.posix.dirname(f) == '.')
+          .toSet()
+          .toList()
+        ..sort(),
+    ];
+
     void collect(String folder) {
       if (isFolderArchived(folder)) return;
       visibleEntries.add((isFolder: true, id: folder, folderPath: folder));
@@ -490,10 +720,16 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
           !widget.filtering &&
           widget.controller.session.collapsedFolders.contains(folder);
       if (collapsed) return;
-      for (final child in repo.folders.where(
-        (f) =>
-            f != folder && p.posix.dirname(f) == folder && !isFolderArchived(f),
-      )) {
+      for (final child
+          in allKnownFolders
+              .where(
+                (f) =>
+                    f != folder &&
+                    p.posix.dirname(f) == folder &&
+                    !isFolderArchived(f),
+              )
+              .toList()
+            ..sort()) {
         collect(child);
       }
       final folderObjects = allItems
@@ -506,7 +742,9 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
       }
     }
 
-    collect('Notes');
+    for (final root in rootFolders) {
+      collect(root);
+    }
 
     void visit(String folder, int depth) {
       final collapsed =
@@ -553,130 +791,264 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                   icon: const Icon(Icons.more_horiz, size: 16),
                   onSelected: (action) =>
                       _folderAction(context, folder, action),
-                  itemBuilder: (_) => [
-                    PopupMenuItem(
-                      enabled: !repo.readOnly,
-                      value: 'new_note',
-                      child: const Text('New Note'),
-                    ),
-                    PopupMenuItem(
-                      enabled: !repo.readOnly,
-                      value: 'new_canvas',
-                      child: const Text('New Canvas'),
-                    ),
-                    PopupMenuItem(
-                      enabled: !repo.readOnly,
-                      value: 'new_task_list',
-                      child: const Text('New Task List'),
-                    ),
-                    PopupMenuItem(
-                      enabled: !repo.readOnly,
-                      value: 'new_board',
-                      child: const Text('New Board'),
-                    ),
-                    PopupMenuItem(
-                      enabled: !repo.readOnly,
-                      value: 'new_calendar',
-                      child: const Text('New Calendar'),
-                    ),
-                    PopupMenuItem(
-                      enabled: !repo.readOnly,
-                      value: 'new_timeline',
-                      child: const Text('New Timeline'),
-                    ),
-                    const PopupMenuDivider(),
-                    PopupMenuItem(
-                      enabled: !repo.readOnly,
-                      value: 'new_game_project',
-                      child: const Text('New Game Project…'),
-                    ),
-                    PopupMenuItem(
-                      enabled: !repo.readOnly,
-                      value: 'new_gdd',
-                      child: const Text('New GDD Note'),
-                    ),
-                    PopupMenuItem(
-                      enabled: !repo.readOnly,
-                      value: 'new_feature_spec',
-                      child: const Text('New Feature Spec'),
-                    ),
-                    PopupMenuItem(
-                      enabled: !repo.readOnly,
-                      value: 'new_bug_report',
-                      child: const Text('New Bug Report'),
-                    ),
-                    PopupMenuItem(
-                      enabled: !repo.readOnly,
-                      value: 'new_playtest',
-                      child: const Text('New Playtest Session'),
-                    ),
-                    PopupMenuItem(
-                      enabled: !repo.readOnly,
-                      value: 'new_dev_log',
-                      child: const Text('New Dev Log'),
-                    ),
-                    PopupMenuItem(
-                      enabled: !repo.readOnly,
-                      value: 'new_level_design',
-                      child: const Text('New Level Design Doc'),
-                    ),
-                    const PopupMenuDivider(),
-                    PopupMenuItem(
-                      enabled: !repo.readOnly,
-                      value: 'new_course',
-                      child: const Text('New Course (University)…'),
-                    ),
-                    PopupMenuItem(
-                      enabled: !repo.readOnly,
-                      value: 'new_lecture',
-                      child: const Text('New Lecture Note'),
-                    ),
-                    PopupMenuItem(
-                      enabled: !repo.readOnly,
-                      value: 'new_exercise',
-                      child: const Text('New Exercise Canvas'),
-                    ),
-                    const PopupMenuDivider(),
-                    PopupMenuItem(
-                      enabled: !repo.readOnly,
-                      value: 'new',
-                      child: Text(
-                        folder == 'Notes' ? 'New folder' : 'New subfolder',
-                      ),
-                    ),
-                    if (folder != 'Notes') ...[
+                  itemBuilder: (_) {
+                    final isGameFolder =
+                        folder.startsWith('Games') ||
+                        folder.startsWith('Notes/Games') ||
+                        folder.toLowerCase().contains('game');
+                    final isCourseFolder =
+                        folder.startsWith('Courses') ||
+                        folder.startsWith('University') ||
+                        folder.startsWith('Notes/Courses') ||
+                        folder.startsWith('Notes/University') ||
+                        folder.toLowerCase().contains('course');
+                    final isReFolder =
+                        folder.startsWith('Reverse Engineering') ||
+                        folder.startsWith('Malware Analysis') ||
+                        folder.startsWith('Game Internals') ||
+                        folder.startsWith('Notes/Reverse Engineering') ||
+                        folder.startsWith('Notes/Malware Analysis') ||
+                        folder.startsWith('Notes/Game Internals') ||
+                        folder.toLowerCase().contains('reverse engineering') ||
+                        folder.toLowerCase().contains('malware') ||
+                        folder.toLowerCase().contains('internals') ||
+                        folder.toLowerCase().contains('security');
+                    return [
                       PopupMenuItem(
                         enabled: !repo.readOnly,
-                        value: 'rename',
-                        child: const Text('Rename folder'),
+                        value: 'new_note',
+                        child: const Text('New Note'),
                       ),
                       PopupMenuItem(
                         enabled: !repo.readOnly,
-                        value: 'move',
-                        child: const Text('Move folder…'),
+                        value: 'new_canvas',
+                        child: const Text('New Canvas'),
                       ),
-                      if (!kIsWeb)
+                      PopupMenuItem(
+                        enabled: !repo.readOnly,
+                        value: 'new',
+                        child: Text(
+                          folder == 'Notes' ? 'New folder' : 'New subfolder',
+                        ),
+                      ),
+                      PopupMenuItem(
+                        enabled: !repo.readOnly,
+                        value: 'new_task_list',
+                        child: const Text('New Task List'),
+                      ),
+                      PopupMenuItem(
+                        enabled: !repo.readOnly,
+                        value: 'new_board',
+                        child: const Text('New Board'),
+                      ),
+                      PopupMenuItem(
+                        enabled: !repo.readOnly,
+                        value: 'new_calendar',
+                        child: const Text('New Calendar'),
+                      ),
+                      PopupMenuItem(
+                        enabled: !repo.readOnly,
+                        value: 'new_timeline',
+                        child: const Text('New Timeline'),
+                      ),
+                      const PopupMenuDivider(),
+                      if (folder == 'Notes' || isGameFolder) ...[
+                        PopupMenuItem(
+                          enabled: !repo.readOnly,
+                          value: 'new_game_project',
+                          child: const Text('New Game Project…'),
+                        ),
+                        if (isGameFolder) ...[
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'duplicate_project_structure',
+                            child: const Text('Duplicate Project Structure…'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_gdd',
+                            child: const Text('New GDD Note'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_feature_spec',
+                            child: const Text('New Feature Spec'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_mechanic_spec',
+                            child: const Text('New Mechanic Spec'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_level_design',
+                            child: const Text('New Level Design Doc'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_enemy_design',
+                            child: const Text('New Enemy Design'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_character_design',
+                            child: const Text('New Character Profile'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_item_design',
+                            child: const Text('New Item / Weapon'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_quest',
+                            child: const Text('New Quest / Mission'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_audio_plan',
+                            child: const Text('New Audio Plan'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_bug_report',
+                            child: const Text('New Bug Report'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_playtest',
+                            child: const Text('New Playtest Session'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_dev_log',
+                            child: const Text('New Dev Log'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_release_checklist',
+                            child: const Text('New Release Checklist'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_weekly_review',
+                            child: const Text('New Weekly Review'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_risk',
+                            child: const Text('New Risk Assessment'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_decision',
+                            child: const Text('New Architecture Decision'),
+                          ),
+                        ],
+                      ],
+                      if (folder == 'Notes' || isCourseFolder) ...[
+                        PopupMenuItem(
+                          enabled: !repo.readOnly,
+                          value: 'new_course',
+                          child: const Text('New Course (University)…'),
+                        ),
+                        if (isCourseFolder) ...[
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_lecture',
+                            child: const Text('New Lecture Note'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_exercise',
+                            child: const Text('New Exercise Canvas'),
+                          ),
+                        ],
+                      ],
+                      if (folder == 'Notes' || isReFolder) ...[
+                        PopupMenuItem(
+                          enabled: !repo.readOnly,
+                          value: 'new_re_project',
+                          child: const Text('New Reverse Engineering Project…'),
+                        ),
+                        PopupMenuItem(
+                          enabled: !repo.readOnly,
+                          value: 'new_game_internals_project',
+                          child: const Text('New Game Internals Project…'),
+                        ),
+                        PopupMenuItem(
+                          enabled: !repo.readOnly,
+                          value: 'new_malware_project',
+                          child: const Text('New Malware Analysis Project…'),
+                        ),
+                        if (isReFolder) ...[
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_function_doc',
+                            child: const Text('New Function Note'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_structure_doc',
+                            child: const Text('New Structure Note'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_finding_doc',
+                            child: const Text('New Finding Note'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_hypothesis_doc',
+                            child: const Text('New Hypothesis Note'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_session_doc',
+                            child: const Text('New Analysis Session'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_ioc_doc',
+                            child: const Text('New Indicator (IOC)'),
+                          ),
+                        ],
+                      ],
+                      const PopupMenuDivider(),
+                      if (folder != 'Notes') ...[
+                        PopupMenuItem(
+                          enabled: !repo.readOnly,
+                          value: 'rename',
+                          child: const Text('Rename folder'),
+                        ),
+                        PopupMenuItem(
+                          enabled: !repo.readOnly,
+                          value: 'move',
+                          child: const Text('Move folder…'),
+                        ),
+                        if (!kIsWeb)
+                          const PopupMenuItem(
+                            value: 'reveal',
+                            child: Text('Reveal in File Explorer'),
+                          ),
+                        PopupMenuItem(
+                          enabled: !repo.readOnly,
+                          value: 'archive',
+                          child: const Text('Archive folder'),
+                        ),
+                        PopupMenuItem(
+                          enabled: !repo.readOnly,
+                          value: 'delete',
+                          child: const Text('Delete folder'),
+                        ),
+                      ] else if (!kIsWeb) ...[
                         const PopupMenuItem(
                           value: 'reveal',
                           child: Text('Reveal in File Explorer'),
                         ),
-                      PopupMenuItem(
-                        enabled: !repo.readOnly,
-                        value: 'archive',
-                        child: const Text('Archive folder'),
-                      ),
-                      PopupMenuItem(
-                        enabled: !repo.readOnly,
-                        value: 'delete',
-                        child: const Text('Delete folder'),
-                      ),
-                    ] else if (!kIsWeb) ...[
-                      const PopupMenuItem(
-                        value: 'reveal',
-                        child: Text('Reveal in File Explorer'),
-                      ),
-                    ],
-                  ],
+                      ],
+                    ];
+                  },
                 ),
               ),
             ),
@@ -684,10 +1056,16 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         ),
       );
       if (collapsed) return;
-      for (final child in repo.folders.where(
-        (f) =>
-            f != folder && p.posix.dirname(f) == folder && !isFolderArchived(f),
-      )) {
+      for (final child
+          in allKnownFolders
+              .where(
+                (f) =>
+                    f != folder &&
+                    p.posix.dirname(f) == folder &&
+                    !isFolderArchived(f),
+              )
+              .toList()
+            ..sort()) {
         visit(child, depth + 1);
       }
       final folderObjects = allItems
@@ -800,6 +1178,12 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                           target,
                         );
                       }
+                    } else if (action == 'batch_move') {
+                      await _batchMoveToFolder();
+                    } else if (action == 'batch_copy') {
+                      await _batchCopyReferences();
+                    } else if (action == 'batch_trash') {
+                      await _batchMoveToTrash();
                     }
                   },
                   itemBuilder: (_) => [
@@ -870,10 +1254,12 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
       }
     }
 
-    visit('Notes', 0);
+    for (final root in rootFolders) {
+      visit(root, 0);
+    }
 
     // Archived Folders section
-    final archivedFolders = repo.folders
+    final archivedFolders = allKnownFolders
         .where((f) => isFolderArchived(f))
         .toList();
     if (archivedFolders.isNotEmpty) {

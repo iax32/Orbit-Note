@@ -118,7 +118,7 @@ void main() {
         final views = controller.objects
             .where((o) => o.typeId == 'orbit.view')
             .toList();
-        expect(views.length, 6);
+        expect(views.length, 7);
         final viewTypes = views.map((v) => v.properties['viewType']).toSet();
         expect(
           viewTypes,
@@ -268,11 +268,12 @@ void main() {
       'Kanban presets columns match game dev and bug tracking pipelines',
       () {
         final gamedevPreset = KanbanPreset.fromId('gamedev');
-        expect(gamedevPreset.columns.length, 5);
+        expect(gamedevPreset.columns.length, 6);
         expect(gamedevPreset.columns.map((c) => c.$1).toList(), [
-          'concept',
-          'assets',
+          'backlog',
+          'planned',
           'in-progress',
+          'review',
           'testing',
           'done',
         ]);
@@ -385,6 +386,264 @@ void main() {
             .where((o) => o.id == task.id)
             .toList();
         expect(matchingAfterEdit.length, 1);
+      },
+    );
+
+    test(
+      'Full suite of specialized game development templates create notes with correct metadata and bodies',
+      () async {
+        const folder = 'Games/Aetheria/Design';
+        const proj = 'Aetheria';
+
+        final mechanic = await controller.createMechanicDesignDoc(
+          folder: folder,
+          title: 'Grappling Hook',
+          project: proj,
+        );
+        expect(mechanic, isNotNull);
+        expect(mechanic!.properties['category'], 'Mechanic Spec');
+        expect(mechanic.body, contains('Input & Control Rules'));
+        expect(mechanic.body, contains('Edge Cases & Failure Conditions'));
+
+        final enemy = await controller.createEnemyDesignDoc(
+          folder: folder,
+          title: 'Void Stalker',
+          project: proj,
+        );
+        expect(enemy, isNotNull);
+        expect(enemy!.properties['category'], 'Enemy Design');
+        expect(enemy.body, contains('AI State Transitions'));
+        expect(enemy.body, contains('Attack Patterns'));
+
+        final character = await controller.createCharacterDesignDoc(
+          folder: folder,
+          title: 'Vespera',
+          project: proj,
+        );
+        expect(character, isNotNull);
+        expect(character!.properties['category'], 'Character Design');
+        expect(character.body, contains('Core Motivation'));
+
+        final item = await controller.createItemDesignDoc(
+          folder: folder,
+          title: 'Solar Aegis',
+          project: proj,
+        );
+        expect(item, isNotNull);
+        expect(item!.properties['category'], 'Item / Weapon');
+        expect(item.body, contains('Stats & Scaling'));
+
+        final audio = await controller.createAudioDesignDoc(
+          folder: 'Games/Aetheria/Audio',
+          title: 'Boss Combat SFX',
+          project: proj,
+        );
+        expect(audio, isNotNull);
+        expect(audio!.properties['category'], 'Audio Planning');
+        expect(audio.body, contains('Cue Breakdown'));
+
+        final quest = await controller.createQuestDesignDoc(
+          folder: folder,
+          title: 'The Lost Archives',
+          project: proj,
+        );
+        expect(quest, isNotNull);
+        expect(quest!.properties['category'], 'Quest Spec');
+        expect(quest.body, contains('Stages & Flow'));
+
+        final release = await controller.createReleaseChecklist(
+          folder: 'Games/Aetheria/Production',
+          title: 'Beta Release Checklist',
+          project: proj,
+        );
+        expect(release, isNotNull);
+        expect(release!.properties['category'], 'Release Checklist');
+        expect(release.body, contains('Zero open blocker or critical bugs'));
+
+        final review = await controller.createWeeklyReview(
+          folder: 'Games/Aetheria/Production',
+          project: proj,
+        );
+        expect(review, isNotNull);
+        expect(review!.properties['category'], 'Weekly Review');
+        expect(review.body, contains('Accomplished This Week'));
+
+        final risk = await controller.createRiskAssessmentDoc(
+          folder: 'Games/Aetheria/Production',
+          risk: 'Network desync in 4-player co-op',
+          project: proj,
+        );
+        expect(risk, isNotNull);
+        expect(risk!.properties['category'], 'Risk Assessment');
+        expect(risk.body, contains('Mitigation Strategy'));
+
+        final adr = await controller.createDecisionDoc(
+          folder: 'Games/Aetheria/Production',
+          decision: 'Entity Component System adoption',
+          project: proj,
+        );
+        expect(adr, isNotNull);
+        expect(adr!.properties['category'], 'Decision Record');
+        expect(adr.body, contains('Chosen Approach & Rationale'));
+      },
+    );
+
+    test(
+      'createTaskFromFinding converts playtest finding into task and links back to source note',
+      () async {
+        final playtest = await controller.createPlaytestSession(
+          folder: 'Games/Aetheria/Playtests',
+          title: 'Focus Group Playtest #3',
+          project: 'Aetheria',
+        );
+        expect(playtest, isNotNull);
+
+        final findingTask = await controller.createTaskFromFinding(
+          finding: 'Boss phase 2 laser attack has no telegraph animation',
+          sourceNoteId: playtest!.id,
+          project: 'Aetheria',
+          isBug: true,
+          severity: 'critical',
+          discipline: 'Animation',
+        );
+
+        expect(findingTask, isNotNull);
+        expect(findingTask!.properties['isBug'], true);
+        expect(findingTask.properties['severity'], 'critical');
+        expect(findingTask.properties['discipline'], 'Animation');
+        expect(findingTask.properties['priority'], 'urgent');
+        expect(findingTask.properties['sourceNoteId'], playtest.id);
+
+        // Verify that source playtest note was updated with backlink
+        final updatedPlaytest = controller.find(playtest.id);
+        expect(
+          updatedPlaytest?.body,
+          contains('[[Boss phase 2 laser attack has no telegraph animation]]'),
+        );
+        expect(updatedPlaytest?.body, contains('CRITICAL'));
+      },
+    );
+
+    test(
+      'duplicateGameProjectStructure clones folders and view definitions without copying completed historical tasks',
+      () async {
+        await controller.createGameProject('Chronoshift');
+
+        // Mark a task completed in Chronoshift
+        final oldTasks = controller.objects
+            .where(
+              (o) =>
+                  o.typeId == 'orbit.task' &&
+                  o.properties['project'] == 'Chronoshift',
+            )
+            .toList();
+        expect(oldTasks.isNotEmpty, true);
+        controller.edit(
+          oldTasks.first.id,
+          properties: {...oldTasks.first.properties, 'completed': true},
+        );
+
+        // Duplicate project structure to Chronoshift2
+        await controller.duplicateGameProjectStructure(
+          'Chronoshift',
+          'Chronoshift2',
+        );
+
+        // Verify new folders exist
+        expect(store.folders, contains('Games/Chronoshift2'));
+        expect(store.folders, contains('Games/Chronoshift2/Design'));
+        expect(store.folders, contains('Games/Chronoshift2/Art'));
+        expect(store.folders, contains('Games/Chronoshift2/Programming'));
+        expect(store.folders, contains('Games/Chronoshift2/Audio'));
+        expect(store.folders, contains('Games/Chronoshift2/Production'));
+        expect(store.folders, contains('Games/Chronoshift2/Playtests'));
+
+        // Verify new scoped views exist for Chronoshift2
+        final newViews = controller.objects
+            .where(
+              (o) =>
+                  o.typeId == 'orbit.view' &&
+                  o.properties['project'] == 'Chronoshift2',
+            )
+            .toList();
+        expect(newViews.length, 7);
+
+        // Verify that completed tasks from Chronoshift were NOT copied to Chronoshift2
+        final newProjectTasks = controller.objects
+            .where(
+              (o) =>
+                  o.typeId == 'orbit.task' &&
+                  o.properties['project'] == 'Chronoshift2',
+            )
+            .toList();
+        expect(newProjectTasks.isEmpty, true);
+      },
+    );
+
+    test(
+      'Game dev task estimation supports numeric and t-shirt values and focus filtering',
+      () async {
+        await controller.createGameProject('Aetheria');
+
+        // Create tasks with various estimates and states
+        final task1 = await controller.create(
+          'orbit.task',
+          title: 'Prototype core movement',
+          properties: {
+            'project': 'Aetheria',
+            'estimate': '3',
+            'status': 'in-progress',
+          },
+        );
+        final task2 = await controller.create(
+          'orbit.task',
+          title: 'Boss AI state tree',
+          properties: {
+            'project': 'Aetheria',
+            'estimate': '13',
+            'status': 'planned',
+            'priority': 'urgent',
+          },
+        );
+        final task3 = await controller.create(
+          'orbit.task',
+          title: 'Level 1 blockout',
+          properties: {
+            'project': 'Aetheria',
+            'estimate': 'XL',
+            'status': 'backlog',
+          },
+        );
+
+        expect(task1, isNotNull);
+        expect(task2, isNotNull);
+        expect(task3, isNotNull);
+
+        // Verify estimate property stored cleanly
+        expect(controller.find(task1!.id)!.properties['estimate'], '3');
+        expect(controller.find(task2!.id)!.properties['estimate'], '13');
+        expect(controller.find(task3!.id)!.properties['estimate'], 'XL');
+
+        // Check focus filtering logic: in-progress, urgent, or blocked
+        final allTasks = controller.objects
+            .where(
+              (o) =>
+                  o.typeId == 'orbit.task' &&
+                  o.properties['project'] == 'Aetheria',
+            )
+            .toList();
+        final focusTasks = allTasks.where((t) {
+          final status = t.properties['status'] as String?;
+          final priority = t.properties['priority'] as String?;
+          final blockedBy = t.properties['blockedBy'] as String?;
+          return status == 'in-progress' ||
+              priority == 'urgent' ||
+              (blockedBy != null && blockedBy.isNotEmpty);
+        }).toList();
+
+        expect(focusTasks.any((t) => t.id == task1.id), true);
+        expect(focusTasks.any((t) => t.id == task2.id), true);
+        expect(focusTasks.any((t) => t.id == task3.id), false);
       },
     );
   });

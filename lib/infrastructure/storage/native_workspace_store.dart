@@ -10,8 +10,11 @@ import 'package:uuid/uuid.dart';
 import '../../domain/workspace_failure.dart';
 import 'path_safety.dart';
 import 'native_path_moves.dart';
+import 'native_folder_commands.dart';
 import 'native_vault_lock.dart';
 import 'workspace_store.dart';
+
+part 'native_sync_staging.dart';
 
 WorkspaceStore createWorkspaceStore() =>
     NativeWorkspaceStore(rememberWorkspace: true);
@@ -21,7 +24,35 @@ class NativeWorkspaceStore
         WorkspaceStore,
         WorkspaceSelectionStore,
         WorkspaceChangeSource,
+        WorkspaceStreamingStore,
+        WorkspaceFileSizeStore,
+        WorkspaceStagingStore,
+        WorkspaceGuardedMoveStore,
+        WorkspaceFolderCommandStore,
         WorkspaceFolderStore {
+  @override
+  Future<int> fileSize(String path) async => (await _file(path)).length();
+  NativeFolderCommands get _folderCommands => NativeFolderCommands(
+    _file,
+    (path, bytes, hash) => write(path, bytes, expectedHash: hash),
+  );
+
+  @override
+  Future<void> applyFolderCommand(
+    List<FolderFileChange> files, {
+    required String workspaceId,
+    List<String> createFolders = const [],
+    List<String> removeFolders = const [],
+  }) {
+    _requireOwnership();
+    return _folderCommands.apply(
+      files,
+      workspaceId,
+      createFolders,
+      removeFolders,
+    );
+  }
+
   NativeWorkspaceStore({
     this.rememberWorkspace = false,
     this.selectionFilePath,
@@ -103,6 +134,14 @@ class NativeWorkspaceStore
 
   late Directory _root;
   NativeVaultLock? _ownership;
+  void _requireOwnership() {
+    if (_ownership == null) {
+      throw const WorkspaceFailure(
+        'Open and lock the Vault before changing its files.',
+      );
+    }
+  }
+
   @override
   String get location => _root.path;
   @override
@@ -197,6 +236,7 @@ class NativeWorkspaceStore
             record['version'] == 1) {
           await _recoverPendingWrites();
           await _moves.recover();
+          await _folderCommands.recover();
         }
       } on FormatException {
         /* Repository reports an invalid manifest. */
@@ -230,45 +270,48 @@ class NativeWorkspaceStore
   @override
   Future<List<String>> listFolders() async {
     final directory = Directory((await _file('Notes')).path);
-    final result = <String>['Notes'];
+    final result = <String>{'Notes'};
     if (await directory.exists()) {
       await for (final entity in directory.list(
         recursive: true,
         followLinks: false,
       )) {
         if (entity is Directory) {
-          result.add(
-            p.relative(entity.path, from: _root.path).replaceAll('\\', '/'),
-          );
+          final rel = p
+              .relative(entity.path, from: _root.path)
+              .replaceAll('\\', '/');
+          result.add(rel);
         }
       }
     }
-    return result..sort();
+    return result.toList()..sort();
   }
 
   @override
   Future<void> createFolder(String path) async {
-    validateNotesPath(path);
-    if (!path.startsWith('Notes/')) {
-      throw const WorkspaceFailure('Folders belong inside Notes.');
-    }
-    final directory = Directory((await _file(path)).path);
+    _requireOwnership();
+    final effectivePath = path == 'Notes' || path.startsWith('Notes/')
+        ? path
+        : 'Notes/$path';
+    validateNotesPath(effectivePath);
+    final directory = Directory((await _file(effectivePath)).path);
     if (await FileSystemEntity.type(directory.path, followLinks: false) !=
         FileSystemEntityType.notFound) {
-      throw const WorkspaceFailure('A file or folder already has that name.');
+      return;
     }
     await directory.create(recursive: true);
   }
 
   @override
   Future<void> deleteFolder(String path) async {
-    validateNotesPath(path);
-    if (!path.startsWith('Notes/')) {
-      throw const WorkspaceFailure('Folders belong inside Notes.');
-    }
-    final directory = Directory((await _file(path)).path);
+    _requireOwnership();
+    final effectivePath = path == 'Notes' || path.startsWith('Notes/')
+        ? path
+        : 'Notes/$path';
+    validateNotesPath(effectivePath);
+    final directory = Directory((await _file(effectivePath)).path);
     if (await directory.exists()) {
-      await directory.delete();
+      await directory.delete(recursive: true);
     }
   }
 
@@ -277,6 +320,7 @@ class NativeWorkspaceStore
     String relativePath, {
     required String? expectedHash,
   }) async {
+    _requireOwnership();
     validateRelativePath(relativePath);
     final file = await _file(relativePath);
     await _checkExpected(relativePath, expectedHash);
@@ -290,12 +334,37 @@ class NativeWorkspaceStore
     String source,
     String target,
     Map<String, FileReplacement> replacements,
-  ) => _moves.move(source, target, replacements);
+  ) {
+    _requireOwnership();
+    return _moves.move(source, target, replacements);
+  }
+
+  @override
+  Future<void> moveSyncPath(
+    String source,
+    String target,
+    Map<String, FileReplacement> replacements, {
+    required void Function() checkCurrent,
+  }) {
+    _requireOwnership();
+    return _moves.move(
+      source,
+      target,
+      replacements,
+      checkCurrent: checkCurrent,
+    );
+  }
 
   @override
   Future<Uint8List?> read(String relativePath) async {
     final file = await _file(relativePath);
     return await file.exists() ? file.readAsBytes() : null;
+  }
+
+  @override
+  Stream<List<int>> openRead(String relativePath) async* {
+    final file = await _file(relativePath);
+    yield* file.openRead();
   }
 
   @override
@@ -316,10 +385,8 @@ class NativeWorkspaceStore
   }
 
   Future<void> _checkExpected(String relativePath, String? expected) async {
-    final existing = await read(relativePath);
-    final actual = existing == null
-        ? null
-        : sha256.convert(existing).toString();
+    final existing = await _file(relativePath);
+    final actual = await _hashFile(existing);
     if (actual != expected) {
       throw const WorkspaceConflict(
         'This file changed outside Orbit Note. Your pending edit has not replaced it.',
@@ -328,11 +395,19 @@ class NativeWorkspaceStore
   }
 
   @override
+  Future<WorkspaceStage> stage(
+    Stream<List<int>> bytes, {
+    required String expectedHash,
+    required int maxBytes,
+  }) => _stageSync(this, bytes, expectedHash, maxBytes);
+
+  @override
   Future<void> write(
     String relativePath,
     Uint8List bytes, {
     required String? expectedHash,
   }) async {
+    _requireOwnership();
     final destination = await _file(relativePath);
     await _checkExpected(relativePath, expectedHash);
     await destination.parent.create(recursive: true);
@@ -465,7 +540,16 @@ class NativeWorkspaceStore
   }
 
   Future<void> _recoverPendingWrites() async {
-    final directory = Directory((await _file('.orbit/recovery')).path);
+    for (final area in ['.orbit', '.orbit/device']) {
+      await _recoverWriteArea(area);
+    }
+    await _retireLegacyJournals();
+    await _pruneHistory('.orbit');
+    await _pruneHistory('.orbit/device');
+  }
+
+  Future<void> _recoverWriteArea(String area) async {
+    final directory = Directory((await _file('$area/recovery')).path);
     if (!await directory.exists()) return;
     await for (final entity in directory.list(followLinks: false)) {
       if (entity is! File || !entity.path.endsWith('.json')) continue;
@@ -476,22 +560,20 @@ class NativeWorkspaceStore
           continue;
         }
         final target = record['target'] as String;
+        // A device journal must not mutate authored content.
+        if (area == '.orbit/device' && !target.startsWith('.orbit/device/')) {
+          continue;
+        }
         final temporary = record['temp'] as String;
         final temp = await _file(temporary);
         if (!await temp.exists()) {
-          final current = await read(target);
-          if (current != null &&
-              sha256.convert(current).toString() == record['afterHash']) {
+          if (await _hashFile(await _file(target)) == record['afterHash']) {
             await _completeJournal(entity, record);
           }
           continue;
         }
-        final after = await temp.readAsBytes();
-        if (sha256.convert(after).toString() != record['afterHash']) continue;
-        final current = await read(target);
-        final currentHash = current == null
-            ? null
-            : sha256.convert(current).toString();
+        if (await _hashFile(temp) != record['afterHash']) continue;
+        final currentHash = await _hashFile(await _file(target));
         if (currentHash == record['beforeHash']) {
           final destination = await _file(target);
           await temp.rename(destination.path);
@@ -502,9 +584,6 @@ class NativeWorkspaceStore
         // A corrupt/unsupported recovery record is retained verbatim for export.
       }
     }
-    await _retireLegacyJournals();
-    await _pruneHistory('.orbit');
-    await _pruneHistory('.orbit/device');
   }
 
   /// Older versions retained every successful journal. Retire only entries whose

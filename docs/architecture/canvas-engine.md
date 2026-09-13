@@ -88,3 +88,17 @@ presets change defaults only. PDF source-coordinate adapters reuse the common in
 engine. Scale checks include tile/chunk awareness, image resolution management,
 asynchronous I/O and granular updates; incremental persistence must honor the
 authoritative storage/recovery contract rather than silently relying on SQLite alone.
+
+## Connector endpoint compatibility — 2026-09-13
+
+Edited/new arrow and line placements store finite world-space `startX`, `startY`,
+`endX`, `endY`. Zero width or height is valid. Bounds and `reverseX`/`reverseY`
+are also written for legacy readers; existing bounds-only connectors remain
+readable without a bulk migration. Explicit endpoints control current bounds,
+translation and selection handles. Endpoint dragging changes only the chosen end;
+the existing history command covers the entire gesture.
+
+Existing `startId`/`endId` plus anchor choices resolve against placement geometry
+and remain authoritative for attached ends. Labels, routing and markers reuse the
+current connector renderer and persist with the placement. No object UUID or
+separate semantic relationship is created by editing connector geometry.

@@ -1,6 +1,60 @@
 # Implementation status — CURRENT
 
-## M6 sync audit — 2026-09-12
+## Google account/Drive integration — 2026-09-13, partial
+
+Windows PKCE/loopback and Android Google identity/authorization adapters, secure
+session storage/restoration, account switching/reconnect checks, quota display,
+metadata-based Vault sizing, visible root preparation and paginated discovery are
+implemented. No live credentials were configured. **Vault transfers and automatic
+Drive sync are not enabled.** See [audit and evidence](google-account-milestone-2026-09-13.md).
+
+## Runtime hardening — 2026-09-13
+
+TaskDetail accepts custom statuses and stale blockers without assertion. Native
+folder commands coordinate Notes paths and every object's logical membership,
+with staged recovery and mixed batch movement. Connector endpoint handles and
+explicit compatible geometry are implemented. Rich block moves preserve spacing;
+heading collapse survives title edits and matching-session restoration.
+Existing label/navigation/search fixes were retained and regression checked.
+See [full audit, boundaries and validation](runtime-audit-2026-09-13.md).
+Validation: **463 tests passed**, analyzer clean, 189 files format-clean, Windows
+release build successful (45.8 seconds), five-second startup smoke passed.
+Browser folder commands remain safely unsupported; native interrupted commands
+use roll-forward recovery, with read-only review if external content changed.
+
+## M6 native sync adapter — 2026-09-12 continuation
+
+`WorkspaceSyncReplica` now stages/verifies incoming streams, applies exact authored
+files through repository serialization/history, preserves conflict alternatives,
+recovers remote permanent deletion and reuses Notes move recovery. The controller
+supplies live draft/save/loading guards. The replica's state wrapper rejects late
+checkpoints after a Vault switch. These flows are tested with real native Vaults
+and a fake server; Google OAuth/Drive/WebDAV and sync UI are still unfinished.
+
+20 adapter/staging tests added. Current full suite: **340 passing**; analyzer clean;
+format/check passed; Windows release build passed (43.8s) and startup smoke passed.
+Android debug APK built successfully (28.3s); existing plugin compatibility warnings remain.
+See [current cloud task](../tasks/cloud-sync.md) for evidence and the next task.
+
+## Earlier M6 sync foundation — 2026-09-12
+
+The full owner prompt has been received. Native Vault locking, recoverable checked
+permanent deletion and tombstones, canonical sync inventory, separate durable
+device sync state, installation identity and a provider-neutral reconciliation
+engine are implemented. Offline/restart/conflict/checkpoint behavior is tested
+with a fake provider. No real Google Drive/WebDAV provider, OAuth or cloud UI is
+delivered; the production repository replica adapter remains the next task.
+
+Final local validation: format/check passed, analyzer clean, **297 tests passed**,
+Windows release build passed (31.7 seconds). See the
+[current cloud task](../tasks/cloud-sync.md),
+[detailed completion/limitations table](../features/cloud-sync.md) and
+[implemented contract](../architecture/sync.md). Existing feature work is preserved.
+Windows startup smoke passed. Android debug APK also built successfully (201.5s),
+with existing clipboard/drop plugin future Kotlin compatibility warnings; no real
+phone or Google account acceptance was performed.
+
+## Historical M6 sync audit — 2026-09-12
 
 Completed a [current-code audit](sync-audit-2026-09-12.md),
 [provider-neutral design proposal](../architecture/sync-design.md), proposed

@@ -79,6 +79,7 @@ void main() {
         expect(events.any((e) => e.startsWith('.orbit/')), isFalse);
       } finally {
         await subscription.cancel();
+        await store.close();
       }
     },
   );
@@ -131,6 +132,7 @@ void main() {
         historyMaxEntries: 3,
         historyMaxBytes: 1000,
       );
+      addTearDown(store.close);
       await store.initialize(path: root.path);
       String? hash;
       for (var i = 0; i < 20; i++) {

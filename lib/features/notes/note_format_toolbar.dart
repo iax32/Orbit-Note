@@ -5,7 +5,9 @@ enum NoteFormatAction {
   heading,
   bold,
   italic,
+  underline,
   strike,
+  highlight,
   bullet,
   numbered,
   checklist,
@@ -49,7 +51,6 @@ class NoteFormatToolbar extends StatelessWidget {
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
               if (onCommand != null)
                 PopupMenuButton<String>(
@@ -67,6 +68,9 @@ class NoteFormatToolbar extends StatelessWidget {
                             'Checklist',
                             'Quote',
                             'Callout',
+                            'Highlight',
+                            'Underline',
+                            'Footnote',
                             'Code block',
                             'Table',
                             'Inline equation',
@@ -93,9 +97,19 @@ class NoteFormatToolbar extends StatelessWidget {
                   'Italic · Ctrl+I',
                 ),
                 (
+                  NoteFormatAction.underline,
+                  Icons.format_underlined_rounded,
+                  'Underline · Ctrl+U',
+                ),
+                (
                   NoteFormatAction.strike,
                   Icons.strikethrough_s_rounded,
                   'Strikethrough',
+                ),
+                (
+                  NoteFormatAction.highlight,
+                  Icons.highlight_rounded,
+                  'Highlight · Ctrl+Shift+H',
                 ),
                 (
                   NoteFormatAction.bullet,

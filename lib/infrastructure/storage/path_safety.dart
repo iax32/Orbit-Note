@@ -1,5 +1,14 @@
 import '../../domain/workspace_failure.dart';
 
+void validateFolderName(String name) {
+  if (name.contains('/') || name.contains('\\')) {
+    throw const WorkspaceFailure(
+      'Enter one folder name, without path separators.',
+    );
+  }
+  validateNotesPath('Notes/$name');
+}
+
 void validateRelativePath(String value) {
   if (value.isEmpty ||
       value.contains('\\') ||

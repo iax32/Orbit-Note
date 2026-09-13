@@ -103,3 +103,18 @@ PDF attachments inserted now use stable file-object wiki references. Standalone
 legacy Markdown PDF links retain their source and expose an Open PDF action in
 Rich mode. PDF UUID page anchors survive Rich/Read navigation. Cross-block native
 selection and drag reordering are still unfinished; this is not full Notion parity.
+
+## Runtime stabilization — 2026-09-13
+
+Block moves now retain leading blank lines and each block's existing trailing
+spacers. A missing line ending or paragraph separator is added only at a newly
+joined boundary when necessary to keep paragraphs editable. CRLF is retained.
+The move remains one change in the existing shared undo history.
+
+Heading collapse uses transient per-block IDs, independent of heading text and
+duplicate-title order. IDs follow title edits and block moves. Device-local pane
+state records IDs/positions with a document hash; it restores only against the
+matching document, with one-time migration of older text-based collapse keys.
+IDs never enter Markdown. Arbitrary external restructuring may reset collapse
+state safely; this is not persistent authored block identity. Cross-block native
+selection remains outside this stabilization batch.

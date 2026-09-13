@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import '../../app/orbit_theme.dart';
 import '../../app/workspace_controller.dart';
 import '../../domain/universal_object.dart';
+import 'analysis_dashboard_view.dart';
 import 'calendar_view.dart';
 import 'course_dashboard_view.dart';
 import 'exercise_table_view.dart';
+import 'function_table_view.dart';
 import 'game_dashboard_view.dart';
+import 'ioc_table_view.dart';
 import 'milestone_view.dart';
 import 'timeline_view.dart';
 import 'workspace_views.dart';
@@ -120,15 +123,31 @@ class _SavedViewHostState extends State<SavedViewHost> {
         preset == 'bugs' ||
         viewType == 'game_dashboard' ||
         viewType == 'milestones' ||
-        v.properties['project'] != null ||
+        v.properties['game'] != null ||
+        (folder != null && folder.toLowerCase().contains('game'));
+
+    final isRe =
+        preset == 'hypotheses' ||
+        preset == 'functions' ||
+        viewType == 're_dashboard' ||
+        viewType == 'functions' ||
+        viewType == 'iocs' ||
+        v.properties['target'] != null ||
         (folder != null &&
-            (folder.toLowerCase().contains('game') ||
-                folder.toLowerCase().contains('games')));
+            (folder.toLowerCase().contains('reverse engineering') ||
+                folder.toLowerCase().contains('internals') ||
+                folder.toLowerCase().contains('malware') ||
+                folder.toLowerCase().contains('security')));
 
     final showCourseTabs =
         isCourse || viewType == 'exercises' || viewType == 'overview';
     final showGameTabs =
         isGame || viewType == 'game_dashboard' || viewType == 'milestones';
+    final showReTabs =
+        isRe ||
+        viewType == 're_dashboard' ||
+        viewType == 'functions' ||
+        viewType == 'iocs';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -154,6 +173,9 @@ class _SavedViewHostState extends State<SavedViewHost> {
                       'overview' => Icons.dashboard_outlined,
                       'game_dashboard' => Icons.sports_esports_outlined,
                       'milestones' => Icons.flag_outlined,
+                      're_dashboard' => Icons.biotech_outlined,
+                      'functions' => Icons.code_outlined,
+                      'iocs' => Icons.fingerprint,
                       _ => Icons.checklist_outlined,
                     },
                     size: 20,
@@ -310,6 +332,32 @@ class _SavedViewHostState extends State<SavedViewHost> {
                       colors: colors,
                     ),
                   ],
+                  if (showReTabs) ...[
+                    const SizedBox(width: 4),
+                    _ViewTab(
+                      icon: Icons.biotech_outlined,
+                      label: 'Dashboard',
+                      selected: viewType == 're_dashboard',
+                      onTap: () => _updateProperty('viewType', 're_dashboard'),
+                      colors: colors,
+                    ),
+                    const SizedBox(width: 4),
+                    _ViewTab(
+                      icon: Icons.code_outlined,
+                      label: 'Functions',
+                      selected: viewType == 'functions',
+                      onTap: () => _updateProperty('viewType', 'functions'),
+                      colors: colors,
+                    ),
+                    const SizedBox(width: 4),
+                    _ViewTab(
+                      icon: Icons.fingerprint,
+                      label: 'Indicators',
+                      selected: viewType == 'iocs',
+                      onTap: () => _updateProperty('viewType', 'iocs'),
+                      colors: colors,
+                    ),
+                  ],
                   const Spacer(),
                   const SizedBox(width: 8),
                   // Preset dropdown if in Board mode
@@ -346,6 +394,14 @@ class _SavedViewHostState extends State<SavedViewHost> {
                         DropdownMenuItem(
                           value: 'university',
                           child: Text('University Course'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'hypotheses',
+                          child: Text('Hypotheses'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'functions',
+                          child: Text('Function Status'),
                         ),
                       ],
                     ),
@@ -435,6 +491,28 @@ class _SavedViewHostState extends State<SavedViewHost> {
               folderFilter: folder,
               scope: scope,
               onSelectViewType: (vt) => _updateProperty('viewType', vt),
+            ),
+            're_dashboard' => AnalysisDashboardView(
+              key: ValueKey('re_dashboard-${v.id}'),
+              controller: c,
+              viewObject: v,
+              folderFilter: folder,
+              scope: scope,
+              onSelectViewType: (vt) => _updateProperty('viewType', vt),
+            ),
+            'functions' => FunctionTableView(
+              key: ValueKey('functions-${v.id}'),
+              controller: c,
+              viewObject: v,
+              folderFilter: folder,
+              scope: scope,
+            ),
+            'iocs' => IocTableView(
+              key: ValueKey('iocs-${v.id}'),
+              controller: c,
+              viewObject: v,
+              folderFilter: folder,
+              scope: scope,
             ),
             _ => TasksView(
               key: ValueKey('tasks-${v.id}'),

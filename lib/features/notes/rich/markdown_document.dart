@@ -411,12 +411,50 @@ class InlineProjection {
         i += link[0]!.length;
         continue;
       }
+      if (source.startsWith('<u>', i)) {
+        final end = source.indexOf('</u>', i + 3);
+        if (end > i + 3 && end + 4 <= to) {
+          _wrappers.add((i, i + 3, end, end + 4));
+          _parse(i + 3, end, {...marks, 'underline'});
+          i = end + 4;
+          continue;
+        }
+      }
+      if (source.startsWith('<ins>', i)) {
+        final end = source.indexOf('</ins>', i + 5);
+        if (end > i + 5 && end + 6 <= to) {
+          _wrappers.add((i, i + 5, end, end + 6));
+          _parse(i + 5, end, {...marks, 'underline'});
+          i = end + 6;
+          continue;
+        }
+      }
+      if (source.startsWith('<mark>', i)) {
+        final end = source.indexOf('</mark>', i + 6);
+        if (end > i + 6 && end + 7 <= to) {
+          _wrappers.add((i, i + 6, end, end + 7));
+          _parse(i + 6, end, {...marks, 'highlight'});
+          i = end + 7;
+          continue;
+        }
+      }
+      if (source.startsWith('[^', i)) {
+        final end = source.indexOf(']', i + 2);
+        if (end > i + 2 &&
+            end < to &&
+            !source.substring(i + 2, end).contains(RegExp(r'[\s\n]'))) {
+          _emit(i, end + 1, {...marks, 'footnote'});
+          i = end + 1;
+          continue;
+        }
+      }
       var matched = false;
       for (final (marker, style) in [
         ('***', 'boldItalic'),
         ('___', 'boldItalic'),
         ('**', 'bold'),
         ('__', 'bold'),
+        ('==', 'highlight'),
         ('~~', 'strike'),
         ('*', 'italic'),
         ('_', 'italic'),

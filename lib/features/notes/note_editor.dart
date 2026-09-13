@@ -13,10 +13,15 @@ import 'note_outline.dart';
 import 'rich/rich_markdown_editor.dart';
 import 'rich/document_history.dart';
 import 'rich/note_math.dart';
+import 'rich/note_highlight.dart';
+import 'rich/note_underline.dart';
+import 'rich/callout_block.dart';
 import 'rich/equation_editor.dart';
 import 'rich/code_block.dart';
 
 enum NoteEditorMode { rich, write, split, read }
+
+enum FindScope { document, selection }
 
 /// A Markdown editor and preview. The application owns save/conflict semantics.
 class NoteEditor extends StatefulWidget {
@@ -47,6 +52,8 @@ class NoteEditor extends StatefulWidget {
     this.cover,
     this.onIconChanged,
     this.onCoverChanged,
+    this.pdfSource,
+    this.onOpenPdfSource,
   });
 
   final String noteId;
@@ -76,6 +83,8 @@ class NoteEditor extends StatefulWidget {
   final String? cover;
   final ValueChanged<String?>? onIconChanged;
   final ValueChanged<String?>? onCoverChanged;
+  final Map<String, dynamic>? pdfSource;
+  final void Function(String fileId, int page)? onOpenPdfSource;
 
   @override
   State<NoteEditor> createState() => _NoteEditorState();
@@ -117,6 +126,13 @@ class _NoteEditorState extends State<NoteEditor> {
   bool _showFind = false;
   bool _inserting = false;
   int _findCount = 0;
+  FindScope _findScope = FindScope.document;
+  int _scopeStart = 0;
+  int _scopeEnd = 0;
+  int _currentMatchIndex = 0;
+  bool _matchCase = false;
+  bool _matchWholeWord = false;
+  TextSelection _lastSelection = const TextSelection.collapsed(offset: -1);
   late double _lastPreviewOffset = _offset('previewScroll');
 
   @override
@@ -134,11 +150,19 @@ class _NoteEditorState extends State<NoteEditor> {
     );
     _body.addListener(_recordView);
     _body.addListener(_recordBody);
+    _body.addListener(_recordSelection);
     _undo.onUndo.addListener(_undoDocument);
     _undo.onRedo.addListener(_redoDocument);
     _bodyFocus.onKeyEvent = _sourceKey;
     _previewScroll.addListener(_recordView);
     _sourceScroll.addListener(_recordScroll);
+  }
+
+  void _recordSelection() {
+    if (_lastSelection != _body.selection) {
+      _lastSelection = _body.selection;
+      if (mounted) setState(() {});
+    }
   }
 
   double _offset(String key) {
@@ -156,33 +180,6 @@ class _NoteEditorState extends State<NoteEditor> {
       'splitRatio': _splitRatio,
       'rich': _richState,
     });
-  }
-
-  void _replace({bool all = false}) {
-    if (_find.text.isEmpty) return;
-    final expression = RegExp(RegExp.escape(_find.text), caseSensitive: false);
-    if (all) {
-      final next = _body.text.replaceAllMapped(
-        expression,
-        (_) => _replacement.text,
-      );
-      _apply(
-        TextEditingValue(
-          text: next,
-          selection: TextSelection.collapsed(
-            offset: _body.selection.extentOffset.clamp(0, next.length),
-          ),
-        ),
-      );
-    } else {
-      final selection = _body.selection;
-      if (selection.isValid &&
-          selection.textInside(_body.text).toLowerCase() ==
-              _find.text.toLowerCase()) {
-        _apply(MarkdownEditing.insert(_body.value, _replacement.text));
-      }
-    }
-    _findNext();
   }
 
   void _jumpToHeading(NoteHeading heading) {
@@ -221,6 +218,26 @@ class _NoteEditorState extends State<NoteEditor> {
       _body.text = widget.body;
       _find.clear();
       _showFind = false;
+      _findScope = FindScope.document;
+      _currentMatchIndex = 0;
+      _scopeStart = 0;
+      _scopeEnd = 0;
+      _mode = NoteEditorMode.values.firstWhere(
+        (m) => m.name == widget.initialViewState['mode'],
+        orElse: () => NoteEditorMode.rich,
+      );
+      _splitRatio = (widget.initialViewState['splitRatio'] as num? ?? .5)
+          .toDouble()
+          .clamp(.2, .8);
+      _richState = widget.initialViewState['rich'] is Map
+          ? Map<String, dynamic>.from(widget.initialViewState['rich'] as Map)
+          : {};
+      final base = widget.initialViewState['base'];
+      final extent = widget.initialViewState['extent'];
+      _body.selection = TextSelection(
+        baseOffset: base is int ? base.clamp(0, _body.text.length) : 0,
+        extentOffset: extent is int ? extent.clamp(0, _body.text.length) : 0,
+      );
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _sourceScroll.hasClients) {
           _sourceScroll.jumpTo(
@@ -228,6 +245,13 @@ class _NoteEditorState extends State<NoteEditor> {
               0,
               _sourceScroll.position.maxScrollExtent,
             ),
+          );
+        }
+        if (mounted && _previewScroll.hasClients) {
+          _previewScroll.jumpTo(
+            _offset(
+              'previewScroll',
+            ).clamp(0, _previewScroll.position.maxScrollExtent),
           );
         }
       });
@@ -256,6 +280,7 @@ class _NoteEditorState extends State<NoteEditor> {
 
   @override
   void dispose() {
+    _body.removeListener(_recordSelection);
     _sourceScroll.removeListener(_recordScroll);
     _sourceScroll.dispose();
     _previewScroll.dispose();
@@ -356,6 +381,56 @@ class _NoteEditorState extends State<NoteEditor> {
         ),
       );
     }
+    if (command == 'Highlight') {
+      await _format(NoteFormatAction.highlight);
+      return;
+    }
+    if (command == 'Underline') {
+      await _format(NoteFormatAction.underline);
+      return;
+    }
+    if (command == 'Footnote') {
+      _insertFootnote();
+      return;
+    }
+  }
+
+  void _insertFootnote() {
+    if (_mode == NoteEditorMode.rich) {
+      _richKey.currentState?.insertFootnote();
+      return;
+    }
+    final nextNum = _nextFootnoteIndex(_body.text);
+    final ref = '[^$nextNum]';
+    final def = '[^$nextNum]: ';
+    final sel = _body.selection.isValid
+        ? _body.selection
+        : TextSelection.collapsed(offset: _body.text.length);
+    final text = _body.text;
+    final newText = text.replaceRange(sel.start, sel.end, ref);
+    final separator = newText.endsWith('\n\n')
+        ? ''
+        : newText.endsWith('\n')
+        ? '\n'
+        : '\n\n';
+    final fullText = '$newText$separator$def';
+    _apply(
+      TextEditingValue(
+        text: fullText,
+        selection: TextSelection.collapsed(offset: fullText.length),
+      ),
+    );
+  }
+
+  static int _nextFootnoteIndex(String text) {
+    var maxIndex = 0;
+    for (final match in RegExp(r'\[\^(\d+)\]').allMatches(text)) {
+      final n = int.tryParse(match.group(1) ?? '');
+      if (n != null && n > maxIndex) {
+        maxIndex = n;
+      }
+    }
+    return maxIndex + 1;
   }
 
   KeyEventResult _sourceKey(FocusNode node, KeyEvent event) {
@@ -364,6 +439,16 @@ class _NoteEditorState extends State<NoteEditor> {
     }
     final keyboard = HardwareKeyboard.instance;
     if (keyboard.isControlPressed) {
+      if (keyboard.isShiftPressed &&
+          event.logicalKey == LogicalKeyboardKey.keyH) {
+        _format(NoteFormatAction.highlight);
+        return KeyEventResult.handled;
+      }
+      if (!keyboard.isShiftPressed &&
+          event.logicalKey == LogicalKeyboardKey.keyU) {
+        _format(NoteFormatAction.underline);
+        return KeyEventResult.handled;
+      }
       if (event.logicalKey == LogicalKeyboardKey.keyZ) {
         keyboard.isShiftPressed ? _redoDocument() : _undoDocument();
         return KeyEventResult.handled;
@@ -403,8 +488,12 @@ class _NoteEditorState extends State<NoteEditor> {
         _apply(MarkdownEditing.wrap(_body.value, '**'));
       case NoteFormatAction.italic:
         _apply(MarkdownEditing.wrap(_body.value, '*'));
+      case NoteFormatAction.underline:
+        _apply(MarkdownEditing.wrap(_body.value, '<u>', closing: '</u>'));
       case NoteFormatAction.strike:
         _apply(MarkdownEditing.wrap(_body.value, '~~'));
+      case NoteFormatAction.highlight:
+        _apply(MarkdownEditing.wrap(_body.value, '=='));
       case NoteFormatAction.bullet:
         _apply(MarkdownEditing.prefixLines(_body.value, '- '));
       case NoteFormatAction.numbered:
@@ -487,44 +576,288 @@ class _NoteEditorState extends State<NoteEditor> {
     }
   }
 
+  RegExp? _buildSearchRegex() {
+    final query = _find.text;
+    if (query.isEmpty) return null;
+    var pattern = RegExp.escape(query);
+    if (_matchWholeWord) {
+      pattern = r'\b' + pattern + r'\b';
+    }
+    return RegExp(pattern, caseSensitive: _matchCase);
+  }
+
+  List<TextRange> _computeMatches() {
+    final regex = _buildSearchRegex();
+    if (regex == null) return const [];
+    final text = _body.text;
+    final int startLimit;
+    final int endLimit;
+    if (_findScope == FindScope.selection) {
+      startLimit = _scopeStart.clamp(0, text.length);
+      endLimit = _scopeEnd.clamp(startLimit, text.length);
+    } else {
+      startLimit = 0;
+      endLimit = text.length;
+    }
+    if (startLimit >= endLimit) return const [];
+    final scopeText = text.substring(startLimit, endLimit);
+    final matches = <TextRange>[];
+    for (final m in regex.allMatches(scopeText)) {
+      matches.add(
+        TextRange(start: startLimit + m.start, end: startLimit + m.end),
+      );
+    }
+    return matches;
+  }
+
+  void _updateMatches({bool focusMatch = false, bool fromStart = false}) {
+    if (_find.text.isEmpty) {
+      setState(() {
+        _findCount = 0;
+        _currentMatchIndex = 0;
+      });
+      return;
+    }
+    final matches = _computeMatches();
+    setState(() {
+      _findCount = matches.length;
+      if (matches.isEmpty) {
+        _currentMatchIndex = 0;
+      } else if (fromStart || _currentMatchIndex == 0) {
+        _currentMatchIndex = 1;
+      } else if (_currentMatchIndex > matches.length) {
+        _currentMatchIndex = matches.length;
+      }
+    });
+    if (focusMatch && matches.isNotEmpty) {
+      final match = matches[_currentMatchIndex - 1];
+      _body.selection = TextSelection(
+        baseOffset: match.start,
+        extentOffset: match.end,
+      );
+    }
+  }
+
   void _openFind() {
+    final sel = _body.selection;
+    if (sel.isValid && !sel.isCollapsed) {
+      _scopeStart = math.min(sel.start, sel.end);
+      _scopeEnd = math.max(sel.start, sel.end);
+      final selectedText = sel.textInside(_body.text);
+      final isMultiLine = selectedText.contains('\n');
+      if (!isMultiLine && selectedText.length <= 40) {
+        _find.text = selectedText;
+        _findScope = FindScope.document;
+      } else {
+        _findScope = FindScope.selection;
+      }
+    } else {
+      _findScope = FindScope.document;
+    }
     setState(() {
       _showFind = true;
       _mode = NoteEditorMode.write;
     });
+    if (_find.text.isNotEmpty) {
+      _find.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _find.text.length,
+      );
+      _updateMatches(focusMatch: false);
+    }
     _findFocus.requestFocus();
   }
 
   void _findNext({bool fromStart = false}) {
-    final query = _find.text.toLowerCase();
-    if (query.isEmpty) {
-      setState(() => _findCount = 0);
+    if (_find.text.isEmpty) {
+      setState(() {
+        _findCount = 0;
+        _currentMatchIndex = 0;
+      });
       return;
     }
-    final text = _body.text.toLowerCase();
-    var count = 0;
-    var cursor = 0;
-    while ((cursor = text.indexOf(query, cursor)) >= 0) {
-      count++;
-      cursor += query.length;
+    final matches = _computeMatches();
+    if (matches.isEmpty) {
+      setState(() {
+        _findCount = 0;
+        _currentMatchIndex = 0;
+      });
+      return;
     }
-    var match = text.indexOf(
-      query,
-      fromStart ? 0 : math.max(0, _body.selection.end),
+    int nextIndex;
+    if (fromStart) {
+      nextIndex = 0;
+    } else {
+      final currentEnd = _body.selection.end;
+      nextIndex = matches.indexWhere((m) => m.start >= currentEnd);
+      if (nextIndex < 0) {
+        nextIndex = 0;
+      }
+    }
+    final match = matches[nextIndex];
+    _body.selection = TextSelection(
+      baseOffset: match.start,
+      extentOffset: match.end,
     );
-    if (match < 0) match = text.indexOf(query);
-    if (match >= 0) {
-      _body.selection = TextSelection(
-        baseOffset: match,
-        extentOffset: match + query.length,
-      );
-      if (!fromStart) _bodyFocus.requestFocus();
+    if (!fromStart) _bodyFocus.requestFocus();
+    setState(() {
+      _findCount = matches.length;
+      _currentMatchIndex = nextIndex + 1;
+    });
+  }
+
+  void _findPrevious() {
+    if (_find.text.isEmpty) return;
+    final matches = _computeMatches();
+    if (matches.isEmpty) return;
+    final currentStart = _body.selection.start;
+    int prevIndex = matches.lastIndexWhere((m) => m.end <= currentStart);
+    if (prevIndex < 0) {
+      prevIndex = matches.length - 1;
     }
-    setState(() => _findCount = count);
+    final match = matches[prevIndex];
+    _body.selection = TextSelection(
+      baseOffset: match.start,
+      extentOffset: match.end,
+    );
+    _bodyFocus.requestFocus();
+    setState(() {
+      _findCount = matches.length;
+      _currentMatchIndex = prevIndex + 1;
+    });
+  }
+
+  void _replace({bool all = false}) {
+    if (_find.text.isEmpty) return;
+    final regex = _buildSearchRegex();
+    if (regex == null) return;
+    if (all) {
+      if (_findScope == FindScope.selection) {
+        final text = _body.text;
+        final sStart = _scopeStart.clamp(0, text.length);
+        final sEnd = _scopeEnd.clamp(sStart, text.length);
+        final before = text.substring(0, sStart);
+        final selected = text.substring(sStart, sEnd);
+        final after = text.substring(sEnd);
+
+        final replacedSelected = selected.replaceAllMapped(
+          regex,
+          (_) => _replacement.text,
+        );
+        final next = '$before$replacedSelected$after';
+        _scopeEnd = sStart + replacedSelected.length;
+        _apply(
+          TextEditingValue(
+            text: next,
+            selection: TextSelection(
+              baseOffset: sStart,
+              extentOffset: _scopeEnd,
+            ),
+          ),
+        );
+      } else {
+        final next = _body.text.replaceAllMapped(
+          regex,
+          (_) => _replacement.text,
+        );
+        _apply(
+          TextEditingValue(
+            text: next,
+            selection: TextSelection.collapsed(
+              offset: _body.selection.extentOffset.clamp(0, next.length),
+            ),
+          ),
+        );
+      }
+    } else {
+      final selection = _body.selection;
+      if (selection.isValid && !selection.isCollapsed) {
+        final selectedText = selection.textInside(_body.text);
+        final isMatch = _matchCase
+            ? selectedText == _find.text
+            : selectedText.toLowerCase() == _find.text.toLowerCase();
+        if (isMatch) {
+          final diff = _replacement.text.length - selectedText.length;
+          _apply(MarkdownEditing.insert(_body.value, _replacement.text));
+          if (_findScope == FindScope.selection) {
+            _scopeEnd = (_scopeEnd + diff).clamp(
+              _scopeStart,
+              _body.text.length,
+            );
+          }
+        }
+      }
+    }
+    _findNext();
+  }
+
+  void _toggleFindScope() {
+    setState(() {
+      if (_findScope == FindScope.document) {
+        final sel = _body.selection;
+        if (_bodyFocus.hasFocus &&
+            sel.isValid &&
+            !sel.isCollapsed &&
+            sel.start != sel.end) {
+          _scopeStart = math.min(sel.start, sel.end);
+          _scopeEnd = math.max(sel.start, sel.end);
+        } else if (_scopeStart >= _scopeEnd) {
+          if (sel.isValid && !sel.isCollapsed && sel.start != sel.end) {
+            _scopeStart = math.min(sel.start, sel.end);
+            _scopeEnd = math.max(sel.start, sel.end);
+          } else {
+            _scopeStart = 0;
+            _scopeEnd = _body.text.length;
+          }
+        }
+        _findScope = FindScope.selection;
+      } else {
+        _findScope = FindScope.document;
+      }
+    });
+    _updateMatches(focusMatch: true);
+  }
+
+  void _toggleMatchCase() {
+    setState(() => _matchCase = !_matchCase);
+    _updateMatches(focusMatch: true);
+  }
+
+  void _toggleMatchWholeWord() {
+    setState(() => _matchWholeWord = !_matchWholeWord);
+    _updateMatches(focusMatch: true);
+  }
+
+  void _closeFind() {
+    setState(() {
+      _showFind = false;
+      _findScope = FindScope.document;
+    });
+    _bodyFocus.requestFocus();
   }
 
   Future<void> _openLink(String? href) async {
     if (href == null) return;
+    if (href.startsWith('#fn-')) {
+      if (_previewScroll.hasClients) {
+        _previewScroll.animateTo(
+          _previewScroll.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      }
+      return;
+    }
+    if (href.startsWith('#fnref-')) {
+      if (_previewScroll.hasClients) {
+        _previewScroll.animateTo(
+          0.0,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      }
+      return;
+    }
     final uri = Uri.tryParse(href);
     if (uri == null) return;
     switch (uri.scheme) {
@@ -842,6 +1175,70 @@ class _NoteEditorState extends State<NoteEditor> {
     );
   }
 
+  Widget _buildPdfSourceBanner() {
+    final pdfSource = widget.pdfSource!;
+    final pdfId = pdfSource['objectId'] as String?;
+    final page = pdfSource['page'] as int? ?? 1;
+    if (pdfId == null) return const SizedBox.shrink();
+
+    String pdfTitle = 'PDF document';
+    if (pdfSource['title'] is String &&
+        (pdfSource['title'] as String).isNotEmpty) {
+      pdfTitle = pdfSource['title'] as String;
+    } else {
+      for (final t in widget.linkTargets) {
+        if (t.id == pdfId) {
+          pdfTitle = t.title;
+          break;
+        }
+      }
+    }
+
+    final theme = Theme.of(context);
+    return Container(
+      key: const ValueKey('pdf-source-banner'),
+      margin: const EdgeInsets.only(top: 8, bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.6)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.picture_as_pdf_outlined,
+            size: 18,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'PDF Source: $pdfTitle · Page $page',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (widget.onOpenPdfSource != null)
+            TextButton.icon(
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+              ),
+              onPressed: () => widget.onOpenPdfSource!(pdfId, page),
+              icon: const Icon(Icons.open_in_new, size: 14),
+              label: const Text('View in PDF'),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
@@ -860,8 +1257,11 @@ class _NoteEditorState extends State<NoteEditor> {
       final selChars = hasSelection
           ? sel.textInside(_body.text).runes.length
           : 0;
+      final selReadTime = selWords < 100
+          ? '< 1 min read'
+          : '~${math.max(1, (selWords / 200).ceil())} min read';
       final statsLabel = hasSelection
-          ? '$selWords of $words ${words == 1 ? 'word' : 'words'} ($selChars chars selected)  ·  ~$readMinutes min read'
+          ? 'Selection: $selWords of $words ${words == 1 ? 'word' : 'words'} ($selChars chars, $selReadTime)  ·  Document: $words ${words == 1 ? 'word' : 'words'} ($chars characters, ~$readMinutes min read)'
           : '$words ${words == 1 ? 'word' : 'words'}  ·  $chars characters  ·  ~$readMinutes min read';
       final theme = Theme.of(context);
       return CallbackShortcuts(
@@ -870,12 +1270,20 @@ class _NoteEditorState extends State<NoteEditor> {
               _format(NoteFormatAction.bold),
           const SingleActivator(LogicalKeyboardKey.keyI, control: true): () =>
               _format(NoteFormatAction.italic),
+          const SingleActivator(LogicalKeyboardKey.keyU, control: true): () =>
+              _format(NoteFormatAction.underline),
           const SingleActivator(LogicalKeyboardKey.keyK, control: true): () =>
               _format(NoteFormatAction.link),
           const SingleActivator(LogicalKeyboardKey.keyF, control: true):
               _openFind,
           const SingleActivator(LogicalKeyboardKey.keyH, control: true):
               _openFind,
+          const SingleActivator(
+            LogicalKeyboardKey.keyH,
+            control: true,
+            shift: true,
+          ): () =>
+              _format(NoteFormatAction.highlight),
           if (widget.onPasteImage != null)
             const SingleActivator(
               LogicalKeyboardKey.keyV,
@@ -1009,6 +1417,7 @@ class _NoteEditorState extends State<NoteEditor> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildPageHeader(),
+                        if (widget.pdfSource != null) _buildPdfSourceBanner(),
                         TextField(
                           key: const ValueKey('note-title'),
                           focusNode: _titleFocus,
@@ -1080,8 +1489,22 @@ class _NoteEditorState extends State<NoteEditor> {
                         onPressed: _findCount > 0
                             ? () => _replace(all: true)
                             : null,
-                        child: const Text('Replace all'),
+                        child: Text(
+                          _findScope == FindScope.selection
+                              ? 'Replace all in selection'
+                              : 'Replace all',
+                        ),
                       ),
+                      if (_findScope == FindScope.selection)
+                        Chip(
+                          visualDensity: VisualDensity.compact,
+                          label: const Text(
+                            'In Selection',
+                            style: TextStyle(fontSize: 11),
+                          ),
+                          onDeleted: _toggleFindScope,
+                          deleteIcon: const Icon(Icons.close, size: 14),
+                        ),
                     ],
                   ),
                 ),
@@ -1165,8 +1588,9 @@ class _NoteEditorState extends State<NoteEditor> {
                   vertical: 10,
                 ),
                 child: Tooltip(
-                  message:
-                      'Document metrics: $words words, $chars characters, ~$readMinutes min read time (200 wpm)',
+                  message: hasSelection
+                      ? 'Selection: $selWords words ($selReadTime) · Document: $words words, $chars characters, ~$readMinutes min read time (200 wpm)'
+                      : 'Document metrics: $words words, $chars characters, ~$readMinutes min read time (200 wpm)',
                   child: Text(
                     statsLabel,
                     key: const ValueKey('document-stats'),
@@ -1183,41 +1607,133 @@ class _NoteEditorState extends State<NoteEditor> {
     },
   );
 
-  Widget _findBar() => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-    child: Row(
-      children: [
-        Expanded(
-          child: TextField(
-            controller: _find,
-            focusNode: _findFocus,
-            decoration: const InputDecoration(
-              hintText: 'Find in this note',
-              isDense: true,
-              prefixIcon: Icon(Icons.search_rounded, size: 18),
+  Widget _findBar() {
+    final theme = Theme.of(context);
+    final isSelectionScope = _findScope == FindScope.selection;
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyC, alt: true):
+            _toggleMatchCase,
+        const SingleActivator(LogicalKeyboardKey.keyW, alt: true):
+            _toggleMatchWholeWord,
+        const SingleActivator(LogicalKeyboardKey.keyS, alt: true):
+            _toggleFindScope,
+        const SingleActivator(LogicalKeyboardKey.escape): _closeFind,
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _find,
+                focusNode: _findFocus,
+                decoration: InputDecoration(
+                  hintText: 'Find in this note',
+                  isDense: true,
+                  prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                  suffixIcon: _find.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear_rounded, size: 16),
+                          tooltip: 'Clear search',
+                          onPressed: () {
+                            _find.clear();
+                            _updateMatches();
+                          },
+                        )
+                      : null,
+                ),
+                onChanged: (_) => _findNext(fromStart: true),
+                onSubmitted: (_) {
+                  if (HardwareKeyboard.instance.isShiftPressed) {
+                    _findPrevious();
+                  } else {
+                    _findNext();
+                  }
+                },
+              ),
             ),
-            onChanged: (_) => _findNext(fromStart: true),
-            onSubmitted: (_) => _findNext(),
-          ),
+            const SizedBox(width: 4),
+            IconButton(
+              tooltip: 'Match case · Alt+C',
+              isSelected: _matchCase,
+              style: _matchCase
+                  ? IconButton.styleFrom(
+                      backgroundColor: theme.colorScheme.primaryContainer,
+                      foregroundColor: theme.colorScheme.onPrimaryContainer,
+                    )
+                  : null,
+              onPressed: _toggleMatchCase,
+              icon: const Text(
+                'Aa',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Match whole word · Alt+W',
+              isSelected: _matchWholeWord,
+              style: _matchWholeWord
+                  ? IconButton.styleFrom(
+                      backgroundColor: theme.colorScheme.primaryContainer,
+                      foregroundColor: theme.colorScheme.onPrimaryContainer,
+                    )
+                  : null,
+              onPressed: _toggleMatchWholeWord,
+              icon: const Text(
+                r'\bW\b',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+              ),
+            ),
+            IconButton(
+              tooltip: isSelectionScope
+                  ? 'Find in selection (active) · Alt+S'
+                  : 'Find in selection · Alt+S',
+              isSelected: isSelectionScope,
+              style: isSelectionScope
+                  ? IconButton.styleFrom(
+                      backgroundColor: theme.colorScheme.primaryContainer,
+                      foregroundColor: theme.colorScheme.onPrimaryContainer,
+                    )
+                  : null,
+              onPressed: _toggleFindScope,
+              icon: const Icon(Icons.select_all_rounded, size: 18),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '$_findCount ${_findCount == 1 ? 'match' : 'matches'}',
+              style: theme.textTheme.labelSmall,
+            ),
+            if (_findCount > 0)
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Text(
+                  '($_currentMatchIndex of $_findCount)',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            const SizedBox(width: 4),
+            IconButton(
+              tooltip: 'Previous match',
+              onPressed: _findCount > 0 ? _findPrevious : null,
+              icon: const Icon(Icons.arrow_upward_rounded, size: 18),
+            ),
+            IconButton(
+              tooltip: 'Next match',
+              onPressed: _findCount > 0 ? _findNext : null,
+              icon: const Icon(Icons.arrow_downward_rounded, size: 18),
+            ),
+            IconButton(
+              tooltip: 'Close find',
+              onPressed: _closeFind,
+              icon: const Icon(Icons.close_rounded, size: 18),
+            ),
+          ],
         ),
-        const SizedBox(width: 8),
-        Text(
-          '$_findCount matches',
-          style: Theme.of(context).textTheme.labelSmall,
-        ),
-        IconButton(
-          tooltip: 'Next match',
-          onPressed: _findCount > 0 ? _findNext : null,
-          icon: const Icon(Icons.arrow_downward_rounded, size: 18),
-        ),
-        IconButton(
-          tooltip: 'Close find',
-          onPressed: () => setState(() => _showFind = false),
-          icon: const Icon(Icons.close_rounded, size: 18),
-        ),
-      ],
-    ),
-  );
+      ),
+    );
+  }
 
   Widget _source() => Center(
     child: ConstrainedBox(
@@ -1281,9 +1797,22 @@ class _NoteEditorState extends State<NoteEditor> {
                     ),
                   )
                 : MarkdownBody(
-                    inlineSyntaxes: [MathInlineSyntax()],
-                    blockSyntaxes: const [MathBlockSyntax()],
+                    inlineSyntaxes: [
+                      HighlightInlineSyntax(),
+                      MarkTagInlineSyntax(),
+                      UnderlineInlineSyntax(),
+                      InsInlineSyntax(),
+                      MathInlineSyntax(),
+                    ],
+                    blockSyntaxes: const [
+                      CalloutBlockSyntax(),
+                      MathBlockSyntax(),
+                    ],
                     builders: {
+                      'callout': CalloutElementBuilder(),
+                      'mark': HighlightElementBuilder(),
+                      'u': UnderlineElementBuilder(),
+                      'ins': UnderlineElementBuilder(),
                       'math-inline': MathElementBuilder(),
                       'math-block': MathElementBuilder(display: true),
                       'pre': CodeElementBuilder(),

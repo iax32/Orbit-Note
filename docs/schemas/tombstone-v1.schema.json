@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Orbit permanent deletion tombstone v1",
+  "type": "object",
+  "required": ["format", "version", "workspaceId", "objectId", "operationId", "path", "beforeHash", "deletedAt"],
+  "properties": {
+    "format": {"const": "orbit-note-tombstone"},
+    "version": {"const": 1},
+    "workspaceId": {"type": "string", "format": "uuid"},
+    "objectId": {"type": "string", "format": "uuid"},
+    "operationId": {"type": "string", "format": "uuid"},
+    "path": {"type": "string", "description": "Validated old workspace-relative owning-file path; never a command by itself."},
+    "beforeHash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "deletedAt": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": true
+}

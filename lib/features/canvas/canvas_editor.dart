@@ -9,11 +9,16 @@ import 'package:uuid/uuid.dart';
 
 import '../../canvas/geometry.dart';
 import '../../canvas/arrangement.dart';
+import '../../canvas/canvas_svg.dart';
 import '../../canvas/columns.dart';
+import '../../canvas/connectors.dart';
+import '../../canvas/groups.dart';
 import '../../canvas/scene.dart';
 import '../../domain/json_values.dart';
+import '../../platform/export_file.dart';
 import 'canvas_painter.dart';
 import 'canvas_images.dart';
+import 'canvas_rich_text.dart';
 
 export 'canvas_painter.dart' show CanvasObjectReference;
 export 'canvas_images.dart' show CanvasImageReference;
@@ -29,6 +34,7 @@ enum _Tool {
   arrow,
   line,
   pen,
+  highlighter,
   eraser,
   frame,
 }
@@ -93,7 +99,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
   final _titleFocus = FocusNode(debugLabel: 'CanvasTitle');
   final _focus = FocusNode(debugLabel: 'Canvas');
   final _text = TextEditingController();
-  final _textFocus = FocusNode();
+  late final _textFocus = FocusNode(
+    debugLabel: 'CanvasElementText',
+    onKeyEvent: _onTextKeyEvent,
+  );
   final Set<String> _selection = {};
   Map<String, CanvasObjectReference> _objects = {};
   _Tool _tool = _Tool.select;
@@ -108,11 +117,15 @@ class _CanvasEditorState extends State<CanvasEditor> {
   int? _pointer;
   bool _panning = false;
   bool _resizing = false;
+  bool? _endpointStart;
   bool _spacePressed = false;
   bool _snap = false;
   bool _showMinimap = false;
   String _backgroundStyle = 'dots';
   final List<CanvasGuideLine> _activeGuides = [];
+  String? _connectingStartId;
+  String? _connectingEndId;
+  String? _hoveredAnchorElementId;
   int _color = 0xff8b7cf6;
   Size _viewport = Size.zero;
   Map<String, dynamic>? _lastEmitted;
@@ -145,6 +158,50 @@ class _CanvasEditorState extends State<CanvasEditor> {
           if (mounted) setState(() {});
         },
       );
+    }
+    final preset = widget.data['canvasPreset'] as String?;
+    if (_history.scene.elements.isEmpty && preset != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _history.scene.elements.isNotEmpty) return;
+        switch (preset) {
+          case 'exercise':
+            _applyExercisePreset();
+          case 'study_board':
+            _applyStudyBoardPreset();
+          case 'course_map':
+            _applyCourseMapPreset();
+          case 'game_roadmap':
+            _applyGameRoadmapPreset();
+          case 'core_loop':
+            _applyCoreLoopPreset();
+          case 'level_design':
+            _applyLevelDesignPreset();
+          case 'ai_state_machine':
+            _applyAiStateMachinePreset();
+          case 'moodboard':
+            _applyMoodboardPreset();
+          case 'playtest_feedback':
+            _applyPlaytestFeedbackPreset();
+          case 'narrative_board':
+            _applyNarrativeBoardPreset();
+          case 'game_architecture':
+            _applyGameArchitecturePreset();
+          case 'call_flow':
+            _applyCallFlowPreset();
+          case 'object_relationships':
+            _applyObjectRelationshipsPreset();
+          case 'structure_layout':
+            _applyStructureLayoutPreset();
+          case 'binary_layout':
+            _applyBinaryLayoutPreset();
+          case 'protocol_flow':
+            _applyProtocolFlowPreset();
+          case 'process_tree':
+            _applyProcessTreePreset();
+          case 'rendering_pipeline':
+            _applyRenderingPipelinePreset();
+        }
+      });
     }
   }
 
@@ -225,7 +282,9 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _startCamera = _camera;
     _panning =
         (event.kind == PointerDeviceKind.touch &&
-            (_tool == _Tool.pen || _tool == _Tool.eraser)) ||
+            (_tool == _Tool.pen ||
+                _tool == _Tool.highlighter ||
+                _tool == _Tool.eraser)) ||
         _tool == _Tool.pan ||
         _spacePressed ||
         event.buttons == kMiddleMouseButton;
@@ -237,9 +296,23 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _history.begin();
     if (_tool == _Tool.select) {
       final single = _selection.length == 1 ? _scene[_selection.first] : null;
+      final endpoints = single != null && isConnectorElement(single)
+          ? resolveConnectorEndpoints(single, _scene)
+          : null;
       if (single != null &&
           !single.locked &&
+          endpoints != null &&
+          ((_start! - endpoints.start).length < 13 / _camera.zoom ||
+              (_start! - endpoints.end).length < 13 / _camera.zoom)) {
+        _endpointStart =
+            (_start! - endpoints.start).length <=
+            (_start! - endpoints.end).length;
+        _resizing = true;
+        _original[single.id] = single;
+      } else if (single != null &&
+          !single.locked &&
           single.type != 'ink' &&
+          !isConnectorElement(single) &&
           (_start! -
                       CanvasPoint(
                         single.bounds.right + 4 / _camera.zoom,
@@ -258,9 +331,19 @@ class _CanvasEditorState extends State<CanvasEditor> {
         if (hit != null) {
           if (_shift && _selection.contains(hit.id)) {
             _selection.remove(hit.id);
+            if (hit.groupId != null) {
+              for (final m in getGroupMembers(_scene, hit.groupId!)) {
+                _selection.remove(m.id);
+              }
+            }
           } else {
             if (!_shift && !_selection.contains(hit.id)) _selection.clear();
             _selection.add(hit.id);
+            if (hit.groupId != null && !_shift) {
+              for (final m in getGroupMembers(_scene, hit.groupId!)) {
+                _selection.add(m.id);
+              }
+            }
           }
           for (final id in _selection) {
             if (_scene[id] != null && !_scene[id]!.locked) {
@@ -280,12 +363,29 @@ class _CanvasEditorState extends State<CanvasEditor> {
               }
             }
           }
+          final checkedGroupIds = <String>{};
+          for (final id in _selection) {
+            final elem = _scene[id];
+            if (elem?.groupId != null && checkedGroupIds.add(elem!.groupId!)) {
+              if (isGroupLocked(_scene, elem.groupId!)) {
+                _original.clear();
+                _notice('Unlock the group’s items before moving it.');
+                break;
+              }
+              final members = getGroupMembers(_scene, elem.groupId!);
+              for (final member in members) {
+                if (!member.locked) {
+                  _original[member.id] = member;
+                }
+              }
+            }
+          }
         } else {
           if (!_shift) _selection.clear();
           _region = CanvasBounds(_start!.x, _start!.y, 0, 0);
         }
       }
-    } else if (_tool == _Tool.pen) {
+    } else if (_tool == _Tool.pen || _tool == _Tool.highlighter) {
       _strokeStart = event.timeStamp;
       _sample(event.localPosition, event.pressure, event.timeStamp);
     } else if (_tool == _Tool.eraser) {
@@ -311,6 +411,23 @@ class _CanvasEditorState extends State<CanvasEditor> {
         _tool = _Tool.select;
       });
       _edit(element);
+    } else if (_tool == _Tool.arrow || _tool == _Tool.line) {
+      final hit = _scene.hit(
+        _start!,
+        tolerance: 16 / _camera.zoom,
+        includeLocked: true,
+      );
+      if (hit != null && hit.type != 'column') {
+        _connectingStartId = hit.id;
+        _hoveredAnchorElementId = hit.id;
+        final anchor = findClosestAnchor(hit.bounds, _start!);
+        final anchorPt = getElementAnchors(hit.bounds)[anchor];
+        if (anchorPt != null) _start = anchorPt;
+      } else {
+        _connectingStartId = null;
+        _hoveredAnchorElementId = null;
+      }
+      _connectingEndId = null;
     }
     setState(() {});
   }
@@ -327,7 +444,35 @@ class _CanvasEditorState extends State<CanvasEditor> {
     }
     if (_start == null) return;
     if (_tool == _Tool.select) {
-      if (_region != null) {
+      if (_endpointStart != null && _original.isNotEmpty) {
+        final original = _original.values.first;
+        final endpoints = resolveConnectorEndpoints(original, _scene);
+        final hit = _scene.hit(
+          point,
+          tolerance: 12 / _camera.zoom,
+          includeLocked: true,
+        );
+        final anchorTarget =
+            hit != null && hit.id != original.id && !isConnectorElement(hit)
+            ? hit
+            : null;
+        final anchor = anchorTarget == null
+            ? ConnectorAnchor.auto
+            : findClosestAnchor(anchorTarget.bounds, point);
+        final moved = anchorTarget == null
+            ? point
+            : getElementAnchors(anchorTarget.bounds)[anchor]!;
+        _history.put(
+          original.copy({
+            ...connectorEndpointData(
+              _endpointStart! ? moved : endpoints.start,
+              _endpointStart! ? endpoints.end : moved,
+            ),
+            _endpointStart! ? 'startId' : 'endId': anchorTarget?.id,
+            _endpointStart! ? 'startAnchor' : 'endAnchor': anchor.label,
+          }),
+        );
+      } else if (_region != null) {
         _region = CanvasBounds.between(_start!, point);
       } else if (_resizing && _original.isNotEmpty) {
         final original = _original.values.first;
@@ -430,26 +575,80 @@ class _CanvasEditorState extends State<CanvasEditor> {
           }
         }
         for (final original in _original.values) {
+          if ((original.type == 'connector' ||
+                  original.type == 'arrow' ||
+                  original.type == 'line') &&
+              (original.startId != null || original.endId != null) &&
+              !_original.containsKey(original.startId) &&
+              !_original.containsKey(original.endId)) {
+            continue;
+          }
           _history.put(original.translated(delta));
         }
+        for (final conn in _scene.elements) {
+          if (conn.type == 'connector' ||
+              conn.type == 'arrow' ||
+              conn.type == 'line') {
+            final startMoving =
+                conn.startId != null && _original.containsKey(conn.startId);
+            final endMoving =
+                conn.endId != null && _original.containsKey(conn.endId);
+            if (startMoving || endMoving) {
+              final endpoints = resolveConnectorEndpoints(conn, _scene);
+              _history.put(
+                conn.copy(
+                  connectorEndpointData(endpoints.start, endpoints.end),
+                ),
+              );
+            }
+          }
+        }
       }
-    } else if (_tool == _Tool.pen) {
+    } else if (_tool == _Tool.pen || _tool == _Tool.highlighter) {
       _sample(event.localPosition, event.pressure, event.timeStamp);
     } else if (_tool == _Tool.eraser) {
       _erase(point);
     } else {
-      final bounds = CanvasBounds.between(_start!, point);
+      var currentPoint = point;
+      if (_tool == _Tool.arrow || _tool == _Tool.line) {
+        final hit = _scene.hit(
+          point,
+          tolerance: 16 / _camera.zoom,
+          includeLocked: true,
+        );
+        if (hit != null &&
+            hit.id != _connectingStartId &&
+            hit.type != 'column') {
+          _connectingEndId = hit.id;
+          _hoveredAnchorElementId = hit.id;
+          final anchor = findClosestAnchor(hit.bounds, point);
+          final anchorPt = getElementAnchors(hit.bounds)[anchor];
+          if (anchorPt != null) currentPoint = anchorPt;
+        } else {
+          _connectingEndId = null;
+          _hoveredAnchorElementId = _connectingStartId;
+        }
+      }
+      final bounds = CanvasBounds.between(_start!, currentPoint);
+      final isConnector =
+          _connectingStartId != null || _connectingEndId != null;
       _preview = CanvasElement({
         'id': 'preview',
-        'type': _tool.name,
+        'type': isConnector ? 'connector' : _tool.name,
         'x': bounds.left,
         'y': bounds.top,
         'width': bounds.width,
         'height': bounds.height,
         'color': _color,
         'strokeWidth': 2.0,
-        'reverseX': point.x < _start!.x,
-        'reverseY': point.y < _start!.y,
+        'reverseX': currentPoint.x < _start!.x,
+        'reverseY': currentPoint.y < _start!.y,
+        if (_connectingStartId != null) 'startId': _connectingStartId,
+        if (_connectingEndId != null) 'endId': _connectingEndId,
+        'startAnchor': 'auto',
+        'endAnchor': 'auto',
+        if (_tool == _Tool.arrow || _tool == _Tool.line)
+          ...connectorEndpointData(_start!, currentPoint),
       });
     }
     setState(() {});
@@ -471,6 +670,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
       'pressure': pressure.isFinite ? pressure.clamp(0, 1) : 1.0,
       'timeMs': (time - _strokeStart).inMilliseconds,
     });
+    final isHighlighter = _tool == _Tool.highlighter;
     _preview = CanvasElement({
       'id': 'preview',
       'type': 'ink',
@@ -480,7 +680,8 @@ class _CanvasEditorState extends State<CanvasEditor> {
       'height': 0.0,
       'points': List.of(_ink),
       'color': _color,
-      'strokeWidth': 3.0,
+      'strokeWidth': isHighlighter ? 22.0 : 3.0,
+      'isHighlighter': isHighlighter,
     });
   }
 
@@ -490,7 +691,12 @@ class _CanvasEditorState extends State<CanvasEditor> {
     )) {
       if (element.type == 'ink' &&
           !element.locked &&
-          element.hit(point, tolerance: 12 / _camera.zoom)) {
+          element.hit(
+            point,
+            tolerance:
+                (element.data['isHighlighter'] == true ? 22.0 : 12.0) /
+                _camera.zoom,
+          )) {
         _history.remove(element.id);
       }
     }
@@ -498,13 +704,17 @@ class _CanvasEditorState extends State<CanvasEditor> {
 
   void _up(PointerUpEvent event) {
     if (event.pointer != _pointer) return;
+    final point = _world(event.localPosition);
+    final isTap = _start != null && (point - _start!).length < 4 / _camera.zoom;
     if (_panning) {
       _cameraChanged();
     } else if (_region != null) {
       for (final element in _scene.query(_region!)) {
         if (!element.locked) _selection.add(element.id);
       }
-    } else if (_tool == _Tool.pen && _ink.isNotEmpty) {
+    } else if ((_tool == _Tool.pen || _tool == _Tool.highlighter) &&
+        _ink.isNotEmpty) {
+      final isHighlighter = _tool == _Tool.highlighter;
       final minX = _ink.map((p) => p['x'] as double).reduce(math.min);
       final minY = _ink.map((p) => p['y'] as double).reduce(math.min);
       final maxX = _ink.map((p) => p['x'] as double).reduce(math.max);
@@ -518,7 +728,8 @@ class _CanvasEditorState extends State<CanvasEditor> {
           'width': maxX - minX,
           'height': maxY - minY,
           'color': _color,
-          'strokeWidth': 3.0,
+          'strokeWidth': isHighlighter ? 22.0 : 3.0,
+          'isHighlighter': isHighlighter,
           'points': _ink
               .map(
                 (p) => {
@@ -531,12 +742,72 @@ class _CanvasEditorState extends State<CanvasEditor> {
         }),
       );
     } else if (_preview != null &&
-        (_preview!.width > 2 || _preview!.height > 2)) {
-      final element = _preview!.copy({'id': _id()});
+        (_preview!.width > 2 ||
+            _preview!.height > 2 ||
+            _connectingStartId != null ||
+            _connectingEndId != null)) {
+      final element = _preview!.copy({
+        'id': _id(),
+        if (_connectingStartId != null) 'startId': _connectingStartId,
+        if (_connectingEndId != null) 'endId': _connectingEndId,
+      });
       _history.put(element);
       _selection
         ..clear()
         ..add(element.id);
+    }
+    if (isTap && !_panning && !_resizing && _selection.length == 1) {
+      final selectedId = _selection.single;
+      final element = _scene[selectedId];
+      if (element != null &&
+          (element.type == 'sticky' || element.type == 'card')) {
+        final contentBounds = element.type == 'sticky'
+            ? Rect.fromLTWH(
+                element.x + 16,
+                element.y + 16,
+                math.max(1, element.width - 32),
+                math.max(1, element.height - 32),
+              )
+            : Rect.fromLTWH(
+                element.x + 16,
+                element.y + 98,
+                math.max(1, element.width - 32),
+                math.max(1, element.height - 110),
+              );
+        final lines = element.text.trim().split('\n');
+        final isCardWithTitle = element.type == 'card' && lines.length > 1;
+        final targetText = isCardWithTitle
+            ? lines.skip(1).join('\n')
+            : element.text;
+        final lineIndex = CanvasRichText.hitTestCheckbox(
+          text: targetText,
+          bounds: contentBounds,
+          clickOffset: Offset(point.x, point.y),
+          textCache: _textCache,
+          defaultFontSize: element.type == 'sticky' ? 16.0 : 12.0,
+        );
+        if (lineIndex != null) {
+          final updatedTargetText = CanvasRichText.toggleLine(
+            targetText,
+            lineIndex,
+          );
+          final updatedText = isCardWithTitle
+              ? '${lines.first}\n$updatedTargetText'
+              : updatedTargetText;
+          final original = _original[selectedId];
+          _history.put(
+            element.copy({
+              'text': updatedText,
+              'x': original?.x ?? element.x,
+              'y': original?.y ?? element.y,
+            }),
+          );
+          _clearGesture();
+          _commit();
+          setState(() {});
+          return;
+        }
+      }
     }
     if (!_panning &&
         !_resizing &&
@@ -544,31 +815,33 @@ class _CanvasEditorState extends State<CanvasEditor> {
         _selection.length == 1) {
       final element = _scene[_selection.single];
       final original = _original[_selection.single];
-      if (element != null &&
-          original != null &&
-          element.type != 'column' &&
-          (element.x != original.x || element.y != original.y)) {
-        final columns = _scene
-            .query(element.bounds)
-            .where(
-              (e) =>
-                  e.type == 'column' &&
-                  !e.locked &&
-                  e.bounds.contains(element.bounds.center) &&
-                  !columnMembers(_scene, e.id).any((child) => child.locked),
-            )
-            .toList();
-        final target = columns.isEmpty ? null : columns.last;
-        final oldColumn = element.data['columnId'];
-        _history.put(element.copy({'columnId': target?.id}));
-        for (final id in {oldColumn, target?.id}.whereType<String>()) {
-          final column = _scene[id];
-          if (column != null) {
-            for (final item in arrangeColumn(
-              column,
-              columnMembers(_scene, id),
-            )) {
-              _history.put(item);
+      if (element != null && original != null) {
+        if (isTap && (element.x != original.x || element.y != original.y)) {
+          _history.put(element.copy({'x': original.x, 'y': original.y}));
+        } else if (element.type != 'column' &&
+            (element.x != original.x || element.y != original.y)) {
+          final columns = _scene
+              .query(element.bounds)
+              .where(
+                (e) =>
+                    e.type == 'column' &&
+                    !e.locked &&
+                    e.bounds.contains(element.bounds.center) &&
+                    !columnMembers(_scene, e.id).any((child) => child.locked),
+              )
+              .toList();
+          final target = columns.isEmpty ? null : columns.last;
+          final oldColumn = element.data['columnId'];
+          _history.put(element.copy({'columnId': target?.id}));
+          for (final id in {oldColumn, target?.id}.whereType<String>()) {
+            final column = _scene[id];
+            if (column != null) {
+              for (final item in arrangeColumn(
+                column,
+                columnMembers(_scene, id),
+              )) {
+                _history.put(item);
+              }
             }
           }
         }
@@ -579,6 +852,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   void _clearGesture() {
+    _endpointStart = null;
     _pointer = null;
     _start = null;
     _lastScreen = null;
@@ -589,6 +863,9 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _panning = false;
     _resizing = false;
     _activeGuides.clear();
+    _connectingStartId = null;
+    _connectingEndId = null;
+    _hoveredAnchorElementId = null;
   }
 
   void _cancelGesture() {
@@ -618,7 +895,15 @@ class _CanvasEditorState extends State<CanvasEditor> {
 
   void _delete() {
     _finishText();
+    final toDelete = {..._selection};
     for (final id in _selection) {
+      if (_scene[id]?.groupId != null) {
+        toDelete.addAll(
+          getGroupMembers(_scene, _scene[id]!.groupId!).map((e) => e.id),
+        );
+      }
+    }
+    for (final id in toDelete) {
       if (_scene[id]?.type == 'column' && !(_scene[id]?.locked ?? true)) {
         for (final member in columnMembers(_scene, id)) {
           _history.put(member.copy({'columnId': null}));
@@ -630,11 +915,52 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _commit();
   }
 
+  void _reorder(String action) {
+    if (_scene.readOnly || _selection.isEmpty) return;
+    _history.reorder(_selection, () {
+      final items = _selection.toList();
+      if (action == 'front') {
+        for (final id in items) {
+          _scene.bringToFront(id);
+        }
+      } else if (action == 'back') {
+        for (final id in items.reversed) {
+          _scene.sendToBack(id);
+        }
+      } else if (action == 'forward') {
+        final sorted = items.toList()
+          ..sort(
+            (a, b) =>
+                (_scene.orderOf(b) ?? 0).compareTo(_scene.orderOf(a) ?? 0),
+          );
+        for (final id in sorted) {
+          _scene.bringForward(id);
+        }
+      } else if (action == 'backward') {
+        final sorted = items.toList()
+          ..sort(
+            (a, b) =>
+                (_scene.orderOf(a) ?? 0).compareTo(_scene.orderOf(b) ?? 0),
+          );
+        for (final id in sorted) {
+          _scene.sendBackward(id);
+        }
+      }
+    });
+    _commit();
+    setState(() {});
+  }
+
   Future<void> _copy({bool cut = false}) async {
     final ids = {..._selection};
     for (final id in _selection) {
       if (_scene[id]?.type == 'column') {
         ids.addAll(columnMembers(_scene, id).map((e) => e.id));
+      }
+      if (_scene[id]?.groupId != null) {
+        ids.addAll(
+          getGroupMembers(_scene, _scene[id]!.groupId!).map((e) => e.id),
+        );
       }
     }
     if (cut && ids.any((id) => _scene[id]?.locked == true)) {
@@ -728,6 +1054,11 @@ class _CanvasEditorState extends State<CanvasEditor> {
       if (_scene[id]?.type == 'column') {
         ids.addAll(columnMembers(_scene, id).map((e) => e.id));
       }
+      if (_scene[id]?.groupId != null) {
+        ids.addAll(
+          getGroupMembers(_scene, _scene[id]!.groupId!).map((e) => e.id),
+        );
+      }
     }
     final originals = ids
         .map((id) => _scene[id])
@@ -737,6 +1068,13 @@ class _CanvasEditorState extends State<CanvasEditor> {
     if (originals.isEmpty) return;
 
     final newIds = {for (final original in originals) original.id: _id()};
+    final groupMap = <String, String>{};
+    for (final orig in originals) {
+      if (orig.groupId != null && !groupMap.containsKey(orig.groupId!)) {
+        groupMap[orig.groupId!] =
+            'grp_${DateTime.now().millisecondsSinceEpoch}_${math.Random().nextInt(10000)}';
+      }
+    }
     final newSelection = <String>{};
 
     _history.begin();
@@ -745,14 +1083,19 @@ class _CanvasEditorState extends State<CanvasEditor> {
           .map((p) => CanvasPoint(p.x + 20, p.y + 20))
           .map((p) => {'x': p.x, 'y': p.y})
           .toList();
-      final duplicate = original.copy({
+      final newGid = original.groupId != null
+          ? groupMap[original.groupId!]
+          : null;
+      final patch = <String, dynamic>{
         'id': newIds[original.id],
         'columnId': newIds[original.data['columnId']],
         'x': original.x + 20,
         'y': original.y + 20,
         'locked': false,
         if (shiftedPoints.isNotEmpty) 'points': shiftedPoints,
-      });
+      };
+      if (newGid != null) patch['groupId'] = newGid;
+      final duplicate = original.copy(patch);
       _history.put(duplicate);
       if (_selection.contains(original.id)) {
         newSelection.add(duplicate.id);
@@ -888,6 +1231,56 @@ class _CanvasEditorState extends State<CanvasEditor> {
     setState(() {});
   }
 
+  void _applyArrangement(CanvasArrangement action) {
+    if (_scene.readOnly || _selection.length < 2) return;
+    _finishText();
+    _cancelGesture();
+    final elements = _selection
+        .map((id) => _scene[id])
+        .whereType<CanvasElement>();
+    final rearranged = arrangeCanvas(elements, action);
+    if (rearranged.isEmpty) return;
+    _history.begin();
+    for (final element in rearranged) {
+      _history.put(element);
+    }
+    _commit();
+    setState(() {});
+  }
+
+  void _groupSelection() {
+    if (_scene.readOnly || _selection.length < 2) return;
+    _finishText();
+    _cancelGesture();
+    final grouped = groupElements(_scene, _selection);
+    if (grouped.isEmpty) return;
+    _history.begin();
+    for (final element in grouped) {
+      _history.put(element);
+    }
+    _commit();
+    setState(() {});
+    _notice('Grouped ${grouped.length} elements.');
+  }
+
+  void _ungroupSelection() {
+    if (_scene.readOnly || _selection.isEmpty) return;
+    _finishText();
+    _cancelGesture();
+    final ungrouped = ungroupElements(_scene, _selection);
+    if (ungrouped.isEmpty) {
+      _notice('No groups found in selection.');
+      return;
+    }
+    _history.begin();
+    for (final element in ungrouped) {
+      _history.put(element);
+    }
+    _commit();
+    setState(() {});
+    _notice('Ungrouped ${ungrouped.length} elements.');
+  }
+
   void _notice(String text) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 
@@ -902,14 +1295,22 @@ class _CanvasEditorState extends State<CanvasEditor> {
       return;
     }
     if (element.type == 'card') {
-      if (_objects.containsKey(element.objectId)) {
+      if (element.objectId != null &&
+          element.objectId!.isNotEmpty &&
+          _objects.containsKey(element.objectId)) {
         widget.onOpenObject(element.objectId!);
-      } else {
+        return;
+      }
+      if (element.objectId != null &&
+          element.objectId!.isNotEmpty &&
+          !_objects.containsKey(element.objectId) &&
+          element.text.trim().isEmpty) {
         _notice(
           'The original object is unavailable. Removing this card does not delete an object.',
         );
+        return;
       }
-      return;
+      // Standalone card or card with text: allow inline editing below
     }
     if (element.type == 'swatch') {
       final hex =
@@ -928,6 +1329,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
           'column',
           'section',
           'swatch',
+          'card',
+          'arrow',
+          'line',
+          'connector',
         }.contains(element.type)) {
       return;
     }
@@ -954,6 +1359,64 @@ class _CanvasEditorState extends State<CanvasEditor> {
     // Text drafts are published while typing; finishing coalesces their undo entry.
     if (_history.inCommand) _commit();
     if (mounted) setState(() {});
+  }
+
+  KeyEventResult _onTextKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      _finishText();
+      _focus.requestFocus();
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.enter &&
+        (_command ||
+            (_editingId != null &&
+                (_scene[_editingId!]?.type == 'connector' ||
+                    _scene[_editingId!]?.type == 'arrow' ||
+                    _scene[_editingId!]?.type == 'line')))) {
+      _finishText();
+      _focus.requestFocus();
+      return KeyEventResult.handled;
+    }
+
+    if (!HardwareKeyboard.instance.isControlPressed &&
+        !HardwareKeyboard.instance.isMetaPressed &&
+        !HardwareKeyboard.instance.isAltPressed &&
+        event.logicalKey == LogicalKeyboardKey.enter) {
+      final res = CanvasRichText.handleSmartEnter(_text.text, _text.selection);
+      if (res != null) {
+        _text.value = TextEditingValue(
+          text: res.text,
+          selection: res.selection,
+        );
+        final element = _editingId == null ? null : _scene[_editingId!];
+        if (element != null) {
+          _history.put(element.copy({'text': res.text}));
+          _emit();
+        }
+        return KeyEventResult.handled;
+      }
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  void _applyFormatPrefix(String prefix) {
+    if (_editingId == null) return;
+    final res = CanvasRichText.toggleLinePrefix(
+      _text.text,
+      _text.selection,
+      prefix,
+    );
+    _text.value = TextEditingValue(text: res.text, selection: res.selection);
+    final element = _scene[_editingId!];
+    if (element != null) {
+      _history.put(element.copy({'text': res.text}));
+      _emit();
+    }
+    _textFocus.requestFocus();
   }
 
   KeyEventResult _key(FocusNode node, KeyEvent event) {
@@ -1000,6 +1463,8 @@ class _CanvasEditorState extends State<CanvasEditor> {
       _paste();
     } else if (_command && key == LogicalKeyboardKey.keyD) {
       _duplicate();
+    } else if (_command && key == LogicalKeyboardKey.keyG) {
+      _shift ? _ungroupSelection() : _groupSelection();
     } else if (_command && key == LogicalKeyboardKey.keyA) {
       setState(() {
         _selection.addAll(
@@ -1019,6 +1484,16 @@ class _CanvasEditorState extends State<CanvasEditor> {
       _setTool(_Tool.pan);
     } else if (!_command && key == LogicalKeyboardKey.keyP) {
       _setTool(_Tool.pen);
+    } else if (!_command && key == LogicalKeyboardKey.keyY) {
+      _setTool(_Tool.highlighter);
+    } else if (!_command &&
+        key == LogicalKeyboardKey.bracketRight &&
+        _selection.isNotEmpty) {
+      _shift ? _reorder('front') : _reorder('forward');
+    } else if (!_command &&
+        key == LogicalKeyboardKey.bracketLeft &&
+        _selection.isNotEmpty) {
+      _shift ? _reorder('back') : _reorder('backward');
     } else if (!_command && key == LogicalKeyboardKey.keyT) {
       _setTool(_Tool.text);
     } else if (!_command && key == LogicalKeyboardKey.keyS) {
@@ -1078,8 +1553,18 @@ class _CanvasEditorState extends State<CanvasEditor> {
       _viewport,
       minimapSize,
     );
-    final worldX = contentRect.left + (localPos.dx - offsetX) / scale;
-    final worldY = contentRect.top + (localPos.dy - offsetY) / scale;
+    final clampedX = scale > 0
+        ? localPos.dx.clamp(offsetX, offsetX + contentRect.width * scale)
+        : localPos.dx;
+    final clampedY = scale > 0
+        ? localPos.dy.clamp(offsetY, offsetY + contentRect.height * scale)
+        : localPos.dy;
+    final worldX = scale > 0
+        ? contentRect.left + (clampedX - offsetX) / scale
+        : contentRect.left;
+    final worldY = scale > 0
+        ? contentRect.top + (clampedY - offsetY) / scale
+        : contentRect.top;
     setState(() {
       _camera = CanvasCamera(
         x: worldX - (_viewport.width / _camera.zoom) / 2,
@@ -1122,25 +1607,35 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _cameraChanged();
   }
 
-  Future<void> _chooseObject() async {
+  Future<void> _chooseObject({CanvasPoint? at}) async {
     _finishText();
     final query = TextEditingController();
     final selected = await showDialog<CanvasObjectReference>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, update) {
+          final queryLower = query.text.toLowerCase().trim();
           final results = widget.objects
               .where(
                 (o) =>
                     o.id != widget.canvasId &&
-                    o.title.toLowerCase().contains(query.text.toLowerCase()),
+                    (queryLower.isEmpty ||
+                        o.title.toLowerCase().contains(queryLower) ||
+                        o.typeId.toLowerCase().contains(queryLower) ||
+                        (o.properties['pdfSource'] is Map &&
+                            ((o.properties['pdfSource'] as Map)['quote']
+                                is String) &&
+                            ((o.properties['pdfSource'] as Map)['quote']
+                                    as String)
+                                .toLowerCase()
+                                .contains(queryLower))),
               )
               .toList();
           return OrbitDialog(
             title: const Text('Place an object'),
             content: SizedBox(
-              width: 420,
-              height: 360,
+              width: 440,
+              height: 380,
               child: Column(
                 children: [
                   TextField(
@@ -1148,7 +1643,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                     autofocus: true,
                     decoration: const InputDecoration(
                       prefixIcon: Icon(Icons.search),
-                      hintText: 'Find a note, task or project',
+                      hintText: 'Find a note, task, PDF highlight or file',
                     ),
                     onChanged: (_) => update(() {}),
                   ),
@@ -1157,17 +1652,44 @@ class _CanvasEditorState extends State<CanvasEditor> {
                     child: results.isEmpty
                         ? const Center(
                             child: Text(
-                              'No matching objects. Create a note or task first.',
+                              'No matching objects. Create a note, task, or PDF highlight first.',
                             ),
                           )
                         : ListView.builder(
                             itemCount: results.length,
                             itemBuilder: (context, index) {
                               final object = results[index];
+                              final isPdfHighlight =
+                                  object.properties['pdfSource'] is Map;
+                              final isTask = object.typeId == 'orbit.task';
+                              final isFile = object.typeId == 'orbit.file';
+                              final icon = isPdfHighlight
+                                  ? Icons.picture_as_pdf_outlined
+                                  : (isTask
+                                        ? Icons.check_circle_outline
+                                        : (isFile
+                                              ? Icons.attach_file
+                                              : Icons.link));
+                              final subtitle = isPdfHighlight
+                                  ? 'PDF Highlight · Page ${(object.properties['pdfSource'] as Map)['page'] ?? 1}'
+                                  : (isTask
+                                        ? 'Task'
+                                        : (isFile
+                                              ? 'Attachment'
+                                              : object.typeId.replaceFirst(
+                                                  'orbit.',
+                                                  '',
+                                                )));
                               return ListTile(
-                                title: Text(object.title),
-                                subtitle: Text(object.typeId),
-                                leading: const Icon(Icons.link),
+                                leading: Icon(icon, size: 20),
+                                title: Text(
+                                  object.title.isEmpty
+                                      ? 'Untitled'
+                                      : object.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: Text(subtitle),
                                 onTap: () => Navigator.pop(context, object),
                               );
                             },
@@ -1188,9 +1710,9 @@ class _CanvasEditorState extends State<CanvasEditor> {
     );
     // Dialog route transitions may still use the controller after the Future completes.
     if (!mounted || selected == null) return;
-    final center = _camera.toWorld(
-      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
-    );
+    final center =
+        at ??
+        _camera.toWorld(CanvasPoint(_viewport.width / 2, _viewport.height / 2));
     final element = CanvasElement({
       'id': _id(),
       'type': 'card',
@@ -1209,54 +1731,815 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _focus.requestFocus();
   }
 
+  IconData _iconForElement(CanvasElement element) {
+    if (element.type == 'ink') {
+      return element.data['isHighlighter'] == true
+          ? Icons.brush_outlined
+          : Icons.draw_outlined;
+    }
+    return switch (element.type) {
+      'sticky' => Icons.sticky_note_2_outlined,
+      'card' => Icons.dashboard_outlined,
+      'text' => Icons.title,
+      'rectangle' => Icons.crop_square,
+      'ellipse' => Icons.circle_outlined,
+      'diamond' => Icons.diamond_outlined,
+      'arrow' => Icons.arrow_right_alt,
+      'line' => Icons.horizontal_rule,
+      'connector' => Icons.timeline,
+      'column' => Icons.view_column_outlined,
+      'frame' => Icons.filter_frames_outlined,
+      'image' => Icons.image_outlined,
+      'link' => Icons.link,
+      'section' => Icons.view_agenda_outlined,
+      _ => Icons.widgets_outlined,
+    };
+  }
+
+  String _labelForElement(CanvasElement element) {
+    if (element.type == 'card') {
+      return _objects[element.objectId]?.title ??
+          (element.text.trim().isNotEmpty
+              ? element.text.trim().split('\n').first.trim()
+              : (element.objectId != null ? 'Missing object' : 'Card'));
+    }
+    if (element.type == 'ink') {
+      return element.data['isHighlighter'] == true
+          ? 'Highlighter stroke'
+          : 'Pen stroke';
+    }
+    if (element.text.trim().isNotEmpty) {
+      return element.text.trim().split('\n').first.trim();
+    }
+    return switch (element.type) {
+      'rectangle' => 'Rectangle',
+      'ellipse' => 'Ellipse',
+      'diamond' => 'Diamond',
+      'arrow' => 'Arrow',
+      'line' => 'Line',
+      'connector' => 'Connector',
+      'column' => 'Column',
+      'frame' => 'Frame',
+      'image' => 'Image',
+      'link' => 'Link',
+      _ => element.type,
+    };
+  }
+
   Future<void> _showElementList() async {
-    final elements = _scene.elements.where((e) => e.renderable).toList();
     await showDialog<void>(
       context: context,
-      builder: (context) => OrbitDialog(
-        title: const Text('Canvas elements'),
-        content: SizedBox(
-          width: 420,
-          height: 350,
-          child: elements.isEmpty
-              ? const Center(child: Text('This Canvas is empty.'))
-              : ListView.builder(
-                  itemCount: elements.length,
-                  itemBuilder: (context, index) {
-                    final element = elements[index];
-                    final label = element.type == 'card'
-                        ? _objects[element.objectId]?.title ?? 'Missing object'
-                        : element.text.isNotEmpty
-                        ? element.text
-                        : element.type;
-                    return ListTile(
-                      title: Text(
-                        label,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      subtitle: Text(element.type),
-                      onTap: () {
-                        Navigator.pop(context);
-                        setState(() {
-                          _selection
-                            ..clear()
-                            ..add(element.id);
-                        });
-                        _fit(selectionOnly: true);
-                        _focus.requestFocus();
-                      },
-                    );
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          final elements = _scene.elementsInOrder.reversed.toList();
+          final hasItems = elements.isNotEmpty;
+          return OrbitDialog(
+            title: Row(
+              children: [
+                const Icon(Icons.layers_outlined, size: 20),
+                const SizedBox(width: 8),
+                const Text('Layers & Stacking Order'),
+                const Spacer(),
+                if (hasItems)
+                  Text(
+                    '${elements.length} ${elements.length == 1 ? "layer" : "layers"}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.normal,
+                      color: Theme.of(
+                        dialogContext,
+                      ).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            ),
+            content: SizedBox(
+              width: 500,
+              height: 420,
+              child: !hasItems
+                  ? const Center(child: Text('This Canvas has no elements.'))
+                  : Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            children: [
+                              Text(
+                                'Top (Front) to Bottom (Back)',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Theme.of(
+                                    dialogContext,
+                                  ).colorScheme.outline,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const Spacer(),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.vertical_align_top,
+                                  size: 18,
+                                ),
+                                tooltip: 'Bring to Front',
+                                visualDensity: VisualDensity.compact,
+                                onPressed: _selection.isEmpty || _scene.readOnly
+                                    ? null
+                                    : () {
+                                        _reorder('front');
+                                        setDialogState(() {});
+                                      },
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.vertical_align_bottom,
+                                  size: 18,
+                                ),
+                                tooltip: 'Send to Back',
+                                visualDensity: VisualDensity.compact,
+                                onPressed: _selection.isEmpty || _scene.readOnly
+                                    ? null
+                                    : () {
+                                        _reorder('back');
+                                        setDialogState(() {});
+                                      },
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Divider(height: 1),
+                        Expanded(
+                          child: ListView.separated(
+                            itemCount: elements.length,
+                            separatorBuilder: (_, _) =>
+                                const Divider(height: 1, indent: 44),
+                            itemBuilder: (ctx, index) {
+                              final element = elements[index];
+                              final isSelected = _selection.contains(
+                                element.id,
+                              );
+                              final accentColor = Color(element.color);
+
+                              return ListTile(
+                                dense: true,
+                                selected: isSelected,
+                                leading: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 4,
+                                      height: 24,
+                                      decoration: BoxDecoration(
+                                        color: accentColor,
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Icon(_iconForElement(element), size: 18),
+                                  ],
+                                ),
+                                title: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        _labelForElement(element),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontWeight: isSelected
+                                              ? FontWeight.bold
+                                              : FontWeight.normal,
+                                          color: element.hidden
+                                              ? Theme.of(
+                                                  dialogContext,
+                                                ).colorScheme.outline
+                                              : null,
+                                        ),
+                                      ),
+                                    ),
+                                    if (element.groupId != null)
+                                      Padding(
+                                        padding: const EdgeInsets.only(left: 6),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 5,
+                                            vertical: 1,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Theme.of(dialogContext)
+                                                .colorScheme
+                                                .primaryContainer
+                                                .withValues(alpha: 0.5),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            'Group',
+                                            style: TextStyle(
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.bold,
+                                              color: Theme.of(
+                                                dialogContext,
+                                              ).colorScheme.onPrimaryContainer,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    if (element.hidden)
+                                      Padding(
+                                        padding: const EdgeInsets.only(left: 6),
+                                        child: Text(
+                                          'Hidden',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontStyle: FontStyle.italic,
+                                            color: Theme.of(
+                                              dialogContext,
+                                            ).colorScheme.outline,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                subtitle: Text(
+                                  '${element.type} • z: ${_scene.orderOf(element.id) ?? 0}',
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.arrow_upward,
+                                        size: 16,
+                                      ),
+                                      tooltip: 'Bring Forward',
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 28,
+                                        minHeight: 28,
+                                      ),
+                                      onPressed: index == 0 || _scene.readOnly
+                                          ? null
+                                          : () {
+                                              _history.reorder(
+                                                [element.id],
+                                                () {
+                                                  _scene.bringForward(
+                                                    element.id,
+                                                  );
+                                                },
+                                              );
+                                              _commit();
+                                              setDialogState(() {});
+                                            },
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.arrow_downward,
+                                        size: 16,
+                                      ),
+                                      tooltip: 'Send Backward',
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 28,
+                                        minHeight: 28,
+                                      ),
+                                      onPressed:
+                                          index == elements.length - 1 ||
+                                              _scene.readOnly
+                                          ? null
+                                          : () {
+                                              _history.reorder(
+                                                [element.id],
+                                                () {
+                                                  _scene.sendBackward(
+                                                    element.id,
+                                                  );
+                                                },
+                                              );
+                                              _commit();
+                                              setDialogState(() {});
+                                            },
+                                    ),
+                                    const SizedBox(width: 4),
+                                    IconButton(
+                                      icon: Icon(
+                                        element.locked
+                                            ? Icons.lock
+                                            : Icons.lock_open_outlined,
+                                        size: 16,
+                                        color: element.locked
+                                            ? Theme.of(
+                                                dialogContext,
+                                              ).colorScheme.error
+                                            : null,
+                                      ),
+                                      tooltip: element.locked
+                                          ? 'Unlock layer'
+                                          : 'Lock layer',
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 28,
+                                        minHeight: 28,
+                                      ),
+                                      onPressed: _scene.readOnly
+                                          ? null
+                                          : () {
+                                              _history.put(
+                                                element.copy({
+                                                  'locked': !element.locked,
+                                                }),
+                                              );
+                                              _commit();
+                                              setDialogState(() {});
+                                            },
+                                    ),
+                                    IconButton(
+                                      icon: Icon(
+                                        element.hidden
+                                            ? Icons.visibility_off_outlined
+                                            : Icons.visibility_outlined,
+                                        size: 16,
+                                        color: element.hidden
+                                            ? Theme.of(
+                                                dialogContext,
+                                              ).colorScheme.outline
+                                            : null,
+                                      ),
+                                      tooltip: element.hidden
+                                          ? 'Show layer'
+                                          : 'Hide layer',
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 28,
+                                        minHeight: 28,
+                                      ),
+                                      onPressed: _scene.readOnly
+                                          ? null
+                                          : () {
+                                              _history.put(
+                                                element.copy({
+                                                  'hidden': !element.hidden,
+                                                }),
+                                              );
+                                              _commit();
+                                              setDialogState(() {});
+                                            },
+                                    ),
+                                    const SizedBox(width: 4),
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.center_focus_strong_outlined,
+                                        size: 16,
+                                      ),
+                                      tooltip: 'Focus on canvas',
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 28,
+                                        minHeight: 28,
+                                      ),
+                                      onPressed: () {
+                                        Navigator.pop(dialogContext);
+                                        setState(() {
+                                          _selection
+                                            ..clear()
+                                            ..add(element.id);
+                                        });
+                                        _fit(selectionOnly: true);
+                                        _focus.requestFocus();
+                                      },
+                                    ),
+                                  ],
+                                ),
+                                onTap: () {
+                                  setState(() {
+                                    _selection
+                                      ..clear()
+                                      ..add(element.id);
+                                  });
+                                  setDialogState(() {});
+                                  _fit(selectionOnly: true);
+                                  _focus.requestFocus();
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+            actions: [
+              if (hasItems && !_scene.readOnly) ...[
+                TextButton(
+                  onPressed: () {
+                    for (final el in _scene.elements) {
+                      if (el.hidden) {
+                        _history.put(el.copy({'hidden': false}));
+                      }
+                    }
+                    _commit();
+                    setDialogState(() {});
                   },
+                  child: const Text('Show All'),
                 ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
+                TextButton(
+                  onPressed: () {
+                    for (final el in _scene.elements) {
+                      if (el.locked) {
+                        _history.put(el.copy({'locked': false}));
+                      }
+                    }
+                    _commit();
+                    setDialogState(() {});
+                  },
+                  child: const Text('Unlock All'),
+                ),
+              ],
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
       ),
+    );
+  }
+
+  Future<void> _showExportDialog({bool selectionOnly = false}) async {
+    final hasSelection = _selection.isNotEmpty;
+    var scopeSelection = selectionOnly && hasSelection;
+    var format = 'png';
+    var transparent = false;
+    var scale = 2.0;
+    var isExporting = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            CanvasBounds exportBounds;
+            final targetIds = scopeSelection ? _selection : null;
+            if (targetIds != null && targetIds.isNotEmpty) {
+              CanvasBounds? unionBounds;
+              for (final id in targetIds) {
+                final elem = _scene[id];
+                if (elem != null) {
+                  unionBounds = unionBounds?.union(elem.bounds) ?? elem.bounds;
+                }
+              }
+              exportBounds = (unionBounds ?? const CanvasBounds(0, 0, 800, 600))
+                  .inflate(40);
+            } else {
+              exportBounds =
+                  (_scene.contentBounds ?? const CanvasBounds(0, 0, 800, 600))
+                      .inflate(40);
+            }
+
+            final pxWidth =
+                (exportBounds.width * (format == 'png' ? scale : 1.0)).round();
+            final pxHeight =
+                (exportBounds.height * (format == 'png' ? scale : 1.0)).round();
+            final colors = Theme.of(dialogContext).colorScheme;
+
+            return OrbitDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.file_download_outlined, size: 20),
+                  SizedBox(width: 8),
+                  Text('Export Canvas'),
+                ],
+              ),
+              content: SizedBox(
+                width: 440,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'SCOPE',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ChoiceChip(
+                              label: Center(
+                                child: Text('Full Canvas (${_scene.length})'),
+                              ),
+                              selected: !scopeSelection,
+                              onSelected: (selected) {
+                                if (selected) {
+                                  setDialogState(() => scopeSelection = false);
+                                }
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ChoiceChip(
+                              label: Center(
+                                child: Text('Selection (${_selection.length})'),
+                              ),
+                              selected: scopeSelection,
+                              onSelected: hasSelection
+                                  ? (selected) {
+                                      if (selected) {
+                                        setDialogState(
+                                          () => scopeSelection = true,
+                                        );
+                                      }
+                                    }
+                                  : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'FORMAT',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ChoiceChip(
+                              label: const Center(child: Text('PNG Image')),
+                              selected: format == 'png',
+                              onSelected: (selected) {
+                                if (selected) {
+                                  setDialogState(() => format = 'png');
+                                }
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ChoiceChip(
+                              label: const Center(child: Text('Vector SVG')),
+                              selected: format == 'svg',
+                              onSelected: (selected) {
+                                if (selected) {
+                                  setDialogState(() => format = 'svg');
+                                }
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ChoiceChip(
+                              label: const Center(child: Text('JSON Backup')),
+                              selected: format == 'json',
+                              onSelected: (selected) {
+                                if (selected) {
+                                  setDialogState(() => format = 'json');
+                                }
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      if (format != 'json') ...[
+                        const Text(
+                          'OPTIONS',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        SwitchListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Transparent Background'),
+                          subtitle: Text(
+                            transparent
+                                ? 'Export with transparent background'
+                                : 'Include canvas $_backgroundStyle background',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          value: transparent,
+                          onChanged: (val) {
+                            setDialogState(() => transparent = val);
+                          },
+                        ),
+                        if (format == 'png') ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              const Text(
+                                'Resolution Scale:',
+                                style: TextStyle(fontSize: 13),
+                              ),
+                              const Spacer(),
+                              SegmentedButton<double>(
+                                segments: const [
+                                  ButtonSegment(value: 1.0, label: Text('1x')),
+                                  ButtonSegment(value: 2.0, label: Text('2x')),
+                                  ButtonSegment(value: 3.0, label: Text('3x')),
+                                ],
+                                selected: {scale},
+                                onSelectionChanged: (newSelection) {
+                                  setDialogState(
+                                    () => scale = newSelection.first,
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colors.surfaceContainerHighest.withValues(
+                              alpha: 0.5,
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.aspect_ratio, size: 16),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Output dimensions: $pxWidth × $pxHeight px',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isExporting
+                      ? null
+                      : () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                if (format == 'svg' || format == 'json')
+                  TextButton.icon(
+                    icon: const Icon(Icons.copy, size: 18),
+                    label: const Text('Copy to Clipboard'),
+                    onPressed: isExporting
+                        ? null
+                        : () async {
+                            final targetIds = scopeSelection
+                                ? _selection
+                                : null;
+                            if (format == 'svg') {
+                              final svg = canvasToSvg(
+                                _scene,
+                                transparent: transparent,
+                                backgroundColor: colors.surface.toARGB32(),
+                                elementIds: targetIds,
+                              );
+                              await Clipboard.setData(ClipboardData(text: svg));
+                              if (dialogContext.mounted) {
+                                Navigator.pop(dialogContext);
+                              }
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('SVG copied to clipboard'),
+                                    duration: Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            } else {
+                              final jsonMap = {
+                                ..._scene.toJson(),
+                                'backgroundStyle': _backgroundStyle,
+                              };
+                              final jsonString = const JsonEncoder.withIndent(
+                                '  ',
+                              ).convert(jsonMap);
+                              await Clipboard.setData(
+                                ClipboardData(text: jsonString),
+                              );
+                              if (dialogContext.mounted) {
+                                Navigator.pop(dialogContext);
+                              }
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Canvas JSON copied to clipboard',
+                                    ),
+                                    duration: Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                  ),
+                FilledButton.icon(
+                  icon: isExporting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_alt, size: 18),
+                  label: Text(isExporting ? 'Exporting...' : 'Save File'),
+                  onPressed: isExporting
+                      ? null
+                      : () async {
+                          setDialogState(() => isExporting = true);
+                          try {
+                            final targetIds = scopeSelection
+                                ? _selection
+                                : null;
+                            final baseName =
+                                widget.data['title'] is String &&
+                                    (widget.data['title'] as String).isNotEmpty
+                                ? widget.data['title'] as String
+                                : 'canvas';
+                            final sanitized = baseName.replaceAll(
+                              RegExp(r'[\\/:*?"<>|]'),
+                              '_',
+                            );
+
+                            if (format == 'png') {
+                              final bytes = await renderCanvasToPng(
+                                scene: _scene,
+                                colors: colors,
+                                backgroundStyle: _backgroundStyle,
+                                elementIds: targetIds,
+                                scale: scale,
+                                transparent: transparent,
+                                images: _images?.images ?? const {},
+                                objects: _objects,
+                              );
+                              if (bytes != null) {
+                                await exportBinaryFile(
+                                  '$sanitized.png',
+                                  bytes,
+                                  mimeType: 'image/png',
+                                );
+                              }
+                            } else if (format == 'svg') {
+                              final svg = canvasToSvg(
+                                _scene,
+                                transparent: transparent,
+                                backgroundColor: colors.surface.toARGB32(),
+                                elementIds: targetIds,
+                              );
+                              await exportFile(
+                                '$sanitized.svg',
+                                svg,
+                                mimeType: 'image/svg+xml',
+                              );
+                            } else {
+                              final jsonMap = {
+                                ..._scene.toJson(),
+                                'backgroundStyle': _backgroundStyle,
+                              };
+                              final jsonString = const JsonEncoder.withIndent(
+                                '  ',
+                              ).convert(jsonMap);
+                              await exportFile(
+                                '$sanitized.canvas.json',
+                                jsonString,
+                                mimeType: 'application/json',
+                              );
+                            }
+                            if (dialogContext.mounted) {
+                              Navigator.pop(dialogContext);
+                            }
+                          } finally {
+                            if (dialogContext.mounted) {
+                              setDialogState(() => isExporting = false);
+                            }
+                          }
+                        },
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -1304,6 +2587,16 @@ class _CanvasEditorState extends State<CanvasEditor> {
               ),
             ),
             const PopupMenuItem(
+              value: 'add_checklist',
+              child: Row(
+                children: [
+                  Icon(Icons.checklist_rounded, size: 16),
+                  SizedBox(width: 8),
+                  Text('Add Checklist'),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
               value: 'add_section',
               child: Row(
                 children: [
@@ -1320,6 +2613,26 @@ class _CanvasEditorState extends State<CanvasEditor> {
                   Icon(Icons.palette_outlined, size: 16),
                   SizedBox(width: 8),
                   Text('Add Color Swatch'),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'add_card',
+              child: Row(
+                children: [
+                  Icon(Icons.dashboard_outlined, size: 16),
+                  SizedBox(width: 8),
+                  Text('Add Card'),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'place_object',
+              child: Row(
+                children: [
+                  Icon(Icons.add_link, size: 16),
+                  SizedBox(width: 8),
+                  Text('Place object'),
                 ],
               ),
             ),
@@ -1367,6 +2680,11 @@ class _CanvasEditorState extends State<CanvasEditor> {
               ],
             ),
           ),
+          const PopupMenuDivider(),
+          const PopupMenuItem(
+            value: 'export_canvas',
+            child: Text('Export Canvas...'),
+          ),
         ],
       );
       if (!mounted || action == null) return;
@@ -1375,10 +2693,16 @@ class _CanvasEditorState extends State<CanvasEditor> {
           _addText(at: worldPos);
         case 'add_sticky':
           _addSticky(at: worldPos);
+        case 'add_checklist':
+          _addChecklist(at: worldPos);
         case 'add_section':
           _addSection(at: worldPos);
         case 'add_swatch':
           _addSwatch(at: worldPos);
+        case 'add_card':
+          _addCard(at: worldPos);
+        case 'place_object':
+          _chooseObject(at: worldPos);
         case 'paste':
           _paste();
         case 'fit_all':
@@ -1387,9 +2711,18 @@ class _CanvasEditorState extends State<CanvasEditor> {
           _fit(selectionOnly: true);
         case 'zoom_100':
           _zoom(1 / _camera.zoom);
+        case 'export_canvas':
+          _showExportDialog();
       }
       return;
     }
+
+    final selElem = _selection.length == 1 ? _scene[_selection.first] : null;
+    final isConnector =
+        selElem != null &&
+        (selElem.type == 'arrow' ||
+            selElem.type == 'line' ||
+            selElem.type == 'connector');
 
     final action = await showMenu<String>(
       context: context,
@@ -1400,6 +2733,86 @@ class _CanvasEditorState extends State<CanvasEditor> {
       items: [
         if (_selection.length == 1)
           const PopupMenuItem(value: 'edit', child: Text('Open / edit')),
+        if (isConnector && !_scene.readOnly) ...[
+          const PopupMenuDivider(),
+          const PopupMenuItem(
+            enabled: false,
+            height: 24,
+            child: Text(
+              'CONNECTOR STYLE',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ),
+          const PopupMenuItem(
+            value: 'stroke_solid',
+            child: Text('Solid Stroke'),
+          ),
+          const PopupMenuItem(
+            value: 'stroke_dashed',
+            child: Text('Dashed Stroke'),
+          ),
+          const PopupMenuItem(
+            value: 'stroke_dotted',
+            child: Text('Dotted Stroke'),
+          ),
+          const PopupMenuItem(
+            value: 'routing_straight',
+            child: Text('Straight Line'),
+          ),
+          const PopupMenuItem(
+            value: 'routing_curved',
+            child: Text('Curved Line'),
+          ),
+          const PopupMenuItem(
+            value: 'routing_orthogonal',
+            child: Text('Orthogonal Line'),
+          ),
+          const PopupMenuItem(
+            value: 'marker_start_arrow',
+            child: Text('Arrowhead Start'),
+          ),
+          const PopupMenuItem(
+            value: 'marker_start_dot',
+            child: Text('Dot Start'),
+          ),
+          const PopupMenuItem(
+            value: 'marker_start_diamond',
+            child: Text('Diamond Start'),
+          ),
+          const PopupMenuItem(
+            value: 'marker_start_none',
+            child: Text('No Start Marker'),
+          ),
+          const PopupMenuItem(
+            value: 'marker_arrow',
+            child: Text('Arrowhead End'),
+          ),
+          const PopupMenuItem(value: 'marker_dot', child: Text('Dot End')),
+          const PopupMenuItem(
+            value: 'marker_diamond',
+            child: Text('Diamond End'),
+          ),
+          const PopupMenuItem(
+            value: 'marker_none',
+            child: Text('No End Marker'),
+          ),
+          const PopupMenuItem(
+            value: 'anchor_start_auto',
+            child: Text('Start Anchor: Auto'),
+          ),
+          const PopupMenuItem(
+            value: 'anchor_end_auto',
+            child: Text('End Anchor: Auto'),
+          ),
+          const PopupMenuItem(
+            value: 'reverse_direction',
+            child: Text('Reverse Direction'),
+          ),
+        ],
         if (_selection.isNotEmpty)
           const PopupMenuItem(value: 'copy', child: Text('Copy placements')),
         if (_selection.isNotEmpty && !_scene.readOnly)
@@ -1418,6 +2831,37 @@ class _CanvasEditorState extends State<CanvasEditor> {
             ),
           ),
         const PopupMenuItem(value: 'paste', child: Text('Paste')),
+        if (_selection.isNotEmpty && !_scene.readOnly) ...[
+          const PopupMenuDivider(),
+          const PopupMenuItem(
+            enabled: false,
+            height: 24,
+            child: Text(
+              'LAYER ORDER',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ),
+          const PopupMenuItem(
+            value: 'bring_to_front',
+            child: Text('Bring to Front'),
+          ),
+          const PopupMenuItem(
+            value: 'bring_forward',
+            child: Text('Bring Forward'),
+          ),
+          const PopupMenuItem(
+            value: 'send_backward',
+            child: Text('Send Backward'),
+          ),
+          const PopupMenuItem(
+            value: 'send_to_back',
+            child: Text('Send to Back'),
+          ),
+        ],
         if (_selection.length >= 2 && !_scene.readOnly) ...[
           const PopupMenuDivider(),
           const PopupMenuItem(
@@ -1458,6 +2902,60 @@ class _CanvasEditorState extends State<CanvasEditor> {
             ),
           ],
           const PopupMenuDivider(),
+          const PopupMenuItem(
+            enabled: false,
+            height: 24,
+            child: Text(
+              'AUTO-ARRANGE',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ),
+          const PopupMenuItem(
+            value: 'arrange_grid',
+            child: Text('Arrange in Grid'),
+          ),
+          const PopupMenuItem(
+            value: 'arrange_stack_h',
+            child: Text('Stack Horizontally'),
+          ),
+          const PopupMenuItem(
+            value: 'arrange_stack_v',
+            child: Text('Stack Vertically'),
+          ),
+          const PopupMenuItem(
+            value: 'arrange_radial',
+            child: Text('Radial Circle'),
+          ),
+          const PopupMenuDivider(),
+        ],
+        if (!_scene.readOnly &&
+            (_selection.length >= 2 ||
+                _selection.any((id) => _scene[id]?.groupId != null))) ...[
+          const PopupMenuDivider(),
+          const PopupMenuItem(
+            enabled: false,
+            height: 24,
+            child: Text(
+              'GROUPING',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ),
+          if (_selection.length >= 2)
+            const PopupMenuItem(value: 'group', child: Text('Group (Ctrl+G)')),
+          if (_selection.any((id) => _scene[id]?.groupId != null))
+            const PopupMenuItem(
+              value: 'ungroup',
+              child: Text('Ungroup (Ctrl+Shift+G)'),
+            ),
+          const PopupMenuDivider(),
         ],
         if (_selection.isNotEmpty && !_scene.readOnly)
           const PopupMenuItem(
@@ -1471,18 +2969,70 @@ class _CanvasEditorState extends State<CanvasEditor> {
           ),
         const PopupMenuItem(value: 'fit_all', child: Text('Fit All')),
         const PopupMenuItem(value: 'zoom_100', child: Text('100% Zoom')),
+        const PopupMenuDivider(),
+        if (_selection.isNotEmpty)
+          const PopupMenuItem(
+            value: 'export_selection',
+            child: Text('Export Selection...'),
+          ),
+        const PopupMenuItem(
+          value: 'export_canvas',
+          child: Text('Export Canvas...'),
+        ),
       ],
     );
     if (!mounted || action == null) return;
     switch (action) {
       case 'edit':
         if (_selection.length == 1) _edit(_scene[_selection.first]!);
+      case 'stroke_solid':
+        _setConnectorStyle('solid');
+      case 'stroke_dashed':
+        _setConnectorStyle('dashed');
+      case 'stroke_dotted':
+        _setConnectorStyle('dotted');
+      case 'routing_straight':
+        _setConnectorRouting('straight');
+      case 'routing_curved':
+        _setConnectorRouting('curved');
+      case 'routing_orthogonal':
+        _setConnectorRouting('orthogonal');
+      case 'marker_start_arrow':
+        _setConnectorMarker('arrow', isStart: true);
+      case 'marker_start_dot':
+        _setConnectorMarker('dot', isStart: true);
+      case 'marker_start_diamond':
+        _setConnectorMarker('diamond', isStart: true);
+      case 'marker_start_none':
+        _setConnectorMarker('none', isStart: true);
+      case 'marker_arrow':
+        _setConnectorMarker('arrow');
+      case 'marker_dot':
+        _setConnectorMarker('dot');
+      case 'marker_diamond':
+        _setConnectorMarker('diamond');
+      case 'marker_none':
+        _setConnectorMarker('none');
+      case 'anchor_start_auto':
+        _setConnectorAnchor('auto', isStart: true);
+      case 'anchor_end_auto':
+        _setConnectorAnchor('auto', isStart: false);
+      case 'reverse_direction':
+        _reverseConnector();
       case 'copy':
         _copy();
       case 'duplicate':
         _duplicate();
       case 'paste':
         _paste();
+      case 'bring_to_front':
+        _reorder('front');
+      case 'bring_forward':
+        _reorder('forward');
+      case 'send_backward':
+        _reorder('backward');
+      case 'send_to_back':
+        _reorder('back');
       case 'align_left':
         _align(CanvasAlignment.left);
       case 'align_center_h':
@@ -1499,6 +3049,18 @@ class _CanvasEditorState extends State<CanvasEditor> {
         _align(CanvasAlignment.distributeH);
       case 'distribute_v':
         _align(CanvasAlignment.distributeV);
+      case 'arrange_grid':
+        _applyArrangement(CanvasArrangement.grid);
+      case 'arrange_stack_h':
+        _applyArrangement(CanvasArrangement.stackH);
+      case 'arrange_stack_v':
+        _applyArrangement(CanvasArrangement.stackV);
+      case 'arrange_radial':
+        _applyArrangement(CanvasArrangement.radial);
+      case 'group':
+        _groupSelection();
+      case 'ungroup':
+        _ungroupSelection();
       case 'delete':
         _delete();
       case 'fit_selection':
@@ -1507,7 +3069,73 @@ class _CanvasEditorState extends State<CanvasEditor> {
         _fit();
       case 'zoom_100':
         _zoom(1 / _camera.zoom);
+      case 'export_selection':
+        _showExportDialog(selectionOnly: true);
+      case 'export_canvas':
+        _showExportDialog(selectionOnly: false);
     }
+  }
+
+  void _setConnectorStyle(String style) {
+    if (_selection.length != 1) return;
+    final element = _scene[_selection.first];
+    if (element == null) return;
+    _history.put(element.copy({'strokeStyle': style}));
+    _commit();
+    setState(() {});
+  }
+
+  void _setConnectorMarker(String marker, {bool isStart = false}) {
+    if (_selection.length != 1) return;
+    final element = _scene[_selection.first];
+    if (element == null) return;
+    final key = isStart ? 'startMarker' : 'endMarker';
+    _history.put(element.copy({key: marker}));
+    _commit();
+    setState(() {});
+  }
+
+  void _setConnectorRouting(String routing) {
+    if (_selection.length != 1) return;
+    final element = _scene[_selection.first];
+    if (element == null) return;
+    _history.put(element.copy({'routing': routing}));
+    _commit();
+    setState(() {});
+  }
+
+  void _reverseConnector() {
+    if (_selection.length != 1) return;
+    final element = _scene[_selection.first];
+    if (element == null) return;
+    _history.put(
+      element.copy({
+        'startId': element.endId,
+        'endId': element.startId,
+        'startAnchor': element.endAnchor,
+        'endAnchor': element.startAnchor,
+        'startMarker': element.endMarker,
+        'endMarker': element.startMarker,
+        'reverseX': element.data['reverseX'] != true,
+        'reverseY': element.data['reverseY'] != true,
+        ...connectorEndpointData(
+          storedConnectorEnd(element),
+          storedConnectorStart(element),
+        ),
+      }),
+    );
+    _commit();
+    setState(() {});
+  }
+
+  void _setConnectorAnchor(String anchor, {bool isStart = false}) {
+    if (_selection.length != 1) return;
+    final element = _scene[_selection.first];
+    if (element == null) return;
+    final key = isStart ? 'startAnchor' : 'endAnchor';
+    _history.put(element.copy({key: anchor}));
+    _commit();
+    setState(() {});
   }
 
   @override
@@ -1546,8 +3174,22 @@ class _CanvasEditorState extends State<CanvasEditor> {
                     .map((element) => element.data['contentRef'] as String),
               );
               final editing = _editingId == null ? null : _scene[_editingId!];
+              final isConnector =
+                  editing?.type == 'arrow' ||
+                  editing?.type == 'line' ||
+                  editing?.type == 'connector';
+              final endpoints = editing != null && isConnector
+                  ? resolveConnectorEndpoints(editing, _scene)
+                  : null;
               final editingPosition = editing == null
                   ? null
+                  : isConnector
+                  ? _camera.toScreen(
+                      CanvasPoint(
+                        endpoints!.midpoint.x - 80 / _camera.zoom,
+                        endpoints.midpoint.y - 20 / _camera.zoom,
+                      ),
+                    )
                   : _camera.toScreen(CanvasPoint(editing.x, editing.y));
               return ClipRect(
                 child: Stack(
@@ -1634,6 +3276,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                                 }
                               },
                               child: GestureDetector(
+                                onDoubleTap: () {},
                                 onDoubleTapDown: (details) {
                                   final hit = _scene.hit(
                                     _world(details.localPosition),
@@ -1656,6 +3299,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
                                     editingId: _editingId,
                                     guides: _activeGuides,
                                     backgroundStyle: _backgroundStyle,
+                                    hoveredAnchorElementId:
+                                        _hoveredAnchorElementId,
+                                    connectingStartElementId:
+                                        _connectingStartId,
                                   ),
                                   child: const SizedBox.expand(),
                                 ),
@@ -1696,12 +3343,96 @@ class _CanvasEditorState extends State<CanvasEditor> {
                           ),
                         ),
                       ),
+                    if (editing != null &&
+                        editingPosition != null &&
+                        !isConnector)
+                      Positioned(
+                        left: editingPosition.x,
+                        top: (editingPosition.y - 38) < 10
+                            ? editingPosition.y +
+                                  math.max(80, editing.height * _camera.zoom) +
+                                  6
+                            : editingPosition.y - 38,
+                        child: TapRegion(
+                          groupId: 'canvas-text-editing',
+                          child: Material(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
+                            elevation: 3,
+                            borderRadius: BorderRadius.circular(8),
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 2,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    _FormatButton(
+                                      icon: Icons.check_box_outlined,
+                                      label: 'Task',
+                                      tooltip: 'Checklist (- [ ])',
+                                      onPressed: () =>
+                                          _applyFormatPrefix('- [ ] '),
+                                    ),
+                                    const SizedBox(width: 2),
+                                    _FormatButton(
+                                      label: 'H1',
+                                      tooltip: 'Heading 1 (# )',
+                                      onPressed: () => _applyFormatPrefix('# '),
+                                    ),
+                                    const SizedBox(width: 2),
+                                    _FormatButton(
+                                      label: 'H2',
+                                      tooltip: 'Heading 2 (## )',
+                                      onPressed: () =>
+                                          _applyFormatPrefix('## '),
+                                    ),
+                                    const SizedBox(width: 2),
+                                    _FormatButton(
+                                      label: 'H3',
+                                      tooltip: 'Heading 3 (### )',
+                                      onPressed: () =>
+                                          _applyFormatPrefix('### '),
+                                    ),
+                                    const SizedBox(width: 2),
+                                    _FormatButton(
+                                      icon: Icons.format_list_bulleted,
+                                      label: 'List',
+                                      tooltip: 'Bullet list (- )',
+                                      onPressed: () => _applyFormatPrefix('- '),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    SizedBox(
+                                      width: 28,
+                                      height: 28,
+                                      child: IconButton(
+                                        icon: const Icon(Icons.check, size: 16),
+                                        tooltip: 'Done (Ctrl+Enter)',
+                                        padding: EdgeInsets.zero,
+                                        onPressed: () => _finishText(),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     if (editing != null && editingPosition != null)
                       Positioned(
                         left: editingPosition.x,
                         top: editingPosition.y,
-                        width: math.max(100, editing.width * _camera.zoom),
-                        height: math.max(80, editing.height * _camera.zoom),
+                        width: isConnector
+                            ? 160.0
+                            : math.max(100, editing.width * _camera.zoom),
+                        height: isConnector
+                            ? 40.0
+                            : math.max(80, editing.height * _camera.zoom),
                         child: Material(
                           color: Theme.of(
                             context,
@@ -1712,6 +3443,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                             padding: const EdgeInsets.all(8),
                             child: TextField(
                               key: const ValueKey('canvas-element-text-field'),
+                              groupId: 'canvas-text-editing',
                               controller: _text,
                               focusNode: _textFocus,
                               maxLines: null,
@@ -2127,7 +3859,36 @@ class _CanvasEditorState extends State<CanvasEditor> {
     if (_scene.readOnly) return;
     _finishText();
     final obj = _objects[objectId];
-    final title = (obj != null && obj.title.isNotEmpty) ? obj.title : 'Object';
+    String title = (obj != null && obj.title.isNotEmpty) ? obj.title : 'Object';
+    int cardColor = _color;
+
+    if (obj != null) {
+      final category = obj.properties['category'] as String?;
+      if (category == 'Function' || obj.properties.containsKey('address')) {
+        final addr = obj.properties['address'] ?? obj.properties['rva'] ?? '';
+        final mod = obj.properties['module'] ?? 'target.exe';
+        final conf = obj.properties['confidence'] ?? 'Medium';
+        final purpose = obj.properties['purpose'] ?? '';
+        title = '${obj.title}\n$addr ($mod)\nConf: $conf\n$purpose';
+        cardColor = 0xff6366f1;
+      } else if (category == 'Structure') {
+        final size = obj.properties['size'] ?? 'Unknown';
+        title = 'struct ${obj.title}\nSize: $size';
+        cardColor = 0xff3b82f6;
+      } else if (category == 'Indicator' ||
+          obj.properties.containsKey('iocType')) {
+        final iocType = obj.properties['iocType'] ?? 'IOC';
+        final val = obj.properties['value'] ?? obj.title;
+        final conf = obj.properties['confidence'] ?? 'High';
+        title = '[$iocType]\n$val\nConf: $conf';
+        cardColor = 0xfff59e0b;
+      } else if (category == 'Hypothesis') {
+        final status = obj.properties['status'] ?? 'Open';
+        title = 'Hypothesis: ${obj.title}\nStatus: $status';
+        cardColor = 0xff8b5cf6;
+      }
+    }
+
     final element = CanvasElement({
       'id': _id(),
       'type': 'card',
@@ -2137,7 +3898,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
       'width': 260.0,
       'height': 120.0,
       'text': title,
-      'color': _color,
+      'color': cardColor,
     });
     _history.put(element);
     _selection
@@ -2614,6 +4375,775 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _commit();
   }
 
+  void _applyPlaytestFeedbackPreset() {
+    if (_scene.readOnly) return;
+    _finishText();
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final baseX = center.x - 560;
+    final baseY = center.y - 250;
+
+    final col1 = CanvasElement({
+      'id': _id(),
+      'type': 'column',
+      'text': 'WORKED WELL (POSITIVE)',
+      'x': baseX,
+      'y': baseY,
+      'width': 260.0,
+      'height': 520.0,
+      'color': 0xff65c6a3,
+    });
+    final col2 = CanvasElement({
+      'id': _id(),
+      'type': 'column',
+      'text': 'CONFUSING / FRICTION',
+      'x': baseX + 280,
+      'y': baseY,
+      'width': 260.0,
+      'height': 520.0,
+      'color': 0xffd8b56a,
+    });
+    final col3 = CanvasElement({
+      'id': _id(),
+      'type': 'column',
+      'text': 'BUGS & CRASHES',
+      'x': baseX + 560,
+      'y': baseY,
+      'width': 260.0,
+      'height': 520.0,
+      'color': 0xffef4444,
+    });
+    final col4 = CanvasElement({
+      'id': _id(),
+      'type': 'column',
+      'text': 'IDEAS & MUST FIX',
+      'x': baseX + 840,
+      'y': baseY,
+      'width': 260.0,
+      'height': 520.0,
+      'color': 0xff8b7cf6,
+    });
+
+    _history.put(col1);
+    _history.put(col2);
+    _history.put(col3);
+    _history.put(col4);
+    _commit();
+  }
+
+  void _applyNarrativeBoardPreset() {
+    if (_scene.readOnly) return;
+    _finishText();
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final baseX = center.x - 560;
+    final baseY = center.y - 250;
+
+    final act1 = CanvasElement({
+      'id': _id(),
+      'type': 'section',
+      'text': 'ACT 1: THE CALL & EXILE',
+      'x': baseX,
+      'y': baseY,
+      'width': 350.0,
+      'height': 500.0,
+      'color': 0xff8b7cf6,
+    });
+    final act2 = CanvasElement({
+      'id': _id(),
+      'type': 'section',
+      'text': 'ACT 2: CONFLICT & MIDPOINT',
+      'x': baseX + 380,
+      'y': baseY,
+      'width': 350.0,
+      'height': 500.0,
+      'color': 0xff6f7fea,
+    });
+    final act3 = CanvasElement({
+      'id': _id(),
+      'type': 'section',
+      'text': 'ACT 3: CLIMAX & RETURN',
+      'x': baseX + 760,
+      'y': baseY,
+      'width': 350.0,
+      'height': 500.0,
+      'color': 0xff65c6a3,
+    });
+
+    final c1 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': 'Hero is banished after the observatory breach.',
+      'x': baseX + 25,
+      'y': baseY + 60,
+      'width': 300.0,
+      'height': 90.0,
+      'color': 0xff8b7cf6,
+    });
+    final c2 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': 'Discovery of the ancient Relic Blade and its corruption.',
+      'x': baseX + 405,
+      'y': baseY + 60,
+      'width': 300.0,
+      'height': 90.0,
+      'color': 0xff6f7fea,
+    });
+    final c3 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': 'Final confrontation against the corrupted elder guardian.',
+      'x': baseX + 785,
+      'y': baseY + 60,
+      'width': 300.0,
+      'height': 90.0,
+      'color': 0xff65c6a3,
+    });
+
+    _history.put(act1);
+    _history.put(act2);
+    _history.put(act3);
+    _history.put(c1);
+    _history.put(c2);
+    _history.put(c3);
+    _commit();
+  }
+
+  void _applyGameArchitecturePreset() {
+    if (_scene.readOnly) return;
+    _finishText();
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final baseX = center.x - 450;
+    final baseY = center.y - 200;
+
+    final sys1 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': 'Input Manager\n(Keyboard / Gamepad / Touch)',
+      'x': baseX,
+      'y': baseY,
+      'width': 220.0,
+      'height': 90.0,
+      'color': 0xff8b7cf6,
+    });
+    final sys2 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': 'Player Controller\n(Movement, States, Physics)',
+      'x': baseX + 280,
+      'y': baseY,
+      'width': 220.0,
+      'height': 90.0,
+      'color': 0xff6f7fea,
+    });
+    final sys3 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': 'Combat & Damage Engine\n(Hitboxes, Health, Stats)',
+      'x': baseX + 560,
+      'y': baseY,
+      'width': 220.0,
+      'height': 90.0,
+      'color': 0xffef4444,
+    });
+    final sys4 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': 'Animation & VFX Pipeline\n(Transitions, Particles)',
+      'x': baseX + 280,
+      'y': baseY + 160,
+      'width': 220.0,
+      'height': 90.0,
+      'color': 0xffd8b56a,
+    });
+    final sys5 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': 'Save Manager & State\n(SQLite / JSON / Backup)',
+      'x': baseX + 560,
+      'y': baseY + 160,
+      'width': 220.0,
+      'height': 90.0,
+      'color': 0xff65c6a3,
+    });
+
+    _history.put(sys1);
+    _history.put(sys2);
+    _history.put(sys3);
+    _history.put(sys4);
+    _history.put(sys5);
+    _commit();
+  }
+
+  void _applyCallFlowPreset() {
+    if (_scene.readOnly) return;
+    _finishText();
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final baseX = center.x - 450;
+    final baseY = center.y - 60;
+
+    final n1 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': 'GameLoop / MainTick\n0x140010000',
+      'x': baseX,
+      'y': baseY,
+      'width': 200.0,
+      'height': 80.0,
+      'color': 0xff6366f1,
+    });
+    final n2 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': 'UpdatePlayer(Entity*)\n0x140012340',
+      'x': baseX + 260,
+      'y': baseY,
+      'width': 200.0,
+      'height': 80.0,
+      'color': 0xff8b5cf6,
+    });
+    final n3 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': 'UpdateMovement()\n0x140024A00',
+      'x': baseX + 520,
+      'y': baseY - 60,
+      'width': 200.0,
+      'height': 80.0,
+      'color': 0xff3b82f6,
+    });
+    final n4 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': 'Physics::Integrate()\n0x140038F10',
+      'x': baseX + 520,
+      'y': baseY + 60,
+      'width': 200.0,
+      'height': 80.0,
+      'color': 0xff0ea5e9,
+    });
+
+    final c1 = CanvasElement({
+      'id': _id(),
+      'type': 'connector',
+      'startId': n1.id,
+      'endId': n2.id,
+      'color': 0xff6366f1,
+    });
+    final c2 = CanvasElement({
+      'id': _id(),
+      'type': 'connector',
+      'startId': n2.id,
+      'endId': n3.id,
+      'color': 0xff8b5cf6,
+    });
+    final c3 = CanvasElement({
+      'id': _id(),
+      'type': 'connector',
+      'startId': n2.id,
+      'endId': n4.id,
+      'color': 0xff8b5cf6,
+    });
+
+    _history.put(n1);
+    _history.put(n2);
+    _history.put(n3);
+    _history.put(n4);
+    _history.put(c1);
+    _history.put(c2);
+    _history.put(c3);
+    _commit();
+  }
+
+  void _applyObjectRelationshipsPreset() {
+    if (_scene.readOnly) return;
+    _finishText();
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final baseX = center.x - 300;
+    final baseY = center.y - 180;
+
+    final gm = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text':
+          'GameManager\n[Singleton @ 0x1412A8000]\n+0x38: PlayerManager* m_players',
+      'x': baseX,
+      'y': baseY,
+      'width': 260.0,
+      'height': 90.0,
+      'color': 0xff6366f1,
+    });
+    final pm = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text':
+          'PlayerManager\n+0x10: Player* localPlayer\n+0x18: List<Player*> remotePlayers',
+      'x': baseX,
+      'y': baseY + 140,
+      'width': 260.0,
+      'height': 90.0,
+      'color': 0xff8b5cf6,
+    });
+    final pl = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text':
+          'PlayerEntity\n+0x00: void* vtable\n+0x80: Inventory* inventory\n+0xC0: Vector3 position',
+      'x': baseX + 320,
+      'y': baseY + 140,
+      'width': 260.0,
+      'height': 90.0,
+      'color': 0xff3b82f6,
+    });
+    final inv = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text':
+          'Inventory\n+0x18: ItemSlot[32] slots\n+0x98: uint32_t activeSlotIndex',
+      'x': baseX + 320,
+      'y': baseY + 280,
+      'width': 260.0,
+      'height': 90.0,
+      'color': 0xff10b981,
+    });
+
+    final c1 = CanvasElement({
+      'id': _id(),
+      'type': 'connector',
+      'startId': gm.id,
+      'endId': pm.id,
+      'color': 0xff6366f1,
+    });
+    final c2 = CanvasElement({
+      'id': _id(),
+      'type': 'connector',
+      'startId': pm.id,
+      'endId': pl.id,
+      'color': 0xff8b5cf6,
+    });
+    final c3 = CanvasElement({
+      'id': _id(),
+      'type': 'connector',
+      'startId': pl.id,
+      'endId': inv.id,
+      'color': 0xff3b82f6,
+    });
+
+    _history.put(gm);
+    _history.put(pm);
+    _history.put(pl);
+    _history.put(inv);
+    _history.put(c1);
+    _history.put(c2);
+    _history.put(c3);
+    _commit();
+  }
+
+  void _applyStructureLayoutPreset() {
+    if (_scene.readOnly) return;
+    _finishText();
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final baseX = center.x - 320;
+    final baseY = center.y - 200;
+
+    final header = CanvasElement({
+      'id': _id(),
+      'type': 'section',
+      'x': baseX,
+      'y': baseY,
+      'width': 640.0,
+      'height': 40.0,
+      'text': 'MEMORY STRUCTURE LAYOUT: struct PlayerEntity (Size: 0x120)',
+      'color': 0xff6366f1,
+    });
+
+    final f1 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': '+0x00 | void** vtable\nPoints to Player::`vftable\'',
+      'x': baseX,
+      'y': baseY + 50,
+      'width': 640.0,
+      'height': 60.0,
+      'color': 0xff6f7fea,
+    });
+    final f2 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': '+0x08 | float health\nCurrent player health (Default 100.0f)',
+      'x': baseX,
+      'y': baseY + 120,
+      'width': 640.0,
+      'height': 60.0,
+      'color': 0xff10b981,
+    });
+    final f3 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text':
+          '+0x10 | Vector3 position\n(x: float, y: float, z: float) in world meters',
+      'x': baseX,
+      'y': baseY + 190,
+      'width': 640.0,
+      'height': 60.0,
+      'color': 0xff3b82f6,
+    });
+    final f4 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text':
+          '+0x28 | uint32_t stateFlags\nBit 0: IsAlive | Bit 1: IsGrounded | Bit 2: InCombat',
+      'x': baseX,
+      'y': baseY + 260,
+      'width': 640.0,
+      'height': 60.0,
+      'color': 0xfff59e0b,
+    });
+    final f5 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': '+0x30 | WeaponState* currentWeapon\nPointer to WeaponEntity',
+      'x': baseX,
+      'y': baseY + 330,
+      'width': 640.0,
+      'height': 60.0,
+      'color': 0xffef4444,
+    });
+
+    _history.put(header);
+    _history.put(f1);
+    _history.put(f2);
+    _history.put(f3);
+    _history.put(f4);
+    _history.put(f5);
+    _commit();
+  }
+
+  void _applyBinaryLayoutPreset() {
+    if (_scene.readOnly) return;
+    _finishText();
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final baseX = center.x - 300;
+    final baseY = center.y - 220;
+
+    final header = CanvasElement({
+      'id': _id(),
+      'type': 'section',
+      'x': baseX,
+      'y': baseY,
+      'width': 600.0,
+      'height': 40.0,
+      'text': 'EXECUTABLE / PE FORMAT SECTIONS',
+      'color': 0xff6366f1,
+    });
+
+    final s1 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': 'DOS Header & Stub\nMagic: 0x5A4D ("MZ") | e_lfanew: 0x000000F8',
+      'x': baseX,
+      'y': baseY + 50,
+      'width': 600.0,
+      'height': 60.0,
+      'color': 0xff64748b,
+    });
+    final s2 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text':
+          'PE NT Headers\nSignature: "PE\\0\\0" | OptionalHeader (ImageBase: 0x140000000, Subsystem: GUI)',
+      'x': baseX,
+      'y': baseY + 120,
+      'width': 600.0,
+      'height': 60.0,
+      'color': 0xff6366f1,
+    });
+    final s3 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text':
+          '.text Section (Code)\nVirtualSize: 0x120000 | Characteristics: IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ',
+      'x': baseX,
+      'y': baseY + 190,
+      'width': 600.0,
+      'height': 60.0,
+      'color': 0xff3b82f6,
+    });
+    final s4 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text':
+          '.rdata Section (Read-Only Data & Imports)\nImport Directory Table, String literals, Vtables, CRT constants',
+      'x': baseX,
+      'y': baseY + 260,
+      'width': 600.0,
+      'height': 60.0,
+      'color': 0xff10b981,
+    });
+    final s5 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text':
+          '.data Section (Read/Write Data)\nGlobal states, Singleton instances, Mutable tables',
+      'x': baseX,
+      'y': baseY + 330,
+      'width': 600.0,
+      'height': 60.0,
+      'color': 0xfff59e0b,
+    });
+
+    _history.put(header);
+    _history.put(s1);
+    _history.put(s2);
+    _history.put(s3);
+    _history.put(s4);
+    _history.put(s5);
+    _commit();
+  }
+
+  void _applyProtocolFlowPreset() {
+    if (_scene.readOnly) return;
+    _finishText();
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final baseX = center.x - 450;
+    final baseY = center.y - 60;
+
+    final p1 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': '1. Handshake Init\n[0x01] Client Hello (Version 1.2)',
+      'x': baseX,
+      'y': baseY,
+      'width': 200.0,
+      'height': 80.0,
+      'color': 0xff6366f1,
+    });
+    final p2 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': '2. Server Challenge\n[0x02] Nonce (16 bytes) + Salt',
+      'x': baseX + 240,
+      'y': baseY,
+      'width': 200.0,
+      'height': 80.0,
+      'color': 0xff3b82f6,
+    });
+    final p3 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': '3. Auth Response\n[0x03] HMAC-SHA256 Token',
+      'x': baseX + 480,
+      'y': baseY,
+      'width': 200.0,
+      'height': 80.0,
+      'color': 0xff8b5cf6,
+    });
+    final p4 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': '4. Session Active\n[0x10] World Delta State (30Hz)',
+      'x': baseX + 720,
+      'y': baseY,
+      'width': 200.0,
+      'height': 80.0,
+      'color': 0xff10b981,
+    });
+
+    final c1 = CanvasElement({
+      'id': _id(),
+      'type': 'connector',
+      'startId': p1.id,
+      'endId': p2.id,
+      'color': 0xff6366f1,
+    });
+    final c2 = CanvasElement({
+      'id': _id(),
+      'type': 'connector',
+      'startId': p2.id,
+      'endId': p3.id,
+      'color': 0xff3b82f6,
+    });
+    final c3 = CanvasElement({
+      'id': _id(),
+      'type': 'connector',
+      'startId': p3.id,
+      'endId': p4.id,
+      'color': 0xff8b5cf6,
+    });
+
+    _history.put(p1);
+    _history.put(p2);
+    _history.put(p3);
+    _history.put(p4);
+    _history.put(c1);
+    _history.put(c2);
+    _history.put(c3);
+    _commit();
+  }
+
+  void _applyProcessTreePreset() {
+    if (_scene.readOnly) return;
+    _finishText();
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final baseX = center.x - 360;
+    final baseY = center.y - 60;
+
+    final root = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text':
+          'sample.exe (PID: 4820)\nEntry Point: 0x140081200\nCapabilities: Drops worker, modifies registry',
+      'x': baseX,
+      'y': baseY,
+      'width': 260.0,
+      'height': 90.0,
+      'color': 0xffef4444,
+    });
+    final child1 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text':
+          'cmd.exe /c timeout 5 (PID: 5124)\nDefense Evasion: Sleep delay before injection',
+      'x': baseX + 320,
+      'y': baseY - 70,
+      'width': 260.0,
+      'height': 80.0,
+      'color': 0xfff59e0b,
+    });
+    final child2 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text':
+          'worker.exe (PID: 5312)\nPath: %TEMP%\\worker.exe\nNetwork: Connects to C2 198.51.100.45',
+      'x': baseX + 320,
+      'y': baseY + 70,
+      'width': 260.0,
+      'height': 80.0,
+      'color': 0xffe11d48,
+    });
+
+    final c1 = CanvasElement({
+      'id': _id(),
+      'type': 'connector',
+      'startId': root.id,
+      'endId': child1.id,
+      'color': 0xffef4444,
+    });
+    final c2 = CanvasElement({
+      'id': _id(),
+      'type': 'connector',
+      'startId': root.id,
+      'endId': child2.id,
+      'color': 0xffef4444,
+    });
+
+    _history.put(root);
+    _history.put(child1);
+    _history.put(child2);
+    _history.put(c1);
+    _history.put(c2);
+    _commit();
+  }
+
+  void _applyRenderingPipelinePreset() {
+    if (_scene.readOnly) return;
+    _finishText();
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final baseX = center.x - 450;
+    final baseY = center.y - 50;
+
+    final r1 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': 'Scene / Entities\nWorld Space Transforms',
+      'x': baseX,
+      'y': baseY,
+      'width': 180.0,
+      'height': 75.0,
+      'color': 0xff6366f1,
+    });
+    final r2 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': 'Camera View Matrix\nWorld-to-Camera Space',
+      'x': baseX + 220,
+      'y': baseY,
+      'width': 180.0,
+      'height': 75.0,
+      'color': 0xff8b5cf6,
+    });
+    final r3 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': 'Projection Matrix\nPerspective / NDC (Clip)',
+      'x': baseX + 440,
+      'y': baseY,
+      'width': 180.0,
+      'height': 75.0,
+      'color': 0xff3b82f6,
+    });
+    final r4 = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'text': 'Viewport & Rasterizer\nScreen Coordinates & Draw',
+      'x': baseX + 660,
+      'y': baseY,
+      'width': 180.0,
+      'height': 75.0,
+      'color': 0xff10b981,
+    });
+
+    final c1 = CanvasElement({
+      'id': _id(),
+      'type': 'connector',
+      'startId': r1.id,
+      'endId': r2.id,
+      'color': 0xff6366f1,
+    });
+    final c2 = CanvasElement({
+      'id': _id(),
+      'type': 'connector',
+      'startId': r2.id,
+      'endId': r3.id,
+      'color': 0xff8b5cf6,
+    });
+    final c3 = CanvasElement({
+      'id': _id(),
+      'type': 'connector',
+      'startId': r3.id,
+      'endId': r4.id,
+      'color': 0xff3b82f6,
+    });
+
+    _history.put(r1);
+    _history.put(r2);
+    _history.put(r3);
+    _history.put(r4);
+    _history.put(c1);
+    _history.put(c2);
+    _history.put(c3);
+    _commit();
+  }
+
   void _createColumn() {
     _finishText();
     _cancelGesture();
@@ -2799,6 +5329,28 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _edit(element);
   }
 
+  void _addChecklist({CanvasPoint? at}) {
+    final pos =
+        at ??
+        _camera.toWorld(CanvasPoint(_viewport.width / 2, _viewport.height / 2));
+    final element = CanvasElement({
+      'id': _id(),
+      'type': 'sticky',
+      'x': pos.x,
+      'y': pos.y,
+      'width': 240.0,
+      'height': 200.0,
+      'color': _color,
+      'text': '# Tasks\n- [ ] Task 1\n- [ ] Task 2\n- [ ] Task 3',
+    });
+    _history.put(element);
+    _selection
+      ..clear()
+      ..add(element.id);
+    _commit();
+    _edit(element);
+  }
+
   void _addSection({CanvasPoint? at}) {
     final pos =
         at ??
@@ -2842,6 +5394,28 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _commit();
   }
 
+  void _addCard({CanvasPoint? at}) {
+    final pos =
+        at ??
+        _camera.toWorld(CanvasPoint(_viewport.width / 2, _viewport.height / 2));
+    final element = CanvasElement({
+      'id': _id(),
+      'type': 'card',
+      'x': pos.x - 120,
+      'y': pos.y - 60,
+      'width': 240.0,
+      'height': 120.0,
+      'color': _color,
+      'text': 'Card Title\nCard description…',
+    });
+    _history.put(element);
+    _selection
+      ..clear()
+      ..add(element.id);
+    _commit();
+    _edit(element);
+  }
+
   void _toggleLock() {
     final allLocked = _selection.every((id) => _scene[id]?.locked == true);
     for (final id in _selection) {
@@ -2860,6 +5434,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
       (_Tool.sticky, Icons.sticky_note_2_outlined, 'Sticky note (S)'),
       (_Tool.text, Icons.title, 'Text (T)'),
       (_Tool.pen, Icons.draw_outlined, 'Pen (P)'),
+      (_Tool.highlighter, Icons.brush_outlined, 'Highlighter (Y)'),
       (_Tool.eraser, Icons.auto_fix_normal, 'Erase strokes (E)'),
     ];
     return Material(
@@ -2926,6 +5501,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
                     ),
                   ),
                   const PopupMenuItem(
+                    value: 'checklist',
+                    child: Text('New checklist / tasklist'),
+                  ),
+                  const PopupMenuItem(
                     value: 'link',
                     child: Text('Website link card'),
                   ),
@@ -2974,6 +5553,9 @@ class _CanvasEditorState extends State<CanvasEditor> {
                     ),
                 ],
                 onSelected: (action) {
+                  if (action == 'checklist') {
+                    _addChecklist();
+                  }
                   if (action == 'link') {
                     _addLink();
                   }
@@ -3174,6 +5756,119 @@ class _CanvasEditorState extends State<CanvasEditor> {
                     ),
                 ],
               ),
+              if (_selection.length == 1 &&
+                  (_scene[_selection.first]?.type == 'arrow' ||
+                      _scene[_selection.first]?.type == 'line' ||
+                      _scene[_selection.first]?.type == 'connector') &&
+                  !_scene.readOnly) ...[
+                PopupMenuButton<String>(
+                  tooltip: 'Stroke Style',
+                  icon: const Icon(Icons.line_weight, size: 20),
+                  onSelected: _setConnectorStyle,
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'solid', child: Text('Solid')),
+                    PopupMenuItem(value: 'dashed', child: Text('Dashed')),
+                    PopupMenuItem(value: 'dotted', child: Text('Dotted')),
+                  ],
+                ),
+                PopupMenuButton<String>(
+                  tooltip: 'Routing',
+                  icon: const Icon(Icons.alt_route, size: 20),
+                  onSelected: _setConnectorRouting,
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'straight', child: Text('Straight')),
+                    PopupMenuItem(value: 'curved', child: Text('Curved')),
+                    PopupMenuItem(
+                      value: 'orthogonal',
+                      child: Text('Orthogonal'),
+                    ),
+                  ],
+                ),
+                PopupMenuButton<String>(
+                  tooltip: 'Start Marker',
+                  icon: const Icon(Icons.west, size: 20),
+                  onSelected: (m) => _setConnectorMarker(m, isStart: true),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'none', child: Text('None (Start)')),
+                    PopupMenuItem(value: 'arrow', child: Text('Arrow (Start)')),
+                    PopupMenuItem(value: 'dot', child: Text('Dot (Start)')),
+                    PopupMenuItem(
+                      value: 'diamond',
+                      child: Text('Diamond (Start)'),
+                    ),
+                  ],
+                ),
+                PopupMenuButton<String>(
+                  tooltip: 'End Marker',
+                  icon: const Icon(Icons.east, size: 20),
+                  onSelected: (m) => _setConnectorMarker(m),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'arrow', child: Text('Arrow (End)')),
+                    PopupMenuItem(value: 'dot', child: Text('Dot (End)')),
+                    PopupMenuItem(
+                      value: 'diamond',
+                      child: Text('Diamond (End)'),
+                    ),
+                    PopupMenuItem(value: 'none', child: Text('None (End)')),
+                  ],
+                ),
+                PopupMenuButton<String>(
+                  tooltip: 'Start Anchor',
+                  icon: const Icon(Icons.north_west, size: 20),
+                  onSelected: (a) => _setConnectorAnchor(a, isStart: true),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'auto',
+                      child: Text('Start Anchor: Auto'),
+                    ),
+                    PopupMenuItem(
+                      value: 'top',
+                      child: Text('Start Anchor: Top'),
+                    ),
+                    PopupMenuItem(
+                      value: 'bottom',
+                      child: Text('Start Anchor: Bottom'),
+                    ),
+                    PopupMenuItem(
+                      value: 'left',
+                      child: Text('Start Anchor: Left'),
+                    ),
+                    PopupMenuItem(
+                      value: 'right',
+                      child: Text('Start Anchor: Right'),
+                    ),
+                  ],
+                ),
+                PopupMenuButton<String>(
+                  tooltip: 'End Anchor',
+                  icon: const Icon(Icons.south_east, size: 20),
+                  onSelected: (a) => _setConnectorAnchor(a, isStart: false),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'auto',
+                      child: Text('End Anchor: Auto'),
+                    ),
+                    PopupMenuItem(value: 'top', child: Text('End Anchor: Top')),
+                    PopupMenuItem(
+                      value: 'bottom',
+                      child: Text('End Anchor: Bottom'),
+                    ),
+                    PopupMenuItem(
+                      value: 'left',
+                      child: Text('End Anchor: Left'),
+                    ),
+                    PopupMenuItem(
+                      value: 'right',
+                      child: Text('End Anchor: Right'),
+                    ),
+                  ],
+                ),
+                IconButton(
+                  tooltip: 'Reverse Direction',
+                  icon: const Icon(Icons.swap_horiz, size: 20),
+                  onPressed: _reverseConnector,
+                ),
+              ],
               IconButton(
                 tooltip: _snap
                     ? 'Grid snapping on (Alt bypass)'
@@ -3199,7 +5894,15 @@ class _CanvasEditorState extends State<CanvasEditor> {
                     value: 'dots',
                     child: Text('Dot grid (Default)'),
                   ),
-                  PopupMenuItem(value: 'grid', child: Text('Math graph paper')),
+                  PopupMenuItem(value: 'grid', child: Text('Standard grid')),
+                  PopupMenuItem(
+                    value: 'graph',
+                    child: Text('Engineering graph paper'),
+                  ),
+                  PopupMenuItem(
+                    value: 'cornell',
+                    child: Text('Cornell Notes layout'),
+                  ),
                   PopupMenuItem(
                     value: 'lines',
                     child: Text('Ruled notebook lines'),
@@ -3229,6 +5932,26 @@ class _CanvasEditorState extends State<CanvasEditor> {
                       _applyAiStateMachinePreset();
                     case 'moodboard':
                       _applyMoodboardPreset();
+                    case 'playtest_feedback':
+                      _applyPlaytestFeedbackPreset();
+                    case 'narrative_board':
+                      _applyNarrativeBoardPreset();
+                    case 'game_architecture':
+                      _applyGameArchitecturePreset();
+                    case 'call_flow':
+                      _applyCallFlowPreset();
+                    case 'object_relationships':
+                      _applyObjectRelationshipsPreset();
+                    case 'structure_layout':
+                      _applyStructureLayoutPreset();
+                    case 'binary_layout':
+                      _applyBinaryLayoutPreset();
+                    case 'protocol_flow':
+                      _applyProtocolFlowPreset();
+                    case 'process_tree':
+                      _applyProcessTreePreset();
+                    case 'rendering_pipeline':
+                      _applyRenderingPipelinePreset();
                   }
                 },
                 itemBuilder: (_) => const [
@@ -3297,9 +6020,9 @@ class _CanvasEditorState extends State<CanvasEditor> {
                     value: 'core_loop',
                     child: Row(
                       children: [
-                        Icon(Icons.autorenew, size: 16),
+                        Icon(Icons.loop, size: 16),
                         SizedBox(width: 8),
-                        Text('Core Game Loop'),
+                        Text('Core Gameplay Loop'),
                       ],
                     ),
                   ),
@@ -3307,9 +6030,9 @@ class _CanvasEditorState extends State<CanvasEditor> {
                     value: 'level_design',
                     child: Row(
                       children: [
-                        Icon(Icons.alt_route, size: 16),
+                        Icon(Icons.map_outlined, size: 16),
                         SizedBox(width: 8),
-                        Text('Level Design & Pacing'),
+                        Text('Level Beat & Flow Map'),
                       ],
                     ),
                   ),
@@ -3319,7 +6042,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                       children: [
                         Icon(Icons.psychology_outlined, size: 16),
                         SizedBox(width: 8),
-                        Text('AI State Machine'),
+                        Text('AI Behavior State Machine'),
                       ],
                     ),
                   ),
@@ -3329,7 +6052,118 @@ class _CanvasEditorState extends State<CanvasEditor> {
                       children: [
                         Icon(Icons.palette_outlined, size: 16),
                         SizedBox(width: 8),
-                        Text('Art Direction & Moodboard'),
+                        Text('Art Moodboard & Colors'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'playtest_feedback',
+                    child: Row(
+                      children: [
+                        Icon(Icons.rate_review_outlined, size: 16),
+                        SizedBox(width: 8),
+                        Text('Playtest Feedback Board'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'narrative_board',
+                    child: Row(
+                      children: [
+                        Icon(Icons.auto_stories_outlined, size: 16),
+                        SizedBox(width: 8),
+                        Text('Narrative & Quest Board'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'game_architecture',
+                    child: Row(
+                      children: [
+                        Icon(Icons.memory, size: 16),
+                        SizedBox(width: 8),
+                        Text('Game Architecture & Systems'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuDivider(),
+                  PopupMenuItem(
+                    enabled: false,
+                    child: Text(
+                      'REVERSE ENGINEERING / RESEARCH',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'call_flow',
+                    child: Row(
+                      children: [
+                        Icon(Icons.call_split, size: 16),
+                        SizedBox(width: 8),
+                        Text('Call Flow Diagram'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'object_relationships',
+                    child: Row(
+                      children: [
+                        Icon(Icons.hub_outlined, size: 16),
+                        SizedBox(width: 8),
+                        Text('Object Relationships'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'structure_layout',
+                    child: Row(
+                      children: [
+                        Icon(Icons.table_rows_outlined, size: 16),
+                        SizedBox(width: 8),
+                        Text('Memory Structure Layout'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'binary_layout',
+                    child: Row(
+                      children: [
+                        Icon(Icons.format_shapes_outlined, size: 16),
+                        SizedBox(width: 8),
+                        Text('Binary / PE Layout'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'protocol_flow',
+                    child: Row(
+                      children: [
+                        Icon(Icons.compare_arrows, size: 16),
+                        SizedBox(width: 8),
+                        Text('Protocol Packet Flow'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'process_tree',
+                    child: Row(
+                      children: [
+                        Icon(Icons.account_tree, size: 16),
+                        SizedBox(width: 8),
+                        Text('Process Execution Tree'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'rendering_pipeline',
+                    child: Row(
+                      children: [
+                        Icon(Icons.view_in_ar, size: 16),
+                        SizedBox(width: 8),
+                        Text('Rendering Pipeline'),
                       ],
                     ),
                   ),
@@ -3346,9 +6180,73 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 icon: const Icon(Icons.redo, size: 20),
               ),
               IconButton(
-                tooltip: 'Canvas element list',
+                tooltip: 'Layers & element list',
                 onPressed: _showElementList,
-                icon: const Icon(Icons.list_alt, size: 20),
+                icon: const Icon(Icons.layers_outlined, size: 20),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'Layer order',
+                enabled: _selection.isNotEmpty && !_scene.readOnly,
+                icon: const Icon(Icons.flip_to_front_outlined, size: 20),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: 'front',
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Bring to Front'),
+                        SizedBox(width: 12),
+                        Text(
+                          'Shift+]',
+                          style: TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'forward',
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Bring Forward'),
+                        SizedBox(width: 12),
+                        Text(
+                          ']',
+                          style: TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'backward',
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Send Backward'),
+                        SizedBox(width: 12),
+                        Text(
+                          '[',
+                          style: TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'back',
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Send to Back'),
+                        SizedBox(width: 12),
+                        Text(
+                          'Shift+[',
+                          style: TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                onSelected: (action) => _reorder(action),
               ),
               PopupMenuButton<CanvasArrangement>(
                 tooltip: 'Arrange selected placements',
@@ -3358,17 +6256,36 @@ class _CanvasEditorState extends State<CanvasEditor> {
                   for (final action in CanvasArrangement.values)
                     PopupMenuItem(value: action, child: Text(action.label)),
                 ],
+                onSelected: (action) => _applyArrangement(action),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'Group (Ctrl+G) / Ungroup (Ctrl+Shift+G)',
+                enabled:
+                    !_scene.readOnly &&
+                    (_selection.length >= 2 ||
+                        _selection.any((id) => _scene[id]?.groupId != null)),
+                icon: const Icon(Icons.workspaces_outlined, size: 20),
+                itemBuilder: (_) => [
+                  if (_selection.length >= 2)
+                    const PopupMenuItem(
+                      value: 'group',
+                      child: Text('Group (Ctrl+G)'),
+                    ),
+                  if (_selection.any((id) => _scene[id]?.groupId != null))
+                    const PopupMenuItem(
+                      value: 'ungroup',
+                      child: Text('Ungroup (Ctrl+Shift+G)'),
+                    ),
+                ],
                 onSelected: (action) {
-                  _finishText();
-                  _cancelGesture();
-                  final elements = _selection
-                      .map((id) => _scene[id])
-                      .whereType<CanvasElement>();
-                  for (final element in arrangeCanvas(elements, action)) {
-                    _history.put(element);
-                  }
-                  _commit();
+                  if (action == 'group') _groupSelection();
+                  if (action == 'ungroup') _ungroupSelection();
                 },
+              ),
+              IconButton(
+                tooltip: 'Export canvas (PNG, SVG, JSON)',
+                icon: const Icon(Icons.file_download_outlined, size: 20),
+                onPressed: _showExportDialog,
               ),
               if (_editingId != null)
                 TextButton(onPressed: _finishText, child: const Text('Done')),
@@ -3432,6 +6349,11 @@ class CanvasMinimapPainter extends CustomPainter {
 
     for (final element in scene.elements) {
       if (!element.renderable || element.hidden) continue;
+      if (element.type == 'connector' ||
+          element.type == 'arrow' ||
+          element.type == 'line') {
+        continue;
+      }
       final elRect = Rect.fromLTWH(
         offsetX + (element.bounds.left - contentRect.left) * scale,
         offsetY + (element.bounds.top - contentRect.top) * scale,
@@ -3478,4 +6400,51 @@ class CanvasMinimapPainter extends CustomPainter {
       camera.zoom != oldDelegate.camera.zoom ||
       viewportSize != oldDelegate.viewportSize ||
       colors != oldDelegate.colors;
+}
+
+class _FormatButton extends StatelessWidget {
+  const _FormatButton({
+    this.icon,
+    this.label,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData? icon;
+  final String? label;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(4),
+        onTap: onPressed,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 14, color: colors.onSurfaceVariant),
+                if (label != null) const SizedBox(width: 4),
+              ],
+              if (label != null)
+                Text(
+                  label!,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

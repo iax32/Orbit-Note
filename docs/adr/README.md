@@ -1,5 +1,9 @@
 # Architecture decisions
 
+- [0017 — Local sync safety foundation](0017-sync-foundation-safety.md): accepted
+  native ownership, deletion recovery, exact-byte reconciliation and device state;
+  does not claim a complete cloud provider.
+
 Accepted means selected direction, not implemented capability. The user requested
 these six initial decisions from the product conversation. Date: 2026-09-07.
 
@@ -30,3 +34,5 @@ for the earlier decision. Routine files, widgets and bug fixes do not need ADRs.
 - [0014 — PDF highlight notes](0014-pdf-highlight-notes.md): source-versioned regions using Canvas rectangles and linkable Markdown notes.
 - [0015 — PDF form drafts](0015-pdf-form-drafts.md): source-versioned field drafts, isolated native editing and separate filled copies.
 - [0016 — Provider-neutral sync](0016-provider-neutral-sync.md): proposed protocol, Google Drive/WebDAV priority, audit and production release gates.
+- [0018 — Recoverable folder commands](0018-recoverable-folder-commands.md): accepted native mixed-object command capability, staged recovery and safe refusal by unsupported adapters.
+- [0019 — Google account adapters](0019-google-account-adapters.md): native account authorization, secure sessions, quota semantics and explicit transfer safety gate.

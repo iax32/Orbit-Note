@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'connectors.dart';
 import 'geometry.dart';
 
 const canvasElementTypes = {
@@ -12,6 +13,7 @@ const canvasElementTypes = {
   'diamond',
   'arrow',
   'line',
+  'connector',
   'ink',
   'frame',
   'column',
@@ -29,10 +31,46 @@ class CanvasElement {
   String get url => data['url'] is String ? data['url'] as String : '';
   String? get objectId =>
       data['objectId'] is String ? data['objectId'] as String : null;
-  double get x => finiteNumber(data['x'], 0);
-  double get y => finiteNumber(data['y'], 0);
-  double get width => finiteNumber(data['width'], 200).clamp(0, 1000000);
-  double get height => finiteNumber(data['height'], 120).clamp(0, 1000000);
+  String? get startId =>
+      data['startId'] is String ? data['startId'] as String : null;
+  String? get endId => data['endId'] is String ? data['endId'] as String : null;
+  String get strokeStyle =>
+      data['strokeStyle'] is String ? data['strokeStyle'] as String : 'solid';
+  String get startMarker =>
+      data['startMarker'] is String ? data['startMarker'] as String : 'none';
+  String get endMarker => data['endMarker'] is String
+      ? data['endMarker'] as String
+      : (type == 'arrow' || type == 'connector' ? 'arrow' : 'none');
+  String get routing =>
+      data['routing'] is String ? data['routing'] as String : 'straight';
+  String get startAnchor =>
+      data['startAnchor'] is String ? data['startAnchor'] as String : 'auto';
+  String get endAnchor =>
+      data['endAnchor'] is String ? data['endAnchor'] as String : 'auto';
+  String? get groupId =>
+      data['groupId'] is String && (data['groupId'] as String).isNotEmpty
+      ? data['groupId'] as String
+      : null;
+  bool get hasEndpoints =>
+      isConnectorElement(this) &&
+      [
+        data['startX'],
+        data['startY'],
+        data['endX'],
+        data['endY'],
+      ].every((v) => v is num && v.isFinite);
+  double get x => hasEndpoints
+      ? math.min(finiteNumber(data['startX'], 0), finiteNumber(data['endX'], 0))
+      : finiteNumber(data['x'], 0);
+  double get y => hasEndpoints
+      ? math.min(finiteNumber(data['startY'], 0), finiteNumber(data['endY'], 0))
+      : finiteNumber(data['y'], 0);
+  double get width => hasEndpoints
+      ? (finiteNumber(data['endX'], 0) - finiteNumber(data['startX'], 0)).abs()
+      : finiteNumber(data['width'], 200).clamp(0, 1000000);
+  double get height => hasEndpoints
+      ? (finiteNumber(data['endY'], 0) - finiteNumber(data['startY'], 0)).abs()
+      : finiteNumber(data['height'], 120).clamp(0, 1000000);
   bool get locked => data['locked'] == true;
   bool get hidden => data['hidden'] == true;
   int get color => data['color'] is int ? data['color'] as int : 0xff8b7cf6;
@@ -40,11 +78,13 @@ class CanvasElement {
   bool get renderable =>
       id.isNotEmpty &&
       canvasElementTypes.contains(type) &&
-      [data['x'], data['y']].every((v) => v is num && v.isFinite) &&
-      [
-        data['width'],
-        data['height'],
-      ].every((v) => v == null || v is num && v.isFinite && v >= 0);
+      (hasEndpoints ||
+          type == 'connector' ||
+          ([data['x'], data['y']].every((v) => v is num && v.isFinite) &&
+              [
+                data['width'],
+                data['height'],
+              ].every((v) => v == null || v is num && v.isFinite && v >= 0)));
   CanvasBounds get bounds => CanvasBounds(x, y, width, height);
   late final List<CanvasPoint> points = data['points'] is List
       ? (data['points'] as List)
@@ -56,8 +96,33 @@ class CanvasElement {
             .toList()
       : const [];
 
-  CanvasElement copy(Map<String, dynamic> patch) =>
-      CanvasElement({...data, ...patch});
+  CanvasElement copy(Map<String, dynamic> patch) {
+    if (isConnectorElement(this) &&
+        !patch.keys.any(
+          (k) => const {'startX', 'startY', 'endX', 'endY'}.contains(k),
+        ) &&
+        patch.keys.any(
+          (k) => const {'x', 'y', 'width', 'height'}.contains(k),
+        )) {
+      final nx = finiteNumber(patch['x'], x), ny = finiteNumber(patch['y'], y);
+      final sx = width == 0 ? 1.0 : finiteNumber(patch['width'], width) / width;
+      final sy = height == 0
+          ? 1.0
+          : finiteNumber(patch['height'], height) / height;
+      CanvasPoint transform(CanvasPoint point) =>
+          CanvasPoint(nx + (point.x - x) * sx, ny + (point.y - y) * sy);
+      return CanvasElement({
+        ...data,
+        ...patch,
+        ...connectorEndpointData(
+          transform(storedConnectorStart(this)),
+          transform(storedConnectorEnd(this)),
+        ),
+      });
+    }
+    return CanvasElement({...data, ...patch});
+  }
+
   CanvasElement translated(CanvasPoint delta) =>
       copy({'x': x + delta.x, 'y': y + delta.y});
 
@@ -73,7 +138,10 @@ class CanvasElement {
               math.pow((local.y - ry) / (ry + tolerance), 2) <=
           1;
     }
-    if (type == 'ink' || type == 'arrow' || type == 'line') {
+    if (type == 'ink' ||
+        type == 'arrow' ||
+        type == 'line' ||
+        type == 'connector') {
       final samples = type == 'ink'
           ? points
           : [
@@ -90,7 +158,7 @@ class CanvasElement {
         return (samples.first - local).length <= tolerance + strokeWidth;
       }
       for (var i = 1; i < samples.length; i++) {
-        if (_distanceToSegment(local, samples[i - 1], samples[i]) <=
+        if (distanceToSegment(local, samples[i - 1], samples[i]) <=
             tolerance + strokeWidth / 2) {
           return true;
         }
@@ -99,17 +167,6 @@ class CanvasElement {
     }
     return true;
   }
-}
-
-double _distanceToSegment(CanvasPoint p, CanvasPoint a, CanvasPoint b) {
-  final ab = b - a;
-  final lengthSquared = ab.x * ab.x + ab.y * ab.y;
-  if (lengthSquared == 0) return (p - a).length;
-  final ap = p - a;
-  final t = ((ap.x * ab.x + ap.y * ab.y) / lengthSquared)
-      .clamp(0, 1)
-      .toDouble();
-  return (p - (a + ab * t)).length;
 }
 
 /// Unknown root and element fields survive edits. Future schemas are read-only.
@@ -125,17 +182,19 @@ class CanvasScene {
           if (element.id.isNotEmpty && !_elements.containsKey(element.id)) {
             _elements[element.id] = element;
             _order[element.id] = i;
-            if (element.renderable && !element.hidden) {
-              index.put(
-                element.id,
-                element.bounds.inflate(element.strokeWidth),
-              );
-            }
           } else {
             _opaque.add(raw);
           }
         } else {
           _opaque.add(raw);
+        }
+      }
+      for (final element in _elements.values) {
+        if (element.renderable && !element.hidden) {
+          index.put(
+            element.id,
+            _effectiveBounds(element).inflate(element.strokeWidth),
+          );
         }
       }
     }
@@ -155,6 +214,26 @@ class CanvasScene {
   CanvasElement? operator [](String id) => _elements[id];
   int get length => _elements.length;
 
+  CanvasBounds _effectiveBounds(CanvasElement element) {
+    if ((element.type == 'connector' ||
+            element.type == 'arrow' ||
+            element.type == 'line') &&
+        (element.startId != null || element.endId != null)) {
+      final startElem = element.startId != null
+          ? _elements[element.startId]
+          : null;
+      final endElem = element.endId != null ? _elements[element.endId] : null;
+      if (startElem != null && endElem != null) {
+        return resolveConnectorEndpoints(element, this).bounds.inflate(16);
+      } else if (startElem != null) {
+        return startElem.bounds.union(element.bounds).inflate(16);
+      } else if (endElem != null) {
+        return endElem.bounds.union(element.bounds).inflate(16);
+      }
+    }
+    return element.bounds;
+  }
+
   List<CanvasElement> query(CanvasBounds bounds) {
     final result = index.query(bounds).map((id) => _elements[id]!).toList();
     result.sort((a, b) => _order[a.id]!.compareTo(_order[b.id]!));
@@ -170,11 +249,24 @@ class CanvasScene {
       CanvasBounds(point.x, point.y, 0, 0).inflate(tolerance),
     ).reversed) {
       if ((includeLocked || !element.locked) &&
-          element.hit(point, tolerance: tolerance)) {
+          _elementHit(element, point, tolerance: tolerance)) {
         return element;
       }
     }
     return null;
+  }
+
+  bool _elementHit(
+    CanvasElement element,
+    CanvasPoint point, {
+    double tolerance = 5,
+  }) {
+    if (element.type == 'connector' ||
+        element.type == 'arrow' ||
+        element.type == 'line') {
+      return hitTestConnector(element, this, point, tolerance: tolerance);
+    }
+    return element.hit(point, tolerance: tolerance);
   }
 
   void put(CanvasElement element) {
@@ -184,7 +276,21 @@ class CanvasScene {
     _elements[element.id] = element;
     index.remove(element.id);
     if (!element.hidden) {
-      index.put(element.id, element.bounds.inflate(element.strokeWidth));
+      index.put(
+        element.id,
+        _effectiveBounds(element).inflate(element.strokeWidth),
+      );
+    }
+    // Update spatial index for any connectors attached to this element
+    for (final conn in _elements.values) {
+      if ((conn.type == 'connector' ||
+              conn.type == 'arrow' ||
+              conn.type == 'line') &&
+          (conn.startId == element.id || conn.endId == element.id) &&
+          !conn.hidden) {
+        index.remove(conn.id);
+        index.put(conn.id, _effectiveBounds(conn).inflate(conn.strokeWidth));
+      }
     }
   }
 
@@ -194,14 +300,86 @@ class CanvasScene {
     _elements.remove(id);
     _order.remove(id);
     index.remove(id);
+    for (final conn in _elements.values) {
+      if ((conn.type == 'connector' ||
+              conn.type == 'arrow' ||
+              conn.type == 'line') &&
+          (conn.startId == id || conn.endId == id) &&
+          !conn.hidden) {
+        index.remove(conn.id);
+        index.put(conn.id, _effectiveBounds(conn).inflate(conn.strokeWidth));
+      }
+    }
   }
 
   CanvasBounds? get contentBounds {
     CanvasBounds? result;
     for (final element in elements.where((e) => e.renderable && !e.hidden)) {
-      result = result?.union(element.bounds) ?? element.bounds;
+      final eb = _effectiveBounds(element);
+      result = result?.union(eb) ?? eb;
     }
     return result;
+  }
+
+  int? orderOf(String id) => _order[id];
+
+  List<CanvasElement> get elementsInOrder {
+    final list = _elements.values.toList();
+    list.sort((a, b) => _order[a.id]!.compareTo(_order[b.id]!));
+    return list;
+  }
+
+  void bringToFront(String id) {
+    if (readOnly || !_elements.containsKey(id)) return;
+    revision++;
+    _order[id] = ++_nextOrder;
+  }
+
+  void sendToBack(String id) {
+    if (readOnly || !_elements.containsKey(id)) return;
+    revision++;
+    final minOrder = _order.values.fold<int>(0, math.min);
+    _order[id] = minOrder - 1;
+  }
+
+  void bringForward(String id) {
+    if (readOnly || !_elements.containsKey(id)) return;
+    final currentOrder = _order[id]!;
+    String? nextId;
+    int? nextOrder;
+    for (final entry in _order.entries) {
+      if (entry.key != id && entry.value > currentOrder) {
+        if (nextOrder == null || entry.value < nextOrder) {
+          nextOrder = entry.value;
+          nextId = entry.key;
+        }
+      }
+    }
+    if (nextId != null && nextOrder != null) {
+      revision++;
+      _order[id] = nextOrder;
+      _order[nextId] = currentOrder;
+    }
+  }
+
+  void sendBackward(String id) {
+    if (readOnly || !_elements.containsKey(id)) return;
+    final currentOrder = _order[id]!;
+    String? prevId;
+    int? prevOrder;
+    for (final entry in _order.entries) {
+      if (entry.key != id && entry.value < currentOrder) {
+        if (prevOrder == null || entry.value > prevOrder) {
+          prevOrder = entry.value;
+          prevId = entry.key;
+        }
+      }
+    }
+    if (prevId != null && prevOrder != null) {
+      revision++;
+      _order[id] = prevOrder;
+      _order[prevId] = currentOrder;
+    }
   }
 
   Map<String, dynamic> toJson() => readOnly
@@ -259,6 +437,18 @@ class CanvasHistory {
     begin();
     _before!.putIfAbsent(id, () => _state(id));
     scene.remove(id);
+  }
+
+  void reorder(Iterable<String> ids, void Function() mutate) {
+    if (scene.readOnly) return;
+    begin();
+    for (final id in ids) {
+      _before!.putIfAbsent(id, () => _state(id));
+    }
+    for (final id in scene._elements.keys) {
+      _before!.putIfAbsent(id, () => _state(id));
+    }
+    mutate();
   }
 
   bool commit() {

@@ -1,3 +1,4 @@
+import '../canvas/geometry.dart';
 import '../canvas/scene.dart';
 import 'universal_object.dart';
 
@@ -19,6 +20,60 @@ class PdfAnnotation {
             .where(validRegion)
             .toList()
       : const [];
+
+  int get color {
+    if (regions.isNotEmpty) {
+      final c = regions.first.color;
+      if (c != 0) return c;
+    }
+    return 0xff8b7cf6;
+  }
+
+  String get style {
+    if (regions.isNotEmpty) {
+      final s = regions.first.data['style'];
+      if (s is String &&
+          (s == 'underline' || s == 'strikeout' || s == 'highlight')) {
+        return s;
+      }
+    }
+    return 'highlight';
+  }
+
+  CanvasBounds? boundsForPage(int pageNumber) {
+    final pageRegions = regions
+        .where((r) => r.data['page'] == pageNumber)
+        .toList();
+    if (pageRegions.isEmpty) return null;
+    var b = CanvasBounds(
+      pageRegions.first.x,
+      pageRegions.first.y,
+      pageRegions.first.width,
+      pageRegions.first.height,
+    );
+    for (var i = 1; i < pageRegions.length; i++) {
+      final r = pageRegions[i];
+      b = b.union(CanvasBounds(r.x, r.y, r.width, r.height));
+    }
+    return b;
+  }
+
+  String summaryMarkdown(String pdfTitle) {
+    final quote = source['quote'] is String ? source['quote'] as String : '';
+    final page = source['page'] is int ? source['page'] as int : 1;
+    final comment = object.body.trim();
+    final buffer = StringBuffer();
+    if (quote.isNotEmpty) {
+      buffer.writeln('> $quote');
+      buffer.writeln('— *[[$pdfTitle#page=$page|$pdfTitle, p. $page]]*');
+    }
+    if (comment.isNotEmpty && comment != quote) {
+      if (quote.isNotEmpty) buffer.writeln();
+      buffer.writeln(comment);
+    }
+    return buffer.toString();
+  }
+
   bool matches(String? version) => version != null && checksum == version;
   static bool validRegion(CanvasElement e) =>
       e.renderable &&

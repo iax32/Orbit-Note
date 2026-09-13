@@ -84,11 +84,93 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(
         find.widgetWithText(TextField, 'Folder name'),
+        'CON',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextField, 'Folder name'), findsOneWidget);
+      expect(store.folders, isNot(contains('Notes/CON')));
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Folder name'),
         'Drafts',
       );
       await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('folder:Notes/Drafts')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'created projects (Reverse Engineering, Games, Course) appear in the explorer tree',
+    (tester) async {
+      tester.view.physicalSize = const Size(1400, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final store = FolderFixtureStore();
+      final repo = WorkspaceRepository(
+        store: store,
+        index: MemoryObjectIndex(),
+      );
+      await repo.initialize();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [repositoryProvider.overrideWithValue(repo)],
+          child: const OrbitNoteApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final c = ProviderScope.containerOf(
+        tester.element(find.byType(OrbitNoteApp)),
+      ).read(workspaceProvider.notifier);
+
+      // 1. Create Reverse Engineering Project
+      final reOverview = await c.createReverseEngineeringProject('GameClient');
+      expect(reOverview, isNotNull);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Reverse Engineering'), findsWidgets);
+      expect(find.text('GameClient'), findsWidgets);
+      expect(
+        find.byKey(ValueKey('folder-note:${reOverview!.id}')),
+        findsOneWidget,
+      );
+
+      // Collapse Reverse Engineering to test collapse and save vertical space
+      await tester.tap(find.text('Reverse Engineering').first);
+      await tester.pumpAndSettle();
+
+      // 2. Create Game Project
+      final gameGdd = await c.createGameProject('ShadowQuest');
+      expect(gameGdd, isNotNull);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Games'), findsWidgets);
+      expect(find.text('ShadowQuest'), findsWidgets);
+      expect(
+        find.byKey(ValueKey('folder-note:${gameGdd!.id}')),
+        findsOneWidget,
+      );
+
+      // Collapse Games to test collapse and save vertical space
+      await tester.tap(find.text('Games').first);
+      await tester.pumpAndSettle();
+
+      // 3. Create University Course
+      final courseOverview = await c.createUniversityCourse('DiscreteMath');
+      expect(courseOverview, isNotNull);
+      await tester.pumpAndSettle();
+
+      expect(find.text('University'), findsWidgets);
+      expect(find.text('DiscreteMath'), findsWidgets);
+      expect(
+        find.byKey(ValueKey('folder-note:${courseOverview!.id}')),
+        findsOneWidget,
+      );
+
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();
