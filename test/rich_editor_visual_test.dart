@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:orbit_note/app/orbit_theme.dart';
 import 'package:orbit_note/features/notes/note_editor.dart';
-import 'package:orbit_note/features/notes/rich/note_math.dart';
+import 'package:orbit_note/features/notes/rich/structured_math_editor.dart';
 import 'package:orbit_note/features/notes/rich/code_block.dart';
 
 void main() {
@@ -38,6 +38,13 @@ void main() {
               ).readAsBytes().then((b) => b.buffer.asByteData()),
             );
           await mono.load();
+          final serif = FontLoader('serif')
+            ..addFont(
+              File(
+                r'C:\Windows\Fonts\cambria.ttc',
+              ).readAsBytes().then((b) => b.buffer.asByteData()),
+            );
+          await serif.load();
           final manifest =
               jsonDecode(await rootBundle.loadString('FontManifest.json'))
                   as List;
@@ -85,7 +92,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.byType(NoteMath), findsOneWidget);
+      expect(find.byType(EditableMathExpression), findsOneWidget);
       expect(find.byType(NoteCodeBlock), findsOneWidget);
       expect(tester.takeException(), isNull);
       if (capture) {
@@ -102,6 +109,27 @@ void main() {
           ).writeAsBytes(data!.buffer.asUint8List());
         });
       }
+      await tester.tap(find.text('Symbols & templates'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('latex-catalog-panel')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      if (capture) {
+        await tester.runAsync(() async {
+          final rendered =
+              await (boundary.currentContext!.findRenderObject()
+                      as RenderRepaintBoundary)
+                  .toImage();
+          final bytes = await rendered.toByteData(
+            format: ui.ImageByteFormat.png,
+          );
+          rendered.dispose();
+          await File(
+            'work/ui/math-catalog-rich.png',
+          ).writeAsBytes(bytes!.buffer.asUint8List());
+        });
+      }
+      await tester.tap(find.byTooltip('Close symbol table'));
+      await tester.pumpAndSettle();
       tester.view.physicalSize = const Size(390, 844);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);

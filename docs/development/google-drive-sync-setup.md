@@ -26,6 +26,12 @@ of end-user access tokens. Drive requests use that user's OAuth authorization;
 root IDs are stored separately by Google subject. Root/Vault discovery is limited
 to files owned by the current user, and a saved root whose ownership has changed
 is rejected. Shared/team storage is outside this personal-sync milestone.
+All requests in one operation retain its starting Google subject, including
+pagination, manifest inspection and root metadata waits. A listed Vault carries
+that account identity; selecting it after switching accounts fails before any
+Drive request. Inspection rechecks folder ownership and Vault identity before
+reading its manifest. Root creation is serialized on the device to prevent
+duplicate folders from simultaneous setup calls.
 See Google's [ownership fields](https://developers.google.com/workspace/drive/api/reference/rest/v3/files)
 and [owner search filters](https://developers.google.com/workspace/drive/api/guides/search-files).
 
@@ -120,6 +126,42 @@ or `flutter build apk --debug --dart-define-from-file=config/google-drive.local.
 Use a separate ignored release file for distributor-owned production clients and
 the actual release signing certificate. A normal app user never configures these
 values or visits Google Cloud Console; the distributor supplies them at build time.
+
+### Release workflow configuration
+
+The release workflow now passes validated platform-specific configuration into
+both Windows and Android builds. Previously it omitted all Dart defines, so even
+an app with a registered Google client would ship with sign-in disabled.
+
+For GitHub release builds, set repository variables
+`ORBIT_GOOGLE_DESKTOP_CLIENT_ID` and `ORBIT_GOOGLE_ANDROID_SERVER_CLIENT_ID`.
+If required by Google's Desktop token endpoint, store the native Desktop client
+value in repository secret `ORBIT_GOOGLE_DESKTOP_CLIENT_SECRET`. Never store
+account access/refresh tokens or a confidential Web client secret in these values.
+See [GitHub configuration variables](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-variables).
+
+The manual workflow has a `google_mode` choice; tag builds use repository variable
+`ORBIT_GOOGLE_BUILD_MODE`. The default is `local-only`. Choose
+`google-account-preview` only after configuring the appropriate clients. Missing
+or placeholder app IDs fail before compilation. Release notes state the mode and
+that automatic Vault synchronization is unfinished. This gate checks configuration
+shape, not Google registration validity or live sign-in acceptance.
+
+For a local Windows preview build after importing the developer configuration:
+
+```powershell
+$env:ORBIT_GOOGLE_BUILD_MODE = 'google-account-preview'
+dart --packages=.dart_tool/package_config.json tool/prepare_google_build.dart --platform=windows --config=config/google-drive.local.json --output=.local/google-build.windows.json
+if ($LASTEXITCODE -ne 0) { throw 'Google build configuration failed.' }
+flutter build windows --release --dart-define-from-file=.local/google-build.windows.json
+```
+
+Run `flutter pub get` before that helper on a clean checkout. The explicit Dart
+entry point avoids running unrelated application native-asset hooks during this
+standalone configuration step. Only the required platform app identifiers/native
+client value are emitted; unrelated environment secrets and user tokens are never
+embedded. Generated configuration stays in ignored `.local/`, outside artifacts.
+These are distributor commands, never consumer onboarding instructions.
 
 After building: Settings → Sync → Continue with Google. Check the profile and
 Google storage, then use Prepare Orbit folder. This creates/reuses only the visible

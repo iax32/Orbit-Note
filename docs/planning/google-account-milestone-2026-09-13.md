@@ -118,6 +118,35 @@ empty-folder and physical-move limitations until explicitly addressed.
 
 ## Validation
 
+2026-09-14 release-configuration follow-up: the release workflow previously passed
+no Google defines on either platform. Both jobs now generate an allowlisted,
+platform-specific configuration and pass it to Flutter. The default local-only
+mode is explicit; requesting google-account-preview without a valid-shaped app
+ID fails before building. Account-preview is not a claim of working Vault sync.
+Five new tests cover platform isolation, exclusion of user tokens/unrelated CI
+secrets, missing/placeholder identifiers, unsupported modes and sanitized errors.
+All 533 full-suite tests passed; analyzer clean; 211 files format-clean. Release
+YAML parsed and both jobs' config handoff was checked. The standalone command's
+missing-ID failure and local-only generation were exercised. Windows release
+built through the corrected path in 7.4s and passed the five-second startup check;
+Android debug with generated config built in 29.0s (existing Kotlin plugin
+migration warnings). Evidence: `.local/google-release-*.log`. Remote GitHub Actions
+was not triggered and nothing was published. Google app registration is still
+incomplete; the public support-address question is pending. No real user tokens
+or working Google client IDs were fabricated or embedded.
+
+2026-09-14 operation-isolation follow-up: all requests across a paginated listing,
+root setup and manifest inspection use the initiating Google subject. Listed
+Vaults carry that subject, so a stale selection is rejected before network access.
+Inspection revalidates ownership/identity before reading the manifest. Concurrent
+root setup is serialized, including failed-operation recovery. Six new tests
+cover account changes during secure metadata reads/writes, concurrent root
+creation, stale Vault selection, and manifest ownership validation. Validation:
+30 Google-focused tests and 528 full-suite tests passed; analyzer clean; 209 files
+format-clean; Windows release built in 64.9s. Evidence:
+`.local/google-isolation-*.log`. Live sign-in and transfers remain unverified and
+unfinished; no developer consent or contact details were submitted in this batch.
+
 Account-ownership follow-up: root and Vault discovery now filter to the signed-in
 user's owned files. Previously saved roots must still be owned by that user.
 Added tests for two accounts creating distinct roots with their respective OAuth

@@ -14,6 +14,7 @@ import '../../canvas/scene.dart';
 import '../../platform/pdf_forms.dart';
 import 'pdf_work_widgets.dart';
 import 'pdf_content_fit.dart';
+import 'pdf_review_panel.dart';
 
 enum PdfPageMode { continuous, single, twoPage }
 
@@ -85,7 +86,15 @@ class OrbitPdfReader extends StatefulWidget {
     this.formValues = const {},
     this.onFormChanged,
     this.onSaveFilledCopy,
+    this.onUpdateReview,
+    this.onReviewSummary,
+    this.onExportReview,
+    this.onPageComment,
   });
+  final SavePdfReview? onUpdateReview;
+  final Future<bool> Function(List<String>)? onReviewSummary;
+  final Future<bool> Function(String)? onExportReview;
+  final Future<bool> Function(int page, String comment)? onPageComment;
   final String objectId, title;
   final Map<String, dynamic> formValues;
   final Future<bool> Function(String, Object)? onFormChanged;
@@ -126,7 +135,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   late Future<Uint8List?> _bytes = widget.loadBytes();
   final _query = TextEditingController();
   final _pageInput = TextEditingController();
-  final _annotationInput = TextEditingController();
+  bool _showMarkup = true;
   final _searchFocus = FocusNode();
   Timer? _saveTimer;
   bool _ready = false;
@@ -277,7 +286,8 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     final desiredScaleH = (viewHeight - 120) / math.max(regionRect.height, 60);
     final idealZoom = math
         .min(desiredScaleW, desiredScaleH)
-        .clamp(_viewer.minScale, 2.4);
+        .clamp(_viewer.minScale, math.max(_viewer.minScale, 2.4))
+        .toDouble();
 
     try {
       final matrix = _viewer.calcMatrixFor(regionRect.center, zoom: idealZoom);
@@ -296,26 +306,136 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     });
   }
 
-  Future<void> _copyAllHighlights() async {
-    if (widget.annotations.isEmpty) {
-      _notice('No highlights to copy.');
+  Future<void> _copyReview(List<PdfAnnotation> items) async {
+    try {
+      await Clipboard.setData(
+        ClipboardData(
+          text: pdfReviewMarkdown(
+            widget.title,
+            widget.objectId,
+            items,
+            checksum: widget.checksum,
+          ),
+        ),
+      );
+      _notice('Review copied as Markdown with stable source links.');
+    } catch (_) {
+      _notice('Could not access the clipboard. Your notes are unchanged.');
+    }
+  }
+
+  Future<void> _exportReview(List<PdfAnnotation> items) async {
+    try {
+      final saved = await widget.onExportReview!(
+        pdfReviewMarkdown(
+          widget.title,
+          widget.objectId,
+          items,
+          checksum: widget.checksum,
+        ),
+      );
+      if (saved) {
+        _notice('Review exported as Markdown. Original PDF unchanged.');
+      }
+    } catch (_) {
+      _notice('Could not export. The PDF and review notes are unchanged.');
+    }
+  }
+
+  void _editReview(PdfAnnotation annotation) {
+    if (widget.readOnly ||
+        widget.onUpdateReview == null ||
+        !annotation.matches(widget.checksum)) {
       return;
     }
-    final buffer = StringBuffer();
-    buffer.writeln('# Highlights & Notes: ${widget.title}');
-    buffer.writeln();
-    final sorted = [...widget.annotations]
-      ..sort((a, b) {
-        final pa = a.source['page'] is int ? a.source['page'] as int : 0;
-        final pb = b.source['page'] is int ? b.source['page'] as int : 0;
-        return pa.compareTo(pb);
-      });
-    for (final a in sorted) {
-      buffer.writeln(a.summaryMarkdown(widget.title));
-      buffer.writeln();
-    }
-    await Clipboard.setData(ClipboardData(text: buffer.toString().trim()));
-    _notice('All highlights and notes copied as Markdown.');
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PdfReviewEditor(
+        annotation: annotation,
+        colors: pdfHighlightColors,
+        onSave: widget.onUpdateReview!,
+      ),
+    );
+  }
+
+  Future<void> _addPageComment() async {
+    final page = _page;
+    var text = '';
+    var busy = false;
+    String? error;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialog) => StatefulBuilder(
+        builder: (dialog, update) => PopScope(
+          canPop: !busy,
+          child: OrbitDialog(
+            title: Text('Comment on page $page'),
+            content: SizedBox(
+              width: 460,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Add a page note, including on scans and diagrams. It links back to this PDF and stays editable in Orbit.',
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      autofocus: true,
+                      enabled: !busy,
+                      minLines: 3,
+                      maxLines: 8,
+                      maxLength: 100000,
+                      decoration: const InputDecoration(labelText: 'Comment'),
+                      onChanged: (v) => text = v,
+                    ),
+                    if (error != null) Text(error!),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: busy ? null : () => Navigator.pop(dialog),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: busy
+                    ? null
+                    : () async {
+                        if (text.trim().isEmpty) {
+                          update(() => error = 'Write a comment first.');
+                          return;
+                        }
+                        update(() {
+                          busy = true;
+                          error = null;
+                        });
+                        var saved = false;
+                        try {
+                          saved = await widget.onPageComment!(page, text);
+                        } catch (_) {}
+                        if (!dialog.mounted) return;
+                        if (saved) {
+                          Navigator.pop(dialog);
+                          if (mounted) setState(() => _showAnnotations = true);
+                        } else {
+                          update(() {
+                            busy = false;
+                            error =
+                                'Could not save. Your comment is kept here; retry.';
+                          });
+                        }
+                      },
+                child: Text(busy ? 'Saving…' : 'Save page comment'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showHighlightDetail(PdfAnnotation annotation) {
@@ -346,49 +466,68 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
               ),
             ),
             const SizedBox(width: 8),
-            Text('Highlight · p. $page ($style)'),
+            Expanded(
+              child: Text(
+                '${annotation.isPageComment ? 'Page comment' : 'Highlight'} · p. $page ($style)',
+              ),
+            ),
           ],
         ),
         content: SizedBox(
           width: 440,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (quote.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: OrbitColors.of(context).raised,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border(left: BorderSide(color: color, width: 3)),
-                  ),
-                  child: SelectableText(
-                    quote,
-                    style: const TextStyle(
-                      fontStyle: FontStyle.italic,
-                      height: 1.4,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (quote.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: OrbitColors.of(context).raised,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border(left: BorderSide(color: color, width: 3)),
+                    ),
+                    child: SelectableText(
+                      quote,
+                      style: const TextStyle(
+                        fontStyle: FontStyle.italic,
+                        height: 1.4,
+                      ),
                     ),
                   ),
-                ),
-              if (comment.isNotEmpty && comment != quote) ...[
-                const SizedBox(height: 12),
-                Text(
-                  'Comment',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: OrbitColors.of(context).accent,
+                if (comment.isNotEmpty && comment != quote) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'Comment',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: OrbitColors.of(context).accent,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                SelectableText(comment),
+                  const SizedBox(height: 4),
+                  SelectableText(comment),
+                ],
               ],
-            ],
+            ),
           ),
         ),
         actions: [
+          if (!widget.readOnly && widget.onUpdateReview != null)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _editReview(annotation);
+              },
+              child: const Text('Edit review'),
+            ),
           TextButton(
             onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: quote));
+              try {
+                await Clipboard.setData(ClipboardData(text: quote));
+              } catch (_) {
+                _notice('Clipboard unavailable. Review unchanged.');
+                return;
+              }
               if (context.mounted) {
                 Navigator.pop(context);
                 _notice('Quote copied to clipboard.');
@@ -470,7 +609,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   bool _finding = false;
   bool _showAnnotations = false;
   bool _creatingDocument = false;
-  String _annotationQuery = '';
+
   int _page = 1;
   List<PdfOutlineNode> _outline = const [];
 
@@ -518,6 +657,9 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   @override
   void didUpdateWidget(OrbitPdfReader oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (_viewer.isReady && widget.annotations != oldWidget.annotations) {
+      _viewer.invalidate();
+    }
     if (widget.initialPage != oldWidget.initialPage &&
         _viewer.isReady &&
         widget.initialPage != _page) {
@@ -549,7 +691,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     _viewer.removeListener(_positionChanged);
     _query.dispose();
     _pageInput.dispose();
-    _annotationInput.dispose();
+
     _searchFocus.dispose();
     super.dispose();
   }
@@ -788,8 +930,11 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   }
 
   void _paintAnnotations(Canvas canvas, Rect pageRect, PdfPage page) {
+    if (!_showMarkup) return;
     for (final annotation in widget.annotations) {
-      if (!annotation.matches(widget.checksum)) continue;
+      if (!annotation.matches(widget.checksum) || annotation.isPageComment) {
+        continue;
+      }
       final isActive = _activeHighlightId == annotation.object.id;
       final style = annotation.style;
       final color = Color(annotation.color);
@@ -847,6 +992,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     PdfPage page,
   ) {
     final overlays = <Widget>[];
+    if (!_showMarkup) return overlays;
     for (final annotation in widget.annotations) {
       if (!annotation.matches(widget.checksum)) continue;
       final bounds = annotation.boundsForPage(page.pageNumber);
@@ -873,6 +1019,13 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                 borderRadius: BorderRadius.circular(4),
                 hoverColor: Color(annotation.color).withAlpha(35),
                 onTap: () => _showHighlightDetail(annotation),
+                child: annotation.isPageComment
+                    ? Icon(
+                        Icons.sticky_note_2,
+                        color: Color(annotation.color),
+                        size: 24,
+                      )
+                    : null,
               ),
             ),
           ),
@@ -882,121 +1035,20 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     return overlays;
   }
 
-  Widget _annotationPanel() {
-    final query = _annotationQuery.trim().toLowerCase();
-    final annotations = widget.annotations
-        .where(
-          (a) => '${a.object.title}\n${a.source['quote']}\n${a.object.body}'
-              .toLowerCase()
-              .contains(query),
-        )
-        .toList();
-    return Container(
-      height: 230,
-      decoration: BoxDecoration(
-        color: OrbitColors.of(context).raised,
-        border: Border(top: BorderSide(color: OrbitColors.of(context).border)),
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 8, 0),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.auto_awesome_outlined,
-                  size: 16,
-                  color: OrbitColors.of(context).accent,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Highlights · ${widget.annotations.length}',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const Spacer(),
-                IconButton(
-                  tooltip: 'Copy all highlights as Markdown',
-                  onPressed: _copyAllHighlights,
-                  icon: const Icon(Icons.content_copy_rounded, size: 16),
-                ),
-                IconButton(
-                  tooltip: 'Close highlights',
-                  onPressed: () => setState(() => _showAnnotations = false),
-                  icon: const Icon(Icons.close, size: 16),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: TextField(
-              controller: _annotationInput,
-              decoration: const InputDecoration(
-                hintText: 'Filter highlights and comments',
-                prefixIcon: Icon(Icons.search, size: 18),
-                isDense: true,
-              ),
-              onChanged: (value) => setState(() => _annotationQuery = value),
-            ),
-          ),
-          Expanded(
-            child: annotations.isEmpty
-                ? const Center(
-                    child: Text(
-                      'No matching highlights. Select PDF text to add a highlight.',
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: annotations.length,
-                    itemBuilder: (context, index) {
-                      final annotation = annotations[index];
-                      final matches = annotation.matches(widget.checksum);
-                      final style = annotation.style;
-                      return Material(
-                        color: OrbitColors.of(context).raised,
-                        child: ListTile(
-                          dense: true,
-                          leading: Icon(
-                            matches
-                                ? (style == 'underline'
-                                      ? Icons.format_underlined
-                                      : style == 'strikeout'
-                                      ? Icons.format_strikethrough
-                                      : Icons.format_paint_outlined)
-                                : Icons.history,
-                            color: Color(annotation.color),
-                          ),
-                          title: Text(
-                            annotation.source['quote'] is String
-                                ? annotation.source['quote'] as String
-                                : annotation.object.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: Text(
-                            matches
-                                ? 'Page ${annotation.source['page']} · $style · click to view'
-                                : 'PDF version changed · review source before re-anchoring',
-                          ),
-                          onTap: matches
-                              ? () => _goToAnnotation(annotation)
-                              : null,
-                          trailing: IconButton(
-                            tooltip: 'Open highlight note and comments',
-                            onPressed: () => widget.onOpenAnnotation?.call(
-                              annotation.object.id,
-                            ),
-                            icon: const Icon(Icons.open_in_new, size: 18),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _annotationPanel() => PdfReviewPanel(
+    annotations: widget.annotations,
+    page: _page,
+    checksum: widget.checksum,
+    onNavigate: _goToAnnotation,
+    onClose: () => setState(() => _showAnnotations = false),
+    onCopy: _copyReview,
+    onExport: widget.onExportReview == null ? null : _exportReview,
+    onOpen: widget.onOpenAnnotation,
+    onEdit: widget.readOnly || widget.onUpdateReview == null
+        ? null
+        : _editReview,
+    onSummary: widget.readOnly ? null : widget.onReviewSummary,
+  );
 
   Widget _fallback(String message) => Center(
     child: Padding(
@@ -1106,6 +1158,30 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                             }
                           : null,
                       icon: const Icon(Icons.text_fields),
+                    ),
+                    if (widget.onPageComment != null)
+                      IconButton(
+                        tooltip: 'Add page comment',
+                        onPressed: _ready && !widget.readOnly
+                            ? _addPageComment
+                            : null,
+                        icon: const Icon(Icons.add_comment_outlined),
+                      ),
+                    IconButton(
+                      tooltip: _showMarkup
+                          ? 'Hide review markup'
+                          : 'Show review markup',
+                      onPressed: _ready
+                          ? () {
+                              setState(() => _showMarkup = !_showMarkup);
+                              _viewer.invalidate();
+                            }
+                          : null,
+                      icon: Icon(
+                        _showMarkup
+                            ? Icons.layers_outlined
+                            : Icons.layers_clear_outlined,
+                      ),
                     ),
                     if (widget.onFormChanged != null)
                       IconButton(
@@ -1681,7 +1757,11 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
               },
             ),
           ),
-          if (_showAnnotations) _annotationPanel(),
+          Visibility(
+            visible: _showAnnotations,
+            maintainState: true,
+            child: _annotationPanel(),
+          ),
         ],
       ),
     ),

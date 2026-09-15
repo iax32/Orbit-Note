@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:orbit_note/features/notes/note_editor.dart';
 import 'package:orbit_note/features/notes/rich/note_math.dart';
+import 'package:orbit_note/features/notes/rich/structured_math_editor.dart';
 import 'package:orbit_note/features/notes/rich/code_block.dart';
 
 void main() {
@@ -278,9 +279,9 @@ void main() {
         tester,
         'Complexity: \$O(n \\log n)\$.\n\n\$\$\n\\frac{a}{b}\n\$\$\n\n\$\$\n\\badcommand{x}\n\$\$\n',
       );
-      expect(find.byType(NoteMath), findsNWidgets(3));
+      expect(find.byType(EditableMathExpression), findsNWidgets(3));
       expect(tester.takeException(), isNull);
-      await tester.tap(find.byType(NoteMath).at(1));
+      await tester.tap(find.byTooltip('Advanced equation editor').first);
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey('equation-source')),
@@ -437,7 +438,7 @@ void main() {
           r'Escaped \$x\$ and `$y$`, but $\alpha_i^2$ renders.'
           '\n\n\$\$\\frac{a}{b}\$\$\n\n~~~python\nprint(42)\n~~~\n';
       await open(tester, original);
-      expect(find.byType(NoteMath), findsNWidgets(2));
+      expect(find.byType(EditableMathExpression), findsNWidgets(2));
       await tester.tap(find.text('Read'));
       await tester.pumpAndSettle();
       expect(find.byType(NoteMath), findsNWidgets(2));
@@ -463,7 +464,7 @@ void main() {
       r'x_i^{n+1}',
     ];
     await open(tester, formulas.map((f) => '\$\$\n$f\n\$\$').join('\n\n'));
-    expect(find.byType(NoteMath), findsNWidgets(formulas.length));
+    expect(find.byType(EditableMathExpression), findsNWidgets(formulas.length));
     expect(
       find.byTooltip('Invalid or unsupported LaTeX. The source is preserved.'),
       findsNothing,
@@ -519,8 +520,11 @@ void main() {
     'text after a terminal inline equation can create a new paragraph',
     (tester) async {
       await open(tester, r'An equation $x^2$');
-      await tester.tap(field(''));
-      await tester.enterText(field(''), ' after');
+      final afterMath = find.byWidgetPredicate(
+        (w) => w is TextField && w.controller?.text == '' && w.maxLines == null,
+      );
+      await tester.tap(afterMath);
+      await tester.enterText(afterMath, ' after');
       await tester.pumpAndSettle();
       final tail = tester.widget<TextField>(field(' after'));
       tail.controller!.selection = const TextSelection.collapsed(offset: 6);

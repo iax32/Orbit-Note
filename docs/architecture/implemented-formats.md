@@ -129,6 +129,28 @@ A `link` element stores `text` and `url`. Creation accepts only HTTP/HTTPS URLs;
 opening requires an explicit gesture. No remote preview fetching or embedded scripts.
 Links are board-local bookmarks, not new Universal Objects or semantic relations.
 
+## PDF review metadata — 2026-09-14
+
+Extends PDF highlight notes below with optional fields, without changing object
+identity, envelope version, storage authority or SQLite schema:
+
+- `pdfSource.kind: "pageComment"` denotes a page-level comment. `quote` may be empty
+  when its Markdown body contains a nonempty comment. Its valid rectangle is an
+  automatically placed marker, not claimed text-selection geometry.
+- `properties.pdfReview: {"version": 1, "resolved": boolean}` stores review state.
+  Missing state is open. Unsupported review versions are not overwritten by the
+  review command. Unknown property/source/region fields are retained.
+- Existing region `style` values are `highlight`, `underline`, `strikeout`; color
+  remains ARGB. Updates preserve geometry and require the matching source checksum.
+- The application command checks the exact current note snapshot before editing,
+  preventing a stale review dialog from overwriting a newer pane edit. Normal
+  `edit`/`flush`, conflict recovery and history persist the note; failures retain
+  dirty drafts. No annotation editor writes the original PDF bytes.
+- Review summaries are ordinary Markdown notes with UUID links and `pdfSource`
+  provenance. They are snapshots, not annotation objects. No `pdfHighlightVersion`
+  flag is set on summaries. A 2,000,000-character approximate construction budget and
+  a 10,000-item create limit prevent unbounded summary allocation.
+
 ## PDF highlight notes — 2026-09-11
 
 An ordinary orbit.note with properties.pdfHighlightVersion: 1 contains a Markdown

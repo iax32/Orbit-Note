@@ -10,7 +10,6 @@ import '../note_format_toolbar.dart';
 import '../note_link_dialog.dart';
 import 'markdown_document.dart';
 import 'note_math.dart';
-import 'equation_editor.dart';
 import 'code_block.dart';
 import 'rich_table_editor.dart';
 import 'rich_math_block.dart';
@@ -75,6 +74,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
   final Map<MarkdownBlock, String> _headingIds = {};
   int _nextHeadingId = 0;
   String? _fingerprintSource, _fingerprint;
+  int? _newMathOffset;
   static final List<String> _recentCommands = [];
 
   @override
@@ -438,15 +438,27 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
       return;
     }
     if (name == 'Inline equation') {
-      final code = await showDialog<String>(
-        context: context,
-        builder: (_) => const EquationEditor(source: 'x^2', display: false),
-      );
-      if (code == null || !mounted) return;
+      const code = r'\square';
+      final start = document.offsetOf(document.blocks.indexOf(block));
       if (fromSlash) {
+        _newMathOffset = start;
         _replace(block, '\$$code\$\n', structural: true);
       } else {
-        keys[block]?.currentState?.insert('\$$code\$');
+        final field = keys[block]?.currentState;
+        if (field == null) {
+          _newMathOffset = start + block.source.length + 2;
+          _replace(block, '${block.source}\n\n\$$code\$\n', structural: true);
+          return;
+        }
+        final selection = field.controller.selection;
+        final offset = selection.isValid
+            ? selection.start
+            : field.controller.text.length;
+        _newMathOffset =
+            start +
+            block.prefix.length +
+            field.controller.projection.sourceOffset(offset);
+        field.insert('\$$code\$');
         _replace(block, block.source, structural: true);
         setState(() {
           cache.remove(block);
@@ -455,16 +467,14 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
       return;
     }
     if (name == 'Block equation') {
-      final code = await showDialog<String>(
-        context: context,
-        builder: (_) =>
-            const EquationEditor(source: r'\frac{a}{b}', display: true),
-      );
-      if (code == null || !mounted) return;
+      const code = r'\square';
       final syntax = '\$\$\n$code\n\$\$\n';
+      _newMathOffset =
+          document.offsetOf(document.blocks.indexOf(block)) +
+          (block.source.isEmpty || fromSlash ? 0 : block.source.length + 1);
       _replace(
         block,
-        block.source.isEmpty ? syntax : '${block.source}\n$syntax',
+        block.source.isEmpty || fromSlash ? syntax : '${block.source}\n$syntax',
         structural: true,
       );
       return;
@@ -868,6 +878,15 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     }
   }
 
+  int? _takeMathFocus(MarkdownBlock block) {
+    final offset = _newMathOffset;
+    if (offset == null) return null;
+    final start = document.offsetOf(document.blocks.indexOf(block));
+    if (offset < start || offset >= start + block.source.length) return null;
+    _newMathOffset = null;
+    return offset - start - block.prefix.length;
+  }
+
   Widget blockView(MarkdownBlock block) {
     if (block.kind == MarkdownBlockKind.blank) {
       return HoverChrome(
@@ -926,9 +945,13 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
       );
     }
     if (block.kind == MarkdownBlockKind.math) {
+      final autofocus = _takeMathFocus(block) != null;
       return Center(
         child: RichMathBlock(
           content: block.content,
+          autofocus: autofocus,
+          onUndo: widget.onUndo,
+          onRedo: widget.onRedo,
           onChanged: (v) {
             final needsSeparator =
                 block.prefix.endsWith('\n') &&
@@ -1011,6 +1034,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     if (block.kind == MarkdownBlockKind.text &&
         inlineMathMatches(block.content).isNotEmpty) {
       return _InlineMathParagraph(
+        focusEquationAt: _takeMathFocus(block),
         source: block.content,
         fontSize: widget.fontSize,
         onChanged: (v) => _replace(block, block.replaceContent(v)),
@@ -2334,8 +2358,10 @@ class _InlineMathParagraph extends StatelessWidget {
     required this.onUndo,
     required this.onRedo,
     required this.onSplit,
+    this.focusEquationAt,
   });
   final String source;
+  final int? focusEquationAt;
   final double fontSize;
   final ValueChanged<String> onChanged;
   final VoidCallback onUndo, onRedo;
@@ -2386,6 +2412,12 @@ class _InlineMathParagraph extends StatelessWidget {
       widgets.add(
         EditableMathExpression(
           source: m[1]!,
+          autofocus:
+              focusEquationAt != null &&
+              focusEquationAt! >= m.start &&
+              focusEquationAt! < m.end,
+          onUndo: onUndo,
+          onRedo: onRedo,
           onChanged: (v) =>
               onChanged(source.replaceRange(m.start, m.end, '\$$v\$')),
         ),

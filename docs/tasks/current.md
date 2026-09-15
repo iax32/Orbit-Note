@@ -1,4 +1,154 @@
-# Current task — Google account and Drive milestone, 2026-09-13
+# Current task — PDF review workspace, 2026-09-14
+
+Owner request: add useful Acrobat-inspired work tools while preserving Orbit's
+local-first knowledge model. Scope: FILE-04/05/11/12/13; Google remains paused.
+Required references: [PDF/research spec](../features/attachments-and-research.md),
+[implemented formats](../architecture/implemented-formats.md), ADRs 0013/0014/0015,
+and the existing application save/recovery contract. Preserve prior editor work.
+
+Implemented batch:
+
+- Page comments, including scans/diagrams with no selectable text, create linkable
+  notes and visible page markers. A failed create keeps the typed comment for retry.
+- Edit review notes from the reader; change markup color/type and resolve/reopen.
+  The editor explicitly edits the same note's Markdown body, with normal save/history.
+  Concurrent edits/source changes reject stale dialogs; failed saves retain drafts.
+- Review panel filters text, open/resolved, markup type and current page; sorts by
+  page or newest. Filters survive closing/reopening the panel in the same session.
+- Copy/export the filtered review as Markdown or save it as an ordinary linked note
+  beside the PDF. Summary links use UUIDs for both annotations and source pages;
+  stale source versions are labelled. Large summaries are bounded; source is retained.
+- Hide/show review markup without deleting notes. Unknown properties/region fields,
+  source checksums and original PDF bytes remain intact. No package/schema migration.
+
+Validation resumed 2026-09-15 after the prior usage-limit interruption. The moved
+Flutter SDK was located in the local backup and the ignored build helper repaired;
+Flutter remains 3.44.8 / Dart 3.12.2, with no dependency upgrade.
+`dart format lib test tool` and the no-change format check passed (218 files).
+`flutter analyze` reported no issues (22.6s). All **569 tests passed** (60s),
+including seven new review regressions for persistence, stale/failure safety,
+filtering, editing, source-linked summaries and page-comment retry. The existing
+real-PDF rendering/form/comfort and Rich editor regressions also pass. Ten targeted
+reader/review tests passed with desktop screenshot capture on 2026-09-14; the
+result was inspected. Logs: `.local/pdf-review-*.log`; visual artifact:
+`work/ui/pdf-highlights.png`.
+
+`flutter build windows --release` succeeded (60.3s). Executable:
+`build/windows/x64/runner/Release/orbit_note.exe`. A five-second startup smoke check
+confirmed the rebuilt process remained running and responding; that test instance
+was then closed. Evidence: `.local/pdf-review-windows-build.log` and
+`.local/pdf-review-smoke.json`. `git diff --check` passed. No full native interactive
+review session, physical phone test or OS Save As dialog test was performed.
+
+Boundaries: Orbit review metadata is not written into the original PDF. This batch
+does not implement annotated-PDF export, OCR, redaction, signatures, arbitrary PDF
+text editing, or native comment import. Page markers use a bounded automatic grid,
+not free placement/dragging. Real-phone and OS Save As dialog acceptance is pending.
+
+Next suggested task: export a separate standards-compatible annotated PDF with
+round-trip tests in an independent reader, preserving originals and version guards.
+
+# Previous task — Restore the math catalog and stabilize direct editing, 2026-09-14
+
+Owner correction: the reduced palette and unstable editing were not acceptable.
+"GeoGebra-like" meant typing into equations naturally, not introducing a solver
+or a different product UI. Keep the original searchable LaTeX table, support
+editing values in place, and keep the equation visible. Google remains paused.
+Required references remain the editing specification, ADR 0011 and agent workflow
+linked in the previous pass below. Preserve all unrelated work.
+
+Implemented correction:
+
+- The original **1,473-entry** searchable/category-filtered table is shared by the
+  direct editor and Advanced editor. Symbols & templates opens it next to the
+  equation; it stays open while inserting entries or editing values. New equations
+  open it immediately. Escape/Close dismiss it without deleting the equation.
+- The equation and controls keep their positions when fields focus or the table
+  opens. The table anchors above/below the equation without covering it and follows
+  document scrolling. Fields no longer acquire separate input-box decorations.
+- Symbol insertion restores the actual caret instead of jumping to the end.
+  Registry-backed standalone symbols (including arrows) remain editable glyphs.
+  Exact command matching avoids misclassifying `\leftarrow` as a scalable delimiter.
+- Backspace in an empty fraction half retains the other half; empty root degrees
+  and script/limit arguments remove only that structure. Nonempty values are kept.
+- Ctrl/Cmd+A selects the whole equation; copy/cut/paste/delete and replacement
+  typing operate on that selection. Cut waits for successful clipboard copy;
+  clipboard failure leaves the equation intact. Stale asynchronous clipboard work
+  cannot overwrite a changed equation. Empty equations retain an editable slot.
+
+Same source-span projection, Markdown durability and shared undo; no new package,
+storage format, schema, migration or ADR. Arbitrary partial selection spanning
+several equation parts remains unfinished. Complex TeX/matrices retain the existing
+Advanced/grid editor and safe renderer fallback; this is not full Word parity.
+
+Validation (2026-09-14): `dart format lib test tool` and no-change format check
+passed (216 files); `flutter analyze` reported no issues (6.9s); all **562 tests
+passed** (41s), including eight new correction regressions. Coverage includes the
+full table remaining open/clear of the equation, insertion caret, arrow glyphs,
+empty-argument preservation, whole selection/delete/cut/paste and clipboard-failure
+safety. Existing Markdown round-trip, shared undo and narrow-layout tests pass.
+The captured desktop catalog view was visually inspected. `git diff --check` passed.
+
+`flutter build windows --release` succeeded (48.7s). Executable:
+`build/windows/x64/runner/Release/orbit_note.exe`. The rebuilt process stayed alive
+and responding for a five-second startup smoke check, then was closed. Clipboard
+behavior was checked through Flutter's mocked platform channel, not a manual native
+copy/paste session. Real-phone typing and native interactive acceptance remain
+unverified. Logs: `.local/math-correction-*.log` and `.local/math-correction-smoke.json`;
+screenshot: `work/ui/math-catalog-rich.png`. These are ignored local artifacts.
+
+Next suggested task (do not start automatically): source-preserving partial
+selection across equation structures, including Shift+arrow and replacement undo.
+
+# Previous pass — Direct rich math editing, 2026-09-14
+
+Owner direction: pause Google work; make equations editable directly in Rich
+Notes, with a Word/GeoGebra-style input experience. Preserve all existing cloud
+and unrelated work. Scope: EDT-03/04/06/09/12/15. Required references:
+[editing specification](../features/markdown-and-editing.md),
+[source-preserving projection](../adr/0011-source-preserving-rich-markdown.md),
+and [workflow](../development/agent-workflow.md).
+
+Delivered and validated:
+
+- One editable expression replaces the duplicated renderer/slot forms. Fractions,
+  nested fractions, roots/degrees, powers/subscripts and operator limits edit in place.
+- `/`, `^`, `_` create structures at the caret/selection; Tab/Shift+Tab and arrows
+  navigate slots. Common symbols insert at the remembered caret. New inline/block
+  equations immediately focus a selectable placeholder, without opening Studio.
+- Exact source spans feed the existing note callback and shared history. Unbraced
+  arguments gain braces only on edit; command spellings and unrelated Markdown stay
+  intact. Empty inline equations retain an editable placeholder. Newly edited inline
+  boundary whitespace is trimmed to retain Markdown's equation delimiter grammar.
+- Complex environments/scalable delimiters retain the existing renderer, grid
+  editor where supported, and Advanced equation editor/full symbol catalog.
+
+No new dependencies, storage schema, migration, remote service or ADR. This is a
+bounded projection refinement, not full Word or GeoGebra parity. Cross-structure
+native selection/deletion, exact mathematical typesetting in every editable slot,
+and direct editing of arbitrary TeX/matrix environments remain limitations. There
+is no symbolic solver/plotter; ordinary equation values are editable offline.
+
+Next suggested task (do not start automatically): keyboard selection/removal across
+equation structures with source-preserving undo and direct matrix cell editing.
+
+Validation (2026-09-14): `dart format lib test tool` and the no-change format check
+passed (215 files); `flutter analyze` reported no issues (7.4s); all **554 tests
+passed** (44s), including 21 added math tests. They cover nested/source-span edits,
+command boundary safety, empty inline slots, rapid events/IME, keyboard navigation,
+symbol menu focus, direct insertion, cross-mode undo and Markdown reopen. Existing
+render-only test assertions now check the editable component in Rich and retain
+the original renderer assertions in Read. Desktop/narrow viewport visual checks
+passed, including larger text; a rendered screenshot was inspected locally.
+
+`flutter build windows --release` succeeded (50.8s). Executable:
+`build/windows/x64/runner/Release/orbit_note.exe`. Its process stayed running and
+responding for the five-second startup smoke check, then was closed. Native pen,
+real-phone typing and a full interactive Windows acceptance session were not
+performed. Logs: `.local/direct-math-*.log` and `.local/direct-math-smoke.json`;
+visual evidence: `work/ui/rich-lecture.png`. These are local ignored artifacts.
+
+# Paused by owner — Google account and Drive milestone, 2026-09-13
 
 Owner prompt: attachment `5fdf20f6-ee67-477c-b3f7-99c8fd9e3794/pasted-text.txt`.
 Continue the existing provider-neutral engine; Windows and Android first.
@@ -9,6 +159,19 @@ See [audit, delivery map and validation](../planning/google-account-milestone-20
 and [developer setup](../development/google-drive-sync-setup.md).
 Do not advertise cloud synchronization or set conditional-publication capability
 until the transfer safety contract is proven. Preserve earlier work below.
+
+2026-09-14 account-isolation follow-up: bind full Drive operations and listed
+Vaults to the initiating Google account, revalidate selected folder ownership,
+and serialize device-local root preparation. Six new failure/concurrency tests
+cover these boundaries. Registration remains unfinished: the owner declined use
+of their personal email as public support contact and the pending policy
+acceptance. Do not infer permission from a generic request to continue.
+
+2026-09-14 release follow-up: Windows/Android release jobs now validate and embed
+platform Google app configuration. A missing client ID fails a requested Google
+account preview build; local-only remains an explicit mode. Release notes explain
+that Vault transfers remain unfinished. Public support address clarification is
+pending; no Google registration, policy consent or personal contact was submitted.
 
 # Previous task — Runtime hardening, 2026-09-13
 
@@ -28,7 +191,46 @@ now available. Safety/reconciliation foundations and the native repository repli
 adapter are implemented; Google Drive, auth and cloud UI remain unfinished. Preserve the
 completed feature work below. See [cloud status](../features/cloud-sync.md).
 
-# Current task — Work & Study Focus Sessions with Honest Tracking, Local Summaries & Release v0.2.1 (CTX-04, CTX-05, CTX-06, CTX-07, CTX-11, CTX-12)
+# Current task — Universal Object Properties, Typed Metadata Editor, Relations Explorer & Release v0.2.2 (ORG-02, ORG-03, ORG-08)
+
+Status: delivered and validated, 2026-09-13.
+
+Delivered Universal Object typed properties management, interactive in-place metadata editing, Add Property modal with live validation (number, date, url, boolean, tags), and a comprehensive Relations & References Explorer (inbound backlinks, outbound wiki-link references, and contextual siblings) inside the Context Inspector (**ORG-02, ORG-03, ORG-08**), along with release packaging and version bump to `v0.2.2` under the core Orbit Note invariant: "ONE STABLE UNIVERSAL OBJECT IDENTITY".
+
+### Delivered Capabilities
+1. **WorkspaceController Relations & Property Mutations (`lib/app/workspace_controller.dart`)**:
+   - `outboundLinks(String id)`: parses wiki-links from the object's body, resolves candidates through `linkTargets` and `linkBindings`, and returns target `UniversalObject`s.
+   - `relatedObjects(String id)`: context discovery finding objects sharing the same `project`, same `folder`, or common `tags`, capped at 10 items.
+   - `updateProperty(String id, String key, dynamic value)`: immutable property updates via `edit(id, properties: {...})` and automatic local save debounce.
+   - `removeProperty(String id, String key)`: removes user property while preserving schema integrity.
+2. **Context Inspector & Typed Metadata Editor (`lib/features/workspace/object_inspector.dart`)**:
+   - Identity & Header: Type icon, uppercase type badge, object title, UUID row with "Copy UUID" clipboard button, and formatted Created & Updated timestamps.
+   - In-place Typed Property Editors:
+     - Checkbox/Boolean: direct Switch toggle with instant feedback.
+     - Number: numerical badge opening dialog with `num.tryParse` live validation.
+     - Date: date badge opening Flutter date picker and formatting `YYYY-MM-DD`.
+     - Tags: wrap of removable chips with `#tag` styling plus `+ Tag` chip to add new tags.
+     - URL: clickable link with `Icons.open_in_new` launching URL via `url_launcher`, with edit button and url scheme validation.
+     - Text / Other: string display with edit dialog.
+     - Delete Property action: quick button on every property row.
+   - Add Property Modal:
+     - Name input with non-empty and collision validation against existing properties.
+     - Type dropdown: Text, Number, Checkbox, Date, Tags, URL.
+     - Dynamic value input tailored to selected type with live validation.
+   - Relations & References Section:
+     - Segmented tabs: `Backlinks (count)`, `Outbound (count)`, `Related (count)`.
+     - Displays referencing and referenced objects via `ObjectRow`, with one-tap navigation `c.openObject(id)`.
+     - Graceful empty states for each relation tab.
+   - Actions: Rename Object button and Move to Trash button.
+3. **Workspace Shell Integration (`lib/features/workspace/workspace_shell.dart`)**:
+   - Replaced old minimal inspector with `ObjectInspector(controller: c, onRename: renameObject)`.
+   - Expanded inspector sidebar width to 300px for optimal layout and breathing room.
+4. **Validation Evidence**:
+   - 522/522 tests passing across entire suite (`test/object_inspector_properties_test.dart` added covering all unit and widget behaviors).
+   - 0 warnings in `flutter analyze`.
+   - 100% format-clean across all 205 dart files.
+
+# Previous task — Work & Study Focus Sessions with Honest Tracking, Local Summaries & Release v0.2.1 (CTX-04, CTX-05, CTX-06, CTX-07, CTX-11, CTX-12)
 
 Status: delivered and validated, 2026-09-13.
 

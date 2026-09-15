@@ -56,6 +56,73 @@ void main() async {
   }
 
   testWidgets(
+    'page comments keep unsaved input and markup visibility is reversible',
+    (tester) async {
+      var succeeds = false;
+      String? comment;
+      int? page;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: orbitDarkTheme(),
+          home: Scaffold(
+            body: OrbitPdfReader(
+              objectId: 'page-comments',
+              title: 'Scanned diagram',
+              checksum: 'v1',
+              loadBytes: () async => researchPdf(),
+              onOpenOriginal: () {},
+              onOpenExternal: (_) {},
+              onReadingState: (_, _) {},
+              onQuote: (_, _) async {},
+              onBookmarks: (_) {},
+              onPageComment: (p, text) async {
+                page = p;
+                comment = text;
+                return succeeds;
+              },
+            ),
+          ),
+        ),
+      );
+      await settleNative(
+        tester,
+        () =>
+            tester
+                .widget<IconButton>(
+                  find.byWidgetPredicate(
+                    (w) => w is IconButton && w.tooltip == 'Add page comment',
+                  ),
+                )
+                .onPressed !=
+            null,
+      );
+      await tester.tap(find.byTooltip('Hide review markup'));
+      await tester.pump();
+      expect(find.byTooltip('Show review markup'), findsOneWidget);
+      await tester.tap(find.byTooltip('Show review markup'));
+      await tester.tap(find.byTooltip('Add page comment'));
+      await tester.pumpAndSettle();
+      final input = find.widgetWithText(TextField, 'Comment');
+      await tester.enterText(input, 'Check the lighting diagram');
+      await tester.tap(find.text('Save page comment'));
+      await tester.pumpAndSettle();
+      expect(page, 1);
+      expect(comment, 'Check the lighting diagram');
+      expect(find.textContaining('Your comment is kept here'), findsOneWidget);
+      expect(find.text('Check the lighting diagram'), findsOneWidget);
+      succeeds = true;
+      await tester.tap(find.text('Save page comment'));
+      await tester.pumpAndSettle();
+      expect(find.text('Comment on page 1'), findsNothing);
+      expect(find.text('Highlights · 0'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 1));
+    },
+    skip: !pdfiumReady,
+  );
+
+  testWidgets(
     'real PDF renders, navigates, searches, bookmarks and copies page links',
     (tester) async {
       await prepareCapture(tester);

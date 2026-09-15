@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../app/orbit_theme.dart';
 import 'latex_catalog.dart';
+import 'latex_symbol_catalog.dart';
 import 'note_math.dart';
 import 'visual_math_model.dart';
 import 'math_grid_editor.dart';
@@ -47,7 +48,6 @@ class _EquationEditorState extends State<EquationEditor> {
     },
   );
 
-  String query = '', category = 'All';
   bool showSource = true;
 
   void _applyModelUpdate(String newSource) {
@@ -101,16 +101,6 @@ class _EquationEditorState extends State<EquationEditor> {
   Widget build(BuildContext context) {
     final colors = OrbitColors.of(context);
     final model = VisualMathModel(input.text);
-    final entries = latexCatalog
-        .where(
-          (e) =>
-              (category == 'All' || e.category == category) &&
-              '${e.name} ${e.source} ${e.glyph}'.toLowerCase().contains(
-                query.toLowerCase(),
-              ),
-        )
-        .toList();
-
     return AlertDialog(
       title: Row(
         children: [
@@ -225,79 +215,7 @@ class _EquationEditorState extends State<EquationEditor> {
               const SizedBox(height: 6),
             ],
 
-            // 4. Symbol Search & Categories
-            TextField(
-              key: const ValueKey('latex-search'),
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search, size: 18),
-                hintText: 'Search 200+ math symbols or names…',
-                isDense: true,
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-              ),
-              onChanged: (v) => setState(() => query = v),
-            ),
-            const SizedBox(height: 6),
-            SizedBox(
-              height: 36,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children: [
-                  for (final name in {
-                    'All',
-                    ...latexCatalog.map((e) => e.category),
-                  })
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: ChoiceChip(
-                        label: Text(name, style: const TextStyle(fontSize: 11)),
-                        selected: category == name,
-                        visualDensity: VisualDensity.compact,
-                        onSelected: (_) => setState(() => category = name),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 4),
-
-            // 5. Symbol Grid / List
-            Expanded(
-              child: ListView.builder(
-                itemCount: entries.length,
-                itemBuilder: (_, i) {
-                  final entry = entries[i];
-                  return ListTile(
-                    dense: true,
-                    visualDensity: VisualDensity.compact,
-                    title: Text(
-                      entry.name,
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                    subtitle: Text(
-                      entry.source,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 11, color: colors.subtle),
-                    ),
-                    leading: SizedBox(
-                      width: 44,
-                      child: FittedBox(child: NoteMath(entry.source)),
-                    ),
-                    onTap: () => insert(entry),
-                  );
-                },
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                '${entries.length} entries · click symbol to insert · Tab cycles placeholders',
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-            ),
+            Expanded(child: LatexSymbolCatalog(onInsert: insert)),
           ],
         ),
       ),

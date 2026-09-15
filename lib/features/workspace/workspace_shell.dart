@@ -39,6 +39,7 @@ import 'workspace_views.dart';
 import 'note_folder_explorer.dart';
 import 'graph_view.dart';
 import 'saved_view_host.dart';
+import 'object_inspector.dart';
 
 class WorkspaceShell extends ConsumerStatefulWidget {
   const WorkspaceShell({super.key});
@@ -1082,7 +1083,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                             ),
                           ),
                           if (inspector)
-                            SizedBox(width: 260, child: inspectorView()),
+                            SizedBox(width: 300, child: inspectorView()),
                         ],
                       ),
                     ),
@@ -2374,6 +2375,33 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
             c.openObject(id);
             c.updateSession((s) => s.secondaryId = object.id);
           },
+          onUpdateReview: (annotation, body, color, style, resolved) =>
+              c.updatePdfReview(
+                annotation,
+                body: body,
+                color: color,
+                style: style,
+                resolved: resolved,
+              ),
+          onPageComment: (page, comment) async =>
+              await c.createPdfPageComment(
+                object.id,
+                object.properties['checksum'] as String,
+                page,
+                comment,
+              ) !=
+              null,
+          onReviewSummary: (ids) async {
+            final note = await c.createPdfReviewSummary(object.id, ids);
+            if (note == null) return false;
+            c.updateSession((s) => s.secondaryId = object.id);
+            return true;
+          },
+          onExportReview: (markdown) => exportFile(
+            'Orbit PDF review.md',
+            markdown,
+            mimeType: 'text/markdown',
+          ),
           onHighlight: (quote, regions, comment) async =>
               await c.createPdfHighlight(
                 object.id,
@@ -2526,88 +2554,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   }
 
   Widget inspectorView() {
-    final o = c.find(c.session.activeId), colors = OrbitColors.of(context);
-    return Material(
-      color: colors.panel,
-      child: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Row(
-            children: [
-              const Text(
-                'CONTEXT',
-                style: TextStyle(fontSize: 10, letterSpacing: 1.5),
-              ),
-              const Spacer(),
-              IconButton(
-                tooltip: 'Close inspector',
-                onPressed: () =>
-                    c.updateSession((s) => s.inspectorVisible = false),
-                icon: const Icon(Icons.close, size: 15),
-              ),
-            ],
-          ),
-          const SizedBox(height: 22),
-          if (o == null)
-            Text(
-              'Open an object to see its context.',
-              style: TextStyle(color: colors.subtle, height: 1.5),
-            )
-          else ...[
-            Icon(objectIcon(o.typeId), size: 30, color: colors.accent),
-            const SizedBox(height: 16),
-            Text(
-              o.title,
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              o.typeId.replaceFirst('orbit.', ''),
-              style: TextStyle(fontSize: 12, color: colors.subtle),
-            ),
-            const SizedBox(height: 26),
-            const Text(
-              'Backlinks',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 10),
-            if (c.backlinks(o.id).isEmpty)
-              Text(
-                'No linked notes yet.',
-                style: TextStyle(fontSize: 12, color: colors.subtle),
-              )
-            else
-              ...c
-                  .backlinks(o.id)
-                  .map(
-                    (v) =>
-                        ObjectRow(object: v, onTap: () => c.openObject(v.id)),
-                  ),
-            const SizedBox(height: 24),
-            Text(
-              'Updated ${o.updatedAt.toLocal().toString().split('.').first}',
-              style: TextStyle(fontSize: 11, color: colors.subtle),
-            ),
-            const SizedBox(height: 8),
-            SelectableText(
-              'ID ${o.id}',
-              style: TextStyle(fontSize: 10, color: colors.subtle),
-            ),
-            const SizedBox(height: 24),
-            TextButton.icon(
-              onPressed: () => renameObject(o),
-              icon: const Icon(Icons.edit_outlined, size: 16),
-              label: const Text('Rename'),
-            ),
-            TextButton.icon(
-              onPressed: () => c.trash(o.id),
-              icon: const Icon(Icons.delete_outline, size: 16),
-              label: const Text('Move to Trash'),
-            ),
-          ],
-        ],
-      ),
-    );
+    return ObjectInspector(controller: c, onRename: renameObject);
   }
 
   Widget statusBar() {

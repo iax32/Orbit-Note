@@ -118,3 +118,50 @@ matching document, with one-time migration of older text-based collapse keys.
 IDs never enter Markdown. Arbitrary external restructuring may reset collapse
 state safely; this is not persistent authored block identity. Cross-block native
 selection remains outside this stabilization batch.
+
+## Direct rich math refinement — 2026-09-14
+
+Rich inline/display equations now use one editable expression for the supported
+subset, instead of a rendered duplicate above labelled input cards. Click directly
+on a numerator/denominator, power/subscript, root/degree or sum/integral limit to
+write a value. Nested fractions and roots are supported. New Inline equation and
+Block equation commands insert and focus an empty slot without opening Studio.
+
+Keyboard workflow:
+
+- Type `/` after an operand or selected text to create a fraction; the denominator
+  is selected for immediate typing. `^` and `_` similarly create power/index slots.
+- Tab/Shift+Tab move between parts; Up/Down move between fraction halves or paired
+  limits/scripts. Left/Right cross field boundaries. Composition stays with the IME.
+- Symbols & templates opens the original searchable, category-filtered table of
+  1,473 renderer/catalog entries beside the equation. It stays open during insertion
+  and typing, without moving or covering the equation. The same table is available
+  in Advanced. New equations open it automatically; Escape/Close dismisses it.
+  Selecting a standalone symbol shows its glyph instead of command text and retains
+  the insertion caret. The catalog covers the bundled renderer, not every possible
+  third-party LaTeX package or user macro.
+- Ctrl/Cmd+A selects the whole equation for copy/cut/paste/delete or replacement.
+  Copy stores standard LaTeX. A failed clipboard cut/paste preserves the equation;
+  late clipboard results cannot replace later edits. Backspace on an empty fraction
+  half unwraps it while retaining the other half; empty root degrees and script/limit
+  arguments remove only the affected structure. An empty equation remains editable.
+- Ctrl+Z/Y and Ctrl+Shift+Z use the same note history as Source; macOS equivalents
+  are wired. Copy LaTeX and the Advanced equation editor remain available.
+
+The transient `MathEditDocument` projects source spans only; it is never a durable
+document format. Edits preserve command variants, untouched whitespace, unknown
+commands and surrounding Markdown/CRLF. Unbraced arguments are braced only when
+edited. Joining a command to a letter adds a necessary delimiter. Empty inline
+equations retain `\square` so they remain editable; newly edited inline boundary
+whitespace is trimmed because `$ ... $` is not Orbit's inline equation grammar.
+Merely opening/switching modes does not rewrite any source.
+
+Matrices/aligned environments, scalable delimiters and malformed or oversized
+expressions retain safe rendering/source fallback and the existing local advanced
+editor; supported grids keep Edit grid. Editing arbitrary TeX structures, partial
+selections spanning several equation parts and exact TeX typography in every
+editable field are not complete. Whole-equation selection is supported as above.
+Read mode continues using the existing TeX renderer. No CAS, plotting, remote
+rendering, account requirement, dependency or storage migration is introduced.
+
+Evidence and current validation are tracked in the [current task](../tasks/current.md).

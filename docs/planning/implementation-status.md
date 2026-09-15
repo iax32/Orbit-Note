@@ -1,5 +1,49 @@
 # Implementation status — CURRENT
 
+## PDF review workspace — 2026-09-14
+
+Page comments, direct review-note/style/color editing, open/resolved state,
+filtering/sorting, hidden markup and filtered Markdown copy/export/linked summaries
+are implemented through existing Universal Objects and local save/history.
+Stale edits are rejected; failed drafts retained; original PDF bytes stay unchanged.
+See [current task](../tasks/current.md) for validation and boundaries. This is not
+full Acrobat parity; interoperable annotated-PDF export remains a separate task.
+
+Validated 2026-09-15: all **569 tests passed** (seven new review regressions), analyzer
+clean, 218 files format-clean, Windows release built in 60.3s and passed a five-second
+responding startup check. Real-PDF widget tests and desktop screenshot inspection
+passed; physical phone/native Save As acceptance remains unverified. The matching
+SDK was recovered from its moved backup location; dependencies were not upgraded.
+
+## Math catalog and editing correction — 2026-09-14
+
+The owner rejected the previous reduced palette/typing experience. The original
+1,473-entry searchable symbol table now opens beside the directly editable equation
+and remains available in Advanced. Insertion retains the caret, ordinary arrow
+symbols stay editable, and empty-argument Backspace preserves the other content.
+Whole-equation select/copy/cut/paste/delete is implemented with clipboard failure
+and stale-edit safeguards. No architecture/storage change. Google remains paused.
+See [current task and validation](../tasks/current.md) for current checks and the
+remaining cross-part partial-selection/complex-TeX boundaries. Validation: **562
+tests passed** (eight new correction regressions), analyzer clean, 216 files
+format-clean, Windows release built in 48.7s and passed the five-second responding
+startup check. Desktop catalog screenshot inspected; native clipboard/real-phone
+typing acceptance remains unverified. Evidence in the previous pass is historical.
+
+## Direct rich math editing — 2026-09-14
+
+Directly editable fractions, roots, powers, indices and operator limits now form
+one expression, including nested structures. Keyboard structure insertion,
+slot traversal, glyph insertion and immediate focus for new equations integrate
+with existing Markdown saves and shared undo. Complex TeX retains the advanced
+editor and safe fallback. Google work is paused by the owner. See
+[scope, validation and remaining boundaries](../tasks/current.md) and
+[editing behavior](../features/markdown-and-editing.md#direct-rich-math-refinement--2026-09-14).
+Validation: **554 tests passed** (21 added math tests), analyzer clean, 215 files
+format-clean, Windows release built in 50.8s and passed a five-second responding
+process startup check. Desktop/narrow visual widget checks passed. Previous build
+evidence below is historical; full native typing/real-phone acceptance is pending.
+
 ## Google account/Drive integration — 2026-09-13, partial
 
 Windows PKCE/loopback and Android Google identity/authorization adapters, secure

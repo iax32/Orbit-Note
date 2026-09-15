@@ -265,6 +265,166 @@ void main() {
       expect(PdfAnnotation.isAnnotation(controller.find(note.id)!), isTrue);
     },
   );
+  test(
+    'PDF page reviews persist, keep identity and export linked summaries',
+    () async {
+      final bytes = researchPdf();
+      final file = await repo.importAttachment(
+        name: 'source.pdf',
+        bytes: bytes,
+      );
+      await controller.refresh();
+      final checksum = file.properties['checksum'] as String;
+      final note = (await controller.createPdfPageComment(
+        file.id,
+        checksum,
+        2,
+        'Review this diagram',
+      ))!;
+      final initial = PdfAnnotation(note);
+      expect(initial.isPageComment, isTrue);
+      expect(initial.page, 2);
+      expect(initial.resolved, isFalse);
+      controller.edit(
+        note.id,
+        properties: {
+          ...note.properties,
+          'futureProperty': {'keep': true},
+          'pdfSource': {...initial.source, 'futureSource': 7},
+        },
+      );
+      await controller.flushAll();
+      final expected = PdfAnnotation(controller.find(note.id)!);
+      expect(
+        await controller.updatePdfReview(
+          expected,
+          body: 'Checked the diagram',
+          color: 0xff22c55e,
+          style: 'highlight',
+          resolved: true,
+        ),
+        isTrue,
+      );
+      await controller.initialize();
+      final restored = PdfAnnotation(controller.find(note.id)!);
+      expect(restored.resolved, isTrue);
+      expect(restored.color, 0xff22c55e);
+      expect(restored.object.body, 'Checked the diagram');
+      expect(restored.source['futureSource'], 7);
+      expect(restored.object.properties['futureProperty'], {'keep': true});
+      controller.edit(file.id, title: 'Renamed source');
+      await controller.flushAll();
+      final summary = (await controller.createPdfReviewSummary(file.id, [
+        note.id,
+      ]))!;
+      expect(summary.body, contains('[[${file.id}#page=2|Renamed source'));
+      expect(summary.body, contains('[[${note.id}|'));
+      expect(summary.body, contains('Resolved'));
+      await controller.initialize();
+      expect(controller.find(summary.id)!.body, summary.body);
+      expect(
+        await repo.readAttachment(file.properties['contentRef'] as String),
+        bytes,
+      );
+      await controller.trash(note.id);
+      expect(
+        await controller.createPdfReviewSummary(file.id, [note.id]),
+        isNull,
+      );
+      await controller.restore(note.id);
+      expect(PdfAnnotation(controller.find(note.id)!).resolved, isTrue);
+    },
+  );
+
+  test(
+    'PDF reviews reject stale dialogs and versions and retain failed drafts',
+    () async {
+      final file = await repo.importAttachment(
+        name: 'source.pdf',
+        bytes: researchPdf(),
+      );
+      await controller.refresh();
+      final checksum = file.properties['checksum'] as String;
+      final note = (await controller.createPdfPageComment(
+        file.id,
+        checksum,
+        1,
+        'Initial',
+      ))!;
+      final old = PdfAnnotation(note);
+      controller.edit(note.id, body: 'Newer edit from the other pane');
+      expect(
+        await controller.updatePdfReview(
+          old,
+          body: 'Stale dialog',
+          color: 0xffeab308,
+          style: 'highlight',
+          resolved: true,
+        ),
+        isFalse,
+      );
+      expect(controller.find(note.id)!.body, 'Newer edit from the other pane');
+      await controller.flushAll();
+      store.failWrites = true;
+      expect(
+        await controller.updatePdfReview(
+          PdfAnnotation(controller.find(note.id)!),
+          body: 'Retained review draft',
+          color: 0xffeab308,
+          style: 'highlight',
+          resolved: true,
+        ),
+        isFalse,
+      );
+      expect(controller.dirty, contains(note.id));
+      expect(controller.find(note.id)!.body, 'Retained review draft');
+      final count = controller.objects.length;
+      expect(
+        await controller.createPdfReviewSummary(file.id, [note.id]),
+        isNull,
+      );
+      expect(controller.objects.length, count);
+      store.failWrites = false;
+      await controller.retry(note.id);
+      await controller.initialize();
+      expect(controller.find(note.id)!.body, 'Retained review draft');
+      expect(
+        await controller.createPdfPageComment(
+          file.id,
+          'old-version',
+          1,
+          'Stale',
+        ),
+        isNull,
+      );
+      expect(
+        await controller.createPdfPageComment(file.id, checksum, 0, 'Invalid'),
+        isNull,
+      );
+      expect(
+        await controller.createPdfPageComment(file.id, checksum, 1, '  '),
+        isNull,
+      );
+      controller.edit(
+        file.id,
+        properties: {
+          ...controller.find(file.id)!.properties,
+          'checksum': 'new-version',
+        },
+      );
+      expect(
+        await controller.updatePdfReview(
+          PdfAnnotation(controller.find(note.id)!),
+          body: 'Wrong version',
+          color: 0xffeab308,
+          style: 'highlight',
+          resolved: false,
+        ),
+        isFalse,
+      );
+    },
+  );
+
   test('editing while a save is pending commits the newest draft', () async {
     final object = (await controller.create('orbit.note'))!;
     final gate = Completer<void>();

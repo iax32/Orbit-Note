@@ -1,6 +1,7 @@
 # Attachments, media and research
 
-Status: planned. Stage: M2 basic files; M4 annotations; richer viewers later.
+Status: partially implemented; see dated delivery sections and current validation.
+Stage: M2 basic files; M4 annotations; richer viewers later.
 Sources: S01, S03, S04, S07, S08 in the [source map](../product/conversation-extraction.md).
 Architecture: [storage](../architecture/storage-formats.md),
 [annotation engine](../architecture/canvas-engine.md).
@@ -160,3 +161,35 @@ the focused reader: Ctrl+0 whole page, Ctrl+1 100%, Ctrl+2 page width, Alt+Left/
 page navigation, F3/Shift+F3 search matches. Narrow-screen controls scroll horizontally.
 Physical phone/high-DPI gesture validation and advanced Acrobat tools remain future
 acceptance work. Dense multi-column pages can still require pinch zoom and panning.
+
+### PDF review workspace — 2026-09-14
+
+Builds on the existing color highlights, underlines/strikeouts, continuous/single/
+two-page layouts and source-region return. Add page comment works without text
+selection, including scans and diagrams. It creates an ordinary linked Markdown
+note with a versioned marker on the current page; the original PDF is unchanged.
+Comments can be opened beside the PDF, linked from Notes/Canvas/graph, or recovered
+through ordinary note Trash/restore.
+
+The review panel filters by words, open/resolved status, markup type and current
+page, and sorts by source page or creation date. Editing a review item changes its
+existing Markdown note, color/type and resolved status, without creating another
+object. A stale dialog cannot replace a newer note or apply styling to a changed
+PDF version. Failed saves keep local drafts and show a retry/reopen explanation.
+Copy reference provides a UUID note link. Hide review markup affects only this view.
+
+Copy/export the filtered items as Markdown, or save a review summary as a new note
+beside the PDF. Both annotation and page links retain UUIDs with readable labels;
+renaming a file does not break them. Existing quote bodies are not duplicated in
+summaries, and obsolete source versions carry a warning. Summaries are snapshots,
+not automatically maintained copies of annotations. The plain Markdown export
+uses the existing native Save As/browser download adapter and is bounded to avoid
+building unbounded strings. Cancellation/failure leaves the Vault unchanged.
+
+No Acrobat account, remote processing, new PDF writer, or storage migration is
+introduced. Remaining: interoperable PDF annotation import/export, free-positioned
+page comments, shared ink, OCR, true redaction, signatures and page/content editing.
+Current page comments use automatic markers; they do not imply an exact user-picked
+region. Ordinary notes remain the durable authoring format. See current task for
+validation and device limits. Product reference: Adobe's
+[comment management](https://helpx.adobe.com/acrobat/desktop/share-and-review-documents/manage-reviews/view-comments.html).

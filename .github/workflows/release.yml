@@ -5,6 +5,17 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      google_mode:
+        description: Google account preview requires distributor OAuth configuration; Vault sync is unfinished
+        type: choice
+        default: local-only
+        options:
+          - local-only
+          - google-account-preview
+
+env:
+  ORBIT_GOOGLE_BUILD_MODE: ${{ inputs.google_mode || 'local-only' }}
 
 permissions:
   contents: write
@@ -34,8 +45,13 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Validate Google build configuration
+        env:
+          ORBIT_GOOGLE_ANDROID_SERVER_CLIENT_ID: ${{ vars.ORBIT_GOOGLE_ANDROID_SERVER_CLIENT_ID }}
+        run: dart --packages=.dart_tool/package_config.json tool/prepare_google_build.dart --platform=android --output=.local/google-build.android.json
+
       - name: Build Android APK
-        run: flutter build apk --release
+        run: flutter build apk --release --dart-define-from-file=.local/google-build.android.json
 
       - name: Prepare APK artifact
         run: |
@@ -65,8 +81,14 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Validate Google build configuration
+        env:
+          ORBIT_GOOGLE_DESKTOP_CLIENT_ID: ${{ vars.ORBIT_GOOGLE_DESKTOP_CLIENT_ID }}
+          ORBIT_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.ORBIT_GOOGLE_DESKTOP_CLIENT_SECRET }}
+        run: dart --packages=.dart_tool/package_config.json tool/prepare_google_build.dart --platform=windows --output=.local/google-build.windows.json
+
       - name: Build Windows desktop
-        run: flutter build windows --release
+        run: flutter build windows --release --dart-define-from-file=.local/google-build.windows.json
 
       - name: Package Windows ZIP
         shell: pwsh
@@ -82,6 +104,7 @@ jobs:
 
   publish-release:
     name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: [build-android, build-windows]
     runs-on: ubuntu-latest
     steps:
@@ -113,12 +136,24 @@ jobs:
           body: |
             ## 🪐 Orbit Note ${{ github.ref_name }}
 
+            Google mode: **${{ env.ORBIT_GOOGLE_BUILD_MODE }}**.
+            Local-only builds do not enable Google sign-in. Google account preview builds
+            support account setup; Vault uploads, downloads and automatic sync remain unfinished.
+
             ### 📥 Download Options
             - **Windows (x64)**: Download [`OrbitNote-Windows-x64.zip`](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/OrbitNote-Windows-x64.zip) — extract and run `orbit_note.exe`.
             - **Android**: Download [`OrbitNote-Android.apk`](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/OrbitNote-Android.apk) — install directly on your device.
 
             ### ✨ What's Included
-            - Complete linked Markdown editor with live `[[WikiLinks]]`, task lists, visual tables, and LaTeX math.
+            - Direct rich equation editing and the full searchable LaTeX symbol catalog.
+            - PDF page comments, review editing, colors and markup styles, open/resolved status, filtering and Markdown review exports.
+            - Stable source links connect PDF reviews to ordinary Orbit notes; original PDFs remain unchanged.
+            - Linked Markdown editing with `[[WikiLinks]]`, task lists and visual tables.
             - Infinite vector canvas with handwriting, shapes, and object transclusion.
             - Local-first file storage and fast Drift SQLite indexing.
             - Resizable desktop split views and tabs.
+
+            ### Validation and limitations
+            - Local validation: 569 tests passed, analyzer clean, Windows release build and startup check passed.
+            - PDF OCR, redaction, signatures and annotated-PDF export are not included in this batch.
+            - Android APKs currently use development signing; stable release signing and store distribution are not configured.

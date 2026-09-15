@@ -225,6 +225,77 @@ class WorkspaceController extends Notifier<int> {
         ),
       )
       .toList();
+
+  List<UniversalObject> outboundLinks(String id) {
+    final o = find(id);
+    if (o == null) return const [];
+    final links = parseWikiLinks(o.body);
+    final targets = <UniversalObject>[];
+    for (final link in links) {
+      final target = resolveWikiLink(
+        link,
+        linkTargets,
+        bindings: o.linkBindings,
+      ).target;
+      if (target != null) {
+        final targetObj = find(target.id);
+        if (targetObj != null && !targets.any((t) => t.id == targetObj.id)) {
+          targets.add(targetObj);
+        }
+      }
+    }
+    return targets;
+  }
+
+  List<UniversalObject> relatedObjects(String id) {
+    final o = find(id);
+    if (o == null) return const [];
+    final project = o.properties['project']?.toString();
+    final folder = o.properties['folder']?.toString();
+    final tags = (o.properties['tags'] is List)
+        ? (o.properties['tags'] as List).map((e) => e.toString()).toSet()
+        : <String>{};
+
+    return activeObjects
+        .where((other) {
+          if (other.id == id) return false;
+          if (project != null &&
+              project.isNotEmpty &&
+              other.properties['project']?.toString() == project) {
+            return true;
+          }
+          if (folder != null &&
+              folder.isNotEmpty &&
+              other.properties['folder']?.toString() == folder) {
+            return true;
+          }
+          if (tags.isNotEmpty) {
+            final otherTags = (other.properties['tags'] is List)
+                ? (other.properties['tags'] as List)
+                      .map((e) => e.toString())
+                      .toSet()
+                : <String>{};
+            if (tags.intersection(otherTags).isNotEmpty) return true;
+          }
+          return false;
+        })
+        .take(10)
+        .toList();
+  }
+
+  void updateProperty(String id, String key, dynamic value) {
+    final o = find(id);
+    if (o == null || o.isReadOnly || repository.readOnly) return;
+    edit(id, properties: {...o.properties, key: value});
+  }
+
+  void removeProperty(String id, String key) {
+    final o = find(id);
+    if (o == null || o.isReadOnly || repository.readOnly) return;
+    final updated = Map<String, dynamic>.from(o.properties)..remove(key);
+    edit(id, properties: updated);
+  }
+
   String get saveLabel => failures.isNotEmpty
       ? 'Changes need attention'
       : dirty.isNotEmpty
@@ -4001,6 +4072,7 @@ Summary of scope, affected endpoints, and timeline of investigation.
     String quote,
     List<CanvasElement> regions, {
     String comment = '',
+    bool pageComment = false,
   }) async {
     final file = find(fileId);
     if (file == null ||
@@ -4010,7 +4082,8 @@ Summary of scope, affected endpoints, and timeline of investigation.
         file.typeId != 'orbit.file' ||
         file.properties['mimeType'] != 'application/pdf' ||
         file.properties['checksum'] != checksum ||
-        quote.trim().isEmpty ||
+        (pageComment ? comment.trim().isEmpty : quote.trim().isEmpty) ||
+        comment.length > 100000 ||
         quote.length > 100000 ||
         regions.isEmpty ||
         regions.length > 10000 ||
@@ -4024,9 +4097,11 @@ Summary of scope, affected endpoints, and timeline of investigation.
       final page = regions.first.data['page'] as int;
       final note = await repository.create(
         typeId: 'orbit.note',
-        title: '${file.title} · highlight p. $page',
-        body:
-            '${ObjectReference(fileId, page: page).quoteMarkdown(file.title, quote)}${comment.trim().isEmpty ? '' : '\n\n$comment'}',
+        title:
+            '${file.title} · ${pageComment ? 'comment' : 'highlight'} p. $page',
+        body: pageComment
+            ? '${ObjectReference(fileId, page: page).markdown(file.title)}\n\n$comment'
+            : '${ObjectReference(fileId, page: page).quoteMarkdown(file.title, quote)}${comment.trim().isEmpty ? '' : '\n\n$comment'}',
         properties: {
           'pdfHighlightVersion': 1,
           'pdfSource': {
@@ -4034,6 +4109,7 @@ Summary of scope, affected endpoints, and timeline of investigation.
             'checksum': checksum,
             'page': page,
             'quote': quote,
+            if (pageComment) 'kind': 'pageComment',
             'regions': regions.map((r) => r.data).toList(),
           },
         },
@@ -4041,6 +4117,148 @@ Summary of scope, affected endpoints, and timeline of investigation.
       objects = [...objects, note];
       error = null;
       notify();
+      return note;
+    } catch (e) {
+      error = '$e';
+      notify();
+      return null;
+    }
+  }
+
+  Future<UniversalObject?> createPdfPageComment(
+    String fileId,
+    String checksum,
+    int page,
+    String comment,
+  ) async {
+    if (page < 1 || page > 999999) return null;
+    final count = activeObjects
+        .where(PdfAnnotation.isAnnotation)
+        .map(PdfAnnotation.new)
+        .where((a) => a.fileId == fileId && a.page == page && a.isPageComment)
+        .length;
+    return createPdfHighlight(
+      fileId,
+      checksum,
+      '',
+      [
+        CanvasElement({
+          'id': 'page-comment',
+          'type': 'rectangle',
+          'page': page,
+          'x': .03 + (count % 10) * .06,
+          'y': .03 + ((count ~/ 10) % 10) * .06,
+          'width': .04,
+          'height': .04,
+          'color': 0xff8b7cf6,
+        }),
+      ],
+      comment: comment,
+      pageComment: true,
+    );
+  }
+
+  Future<bool> updatePdfReview(
+    PdfAnnotation expected, {
+    required String body,
+    required int color,
+    required String style,
+    required bool resolved,
+  }) async {
+    final current = find(expected.object.id);
+    final file = find(expected.fileId ?? '');
+    if (current == null ||
+        !identical(current, expected.object) ||
+        !PdfAnnotation.isAnnotation(current) ||
+        current.isReadOnly ||
+        repository.readOnly ||
+        file == null ||
+        file.isDeleted ||
+        file.isReadOnly ||
+        !expected.matches(file.properties['checksum'] as String?) ||
+        body.length > 1000000 ||
+        color < 0xff000000 ||
+        color > 0xffffffff ||
+        !{'highlight', 'underline', 'strikeout'}.contains(style) ||
+        (current.properties['pdfReview'] is Map &&
+            (current.properties['pdfReview'] as Map)['version'] != 1)) {
+      return false;
+    }
+    final source = Map<String, dynamic>.from(expected.source);
+    source['regions'] = [
+      for (final region in source['regions'] as List? ?? const [])
+        if (region is Map &&
+            PdfAnnotation.validRegion(
+              CanvasElement(Map<String, dynamic>.from(region)),
+            ))
+          {...region, 'color': color, 'style': style}
+        else
+          region,
+    ];
+    edit(
+      current.id,
+      body: body,
+      properties: {
+        ...current.properties,
+        'pdfSource': source,
+        'pdfReview': {
+          if (current.properties['pdfReview'] is Map)
+            ...current.properties['pdfReview'] as Map,
+          'version': 1,
+          'resolved': resolved,
+        },
+      },
+    );
+    await flush(current.id);
+    return !dirty.contains(current.id) && !failures.containsKey(current.id);
+  }
+
+  Future<UniversalObject?> createPdfReviewSummary(
+    String fileId,
+    List<String> ids,
+  ) async {
+    final file = find(fileId);
+    if (repository.readOnly ||
+        file == null ||
+        file.isDeleted ||
+        file.isReadOnly ||
+        file.typeId != 'orbit.file' ||
+        file.properties['mimeType'] != 'application/pdf' ||
+        ids.isEmpty ||
+        ids.length > 10000) {
+      return null;
+    }
+    final annotations = <PdfAnnotation>[];
+    for (final id in ids.toSet()) {
+      final object = find(id);
+      if (object == null || !PdfAnnotation.isAnnotation(object)) return null;
+      final annotation = PdfAnnotation(object);
+      if (annotation.fileId != fileId) return null;
+      annotations.add(annotation);
+    }
+    try {
+      final body = pdfReviewMarkdown(
+        file.title,
+        fileId,
+        annotations,
+        checksum: file.properties['checksum'] as String?,
+      );
+      if (body.length > 2000000) return null;
+      final note = await repository.create(
+        typeId: 'orbit.note',
+        title: 'Review · ${file.title}',
+        body: body,
+        properties: {
+          'pdfSource': {
+            'objectId': fileId,
+            'page': 1,
+            'checksum': file.properties['checksum'],
+          },
+        },
+      );
+      objects = [...objects, note];
+      error = null;
+      openObject(note.id);
       return note;
     } catch (e) {
       error = '$e';
