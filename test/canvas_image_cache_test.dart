@@ -44,4 +44,39 @@ void main() {
       }
     });
   });
+
+  testWidgets('attachment replacement invalidates decoded and failed entries', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final recorder = ui.PictureRecorder();
+      ui.Canvas(
+        recorder,
+      ).drawRect(const ui.Rect.fromLTWH(0, 0, 2, 2), ui.Paint());
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(2, 2);
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      picture.dispose();
+      var loads = 0;
+      final cache = CanvasImageCache(
+        loader: (_) async {
+          loads++;
+          return data!.buffer.asUint8List();
+        },
+        onChanged: () {},
+      );
+      try {
+        cache.updateVisible(const ['Attachments/changed.png']);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(cache.images, contains('Attachments/changed.png'));
+        cache.invalidateAll();
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(cache.images, contains('Attachments/changed.png'));
+        expect(loads, 2);
+      } finally {
+        cache.dispose();
+      }
+    });
+  });
 }

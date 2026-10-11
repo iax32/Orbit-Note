@@ -1,16 +1,22 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import '../../application/sync/google_account.dart';
+import '../../application/backup_bundle.dart';
+
+part 'google_drive_backups.dart';
 
 class GoogleRemoteVault {
   const GoogleRemoteVault({
     required this.folderId,
     required this.workspaceId,
     required this.name,
+    required this.accountSubject,
     this.modified,
   });
-  final String folderId, workspaceId, name;
+  final String folderId, workspaceId, name, accountSubject;
   final DateTime? modified;
 }
 
@@ -26,9 +32,10 @@ class GoogleDriveApi {
   final GoogleAccountAuth auth;
   final http.Client client;
   final GoogleCredentialStore localMetadata;
+  Future<void> _rootOperations = Future<void>.value();
   static const folderMime = 'application/vnd.google-apps.folder';
   static const fileFields =
-      'id,name,mimeType,parents,appProperties,trashed,modifiedTime,size,ownedByMe';
+      'id,name,mimeType,parents,appProperties,trashed,modifiedTime,size,ownedByMe,md5Checksum';
   void _account(String subject) {
     if (auth.account?.subject != subject) {
       throw const GoogleCloudError(
@@ -38,20 +45,23 @@ class GoogleDriveApi {
     }
   }
 
-  Future<Map<String, dynamic>> request(
+  String _subject() =>
+      auth.account?.subject ??
+      (throw const GoogleCloudError(
+        'reauth',
+        'Connect Google Drive to continue.',
+      ));
+
+  Future<Map<String, dynamic>> _request(
+    String subject,
     String method,
     String path, {
     Map<String, String> query = const {},
     Map<String, dynamic>? body,
   }) async {
-    final subject = auth.account?.subject;
-    if (subject == null) {
-      throw const GoogleCloudError(
-        'reauth',
-        'Connect Google Drive to continue.',
-      );
-    }
+    _account(subject);
     for (var attempt = 0; attempt < 2; attempt++) {
+      _account(subject);
       final token = await auth.accessToken(refresh: attempt > 0);
       _account(subject);
       final request = http.Request(
@@ -134,7 +144,8 @@ class GoogleDriveApi {
   }
 
   Future<GoogleStorageQuota> quota() async => GoogleStorageQuota.fromJson(
-    await request(
+    await _request(
+      _subject(),
       'GET',
       'about',
       query: {
@@ -146,12 +157,13 @@ class GoogleDriveApi {
 
   String _quoted(String value) =>
       value.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
-  Future<List<Map<String, dynamic>>> _list(String query) async {
+  Future<List<Map<String, dynamic>>> _list(String subject, String query) async {
     final files = <Map<String, dynamic>>[];
     String? page;
     final seen = <String>{};
     do {
-      final response = await request(
+      final response = await _request(
+        subject,
         'GET',
         'files',
         query: {
@@ -185,9 +197,12 @@ class GoogleDriveApi {
   }
 
   Future<List<GoogleRemoteVault>> listVaults() async {
+    final subject = _subject();
     final files = await _list(
+      subject,
       "trashed = false and 'me' in owners and mimeType = '$folderMime' and appProperties has { key='orbitRole' and value='vault' }",
     );
+    _account(subject);
     final result = <GoogleRemoteVault>[];
     for (final f in files) {
       final properties = f['appProperties'] as Map? ?? const {};
@@ -200,6 +215,7 @@ class GoogleDriveApi {
           folderId: f['id'] as String,
           workspaceId: id,
           name: f['name'] as String? ?? 'Orbit Vault',
+          accountSubject: subject,
           modified: DateTime.tryParse('${f['modifiedTime']}'),
         ),
       );
@@ -208,8 +224,29 @@ class GoogleDriveApi {
   }
 
   Future<Map<String, dynamic>> inspectVault(GoogleRemoteVault vault) async {
+    final subject = vault.accountSubject;
+    _account(subject);
+    final folder = await _request(
+      subject,
+      'GET',
+      'files/${Uri.encodeComponent(vault.folderId)}',
+      query: {'fields': fileFields},
+    );
+    final properties = folder['appProperties'] as Map?;
+    if (folder['ownedByMe'] != true ||
+        folder['trashed'] == true ||
+        folder['mimeType'] != folderMime ||
+        properties?['orbitRole'] != 'vault' ||
+        properties?['orbitProtocol'] != '1' ||
+        properties?['orbitVaultId'] != vault.workspaceId) {
+      throw const GoogleCloudError(
+        'identity',
+        'This Vault must belong to the connected account and retain its original identity.',
+      );
+    }
     final files = await _list(
-      "trashed = false and '${_quoted(vault.folderId)}' in parents and name = 'workspace.json'",
+      subject,
+      "trashed = false and 'me' in owners and '${_quoted(vault.folderId)}' in parents and name = 'workspace.json'",
     );
     if (files.length != 1 ||
         BigInt.tryParse('${files.single['size']}') == null ||
@@ -219,7 +256,8 @@ class GoogleDriveApi {
         'This cloud Vault has a missing, ambiguous or oversized manifest.',
       );
     }
-    final manifest = await request(
+    final manifest = await _request(
+      subject,
       'GET',
       'files/${Uri.encodeComponent(files.single['id'] as String)}',
       query: {'alt': 'media'},
@@ -236,18 +274,29 @@ class GoogleDriveApi {
   }
 
   Future<String> ensureRoot() async {
-    final subject = auth.account?.subject;
-    if (subject == null) {
-      throw const GoogleCloudError('reauth', 'Connect Google Drive first.');
-    }
+    final subject = _subject();
+    // One device must not race its own initial folder creation or overwrite
+    // another account's root mapping with a stale metadata snapshot.
+    final operation = _rootOperations.then((_) => _ensureRoot(subject));
+    _rootOperations = operation.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+    return operation;
+  }
+
+  Future<String> _ensureRoot(String subject) async {
+    _account(subject);
     final raw = await localMetadata.read();
+    _account(subject);
     final metadata = raw == null
         ? <String, dynamic>{}
         : jsonDecode(raw) as Map<String, dynamic>;
     final saved = metadata[subject] as Map?;
     if (saved != null) {
       try {
-        final f = await request(
+        final f = await _request(
+          subject,
           'GET',
           'files/${Uri.encodeComponent(saved['id'] as String)}',
           query: {'fields': fileFields},
@@ -258,7 +307,7 @@ class GoogleDriveApi {
             (f['appProperties'] as Map?)?['orbitRole'] != 'root') {
           throw const GoogleCloudError(
             'root',
-            'The Orbit Drive folder needs review. Restore it in Google Drive before continuing.',
+            'The Orbit folder must be available and owned by the connected Google account.',
           );
         }
         return f['id'] as String;
@@ -267,6 +316,7 @@ class GoogleDriveApi {
       }
     }
     final roots = await _list(
+      subject,
       "trashed = false and 'me' in owners and mimeType = '$folderMime' and appProperties has { key='orbitRole' and value='root' }",
     );
     if (roots.length > 1) {
@@ -279,13 +329,15 @@ class GoogleDriveApi {
       _account(subject);
       metadata[subject] = {'id': roots.single['id'], 'pending': false};
       await localMetadata.write(jsonEncode(metadata));
+      _account(subject);
       return roots.single['id'] as String;
     }
     // Persist a Google-generated ID before creating: response loss can retry the
     // same ID, instead of creating another folder named Orbit Note.
     final id =
         saved?['id'] as String? ??
-        ((await request(
+        ((await _request(
+                      subject,
                       'GET',
                       'files/generateIds',
                       query: {'count': '1', 'space': 'drive', 'type': 'files'},
@@ -297,7 +349,8 @@ class GoogleDriveApi {
     metadata[subject] = {'id': id, 'pending': true};
     await localMetadata.write(jsonEncode(metadata));
     _account(subject);
-    await request(
+    await _request(
+      subject,
       'POST',
       'files',
       query: {'fields': 'id'},
@@ -310,6 +363,7 @@ class GoogleDriveApi {
     );
     metadata[subject] = {'id': id, 'pending': false};
     await localMetadata.write(jsonEncode(metadata));
+    _account(subject);
     return id;
   }
 }

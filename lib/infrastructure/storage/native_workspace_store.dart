@@ -24,9 +24,11 @@ class NativeWorkspaceStore
         WorkspaceStore,
         WorkspaceSelectionStore,
         WorkspaceChangeSource,
+        WorkspaceAttachmentChangeSource,
         WorkspaceStreamingStore,
         WorkspaceFileSizeStore,
         WorkspaceStagingStore,
+        WorkspaceAttachmentStagingStore,
         WorkspaceGuardedMoveStore,
         WorkspaceFolderCommandStore,
         WorkspaceFolderStore {
@@ -106,11 +108,41 @@ class NativeWorkspaceStore
   Future<List<String>> recentLocations() async {
     if (!rememberWorkspace) return [];
     final saved = await _readSelection();
-    return {
+    final candidates = {
       if (saved['path'] is String) saved['path'] as String,
       if (saved['recent'] is List)
         ...(saved['recent'] as List).whereType<String>(),
-    }.take(12).toList();
+    }.toList();
+    final available = <String>[];
+    for (final path in candidates) {
+      try {
+        final type = await FileSystemEntity.type(path);
+        final root = p.rootPrefix(p.absolute(path));
+        if (type == FileSystemEntityType.directory ||
+            (root.isNotEmpty && !await Directory(root).exists())) {
+          available.add(path);
+        }
+      } on FileSystemException {
+        // An inaccessible drive is not evidence that the Vault was deleted.
+        available.add(path);
+      }
+    }
+    final recent = available.take(12).toList();
+    if (candidates.length != recent.length) {
+      final file = await _selectionFile();
+      final temp = File('${file.path}.${const Uuid().v4()}.tmp');
+      await temp.writeAsString(
+        jsonEncode({
+          ...saved,
+          if (!recent.contains(saved['path'])) 'path': null,
+          if (!recent.contains(saved['path'])) 'closed': true,
+          'recent': recent,
+        }),
+        flush: true,
+      );
+      await temp.rename(file.path);
+    }
+    return recent;
   }
 
   @override
@@ -164,6 +196,21 @@ class NativeWorkspaceStore
         )
         .map((path) => event.isDirectory ? '*' : path);
   });
+
+  @override
+  Stream<String> get attachmentChanges =>
+      _root.watch(recursive: true).expand((event) {
+        String relative(String path) =>
+            p.relative(path, from: _root.path).replaceAll('\\', '/');
+        final paths = [
+          relative(event.path),
+          if (event is FileSystemMoveEvent && event.destination != null)
+            relative(event.destination!),
+        ];
+        return paths
+            .where((path) => path.startsWith('Attachments/'))
+            .where((path) => !event.isDirectory);
+      });
 
   @override
   Future<void> initialize({String? path}) async {
@@ -220,12 +267,17 @@ class NativeWorkspaceStore
         );
     _root = Directory(p.normalize(p.absolute(selected)));
     await _root.create(recursive: true);
-    _root = Directory(await _root.resolveSymbolicLinks());
+    try {
+      _root = Directory(await _root.resolveSymbolicLinks());
+    } catch (_) {
+      // Retain normalized directory if resolveSymbolicLinks is unsupported (e.g. network shares, subst drives).
+    }
     _ownership = await NativeVaultLock.acquire(
       await _file('.orbit/device/vault.lock'),
     );
     await _file('.orbit/workspace.sqlite');
     final manifest = await read('workspace.json');
+    var supportsRecovery = manifest == null;
     // Recovery must not mutate an unsupported newer workspace.
     if (manifest == null) {
       await _recoverPendingWrites();
@@ -234,6 +286,7 @@ class NativeWorkspaceStore
         final record = jsonDecode(utf8.decode(manifest)) as Map;
         if (record['format'] == 'orbit-note-workspace' &&
             record['version'] == 1) {
+          supportsRecovery = true;
           await _recoverPendingWrites();
           await _moves.recover();
           await _folderCommands.recover();
@@ -242,6 +295,7 @@ class NativeWorkspaceStore
         /* Repository reports an invalid manifest. */
       }
     }
+    if (supportsRecovery) await _pruneAttachmentStages(this);
   }
 
   Future<File> _file(String relativePath) async {
@@ -399,7 +453,34 @@ class NativeWorkspaceStore
     Stream<List<int>> bytes, {
     required String expectedHash,
     required int maxBytes,
-  }) => _stageSync(this, bytes, expectedHash, maxBytes);
+    void Function(int bytesRead)? onProgress,
+    bool Function()? isCancelled,
+  }) =>
+      _stageSync(this, bytes, expectedHash, maxBytes, onProgress, isCancelled);
+
+  @override
+  Future<WorkspaceStage> stageAttachment(
+    Stream<List<int>> bytes, {
+    required WorkspaceAttachmentStageInfo info,
+    void Function(int bytesRead)? onProgress,
+    bool Function()? isCancelled,
+  }) => _stageAttachment(this, bytes, info, onProgress, isCancelled);
+
+  @override
+  Future<List<WorkspaceAttachmentStageInfo>> listAttachmentStages() =>
+      _listAttachmentStages(this);
+
+  @override
+  Future<WorkspaceStage> resumeAttachmentStage(
+    String id,
+    Stream<List<int>> bytes, {
+    void Function(int bytesRead)? onProgress,
+    bool Function()? isCancelled,
+  }) => _resumeAttachmentStage(this, id, bytes, onProgress, isCancelled);
+
+  @override
+  Future<void> discardAttachmentStage(String id) =>
+      _discardAttachmentStage(this, id);
 
   @override
   Future<void> write(

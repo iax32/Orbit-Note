@@ -15,7 +15,57 @@ abstract interface class WorkspaceStagingStore {
     Stream<List<int>> bytes, {
     required String expectedHash,
     required int maxBytes,
+    void Function(int bytesRead)? onProgress,
+    bool Function()? isCancelled,
   });
+}
+
+/// Metadata retained for an attachment transfer that was interrupted while
+/// its bytes were being staged. The staged bytes are device-local and are
+/// never treated as authored workspace content until the guarded commit.
+class WorkspaceAttachmentStageInfo {
+  const WorkspaceAttachmentStageInfo({
+    required this.id,
+    required this.operation,
+    required this.target,
+    required this.expectedHash,
+    required this.maxBytes,
+    required this.length,
+    this.sourceName,
+    this.updatedAt,
+  });
+
+  final String id;
+  final String operation;
+  final String target;
+  final String expectedHash;
+  final int maxBytes;
+  final int length;
+  final String? sourceName;
+  final DateTime? updatedAt;
+}
+
+/// Native stores retain attachment stages across a process interruption.
+/// Browser stores can continue to use the bounded in-memory compatibility
+/// path without pretending that a staged byte range is durable.
+abstract interface class WorkspaceAttachmentStagingStore {
+  Future<WorkspaceStage> stageAttachment(
+    Stream<List<int>> bytes, {
+    required WorkspaceAttachmentStageInfo info,
+    void Function(int bytesRead)? onProgress,
+    bool Function()? isCancelled,
+  });
+
+  Future<List<WorkspaceAttachmentStageInfo>> listAttachmentStages();
+
+  Future<WorkspaceStage> resumeAttachmentStage(
+    String id,
+    Stream<List<int>> bytes, {
+    void Function(int bytesRead)? onProgress,
+    bool Function()? isCancelled,
+  });
+
+  Future<void> discardAttachmentStage(String id);
 }
 
 abstract interface class WorkspaceStage {
@@ -40,6 +90,15 @@ abstract interface class WorkspaceSelectionStore {
 abstract interface class WorkspaceChangeSource {
   /// Relative paths; '*' means a directory changed and reconciliation is needed.
   Stream<String> get changes;
+}
+
+/// Native stores can report attachment changes without forcing a full object
+/// reconciliation. Attachment bytes are durable files, but they are not part
+/// of the Markdown/JSON object index.
+abstract interface class WorkspaceAttachmentChangeSource {
+  /// Relative `Attachments/` paths whose bytes were created, replaced, or
+  /// removed outside the repository boundary.
+  Stream<String> get attachmentChanges;
 }
 
 class FileReplacement {

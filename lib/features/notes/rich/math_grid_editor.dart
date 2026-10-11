@@ -7,7 +7,7 @@ class MathGrid {
   final List<List<String>> rows;
   static MathGrid? parse(String source) {
     final match = RegExp(
-      r'^\s*\\begin\{(pmatrix|bmatrix|matrix|aligned)\}([\s\S]*?)\\end\{\1\}\s*$',
+      r'^\s*\\begin\{(pmatrix|bmatrix|Bmatrix|vmatrix|Vmatrix|matrix|aligned|cases)\}([\s\S]*?)\\end\{\1\}\s*$',
     ).firstMatch(source);
     if (match == null ||
         match[2]!.contains(r'\begin') ||
@@ -40,7 +40,14 @@ class MathGrid {
 
   String encode() =>
       '\\begin{$environment}\n${rows.map((r) => r.join(' & ')).join(' \\\\\n')}\n\\end{$environment}';
+  String toLatex() => encode();
 }
+
+Future<String?> showMathGridEditor(
+  BuildContext context, {
+  MathGrid? initial,
+  bool aligned = false,
+}) => showMathGrid(context, initial: initial, aligned: aligned);
 
 Future<String?> showMathGrid(
   BuildContext context, {
@@ -57,6 +64,95 @@ Future<String?> showMathGrid(
         ]),
   ),
 );
+
+class MathGridPreset {
+  const MathGridPreset({
+    required this.name,
+    required this.environment,
+    required this.rows,
+  });
+  final String name;
+  final String environment;
+  final List<List<String>> rows;
+}
+
+const mathGridPresets = [
+  MathGridPreset(
+    name: '2×2 Identity',
+    environment: 'pmatrix',
+    rows: [
+      ['1', '0'],
+      ['0', '1'],
+    ],
+  ),
+  MathGridPreset(
+    name: '3×3 Identity',
+    environment: 'pmatrix',
+    rows: [
+      ['1', '0', '0'],
+      ['0', '1', '0'],
+      ['0', '0', '1'],
+    ],
+  ),
+  MathGridPreset(
+    name: '2×2 Zero',
+    environment: 'pmatrix',
+    rows: [
+      ['0', '0'],
+      ['0', '0'],
+    ],
+  ),
+  MathGridPreset(
+    name: '2D Rotation Matrix',
+    environment: 'pmatrix',
+    rows: [
+      [r'\cos\theta', r'-\sin\theta'],
+      [r'\sin\theta', r'\cos\theta'],
+    ],
+  ),
+  MathGridPreset(
+    name: '3D Column Vector',
+    environment: 'pmatrix',
+    rows: [
+      ['x'],
+      ['y'],
+      ['z'],
+    ],
+  ),
+  MathGridPreset(
+    name: '2×2 Transformation',
+    environment: 'pmatrix',
+    rows: [
+      ['a', 'b'],
+      ['c', 'd'],
+    ],
+  ),
+  MathGridPreset(
+    name: '2-Case Piecewise',
+    environment: 'cases',
+    rows: [
+      ['f(x)', r'x \ge 0'],
+      ['-f(x)', 'x < 0'],
+    ],
+  ),
+  MathGridPreset(
+    name: '3-Case Piecewise',
+    environment: 'cases',
+    rows: [
+      ['1', 'x > 0'],
+      ['0', 'x = 0'],
+      ['-1', 'x < 0'],
+    ],
+  ),
+  MathGridPreset(
+    name: '2×2 Linear System',
+    environment: 'aligned',
+    rows: [
+      ['a_1 x + b_1 y', '= c_1'],
+      ['a_2 x + b_2 y', '= c_2'],
+    ],
+  ),
+];
 
 class _MathGridDialog extends StatefulWidget {
   const _MathGridDialog({required this.initial});
@@ -76,25 +172,90 @@ class _MathGridDialogState extends State<_MathGridDialog> {
   });
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: Text(environment == 'aligned' ? 'Aligned equations' : 'Matrix'),
+    title: Row(
+      children: [
+        Text(
+          environment == 'aligned'
+              ? 'Aligned equations'
+              : environment == 'cases'
+              ? 'Piecewise cases'
+              : 'Matrix',
+        ),
+        const Spacer(),
+        PopupMenuButton<MathGridPreset>(
+          key: const ValueKey('math-grid-preset-button'),
+          tooltip: 'Grid presets',
+          onSelected: (preset) {
+            structure(() {
+              environment = preset.environment;
+              rows.clear();
+              for (final r in preset.rows) {
+                rows.add(List<String>.of(r));
+              }
+            });
+          },
+          itemBuilder: (_) => [
+            for (final p in mathGridPresets)
+              PopupMenuItem(value: p, child: Text(p.name)),
+          ],
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(Icons.auto_awesome, size: 14),
+                SizedBox(width: 4),
+                Text('Presets', style: TextStyle(fontSize: 12)),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
     content: SizedBox(
       width: 520,
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (environment != 'aligned')
+            if (environment != 'aligned' && environment != 'cases')
               DropdownButton<String>(
-                value: environment,
+                value:
+                    [
+                      'pmatrix',
+                      'bmatrix',
+                      'Bmatrix',
+                      'vmatrix',
+                      'Vmatrix',
+                      'matrix',
+                    ].contains(environment)
+                    ? environment
+                    : 'pmatrix',
                 items: [
-                  for (final type in ['pmatrix', 'bmatrix', 'matrix'])
+                  for (final type in [
+                    'pmatrix',
+                    'bmatrix',
+                    'Bmatrix',
+                    'vmatrix',
+                    'Vmatrix',
+                    'matrix',
+                  ])
                     DropdownMenuItem(
                       value: type,
                       child: Text(
                         {
-                          'pmatrix': 'Round brackets',
-                          'bmatrix': 'Square brackets',
-                          'matrix': 'No brackets',
+                          'pmatrix': 'Parentheses ( )',
+                          'bmatrix': 'Brackets [ ]',
+                          'Bmatrix': 'Braces { }',
+                          'vmatrix': 'Determinant | |',
+                          'Vmatrix': 'Norm || ||',
+                          'matrix': 'Plain (no brackets)',
                         }[type]!,
                       ),
                     ),
@@ -103,8 +264,10 @@ class _MathGridDialogState extends State<_MathGridDialog> {
               ),
             if (environment == 'aligned')
               const Text(
-                'Left and right columns align at the relation. Tab moves between cells.',
+                'Left and right columns align at the relation (&). Tab moves between cells.',
               ),
+            if (environment == 'cases')
+              const Text('Piecewise cases: expression & condition.'),
             for (var r = 0; r < rows.length; r++)
               Row(
                 children: [

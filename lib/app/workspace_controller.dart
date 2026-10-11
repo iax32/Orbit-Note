@@ -1,20 +1,57 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
+import 'package:uuid/uuid.dart';
 
 import '../application/workspace_repository.dart';
+import '../domain/backlinks.dart';
 import '../domain/calendar_event.dart';
+import '../domain/calendar_planning.dart';
+import '../domain/event_recurrence.dart';
 import '../domain/universal_object.dart';
 import '../domain/object_reference.dart';
+import '../domain/orbit_search.dart';
+import '../domain/document_anchors.dart';
+import '../application/workspace_search.dart';
+import '../application/search_execution.dart';
+import '../application/pdf_search_indexer.dart';
+import '../domain/pdf_search.dart';
+import '../platform/pdf_text_extraction.dart';
+import '../platform/ocr_pages.dart';
+import '../domain/ocr_document.dart';
+import '../domain/object_discovery.dart';
 import '../domain/pdf_annotation.dart';
 import '../domain/research_document.dart';
+import '../domain/research_workspace.dart';
+import '../domain/reverse_engineering.dart';
 import '../canvas/scene.dart';
 import '../domain/wiki_links.dart';
 import '../domain/search_text.dart';
 import '../domain/work_session.dart';
 import 'session_state.dart';
+import '../domain/smart_view_query.dart';
+import '../domain/task_planning.dart';
+import '../domain/gantt_planning.dart';
+import '../domain/working_calendar.dart';
+import '../domain/workspace_context.dart';
+import '../domain/study_card.dart';
+import '../domain/gameplay_workbench.dart';
+import '../domain/gameplay_release.dart';
+import '../domain/model_asset.dart';
+
+part 'workspace_productivity.dart';
+part 'workspace_ocr.dart';
+part 'workspace_study.dart';
+part 'workspace_study_resume.dart';
+part 'workspace_calendar_planning.dart';
+part 'workspace_creative.dart';
+part 'workspace_research.dart';
+part 'workspace_work_calendars.dart';
+part 'workspace_gameplay.dart';
 
 final repositoryProvider = Provider<WorkspaceRepository>(
   (ref) => WorkspaceRepository(),
@@ -25,8 +62,55 @@ final workspaceProvider = NotifierProvider<WorkspaceController, int>(
 
 /// Coordinates drafts and serialized durable commands. UI never writes files.
 class WorkspaceController extends Notifier<int> {
+  bool _creatingCreativeProject = false;
+  WorkspaceController({
+    PdfTextExtractor? pdfTextExtractor,
+    OcrPageExtractor? ocrExtractor,
+  }) : _extractPdf = pdfTextExtractor ?? extractPdfText,
+       _extractOcr = ocrExtractor ?? recognizeAttachment;
+  final OcrPageExtractor _extractOcr;
+  Future<void>? _ocrWork;
+  int _ocrGeneration = 0;
+  Completer<void>? _ocrResume;
+  bool ocrRunning = false, ocrPaused = false;
+  String ocrStatus = '';
+  final Map<String, String> ocrFailures = {};
+  final PdfTextExtractor _extractPdf;
+  PdfSearchIndexer? _pdfIndexer;
+  final _pdfIndexEvents = StreamController<void>.broadcast();
+  Stream<void> get pdfIndexChanges => _pdfIndexEvents.stream;
+  int get pdfIndexRevision => _pdfIndexer?.revision ?? 0;
+  Map<String, PdfIndexEntry> get pdfIndexEntries =>
+      _pdfIndexer?.entries ?? const {};
+  bool get pdfIndexPaused => _pdfIndexer?.paused ?? false;
+  bool get pdfIndexRunning => _pdfIndexer?.running ?? false;
+  void pausePdfIndex(bool paused) => _pdfIndexer?.setPaused(paused);
+  void retryPdfIndex() => _pdfIndexer?.retry();
+  bool isCurrentSearchResult(OrbitSearchResult result) =>
+      result.sourceChecksum == null ||
+      (_pdfIndexer?.isCurrent(result) ?? false);
+  void _startPdfIndexer() {
+    _pdfIndexer = PdfSearchIndexer(
+      repository,
+      extract: _extractPdf,
+      onChanged: () {
+        if (!_alive) return;
+        if (!_pdfIndexEvents.isClosed) _pdfIndexEvents.add(null);
+        notify();
+      },
+    );
+    _pdfIndexer!.synchronize(objects);
+  }
+
   late WorkspaceRepository repository;
+  int studyResumeSerial = 0;
   SessionState session = SessionState();
+  bool _planningBusy = false;
+  Completer<void>? _productivityOperation;
+  List<UniversalObject>? _querySnapshot;
+  String _queryDay = '';
+  final Map<String, List<UniversalObject>> _viewQueryCache = {};
+  ({UniversalObject before, UniversalObject after})? _planningUndo;
   List<UniversalObject> objects = [];
   bool loading = true;
   String? error;
@@ -40,8 +124,7 @@ class WorkspaceController extends Notifier<int> {
   Future<void>? _settingsSave;
   bool _settingsSaveRequested = false;
   bool _settingsSaveFailed = false;
-  bool _hasWorkspace = false;
-  bool get hasWorkspace => _hasWorkspace;
+  bool hasWorkspace = false;
 
   WorkSessionRecord? _activeWorkSession;
   WorkSessionRecord? get activeWorkSession => _activeWorkSession;
@@ -112,7 +195,7 @@ class WorkspaceController extends Notifier<int> {
     repository,
     canApply: () =>
         _alive &&
-        _hasWorkspace &&
+        hasWorkspace &&
         !loading &&
         dirty.isEmpty &&
         _saving.isEmpty &&
@@ -127,29 +210,44 @@ class WorkspaceController extends Notifier<int> {
   bool _checkingExternal = false;
   bool _refreshingExternal = false;
   StreamSubscription<String>? _externalSubscription;
+  StreamSubscription<String>? _attachmentSubscription;
   Timer? _externalDebounce;
+  Timer? _attachmentDebounce;
   final Set<String> _changedPaths = {};
+  final Set<String> _changedAttachments = {};
+  int attachmentRevision = 0;
 
   @override
   int build() {
     repository = ref.read(repositoryProvider);
     ref.onDispose(() {
+      cancelOcr();
       _alive = false;
       for (final timer in _timers.values) {
         timer.cancel();
       }
       _sessionTimer?.cancel();
       _externalDebounce?.cancel();
+      _attachmentDebounce?.cancel();
       unawaited(_externalSubscription?.cancel());
+      unawaited(_attachmentSubscription?.cancel());
       // The shell flushes before workspace switches and native exit.
-      unawaited(repository.close());
+      unawaited(() async {
+        await _ocrWork;
+        await _pdfIndexer?.close();
+        await repository.close();
+      }());
+      unawaited(_pdfIndexEvents.close());
     });
     Future.microtask(initialize);
     return 0;
   }
 
   void notify() {
-    if (_alive) state++;
+    if (_alive && hasWorkspace) _pdfIndexer?.synchronize(objects);
+    try {
+      if (_alive) state++;
+    } catch (_) {}
   }
 
   void mergeRepositoryObjects() {
@@ -176,6 +274,8 @@ class WorkspaceController extends Notifier<int> {
     }
     return null;
   }
+
+  String objectFolder(String id) => repository.objectFolder(id);
 
   List<NoteLinkTarget> get linkTargets => activeObjects
       .map(
@@ -209,22 +309,705 @@ class WorkspaceController extends Notifier<int> {
       if (!aDraft) return indexOrder[a.id]!.compareTo(indexOrder[b.id]!);
       return a.title.compareTo(b.title);
     });
-    return results.take(100).toList();
+    return results;
+  }
+
+  /// Rich global/command results share deterministic ranking and target routing.
+  Future<List<OrbitSearchResult>> searchLocations(String query) async {
+    final indexed = await search(query.trim());
+    final project = find(session.activeId)?.properties['project'];
+    return projectWorkspaceSearch(
+      indexed: indexed.where(inActiveSpace).toList(),
+      snapshot: activeObjects.where(inActiveSpace).toList(),
+      drafts: Set<String>.of(dirty),
+      query: query,
+      recent: List<String>.of(session.recent),
+      project: project is String ? project : null,
+      limit: null,
+      pdfDocuments: Map.of(
+        _pdfIndexer?.documents ?? <String, PdfTextDocument>{},
+      ),
+    );
+  }
+
+  int _locationSerial = 0;
+  Future<ObjectReference> referenceNoteBlock(
+    String noteId,
+    int offset, {
+    bool structured = false,
+  }) async {
+    final note = find(noteId);
+    if (note == null ||
+        note.isDeleted ||
+        note.isReadOnly ||
+        note.typeId != 'orbit.note' ||
+        note.properties['documentFormat'] == 'latex') {
+      throw StateError('Choose an editable Markdown note');
+    }
+    final anchored = anchorDocumentBlock(
+      note.body,
+      noteId,
+      offset,
+      'orbit-${const Uuid().v4()}',
+      structured: structured,
+    );
+    if (anchored.source != note.body) {
+      edit(noteId, body: anchored.source);
+      await flush(noteId);
+      if (dirty.contains(noteId)) {
+        throw StateError('Save the note before creating a reference');
+      }
+    }
+    return anchored.reference;
+  }
+
+  Future<ObjectReference> placeNoteBlock(
+    String noteId,
+    int offset,
+    String canvasId,
+  ) async {
+    final board = find(canvasId);
+    if (board == null ||
+        board.isDeleted ||
+        board.isReadOnly ||
+        board.typeId != 'orbit.canvas') {
+      throw StateError('Choose an editable Canvas');
+    }
+    final scene = CanvasScene.fromJson(board.data);
+    if (scene.readOnly) throw StateError('Canvas uses an unsupported format');
+    final reference = await referenceNoteBlock(noteId, offset);
+    // Read current board again after asynchronous source save; preserve later edits.
+    final current = find(canvasId)!;
+    if (current.isDeleted || current.isReadOnly) {
+      throw StateError('Canvas is unavailable');
+    }
+    final currentScene = CanvasScene.fromJson(current.data);
+    if (currentScene.readOnly) {
+      throw StateError('Canvas uses an unsupported format');
+    }
+    final elementId = const Uuid().v4();
+    final bounds = currentScene.contentBounds;
+    currentScene.put(
+      CanvasElement({
+        'id': elementId,
+        'type': 'card',
+        'objectId': noteId,
+        'referenceTarget': reference.target,
+        'x': bounds == null ? 0 : bounds.right + 48,
+        'y': bounds?.top ?? 0,
+        'width': 360,
+        'height': 220,
+      }),
+    );
+    edit(canvasId, data: currentScene.toJson());
+    await flush(canvasId);
+    if (dirty.contains(canvasId)) {
+      throw StateError('Canvas could not be saved; the draft is retained');
+    }
+    return ObjectReference(
+      canvasId,
+      anchorType: 'element',
+      anchorId: elementId,
+    );
+  }
+
+  Future<bool> placeModelAsset(String assetId, String canvasId) async {
+    final workspace = repository.workspaceId;
+    final asset = find(assetId), board = find(canvasId);
+    if (repository.readOnly ||
+        asset?.isDeleted != false ||
+        asset!.typeId != 'orbit.file' ||
+        !isModelAsset(
+          asset.properties['originalName'] as String? ?? asset.title,
+        ) ||
+        board?.isDeleted != false ||
+        board!.isReadOnly ||
+        board.typeId != 'orbit.canvas') {
+      error = 'Choose an available model and an editable Canvas.';
+      notify();
+      return false;
+    }
+    final scene = CanvasScene.fromJson(board.data);
+    if (scene.readOnly) {
+      error = 'Canvas format is unsupported.';
+      notify();
+      return false;
+    }
+    final bounds = scene.contentBounds;
+    scene.put(
+      CanvasElement({
+        'id': const Uuid().v4(),
+        'type': 'card',
+        'objectId': assetId,
+        'x': bounds == null ? 0 : bounds.right + 48,
+        'y': bounds?.top ?? 0,
+        'width': 320,
+        'height': 180,
+        'presentation': 'card',
+      }),
+    );
+    edit(canvasId, data: scene.toJson());
+    await flush(canvasId);
+    return repository.workspaceId == workspace &&
+        !dirty.contains(canvasId) &&
+        !failures.containsKey(canvasId);
+  }
+
+  final Map<
+    String,
+    ({ObjectReference reference, int? offset, int length, int serial})
+  >
+  locationRequests = {};
+
+  void requestLocation(
+    ObjectReference reference, {
+    int? offset,
+    int length = 0,
+  }) {
+    pdfSearchRequests.remove(reference.id);
+    _pdfOpenRequest++;
+    locationRequests[reference.id] = (
+      reference: reference,
+      offset: offset,
+      length: length,
+      serial: ++_locationSerial,
+    );
+  }
+
+  void openSearchResult(OrbitSearchResult result) {
+    final request = ++_pdfOpenRequest;
+    if (result.sourceChecksum != null) {
+      unawaited(_openPdfSearchResult(result, request));
+      return;
+    }
+    final current = find(result.object.id);
+    if (current == null || current.isDeleted) return;
+    requestLocation(
+      result.location,
+      offset: current.body == result.object.body ? result.sourceOffset : null,
+      length: result.matchLength,
+    );
+    if (result.location.page != null) {
+      final key = 'pdf:primary:${current.id}';
+      session.noteViews = {
+        ...session.noteViews,
+        key: {...?session.noteViews[key], 'page': result.location.page},
+      };
+    }
+    openObject(current.id);
+  }
+
+  int _pdfOpenRequest = 0;
+  final pdfSearchRequests = <String, OrbitSearchResult>{};
+  Future<void> _openPdfSearchResult(
+    OrbitSearchResult result,
+    int request,
+  ) async {
+    final workspace = repository.workspaceId;
+    bool currentRequest() =>
+        request == _pdfOpenRequest &&
+        repository.workspaceId == workspace &&
+        _alive &&
+        hasWorkspace &&
+        !loading;
+    try {
+      final valid =
+          isCurrentSearchResult(result) &&
+          result.sourcePath != null &&
+          await repository.pdfSourceChecksum(result.sourcePath!) ==
+              result.sourceChecksum;
+      if (!currentRequest()) return;
+      if (!valid) {
+        if (result.sourcePath != null) {
+          _pdfIndexer?.invalidatePath(result.sourcePath!);
+        }
+        error =
+            'This attachment changed. Search is reindexing its current contents.';
+        notify();
+        return;
+      }
+      final current = find(result.object.id);
+      if (request != _pdfOpenRequest ||
+          repository.workspaceId != workspace ||
+          current == null ||
+          current.isDeleted ||
+          current.properties['contentRef'] != result.sourcePath) {
+        return;
+      }
+      requestLocation(
+        result.location,
+        offset: result.sourceOffset,
+        length: result.matchLength,
+      );
+      pdfSearchRequests[current.id] = result;
+      final key = 'pdf:primary:${current.id}';
+      session.noteViews = {
+        ...session.noteViews,
+        key: {
+          ...?session.noteViews[key],
+          'page': result.location.page,
+          'annotationId': null,
+          'request': locationRequests[current.id]!.serial,
+        },
+      };
+      openObject(current.id);
+    } on Object {
+      if (!currentRequest()) return;
+      error =
+          'The PDF source is unavailable. Refresh search or recover the attachment.';
+      notify();
+    }
   }
 
   List<UniversalObject> backlinks(String id) => activeObjects
       .where(
-        (o) => parseWikiLinks(o.body).any(
-          (link) =>
-              resolveWikiLink(
-                link,
-                linkTargets,
-                bindings: o.linkBindings,
-              ).target?.id ==
-              id,
-        ),
+        (o) =>
+            (StudyCard.supported(o) &&
+                StudyCard(o).source?['objectId'] == id) ||
+            calendarResources(o).contains(id) ||
+            parseWikiLinks(o.body).any(
+              (link) =>
+                  resolveWikiLink(
+                    link,
+                    linkTargets,
+                    bindings: o.linkBindings,
+                  ).target?.id ==
+                  id,
+            ),
       )
       .toList();
+
+  List<LinkedMention> linkedMentions(String id) => findLinkedMentions(
+    targetId: id,
+    objects: activeObjects,
+    targets: linkTargets,
+  );
+
+  List<UnlinkedMention> unlinkedMentions(String id) => findUnlinkedMentions(
+    targetId: id,
+    objects: activeObjects,
+    targets: linkTargets,
+  );
+
+  Future<void> linkUnlinkedMention(
+    UnlinkedMention mention,
+    String targetId,
+  ) async {
+    final source = find(mention.source.id);
+    if (source == null) return;
+    final updatedBody = linkMentionInMarkdown(source.body, mention, targetId);
+    if (updatedBody != source.body) {
+      edit(source.id, body: updatedBody);
+      await flush(source.id);
+    }
+  }
+
+  List<UniversalObject> outboundLinks(String id) {
+    final o = find(id);
+    if (o == null) return const [];
+    final links = parseWikiLinks(o.body);
+    final targets = <UniversalObject>[];
+    for (final link in links) {
+      final target = resolveWikiLink(
+        link,
+        linkTargets,
+        bindings: o.linkBindings,
+      ).target;
+      if (target != null) {
+        final targetObj = find(target.id);
+        if (targetObj != null && !targets.any((t) => t.id == targetObj.id)) {
+          targets.add(targetObj);
+        }
+      }
+    }
+    return targets;
+  }
+
+  /// Groups all unresolved WikiLinks across active notes by missing title (LNK-05).
+  Map<String, List<UniversalObject>> unresolvedWikiLinks() {
+    final results = <String, List<UniversalObject>>{};
+    final targets = linkTargets;
+    for (final note in activeObjects.where(
+      (o) => o.typeId == 'orbit.note' && !o.isDeleted,
+    )) {
+      final links = parseWikiLinks(note.body);
+      for (final link in links) {
+        final resolution = resolveWikiLink(
+          link,
+          targets,
+          bindings: note.linkBindings,
+        );
+        if (resolution.status == WikiLinkStatus.unresolved) {
+          final cleanTarget = link.target.trim();
+          if (cleanTarget.isNotEmpty) {
+            final list = results.putIfAbsent(cleanTarget, () => []);
+            if (!list.any((existing) => existing.id == note.id)) {
+              list.add(note);
+            }
+          }
+        }
+      }
+    }
+    return results;
+  }
+
+  /// Zero-friction quick capture into inbox without mandatory organization (CAP-01).
+  Future<UniversalObject?> quickCapture(
+    String text, {
+    bool asTask = false,
+  }) async {
+    final clean = text.trim();
+    if (clean.isEmpty) return null;
+    final title = clean.split('\n').first;
+    final now = DateTime.now().toUtc();
+    final type = asTask ? 'orbit.task' : 'orbit.note';
+    return create(
+      type,
+      title: title,
+      body: clean,
+      properties: {'inbox': true, 'capturedAt': now.toIso8601String()},
+    );
+  }
+
+  /// All unprocessed captures currently in inbox.
+  List<UniversalObject> get inboxObjects =>
+      activeObjects
+          .where((o) => o.properties['inbox'] == true && !o.isDeleted)
+          .toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+  /// Process an inbox capture into an organized project, folder, or task (CAP-02).
+  Future<void> processInboxItem(
+    String id, {
+    String? project,
+    String? folder,
+    bool? asTask,
+    bool archive = false,
+    bool delete = false,
+  }) async {
+    final obj = find(id);
+    if (obj == null) return;
+    if (delete) {
+      trash(id);
+      return;
+    }
+    final nextProps = Map<String, dynamic>.from(obj.properties);
+    nextProps.remove('inbox');
+    if (archive) {
+      nextProps['archived'] = true;
+      nextProps['status'] = 'archived';
+    }
+    if (project != null && project.isNotEmpty) {
+      nextProps['project'] = project;
+    }
+    if (folder != null && folder.isNotEmpty) {
+      nextProps['folder'] = folder;
+    }
+    final newType = asTask == true ? 'orbit.task' : obj.typeId;
+    if (newType != obj.typeId) {
+      await create(
+        newType,
+        title: obj.title,
+        body: obj.body,
+        properties: nextProps,
+      );
+      trash(id);
+    } else {
+      edit(id, properties: nextProps);
+    }
+  }
+
+  /// Temporal queries for Periodic Notes & Reviews (REV-01 - REV-04)
+  List<UniversalObject> notesCreatedBetween(DateTime start, DateTime end) {
+    return activeObjects
+        .where(
+          (o) =>
+              !o.isDeleted &&
+              o.typeId == 'orbit.note' &&
+              !o.createdAt.isBefore(start) &&
+              !o.createdAt.isAfter(end),
+        )
+        .toList();
+  }
+
+  List<UniversalObject> tasksCompletedBetween(DateTime start, DateTime end) {
+    return activeObjects.where((o) {
+      if (o.typeId != 'orbit.task' || o.isDeleted) {
+        return false;
+      }
+      final isDone = o.isCompleted || o.properties['status'] == 'completed';
+      if (!isDone) return false;
+      final completedAtStr = o.properties['completedAt']?.toString();
+      if (completedAtStr != null) {
+        final date = DateTime.tryParse(completedAtStr);
+        if (date != null) {
+          return !date.isBefore(start) && !date.isAfter(end);
+        }
+      }
+      return !o.updatedAt.isBefore(start) && !o.updatedAt.isAfter(end);
+    }).toList();
+  }
+
+  List<UniversalObject> tasksUnfinishedBetween(DateTime start, DateTime end) {
+    return activeObjects.where((o) {
+      if (o.typeId != 'orbit.task' || o.isDeleted) {
+        return false;
+      }
+      final isDone = o.isCompleted || o.properties['status'] == 'completed';
+      if (isDone) return false;
+      final dueStr = o.properties['dueDate'] ?? o.properties['scheduledDate'];
+      if (dueStr != null) {
+        final due = DateTime.tryParse(dueStr.toString());
+        if (due != null) {
+          return !due.isBefore(start) && !due.isAfter(end);
+        }
+      }
+      return true;
+    }).toList();
+  }
+
+  List<String> projectsActiveBetween(DateTime start, DateTime end) {
+    return activeObjects
+        .where(
+          (o) =>
+              !o.isDeleted &&
+              o.updatedAt.isAfter(start) &&
+              o.updatedAt.isBefore(end),
+        )
+        .map((o) => o.properties['project']?.toString())
+        .whereType<String>()
+        .where((p) => p.trim().isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  Future<UniversalObject?> openReviewNote({
+    required String periodName,
+    required String title,
+    required String initialBody,
+  }) async {
+    final existing = activeObjects.cast<UniversalObject?>().firstWhere(
+      (o) =>
+          o != null &&
+          o.typeId == 'orbit.note' &&
+          !o.isDeleted &&
+          (o.title == title || o.properties['reviewPeriod'] == periodName),
+      orElse: () => null,
+    );
+    if (existing != null) {
+      openObject(existing.id);
+      return existing;
+    }
+    return create(
+      'orbit.note',
+      title: title,
+      body: initialBody,
+      properties: {'icon': '📊', 'reviewPeriod': periodName},
+    );
+  }
+
+  Future<UniversalObject?> openProjectDashboard(String projectName) async {
+    final existing = activeObjects.cast<UniversalObject?>().firstWhere(
+      (o) =>
+          o != null &&
+          o.typeId == 'orbit.view' &&
+          !o.isDeleted &&
+          o.properties['viewType'] == 'project' &&
+          o.properties['project']?.toString().toLowerCase() ==
+              projectName.toLowerCase(),
+      orElse: () => null,
+    );
+    if (existing != null) {
+      openObject(existing.id);
+      return existing;
+    }
+    return create(
+      'orbit.view',
+      title: '$projectName Dashboard',
+      properties: {'viewType': 'project', 'project': projectName, 'icon': '📊'},
+    );
+  }
+
+  List<UniversalObject> relatedObjects(String id) {
+    final o = find(id);
+    if (o == null) return const [];
+    final project = o.properties['project']?.toString();
+    final folder = o.properties['folder']?.toString();
+    final tags = (o.properties['tags'] is List)
+        ? (o.properties['tags'] as List).map((e) => e.toString()).toSet()
+        : <String>{};
+
+    return activeObjects
+        .where((other) {
+          if (other.id == id) return false;
+          if (project != null &&
+              project.isNotEmpty &&
+              other.properties['project']?.toString() == project) {
+            return true;
+          }
+          if (folder != null &&
+              folder.isNotEmpty &&
+              other.properties['folder']?.toString() == folder) {
+            return true;
+          }
+          if (tags.isNotEmpty) {
+            final otherTags = (other.properties['tags'] is List)
+                ? (other.properties['tags'] as List)
+                      .map((e) => e.toString())
+                      .toSet()
+                : <String>{};
+            if (tags.intersection(otherTags).isNotEmpty) return true;
+          }
+          return false;
+        })
+        .take(10)
+        .toList();
+  }
+
+  String? _activeTagFilter;
+  String? get activeTagFilter => _activeTagFilter;
+  set activeTagFilter(String? value) {
+    final clean = value?.trim().replaceAll(RegExp(r'^#'), '');
+    final next = (clean == null || clean.isEmpty) ? null : clean;
+    if (_activeTagFilter != next) {
+      _activeTagFilter = next;
+      notify();
+    }
+  }
+
+  void clearTagFilter() {
+    activeTagFilter = null;
+  }
+
+  /// Sorted list of all unique tags used across workspace objects.
+  List<String> get allTags {
+    final set = <String>{};
+    for (final o in activeObjects) {
+      if (o.properties['tags'] is List) {
+        for (final t in o.properties['tags'] as List) {
+          final s = t.toString().trim().replaceAll(RegExp(r'^#'), '');
+          if (s.isNotEmpty) set.add(s);
+        }
+      }
+      final bodyMatches = RegExp(
+        r'(?:^|\s)#([a-zA-Z0-9_\-]+)',
+      ).allMatches(o.body);
+      for (final m in bodyMatches) {
+        final tag = m.group(1);
+        if (tag != null &&
+            tag.isNotEmpty &&
+            !tag.startsWith(RegExp(r'^\d+$'))) {
+          set.add(tag);
+        }
+      }
+    }
+    final list = set.toList();
+    list.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return list;
+  }
+
+  /// Number of active objects associated with [tag].
+  int countForTag(String tag) {
+    final target = tag.trim().replaceAll(RegExp(r'^#'), '').toLowerCase();
+    if (target.isEmpty) return 0;
+    int count = 0;
+    for (final o in activeObjects) {
+      final tags = (o.properties['tags'] is List)
+          ? (o.properties['tags'] as List)
+                .map(
+                  (e) => e
+                      .toString()
+                      .trim()
+                      .replaceAll(RegExp(r'^#'), '')
+                      .toLowerCase(),
+                )
+                .toSet()
+          : <String>{};
+      if (tags.contains(target)) {
+        count++;
+      } else {
+        final pattern = RegExp(
+          r'(?:^|\s)#' + RegExp.escape(target) + r'(?:\s|$)',
+          caseSensitive: false,
+        );
+        if (pattern.hasMatch(o.body)) {
+          count++;
+        }
+      }
+    }
+    return count;
+  }
+
+  /// All tags specifically associated with an object.
+  List<String> tagsForObject(String objectId) {
+    final o = find(objectId);
+    if (o == null) return const [];
+    final set = <String>{};
+    if (o.properties['tags'] is List) {
+      for (final t in o.properties['tags'] as List) {
+        final s = t.toString().trim().replaceAll(RegExp(r'^#'), '');
+        if (s.isNotEmpty) set.add(s);
+      }
+    }
+    final bodyMatches = RegExp(
+      r'(?:^|\s)#([a-zA-Z0-9_\-]+)',
+    ).allMatches(o.body);
+    for (final m in bodyMatches) {
+      final tag = m.group(1);
+      if (tag != null && tag.isNotEmpty && !tag.startsWith(RegExp(r'^\d+$'))) {
+        set.add(tag);
+      }
+    }
+    final list = set.toList();
+    list.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return list;
+  }
+
+  /// Adds a tag to an object's properties.
+  Future<void> addTagToObject(String objectId, String tag) async {
+    final clean = tag.trim().replaceAll(RegExp(r'^#'), '');
+    if (clean.isEmpty) return;
+    final o = find(objectId);
+    if (o == null || o.isReadOnly || repository.readOnly) return;
+    final currentTags = (o.properties['tags'] is List)
+        ? (o.properties['tags'] as List).map((e) => e.toString()).toList()
+        : <String>[];
+    if (!currentTags.any((t) => t.toLowerCase() == clean.toLowerCase())) {
+      currentTags.add(clean);
+      updateProperty(objectId, 'tags', currentTags);
+    }
+  }
+
+  /// Removes a tag from an object's properties.
+  Future<void> removeTagFromObject(String objectId, String tag) async {
+    final clean = tag.trim().replaceAll(RegExp(r'^#'), '').toLowerCase();
+    final o = find(objectId);
+    if (o == null || o.isReadOnly || repository.readOnly) return;
+    if (o.properties['tags'] is List) {
+      final currentTags = (o.properties['tags'] as List)
+          .map((e) => e.toString())
+          .where(
+            (t) =>
+                t.trim().replaceAll(RegExp(r'^#'), '').toLowerCase() != clean,
+          )
+          .toList();
+      updateProperty(objectId, 'tags', currentTags);
+    }
+  }
+
+  void updateProperty(String id, String key, dynamic value) {
+    final o = find(id);
+    if (o == null || o.isReadOnly || repository.readOnly) return;
+    edit(id, properties: {...o.properties, key: value});
+  }
+
+  void removeProperty(String id, String key) {
+    final o = find(id);
+    if (o == null || o.isReadOnly || repository.readOnly) return;
+    final updated = Map<String, dynamic>.from(o.properties)..remove(key);
+    edit(id, properties: updated);
+  }
+
   String get saveLabel => failures.isNotEmpty
       ? 'Changes need attention'
       : dirty.isNotEmpty
@@ -232,6 +1015,8 @@ class WorkspaceController extends Notifier<int> {
       : 'Saved locally';
 
   Future<void>? _initializingFuture;
+  int _workspaceGeneration = 0;
+  int get workspaceGeneration => _workspaceGeneration;
   Future<void> initialize({String? path}) async {
     if (!_alive) return;
     if (_initializingFuture != null) {
@@ -250,17 +1035,37 @@ class WorkspaceController extends Notifier<int> {
   }
 
   Future<void> _doInitialize({String? path}) async {
-    final previousPath = _hasWorkspace ? repository.location : null;
+    final previousPath = hasWorkspace ? repository.location : null;
     final previousSession = session;
-    if (_hasWorkspace && !await flushAll()) return;
+    if (hasWorkspace && !await flushAll()) {
+      error =
+          'Cannot switch vault: unsaved changes or save failures exist. Please resolve them first.';
+      notify();
+      return;
+    }
+    _workspaceGeneration++;
+    _pdfOpenRequest++;
+    await _pdfIndexer?.close();
+    cancelOcr();
+    await _ocrWork;
+    ocrFailures.clear();
+    ocrStatus = '';
+    _pdfIndexer = null;
+    pdfSearchRequests.clear();
     await _externalSubscription?.cancel();
+    await _attachmentSubscription?.cancel();
     _externalDebounce?.cancel();
+    _attachmentDebounce?.cancel();
     _changedPaths.clear();
+    _changedAttachments.clear();
     loading = true;
     error = null;
     notify();
     try {
       await repository.initialize(path: path);
+      _planningUndo = null;
+      _querySnapshot = null;
+      _viewQueryCache.clear();
       mergeRepositoryObjects();
       session = SessionState.fromJson(await repository.readDeviceSettings());
       _activeWorkSession = session.activeWorkSession != null
@@ -275,10 +1080,10 @@ class WorkspaceController extends Notifier<int> {
       }
       // Home offers an explicit continuation into the recorded context.
       session.destination = OrbitDestination.home;
-      _hasWorkspace = true;
+      hasWorkspace = true;
     } catch (e) {
       error = '$e';
-      if (previousPath != null) {
+      if (previousPath != null && previousPath != path) {
         try {
           await repository.initialize(path: previousPath);
           objects = List.of(repository.objects);
@@ -286,7 +1091,7 @@ class WorkspaceController extends Notifier<int> {
           error =
               'Could not open that workspace. Your previous workspace is still open: $e';
         } catch (recoveryError) {
-          _hasWorkspace = false;
+          hasWorkspace = false;
           objects = [];
           error =
               'Could not open either workspace: $e. Reopening the previous workspace failed: $recoveryError';
@@ -294,7 +1099,8 @@ class WorkspaceController extends Notifier<int> {
       }
     }
     loading = false;
-    if (_hasWorkspace) {
+    if (hasWorkspace) {
+      _startPdfIndexer();
       _externalSubscription = repository.externalFileChanges.listen(
         (path) {
           _changedPaths.add(path);
@@ -311,11 +1117,33 @@ class WorkspaceController extends Notifier<int> {
           notify();
         },
       );
+      _attachmentSubscription = repository.externalAttachmentChanges.listen(
+        (path) {
+          _pdfIndexer?.invalidatePath(path);
+          _changedAttachments.add(path);
+          _attachmentDebounce?.cancel();
+          _attachmentDebounce = Timer(const Duration(milliseconds: 180), () {
+            if (!_alive || !hasWorkspace) return;
+            _changedAttachments.clear();
+            // Attachment bytes are separate from object metadata. Bumping a
+            // small revision lets visible media replace stale previews without
+            // rebuilding the object index or disturbing note drafts.
+            attachmentRevision++;
+            notify();
+          });
+        },
+        onError: (Object e) {
+          error =
+              'Attachment watching is unavailable. Recheck on app focus or use Reload from files. $e';
+          notify();
+        },
+      );
     }
     notify();
   }
 
   void navigate(OrbitDestination destination) {
+    _pdfOpenRequest++;
     session.destination = destination;
     if (destination == OrbitDestination.notes ||
         destination == OrbitDestination.canvas ||
@@ -328,13 +1156,27 @@ class WorkspaceController extends Notifier<int> {
   }
 
   Future<bool> closeWorkspace() async {
+    cancelOcr();
+    await _ocrWork;
+    ocrFailures.clear();
+    ocrStatus = '';
     if (!await flushAll()) return false;
+    _workspaceGeneration++;
+    _pdfOpenRequest++;
+    await _pdfIndexer?.close();
+    _pdfIndexer = null;
+    pdfSearchRequests.clear();
     await repository.clearSelection();
     await _externalSubscription?.cancel();
+    await _attachmentSubscription?.cancel();
     _externalDebounce?.cancel();
+    _attachmentDebounce?.cancel();
     await repository.close();
-    _hasWorkspace = false;
+    hasWorkspace = false;
     objects = [];
+    _planningUndo = null;
+    _querySnapshot = null;
+    _viewQueryCache.clear();
     session = SessionState();
     error = null;
     notify();
@@ -397,7 +1239,69 @@ class WorkspaceController extends Notifier<int> {
     notify();
   }
 
+  /// Chronological backward navigation history (most recent first, deduplicated, up to 12).
+  List<UniversalObject> get backHistory {
+    if (_navIndex <= 0) return const [];
+    final result = <UniversalObject>[];
+    final seen = <String>{};
+    for (var i = _navIndex - 1; i >= 0 && result.length < 12; i--) {
+      final id = _navHistory[i];
+      if (seen.add(id)) {
+        final obj = find(id);
+        if (obj != null && !obj.isDeleted) {
+          result.add(obj);
+        }
+      }
+    }
+    return result;
+  }
+
+  /// Chronological forward navigation history (next immediate first, deduplicated, up to 12).
+  List<UniversalObject> get forwardHistory {
+    if (_navIndex < 0 || _navIndex >= _navHistory.length - 1) return const [];
+    final result = <UniversalObject>[];
+    final seen = <String>{};
+    for (
+      var i = _navIndex + 1;
+      i < _navHistory.length && result.length < 12;
+      i++
+    ) {
+      final id = _navHistory[i];
+      if (seen.add(id)) {
+        final obj = find(id);
+        if (obj != null && !obj.isDeleted) {
+          result.add(obj);
+        }
+      }
+    }
+    return result;
+  }
+
+  /// Jump directly to an object in the navigation history.
+  void jumpToHistoryObject(String id) {
+    if (_navHistory.isEmpty) return;
+    int? bestIndex;
+    var bestDistance = 999999;
+    for (var i = 0; i < _navHistory.length; i++) {
+      if (_navHistory[i] == id && i != _navIndex) {
+        final dist = (i - _navIndex).abs();
+        if (dist < bestDistance) {
+          bestDistance = dist;
+          bestIndex = i;
+        }
+      }
+    }
+    if (bestIndex != null) {
+      _navIndex = bestIndex;
+      _navigatingHistory = true;
+      openObject(_navHistory[_navIndex]);
+      _navigatingHistory = false;
+      notify();
+    }
+  }
+
   void openObject(String id, {bool secondary = false}) {
+    _pdfOpenRequest++;
     final object = find(id);
     if (object == null || object.isDeleted) return;
     final path = repository.objectPath(id);
@@ -493,7 +1397,46 @@ class WorkspaceController extends Notifier<int> {
     notify();
   }
 
+  bool isBookmarked(String id) => session.bookmarkedTabs.contains(id);
+
+  void toggleBookmark(String id) {
+    if (isBookmarked(id)) {
+      unbookmarkTab(id);
+    } else {
+      bookmarkTab(id);
+    }
+  }
+
+  void bookmarkTab(String id) {
+    if (!session.bookmarkedTabs.contains(id)) {
+      session.bookmarkedTabs = [...session.bookmarkedTabs, id];
+      persistSession();
+      notify();
+    }
+  }
+
+  void unbookmarkTab(String id) {
+    if (session.bookmarkedTabs.contains(id)) {
+      session.bookmarkedTabs = session.bookmarkedTabs
+          .where((t) => t != id)
+          .toList();
+      persistSession();
+      notify();
+    }
+  }
+
+  List<UniversalObject> get bookmarkedObjects => session.bookmarkedTabs
+      .map((id) => find(id))
+      .whereType<UniversalObject>()
+      .toList();
+
   void closeTab(String id) {
+    if (session.autoSnapshotOnClose) {
+      final obj = find(id);
+      if (obj != null && obj.typeId == 'orbit.note') {
+        unawaited(createDocumentSnapshot(id, label: 'Auto-snapshot on close'));
+      }
+    }
     if (dirty.contains(id)) flush(id);
     lastClosed = id;
     session.closedTabs.remove(id);
@@ -618,8 +1561,8 @@ class WorkspaceController extends Notifier<int> {
     notify();
   }
 
-  Future<UniversalObject?> openTodayNote() async {
-    final now = DateTime.now();
+  Future<UniversalObject?> openTodayNote({DateTime? date}) async {
+    final now = date ?? DateTime.now();
     final dateSlug =
         '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     final existing = activeObjects.cast<UniversalObject?>().firstWhere(
@@ -659,7 +1602,14 @@ class WorkspaceController extends Notifier<int> {
     ];
     final weekday = weekdayNames[now.weekday - 1];
     final month = monthNames[now.month - 1];
-    final header = '# $weekday, $month ${now.day}, ${now.year}\n\n';
+    final header =
+        '# $weekday, $month ${now.day}, ${now.year}\n\n'
+        '## Tasks\n'
+        '```orbit-view\n'
+        'type: tasks\n'
+        'status: open\n'
+        '```\n\n'
+        '## Notes & Reflections\n\n';
     return create(
       'orbit.note',
       title: dateSlug,
@@ -716,13 +1666,21 @@ class WorkspaceController extends Notifier<int> {
 
   Future<UniversalObject?> create(
     String type, {
+    bool open = true,
     String? title,
     String body = '',
     Map<String, dynamic> properties = const {},
+    Map<String, dynamic>? data,
   }) async {
     try {
       final now = DateTime.now();
       final today = calendarDate(now);
+      validateResearchProperties(properties);
+      if (properties['workingCalendar'] != null) {
+        WorkingCalendar(
+          Map<String, dynamic>.from(properties['workingCalendar'] as Map),
+        );
+      }
       final tomorrow = calendarDate(DateTime(now.year, now.month, now.day + 1));
       final object = await repository.create(
         typeId: type,
@@ -749,9 +1707,11 @@ class WorkspaceController extends Notifier<int> {
           },
           ...properties,
         },
-        data: type == 'orbit.canvas'
-            ? {'schemaVersion': 1, 'elements': <dynamic>[]}
-            : const {},
+        data:
+            data ??
+            (type == 'orbit.canvas'
+                ? {'schemaVersion': 1, 'elements': <dynamic>[]}
+                : const {}),
       );
       objects = [...objects, object];
       error = null;
@@ -759,7 +1719,11 @@ class WorkspaceController extends Notifier<int> {
         _activeWorkSession = _activeWorkSession!.recordCreate(object.id);
         session.activeWorkSession = _activeWorkSession!.toJson();
       }
-      openObject(object.id);
+      if (open) {
+        openObject(object.id);
+      } else {
+        notify();
+      }
       return object;
     } catch (e) {
       error = '$e';
@@ -772,6 +1736,7 @@ class WorkspaceController extends Notifier<int> {
     String courseName, {
     String semester = 'WS 2026',
     int ects = 5,
+    String courseCode = '',
     String lecturer = '',
     String targetParentFolder = 'Notes',
   }) async {
@@ -786,13 +1751,16 @@ class WorkspaceController extends Notifier<int> {
       await repository.createFolder('$courseFolder/Lectures');
       await repository.createFolder('$courseFolder/Exercises');
       await repository.createFolder('$courseFolder/Exam Preparation');
-    } catch (_) {}
+    } catch (e) {
+      error = '$e';
+      notify();
+    }
 
     // 2. Create Course Overview Note
     final overviewBody =
         '''# $cleanName Overview
 
-**Course:** $cleanName | **Semester:** $semester | **ECTS:** $ects${lecturer.isNotEmpty ? ' | **Lecturer:** $lecturer' : ''}
+**Course:** $cleanName${courseCode.isNotEmpty ? ' ($courseCode)' : ''} | **Semester:** $semester | **ECTS:** $ects${lecturer.isNotEmpty ? ' | **Lecturer:** $lecturer' : ''}
 
 ## Course Summary & Goals
 Welcome to $cleanName. This course workspace contains your lectures, exercise sheets, tasks, deadlines, and exam preparations.
@@ -817,7 +1785,7 @@ Welcome to $cleanName. This course workspace contains your lectures, exercise sh
       properties: {
         'folder': courseFolder,
         'course': cleanName,
-        'courseCode': cleanName,
+        'courseCode': courseCode.isNotEmpty ? courseCode : cleanName,
         'semester': semester,
         'ects': ects,
         'lecturer': lecturer,
@@ -1053,7 +2021,10 @@ Core foundations introduced. Review definitions before the exercise session.
       await repository.createFolder('$projectFolder/Production');
       await repository.createFolder('$projectFolder/Playtests');
       await repository.createFolder('$projectFolder/Reference');
-    } catch (_) {}
+    } catch (e) {
+      error = '$e';
+      notify();
+    }
 
     // 2. Create GDD
     final gddBody =
@@ -1204,6 +2175,7 @@ Detailed breakdown of player movement physics, combat mechanics, and interaction
         'scope': cleanName,
         'viewType': 'board',
         'preset': 'gamedev',
+        'tasksOnly': true,
       },
     );
 
@@ -2067,22 +3039,45 @@ We chose Option A because:
     String severity = 'major',
     String discipline = 'QA',
     String folder = '',
+    String? mechanicId,
   }) async {
+    final workspace = repository.workspaceId;
     final cleanFinding = finding.trim();
     if (cleanFinding.isEmpty) return null;
     final sourceNote = find(sourceNoteId);
+    if (sourceNote == null ||
+        sourceNote.isDeleted ||
+        sourceNote.isReadOnly ||
+        repository.readOnly) {
+      error = 'Choose an editable playtest note before creating a task.';
+      notify();
+      return null;
+    }
+    if (sourceNote.properties['mechanicId'] != null &&
+        sourceNote.properties['mechanicId'] is! String) {
+      error = 'Unsupported mechanic reference. The playtest is preserved.';
+      notify();
+      return null;
+    }
+    final linkedMechanic =
+        mechanicId ?? sourceNote.properties['mechanicId'] as String?;
+    if (linkedMechanic != null && find(linkedMechanic)?.isDeleted != false) {
+      error = 'The linked mechanic is missing.';
+      notify();
+      return null;
+    }
     final targetFolder = folder.isNotEmpty
         ? folder
-        : (sourceNote?.properties['folder'] as String? ?? 'Notes');
+        : (sourceNote.properties['folder'] as String? ?? 'Notes');
     final targetProject = project.isNotEmpty
         ? project
-        : (sourceNote?.properties['project'] as String? ?? '');
+        : (sourceNote.properties['project'] as String? ?? '');
 
     final task = await create(
       'orbit.task',
       title: cleanFinding,
       body:
-          'Originating playtest observation from [[${sourceNote?.title ?? "Playtest"}]]\n\n'
+          'Originating playtest observation from [[$sourceNoteId|${sourceNote.title}]]\n\n'
           '- [ ] Verify finding\n'
           '- [ ] Implement resolution\n'
           '- [ ] Validate in playtest session\n',
@@ -2090,6 +3085,9 @@ We chose Option A because:
         'folder': targetFolder,
         if (targetProject.isNotEmpty) 'project': targetProject,
         'sourceNoteId': sourceNoteId,
+        'mechanicId': ?linkedMechanic,
+        if (sourceNote.properties['build'] is String)
+          'build': sourceNote.properties['build'],
         'isBug': isBug,
         if (isBug) 'severity': severity,
         'discipline': discipline,
@@ -2101,10 +3099,41 @@ We chose Option A because:
     );
 
     // If source note exists, append link in action items section
-    if (sourceNote != null && task != null) {
+    if (task != null) {
+      final latestSource = find(sourceNote.id);
+      if (repository.workspaceId != workspace ||
+          latestSource == null ||
+          latestSource.isDeleted ||
+          latestSource.isReadOnly ||
+          repository.readOnly) {
+        error =
+            'The task was created, but the playtest changed or became unavailable. Its source link is retained on the task.';
+        notify();
+        return null;
+      }
       final updatedBody =
-          '${sourceNote.body.trimRight()}\n- [ ] [[${task.title}]] (${isBug ? severity.toUpperCase() : discipline})\n';
-      edit(sourceNote.id, body: updatedBody);
+          '${latestSource.body.trimRight()}\n- [ ] [[${task.id}|${task.title}]] (${isBug ? severity.toUpperCase() : discipline})\n';
+      edit(
+        sourceNote.id,
+        body: updatedBody,
+        properties: {
+          ...latestSource.properties,
+          'findingTaskIds': <String>{
+            if (latestSource.properties['findingTaskIds'] is List)
+              ...(latestSource.properties['findingTaskIds'] as List)
+                  .whereType<String>(),
+            task.id,
+          }.toList(),
+        },
+      );
+      await flush(sourceNote.id);
+      if (dirty.contains(sourceNote.id) ||
+          failures.containsKey(sourceNote.id)) {
+        error =
+            'The task was created. The playtest backlink still needs save or recovery.';
+        notify();
+        return null;
+      }
     }
 
     return task;
@@ -2200,7 +3229,10 @@ We chose Option A because:
       await repository.createFolder('$projectFolder/Sessions');
       await repository.createFolder('$projectFolder/Diagrams');
       await repository.createFolder('$projectFolder/Files');
-    } catch (_) {}
+    } catch (e) {
+      error = '$e';
+      notify();
+    }
 
     // 2. Create Target Overview Note
     final overviewBody =
@@ -2385,7 +3417,10 @@ We chose Option A because:
       await repository.createFolder('$projectFolder/Game Systems');
       await repository.createFolder('$projectFolder/Sessions');
       await repository.createFolder('$projectFolder/Findings');
-    } catch (_) {}
+    } catch (e) {
+      error = '$e';
+      notify();
+    }
 
     final overviewNote = await create(
       'orbit.note',
@@ -2528,7 +3563,10 @@ We chose Option A because:
       await repository.createFolder('$projectFolder/Timeline');
       await repository.createFolder('$projectFolder/Sessions');
       await repository.createFolder('$projectFolder/Evidence');
-    } catch (_) {}
+    } catch (e) {
+      error = '$e';
+      notify();
+    }
 
     final triageNote = await create(
       'orbit.note',
@@ -2643,19 +3681,30 @@ See [[$cleanName Indicators]] for structured table.
   Future<UniversalObject?> createFunctionDoc({
     required String folder,
     String? name,
-    String address = '0x140001000',
-    String rva = '0x1000',
-    String module = 'target.exe',
-    String callingConvention = '__fastcall',
-    String returnType = 'int',
-    String parameters = 'void* this, int flags',
-    String purpose = 'Initializes and updates component state',
+    String address = '',
+    String rva = '',
+    String module = '',
+    String callingConvention = '',
+    String returnType = '',
+    String parameters = '',
+    String purpose = '',
     String status = 'Investigating',
     String confidence = 'Medium',
     String target = '',
+    ResearchAddress? location,
+    Map<String, dynamic> provenance = const {},
   }) async {
+    final addressProperties =
+        (location ??
+                ResearchAddress(address: address, rva: rva, module: module))
+            .toProperties();
+    address = addressProperties['address'] as String? ?? '';
+    rva = addressProperties['rva'] as String? ?? '';
+    module = addressProperties['module'] as String? ?? '';
     final cleanName = name?.trim().isNotEmpty == true
         ? name!.trim()
+        : address.isEmpty
+        ? 'Unnamed function'
         : 'sub_${address.replaceAll('0x', '')}';
     final body =
         '''# $cleanName
@@ -2665,7 +3714,7 @@ See [[$cleanName Indicators]] for structured table.
 
 ## Prototype
 ```c
-$returnType $callingConvention $cleanName($parameters);
+${returnType.isEmpty ? '// Record a verified prototype here.' : '$returnType $callingConvention $cleanName($parameters);'}
 ```
 
 ## Purpose & Summary
@@ -2673,21 +3722,14 @@ $purpose
 
 ## Disassembly Snippet
 ```asm
-$address:  push    rbp
-           mov     rbp, rsp
-           sub     rsp, 32
-           mov     [rbp+16], rcx
-           xor     eax, eax
-           leave
-           ret
+
 ```
 
 ## Decompiler Notes
-- Examines incoming arguments.
-- Validates internal state pointer before proceeding.
+- Record verified observations here.
 
 ## Cross References
-- **Calls:** None
+- **Calls:** Unknown
 - **Called By:** 
 
 ## Related Structures
@@ -2705,9 +3747,8 @@ $address:  push    rbp
         'folder': folder,
         if (target.isNotEmpty) 'target': target,
         'category': 'Function',
-        'address': address,
-        'rva': rva,
-        'module': module,
+        ...addressProperties,
+        if (provenance.isNotEmpty) 'researchProvenance': provenance,
         'callingConvention': callingConvention,
         'returnType': returnType,
         'parameters': parameters,
@@ -3743,115 +4784,199 @@ Summary of scope, affected endpoints, and timeline of investigation.
     String csvContent, {
     required String folder,
     String target = '',
-  }) async {
-    final lines = csvContent
-        .split('\n')
-        .map((l) => l.trim())
-        .where((l) => l.isNotEmpty)
-        .toList();
-    if (lines.isEmpty) return 0;
-
-    int imported = 0;
-    int nameIdx = 0;
-    int addrIdx = 1;
-    int modIdx = -1;
-    int purposeIdx = -1;
-    int statusIdx = -1;
-    int confIdx = -1;
-
-    final firstLine = lines.first.toLowerCase();
-    final hasHeader =
-        firstLine.contains('name') || firstLine.contains('address');
-    final startIndex = hasHeader ? 1 : 0;
-
-    if (hasHeader) {
-      final headerCols = lines.first
-          .split(',')
-          .map((c) => c.trim().toLowerCase())
-          .toList();
-      nameIdx = headerCols.indexOf('name');
-      if (nameIdx == -1) nameIdx = 0;
-      addrIdx = headerCols.indexOf('address');
-      if (addrIdx == -1) addrIdx = headerCols.indexOf('rva');
-      if (addrIdx == -1) addrIdx = 1;
-      modIdx = headerCols.indexOf('module');
-      purposeIdx = headerCols.indexOf('purpose');
-      if (purposeIdx == -1) purposeIdx = headerCols.indexOf('comment');
-      statusIdx = headerCols.indexOf('status');
-      confIdx = headerCols.indexOf('confidence');
-    }
-
-    for (var i = startIndex; i < lines.length; i++) {
-      final cols = lines[i].split(',').map((c) => c.trim()).toList();
-      if (cols.isEmpty) continue;
-      final name = cols.length > nameIdx ? cols[nameIdx] : 'Function_$i';
-      final addr = cols.length > addrIdx ? cols[addrIdx] : '0x0';
-      final mod = modIdx != -1 && cols.length > modIdx
-          ? cols[modIdx]
-          : 'target.exe';
-      final purpose = purposeIdx != -1 && cols.length > purposeIdx
-          ? cols[purposeIdx]
-          : '';
-      final status = statusIdx != -1 && cols.length > statusIdx
-          ? cols[statusIdx]
-          : 'Investigating';
-      final conf = confIdx != -1 && cols.length > confIdx
-          ? cols[confIdx]
-          : 'Medium';
-
-      await createFunctionDoc(
-        folder: folder,
-        name: name,
-        address: addr,
-        module: mod,
-        purpose: purpose.isNotEmpty ? purpose : 'Imported function',
-        status: status,
-        confidence: conf,
-        target: target,
-      );
-      imported++;
-    }
-    return imported;
-  }
+  }) => importFunctionPlan(
+    FunctionImportPlan.csv(csvContent),
+    folder: folder,
+    target: target,
+  );
 
   Future<int> importFunctionsFromJson(
     String jsonContent, {
     required String folder,
     String target = '',
-  }) async {
-    int imported = 0;
-    try {
-      final decoded = jsonDecode(jsonContent);
-      final List list = switch (decoded) {
-        List l => l,
-        Map m when m['functions'] is List => m['functions'] as List,
-        _ => const [],
-      };
-      for (final item in list) {
-        if (item is! Map) continue;
-        final name = item['name']?.toString() ?? 'Function';
-        final addr =
-            item['address']?.toString() ?? item['rva']?.toString() ?? '0x0';
-        final mod = item['module']?.toString() ?? 'target.exe';
-        final purpose =
-            item['purpose']?.toString() ?? item['comment']?.toString() ?? '';
-        final status = item['status']?.toString() ?? 'Investigating';
-        final conf = item['confidence']?.toString() ?? 'Medium';
+  }) => importFunctionPlan(
+    FunctionImportPlan.json(jsonContent),
+    folder: folder,
+    target: target,
+  );
 
-        await createFunctionDoc(
-          folder: folder,
-          name: name,
-          address: addr,
-          module: mod,
-          purpose: purpose.isNotEmpty ? purpose : 'Imported function',
-          status: status,
-          confidence: conf,
-          target: target,
-        );
-        imported++;
-      }
-    } catch (_) {}
+  Future<int> importFunctionPlan(
+    FunctionImportPlan plan, {
+    required String folder,
+    String target = '',
+  }) async {
+    var imported = 0;
+    for (final function in plan.functions) {
+      final object = await createFunctionDoc(
+        folder: folder,
+        name: function.name,
+        location: function.location,
+        purpose: function.purpose,
+        status: function.status,
+        confidence: function.confidence,
+        target: target,
+        provenance: {
+          'version': 1,
+          'method': 'manual-import',
+          ...function.rawMetadata,
+          if (plan.tool.isNotEmpty) 'tool': plan.tool,
+          if (plan.source.isNotEmpty) 'source': plan.source,
+        },
+      );
+      if (object == null) break;
+      imported++;
+    }
     return imported;
+  }
+
+  /// Research records remain ordinary Markdown with additive, editable metadata.
+  Future<UniversalObject?> createResearchMap({
+    required String folder,
+    required String title,
+    required List<String> objectIds,
+  }) async {
+    final ids = objectIds.toSet().toList();
+    if (ids.isEmpty || ids.length > 500) {
+      throw const FormatException(
+        'Choose between 1 and 500 records for a map.',
+      );
+    }
+    for (final id in ids) {
+      if (find(id) == null || find(id)!.isDeleted) {
+        throw const FormatException(
+          'Map records must exist in this workspace.',
+        );
+      }
+    }
+    final placements = {for (final id in ids) id: const Uuid().v4()};
+    final elements = <Map<String, dynamic>>[
+      for (var i = 0; i < ids.length; i++)
+        {
+          'id': placements[ids[i]],
+          'type': 'card',
+          'objectId': ids[i],
+          'x': (i % 4) * 360.0,
+          'y': (i ~/ 4) * 250.0,
+          'width': 320.0,
+          'height': 190.0,
+        },
+    ];
+    for (final id in ids) {
+      final record = find(id)!;
+      for (final relation in ['supportingIds', 'contradictingIds']) {
+        final evidence = record.properties[relation];
+        if (evidence is! List) continue;
+        for (final evidenceId in evidence.whereType<String>().toSet()) {
+          if (!placements.containsKey(evidenceId)) continue;
+          elements.add({
+            'id': const Uuid().v4(),
+            'type': 'connector',
+            'startId': placements[evidenceId],
+            'endId': placements[id],
+            'x': 0.0,
+            'y': 0.0,
+            'width': 0.0,
+            'height': 0.0,
+            'text': relation == 'supportingIds' ? 'Supports' : 'Contradicts',
+            'color': relation == 'supportingIds' ? 0xff4caf82 : 0xffe07575,
+            'routing': 'orthogonal',
+            'endMarker': 'arrow',
+          });
+        }
+      }
+    }
+    return create(
+      'orbit.canvas',
+      title: title,
+      properties: {'folder': folder, 'category': 'Research Map'},
+      data: {'schemaVersion': 1, 'elements': elements},
+    );
+  }
+
+  /// Research records remain ordinary Markdown with additive, editable metadata.
+  /// Patch records only describe changes; this command never opens a binary.
+  Future<UniversalObject?> createResearchRecord({
+    required String folder,
+    required String category,
+    required String title,
+    String target = '',
+    ResearchAddress? location,
+    String summary = '',
+    String status = 'Unverified',
+    String confidence = 'Low',
+    List<String> supportingIds = const [],
+    List<String> contradictingIds = const [],
+  }) async {
+    if (!researchRecordCategories.contains(category) || title.trim().isEmpty) {
+      throw const FormatException('Choose a research record type and title.');
+    }
+    final support = supportingIds.toSet();
+    final against = contradictingIds.toSet();
+    if (support.intersection(against).isNotEmpty) {
+      throw const FormatException(
+        'An object cannot be both supporting and contradicting evidence.',
+      );
+    }
+    for (final id in {...support, ...against}) {
+      final object = find(id);
+      if (object == null || object.isDeleted) {
+        throw const FormatException(
+          'Evidence must reference an existing object.',
+        );
+      }
+    }
+    final properties = location?.toProperties() ?? <String, dynamic>{};
+    String links(Set<String> ids) =>
+        ids.map((id) => '- [[$id|${find(id)!.title}]]').join('\n');
+    final details = switch (category) {
+      'Function' =>
+        '## Prototype\n```c\n\n```\n\n## Disassembly\n```asm\n\n```\n\n## Cross references\n',
+      'Patch' =>
+        '## Proposed change\n\n## Original bytes\n```hex\n\n```\n\n## Proposed bytes\n```hex\n\n```\n\n## Verification and rollback\n\nThis record does not modify binary files.\n',
+      'Structure' || 'Class' =>
+        '## Layout\n| Offset | Type | Field | Evidence |\n|---|---|---|---|\n\n## Relationships\n',
+      'Call Graph' =>
+        '## Calls\n| Caller | Callee | Evidence |\n|---|---|---|\n\n## Canvas map\n',
+      'Binary' =>
+        '## Identity\n\n## SHA-256\n\n## Architecture and format\n\n## Modules\n',
+      'Module' => '## Sections and permissions\n\n## Imports and exports\n',
+      'String' => '## Value and encoding\n\n## Cross references\n',
+      'Import' => '## Library and symbol\n\n## Call sites\n',
+      _ => '## Observations\n\n## Next experiment\n',
+    };
+    return create(
+      'orbit.note',
+      title: title.trim(),
+      body:
+          '''# ${title.trim()}
+
+**Type:** $category | **Status:** $status | **Confidence:** $confidence
+${properties.entries.map((e) => '**${e.key}:** `${e.value}`').join(' | ')}
+
+## Summary
+$summary
+
+$details
+## Supporting evidence
+${links(support)}
+
+## Contradicting evidence
+${links(against)}
+''',
+      properties: {
+        'folder': folder,
+        'category': category,
+        'researchSchemaVersion': 1,
+        if (target.isNotEmpty) 'target': target,
+        'status': status,
+        'confidence': confidence,
+        ...properties,
+        if (category == 'Function') 'purpose': summary,
+        'supportingIds': support.toList(),
+        'contradictingIds': against.toList(),
+        if (category == 'Patch') 'appliesToBinary': false,
+      },
+    );
   }
 
   bool isArchivedFolder(String folder) => session.archivedFolders.any(
@@ -3873,15 +4998,115 @@ Summary of scope, affected endpoints, and timeline of investigation.
     }
   }
 
-  Future<UniversalObject?> duplicateView(String viewId) async {
-    final view = find(viewId);
-    if (view == null) return null;
+  /// All known normalized folder paths discovered from the repository and active objects.
+  Set<String> get allKnownFolders {
+    final folders = <String>{'Notes'};
+    for (final raw in repository.folders) {
+      if (raw.isEmpty) continue;
+      final f = raw == 'Notes' || raw.startsWith('Notes/') ? raw : 'Notes/$raw';
+      folders.add(f);
+      var parent = p.posix.dirname(f);
+      while (parent.isNotEmpty && parent != '.' && parent != 'Notes') {
+        folders.add(parent);
+        parent = p.posix.dirname(parent);
+      }
+    }
+    for (final o in activeObjects) {
+      if (o.isDeleted) continue;
+      final raw = repository.objectFolder(o.id);
+      if (raw.isNotEmpty) {
+        final f = raw == 'Notes' || raw.startsWith('Notes/')
+            ? raw
+            : 'Notes/$raw';
+        folders.add(f);
+        var parent = p.posix.dirname(f);
+        while (parent.isNotEmpty && parent != '.' && parent != 'Notes') {
+          folders.add(parent);
+          parent = p.posix.dirname(parent);
+        }
+      }
+    }
+    return folders;
+  }
+
+  /// Collapses all known folders in the explorer.
+  void collapseAllFolders() {
+    updateSession((s) {
+      s.collapsedFolders = allKnownFolders.toList();
+    });
+  }
+
+  /// Expands all folders in the explorer.
+  void expandAllFolders() {
+    updateSession((s) {
+      s.collapsedFolders = [];
+    });
+  }
+
+  /// Whether all known folders are currently collapsed.
+  bool get areAllFoldersCollapsed {
+    final folders = allKnownFolders;
+    if (folders.isEmpty) return false;
+    return folders.every(session.collapsedFolders.contains);
+  }
+
+  /// Resolves the ARGB color value assigned to a folder, or inherited from its nearest colored ancestor.
+  int? folderColorValue(String folder) {
+    String? current = folder;
+    while (current != null && current.isNotEmpty) {
+      final val = session.folderColors[current];
+      if (val != null) return val;
+      final parent = p.posix.dirname(current);
+      if (parent == current || parent == '.' || parent.isEmpty) break;
+      current = parent;
+    }
+    return null;
+  }
+
+  /// Sets or clears the color identity of a folder.
+  void setFolderColor(String folder, int? colorValue) {
+    updateSession((s) {
+      final next = Map<String, int>.from(s.folderColors);
+      if (colorValue != null) {
+        next[folder] = colorValue;
+      } else {
+        next.remove(folder);
+      }
+      s.folderColors = next;
+    });
+  }
+
+  /// Clones any non-readonly object (note, canvas, task, event, view) with a "(Copy)" title suffix,
+  /// preserving folder, properties, data, and body, then opens the new copy.
+  Future<UniversalObject?> duplicateObject(String id) async {
+    final original = find(id);
+    if (original == null || repository.readOnly || original.isReadOnly) {
+      return null;
+    }
+    final title = original.title.isEmpty ? 'Untitled' : original.title;
+    final copyTitle = '$title (Copy)';
+    final newProps = Map<String, dynamic>.from(original.properties);
     return create(
-      'orbit.view',
-      title: '${view.title} (Copy)',
-      properties: Map<String, dynamic>.from(view.properties),
+      original.typeId,
+      title: copyTitle,
+      body: original.body,
+      properties: newProps,
+      data: Map<String, dynamic>.from(original.data),
     );
   }
+
+  /// Batch-duplicates multiple objects.
+  Future<List<UniversalObject>> duplicateObjects(Iterable<String> ids) async {
+    final result = <UniversalObject>[];
+    for (final id in ids) {
+      final dup = await duplicateObject(id);
+      if (dup != null) result.add(dup);
+    }
+    return result;
+  }
+
+  Future<UniversalObject?> duplicateView(String viewId) async =>
+      duplicateObject(viewId);
 
   Future<bool> moveObjectToFolder(String id, String folder) =>
       moveObjectsToFolder([id], folder);
@@ -3898,6 +5123,16 @@ Summary of scope, affected endpoints, and timeline of investigation.
         else
           folder,
     ];
+    final updatedColors = <String, int>{};
+    for (final entry in session.folderColors.entries) {
+      if (entry.key == source || entry.key.startsWith('$source/')) {
+        updatedColors['$target${entry.key.substring(source.length)}'] =
+            entry.value;
+      } else {
+        updatedColors[entry.key] = entry.value;
+      }
+    }
+    session.folderColors = updatedColors;
     persistSession();
   });
 
@@ -3945,11 +5180,100 @@ Summary of scope, affected endpoints, and timeline of investigation.
     return !dirty.contains(id) && !failures.containsKey(id);
   }
 
+  List<UniversalObject> pdfLinkedNotes(String fileId) {
+    final linked = backlinks(fileId).map((o) => o.id).toSet();
+    return activeObjects
+        .where(
+          (o) =>
+              o.typeId == 'orbit.note' &&
+              (linked.contains(o.id) ||
+                  (o.properties['pdfSource'] is Map &&
+                      (o.properties['pdfSource'] as Map)['objectId'] ==
+                          fileId)),
+        )
+        .toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  }
+
+  /// Navigate both ways without copying notes or replacing their source metadata.
+  void openPdfNote(String noteId, {String? besidePdfId}) {
+    final note = find(noteId);
+    if (note == null || note.isDeleted || note.typeId != 'orbit.note') return;
+    openObject(noteId);
+    if (openPdfSource(noteId)) return;
+    final file = find(besidePdfId);
+    if (file != null &&
+        !file.isDeleted &&
+        file.properties['mimeType'] == 'application/pdf') {
+      final key = 'pdf:secondary:${file.id}';
+      final primary = session.noteViews['pdf:primary:${file.id}'];
+      final secondaryPrior = session.noteViews[key];
+      session.noteViews = {
+        ...session.noteViews,
+        key: {
+          if (primary != null)
+            ...Map<String, dynamic>.from(primary)..remove('zoom'),
+          ...?secondaryPrior,
+        },
+      };
+      openObject(file.id, secondary: true);
+    }
+  }
+
+  bool openPdfSource(String noteId, {bool secondary = true}) {
+    final note = find(noteId);
+    final source = note?.properties['pdfSource'];
+    if (note == null ||
+        note.isDeleted ||
+        source is! Map ||
+        source['objectId'] is! String) {
+      return false;
+    }
+    final file = find(source['objectId'] as String);
+    if (file == null ||
+        file.isDeleted ||
+        file.typeId != 'orbit.file' ||
+        file.properties['mimeType'] != 'application/pdf') {
+      return false;
+    }
+    final pane = secondary ? 'secondary' : 'primary';
+    final key = 'pdf:$pane:${file.id}';
+    final currentPrior = session.noteViews[key];
+    final otherPrior = session
+        .noteViews['pdf:${secondary ? 'primary' : 'secondary'}:${file.id}'];
+    final prior =
+        currentPrior ??
+        (otherPrior != null
+            ? (secondary
+                  ? (Map<String, dynamic>.from(otherPrior)..remove('zoom'))
+                  : otherPrior)
+            : null);
+    final annotation = PdfAnnotation(note);
+    session.noteViews = {
+      ...session.noteViews,
+      key: {
+        ...?prior,
+        'page': source['page'] is int && source['page'] > 0
+            ? source['page']
+            : 1,
+        'annotationId':
+            PdfAnnotation.isAnnotation(note) &&
+                annotation.matches(file.properties['checksum'] as String?)
+            ? note.id
+            : null,
+        'request': ((prior?['request'] as num?)?.toInt() ?? 0) + 1,
+      },
+    };
+    openObject(file.id, secondary: secondary);
+    return true;
+  }
+
   Future<UniversalObject?> createPdfQuote(
     String fileId,
     int page,
     String quote, {
     ResearchDocument? document,
+    String? expectedChecksum,
   }) async {
     final file = find(fileId);
     if (file == null ||
@@ -3958,6 +5282,8 @@ Summary of scope, affected endpoints, and timeline of investigation.
         repository.readOnly ||
         file.typeId != 'orbit.file' ||
         file.properties['mimeType'] != 'application/pdf' ||
+        (expectedChecksum != null &&
+            file.properties['checksum'] != expectedChecksum) ||
         page < 1 ||
         page > 999999 ||
         quote.length > 100000 ||
@@ -3995,12 +5321,147 @@ Summary of scope, affected endpoints, and timeline of investigation.
     }
   }
 
+  /// Extracts a quote from a PDF directly into the active note (in split view or primary view).
+  Future<bool> extractPdfQuoteToActiveNote(
+    String quote,
+    int page,
+    String pdfId,
+    String pdfTitle,
+  ) async {
+    if (repository.readOnly) return false;
+    final file = find(pdfId);
+    if (file == null || file.isDeleted) return false;
+
+    UniversalObject? targetNote;
+    final primary = find(session.activeId);
+    final secondary = find(session.secondaryId);
+    if (secondary != null &&
+        secondary.typeId == 'orbit.note' &&
+        !secondary.isDeleted &&
+        secondary.id != pdfId) {
+      targetNote = secondary;
+    } else if (primary != null &&
+        primary.typeId == 'orbit.note' &&
+        !primary.isDeleted &&
+        primary.id != pdfId) {
+      targetNote = primary;
+    } else {
+      for (final tabId in session.tabs) {
+        final candidate = find(tabId);
+        if (candidate != null &&
+            candidate.typeId == 'orbit.note' &&
+            !candidate.isDeleted &&
+            candidate.id != pdfId) {
+          targetNote = candidate;
+          break;
+        }
+      }
+    }
+
+    if (targetNote == null) {
+      return false;
+    }
+
+    final quoteMarkdown = ObjectReference(
+      pdfId,
+      page: page,
+    ).quoteMarkdown(pdfTitle, quote);
+    final currentBody = targetNote.body.trimRight();
+    final updatedBody = currentBody.isEmpty
+        ? quoteMarkdown
+        : '$currentBody\n\n$quoteMarkdown';
+    edit(targetNote.id, body: updatedBody);
+    await flush(targetNote.id);
+    return true;
+  }
+
+  /// Extracts a quote from a PDF onto a Canvas (placing a card on the active/adjacent canvas, or creating one).
+  Future<bool> extractPdfQuoteToCanvas(
+    String quote,
+    int page,
+    String pdfId,
+    String pdfTitle, {
+    String? targetCanvasId,
+  }) async {
+    if (repository.readOnly) return false;
+    final file = find(pdfId);
+    if (file == null || file.isDeleted) return false;
+
+    UniversalObject? canvasObj;
+    if (targetCanvasId != null) {
+      canvasObj = find(targetCanvasId);
+    }
+    if (canvasObj == null) {
+      final primary = find(session.activeId);
+      final secondary = find(session.secondaryId);
+      if (secondary != null &&
+          secondary.typeId == 'orbit.canvas' &&
+          !secondary.isDeleted) {
+        canvasObj = secondary;
+      } else if (primary != null &&
+          primary.typeId == 'orbit.canvas' &&
+          !primary.isDeleted) {
+        canvasObj = primary;
+      } else {
+        final existingCanvases = ofType('orbit.canvas');
+        if (existingCanvases.isNotEmpty) {
+          canvasObj = existingCanvases.first;
+        } else {
+          canvasObj = await create('orbit.canvas', title: '$pdfTitle Canvas');
+        }
+      }
+    }
+
+    if (canvasObj == null) return false;
+
+    final scene = CanvasScene.fromJson(canvasObj.properties);
+    final count = scene.elements.length;
+    final atX = 160.0 + (count % 4) * 320.0;
+    final atY = 160.0 + (count ~/ 4) * 180.0;
+    final cardText = '${quote.trim()}\n\n— $pdfTitle, p. $page';
+    final element = CanvasElement({
+      'id': const Uuid().v4(),
+      'type': 'card',
+      'objectId': pdfId,
+      'x': atX,
+      'y': atY,
+      'width': 280.0,
+      'height': 140.0,
+      'text': cardText,
+      'color': 0xff8b7cf6,
+      'presentation': 'transclusion',
+      'referenceTarget': '$pdfId#page=$page',
+      'quote': quote.trim(),
+      'sourceTitle': pdfTitle,
+      'sourceId': pdfId,
+      'page': page,
+      'data': {
+        'quote': quote.trim(),
+        'sourceTitle': pdfTitle,
+        'sourceId': pdfId,
+        'page': page,
+        'presentation': 'transclusion',
+        'referenceTarget': '$pdfId#page=$page',
+      },
+    });
+    scene.put(element);
+    edit(canvasObj.id, properties: scene.toJson());
+    await flush(canvasObj.id);
+
+    if (session.activeId != canvasObj.id &&
+        session.secondaryId != canvasObj.id) {
+      openObject(canvasObj.id, secondary: true);
+    }
+    return true;
+  }
+
   Future<UniversalObject?> createPdfHighlight(
     String fileId,
     String checksum,
     String quote,
     List<CanvasElement> regions, {
     String comment = '',
+    bool pageComment = false,
   }) async {
     final file = find(fileId);
     if (file == null ||
@@ -4010,7 +5471,8 @@ Summary of scope, affected endpoints, and timeline of investigation.
         file.typeId != 'orbit.file' ||
         file.properties['mimeType'] != 'application/pdf' ||
         file.properties['checksum'] != checksum ||
-        quote.trim().isEmpty ||
+        (pageComment ? comment.trim().isEmpty : quote.trim().isEmpty) ||
+        comment.length > 100000 ||
         quote.length > 100000 ||
         regions.isEmpty ||
         regions.length > 10000 ||
@@ -4024,9 +5486,11 @@ Summary of scope, affected endpoints, and timeline of investigation.
       final page = regions.first.data['page'] as int;
       final note = await repository.create(
         typeId: 'orbit.note',
-        title: '${file.title} · highlight p. $page',
-        body:
-            '${ObjectReference(fileId, page: page).quoteMarkdown(file.title, quote)}${comment.trim().isEmpty ? '' : '\n\n$comment'}',
+        title:
+            '${file.title} · ${pageComment ? 'comment' : 'highlight'} p. $page',
+        body: pageComment
+            ? '${ObjectReference(fileId, page: page).markdown(file.title)}\n\n$comment'
+            : '${ObjectReference(fileId, page: page).quoteMarkdown(file.title, quote)}${comment.trim().isEmpty ? '' : '\n\n$comment'}',
         properties: {
           'pdfHighlightVersion': 1,
           'pdfSource': {
@@ -4034,6 +5498,7 @@ Summary of scope, affected endpoints, and timeline of investigation.
             'checksum': checksum,
             'page': page,
             'quote': quote,
+            if (pageComment) 'kind': 'pageComment',
             'regions': regions.map((r) => r.data).toList(),
           },
         },
@@ -4049,6 +5514,234 @@ Summary of scope, affected endpoints, and timeline of investigation.
     }
   }
 
+  Future<UniversalObject?> createPdfPageComment(
+    String fileId,
+    String checksum,
+    int page,
+    String comment,
+  ) async {
+    if (page < 1 || page > 999999) return null;
+    final count = activeObjects
+        .where(PdfAnnotation.isAnnotation)
+        .map(PdfAnnotation.new)
+        .where((a) => a.fileId == fileId && a.page == page && a.isPageComment)
+        .length;
+    return createPdfHighlight(
+      fileId,
+      checksum,
+      '',
+      [
+        CanvasElement({
+          'id': 'page-comment',
+          'type': 'rectangle',
+          'page': page,
+          'x': .03 + (count % 10) * .06,
+          'y': .03 + ((count ~/ 10) % 10) * .06,
+          'width': .04,
+          'height': .04,
+          'color': 0xff8b7cf6,
+        }),
+      ],
+      comment: comment,
+      pageComment: true,
+    );
+  }
+
+  Future<bool> saveAnnotatedPdfCopy(
+    UniversalObject expectedSource,
+    List<PdfAnnotation> annotations,
+    Uint8List bytes,
+  ) async {
+    final file = find(expectedSource.id);
+    if (repository.readOnly ||
+        file == null ||
+        file.isDeleted ||
+        file.isReadOnly ||
+        !identical(file, expectedSource) ||
+        file.typeId != 'orbit.file' ||
+        file.properties['mimeType'] != 'application/pdf' ||
+        annotations.isEmpty ||
+        annotations.any(
+          (a) =>
+              !identical(find(a.object.id), a.object) ||
+              !PdfAnnotation.isAnnotation(a.object) ||
+              a.fileId != file.id ||
+              !a.matches(file.properties['checksum'] as String?),
+        )) {
+      return false;
+    }
+    try {
+      final copy = await repository.importAttachment(
+        name:
+            '${file.title.replaceFirst(RegExp(r'\.pdf$', caseSensitive: false), '')} · annotated.pdf',
+        bytes: bytes,
+      );
+      if (find(copy.id) == null) objects = [...objects, copy];
+      error = null;
+      notify();
+      return true;
+    } catch (e) {
+      error = '$e';
+      notify();
+      return false;
+    }
+  }
+
+  Future<bool> updatePdfReview(
+    PdfAnnotation expected, {
+    required String body,
+    required int color,
+    required String style,
+    required bool resolved,
+  }) async {
+    final current = find(expected.object.id);
+    final file = find(expected.fileId ?? '');
+    if (current == null ||
+        !identical(current, expected.object) ||
+        !PdfAnnotation.isAnnotation(current) ||
+        current.isReadOnly ||
+        repository.readOnly ||
+        file == null ||
+        file.isDeleted ||
+        file.isReadOnly ||
+        !expected.matches(file.properties['checksum'] as String?) ||
+        body.length > 1000000 ||
+        color < 0xff000000 ||
+        color > 0xffffffff ||
+        !{'highlight', 'underline', 'strikeout'}.contains(style) ||
+        (current.properties['pdfReview'] is Map &&
+            (current.properties['pdfReview'] as Map)['version'] != 1)) {
+      return false;
+    }
+    final source = Map<String, dynamic>.from(expected.source);
+    source['regions'] = [
+      for (final region in source['regions'] as List? ?? const [])
+        if (region is Map &&
+            PdfAnnotation.validRegion(
+              CanvasElement(Map<String, dynamic>.from(region)),
+            ))
+          {...region, 'color': color, 'style': style}
+        else
+          region,
+    ];
+    edit(
+      current.id,
+      body: body,
+      properties: {
+        ...current.properties,
+        'pdfSource': source,
+        'pdfReview': {
+          if (current.properties['pdfReview'] is Map)
+            ...current.properties['pdfReview'] as Map,
+          'version': 1,
+          'resolved': resolved,
+        },
+      },
+    );
+    await flush(current.id);
+    return !dirty.contains(current.id) && !failures.containsKey(current.id);
+  }
+
+  Future<UniversalObject?> createPdfReviewSummary(
+    String fileId,
+    List<String> ids,
+  ) async {
+    final file = find(fileId);
+    if (repository.readOnly ||
+        file == null ||
+        file.isDeleted ||
+        file.isReadOnly ||
+        file.typeId != 'orbit.file' ||
+        file.properties['mimeType'] != 'application/pdf' ||
+        ids.isEmpty ||
+        ids.length > 10000) {
+      return null;
+    }
+    final annotations = <PdfAnnotation>[];
+    for (final id in ids.toSet()) {
+      final object = find(id);
+      if (object == null || !PdfAnnotation.isAnnotation(object)) return null;
+      final annotation = PdfAnnotation(object);
+      if (annotation.fileId != fileId) return null;
+      annotations.add(annotation);
+    }
+    try {
+      final body = pdfReviewMarkdown(
+        file.title,
+        fileId,
+        annotations,
+        checksum: file.properties['checksum'] as String?,
+      );
+      if (body.length > 2000000) return null;
+      final note = await repository.create(
+        typeId: 'orbit.note',
+        title: 'Review · ${file.title}',
+        body: body,
+        properties: {
+          'pdfSource': {
+            'objectId': fileId,
+            'page': 1,
+            'checksum': file.properties['checksum'],
+          },
+        },
+      );
+      objects = [...objects, note];
+      error = null;
+      openObject(note.id);
+      return note;
+    } catch (e) {
+      error = '$e';
+      notify();
+      return null;
+    }
+  }
+
+  Future<bool> renamePdfBookmark(
+    String id,
+    int page,
+    String name, {
+    required String? expectedChecksum,
+  }) async {
+    final object = find(id);
+    final label = name.trim();
+    if (object == null ||
+        object.isReadOnly ||
+        repository.readOnly ||
+        object.isDeleted ||
+        object.typeId != 'orbit.file' ||
+        object.properties['checksum'] != expectedChecksum ||
+        label.length > 200 ||
+        object.properties['pdfBookmarks'] is! List ||
+        !(object.properties['pdfBookmarks'] as List).contains(page) ||
+        page < 1 ||
+        (object.properties['pdfBookmarkNames'] != null &&
+            object.properties['pdfBookmarkNames'] is! Map)) {
+      return false;
+    }
+    final names = <String, dynamic>{
+      if (object.properties['pdfBookmarkNames'] is Map)
+        for (final entry
+            in (object.properties['pdfBookmarkNames'] as Map).entries)
+          if (entry.key is String) entry.key as String: entry.value,
+    };
+    if (label.isEmpty) {
+      names.remove('$page');
+    } else {
+      names['$page'] = label;
+    }
+    edit(id, properties: {...object.properties, 'pdfBookmarkNames': names});
+    await flush(id);
+    final latest = find(id);
+    final savedNames = latest?.properties['pdfBookmarkNames'];
+    return !dirty.contains(id) &&
+        !failures.containsKey(id) &&
+        latest?.properties['checksum'] == expectedChecksum &&
+        savedNames is Map &&
+        (label.isEmpty
+            ? !savedNames.containsKey('$page')
+            : savedNames['$page'] == label);
+  }
+
   void edit(
     String id, {
     String? title,
@@ -4058,6 +5751,49 @@ Summary of scope, affected endpoints, and timeline of investigation.
   }) {
     final object = find(id);
     if (object == null || object.isReadOnly || repository.readOnly) return;
+    if (object.typeId == 'orbit.task' &&
+        object.properties['recurrence'] != null &&
+        !object.isCompleted &&
+        properties?['completed'] == true) {
+      unawaited(completePlannedTask(object));
+      return;
+    }
+    try {
+      if (properties != null) validateResearchProperties(properties);
+      if (properties != null &&
+          jsonEncode(properties['workingCalendar']) !=
+              jsonEncode(object.properties['workingCalendar']) &&
+          properties['workingCalendar'] != null) {
+        WorkingCalendar(
+          Map<String, dynamic>.from(properties['workingCalendar'] as Map),
+        );
+      }
+      if (object.typeId == 'orbit.task' && properties != null) {
+        properties = completeTaskOccurrence(object, properties, DateTime.now());
+        validateTaskWorkCalendar(object, properties);
+        if ([
+          'scheduledDate',
+          'scheduledEndDate',
+          'ganttMilestone',
+        ].any((k) => properties![k] != object.properties[k])) {
+          validateGanttSchedule(properties);
+        }
+        validateTaskPlanning(
+          object.copyWith(properties: properties),
+          objects,
+          previous: object,
+        );
+      }
+      if (object.typeId == 'orbit.view' && properties?['smartQuery'] != null) {
+        SmartViewQuery(
+          Map<String, dynamic>.from(properties!['smartQuery'] as Map),
+        );
+      }
+    } on Object catch (e) {
+      error = '$e';
+      notify();
+      return;
+    }
     final updated = object.copyWith(
       title: title,
       body: body,
@@ -4085,7 +5821,8 @@ Summary of scope, affected endpoints, and timeline of investigation.
     _timers[id]?.cancel();
     // Conflicts require explicit recovery; retrying every keystroke is unhelpful.
     if (!failures.containsKey(id)) {
-      _timers[id] = Timer(const Duration(milliseconds: 450), () => flush(id));
+      final interval = session.autoSaveInterval.clamp(200, 10000);
+      _timers[id] = Timer(Duration(milliseconds: interval), () => flush(id));
     }
     notify();
   }
@@ -4106,6 +5843,209 @@ Summary of scope, affected endpoints, and timeline of investigation.
     await work;
     _saving.remove(id);
     if (dirty.contains(id) && !failures.containsKey(id)) await flush(id);
+  }
+
+  /// Serializes source changes with normal object saves. Later unrelated edits
+  /// keep their draft while adopting the durably committed source metadata.
+  Future<bool> changeAttachmentSource(
+    UniversalObject expected, {
+    String? name,
+    Uint8List? bytes,
+    String? retainedReference,
+    Stream<List<int>>? byteStream,
+    String? expectedChecksum,
+    void Function(int bytesRead, int totalBytes, String phase)? onProgress,
+    String? resumableStageId,
+    bool Function()? isCancelled,
+  }) async {
+    if (!identical(find(expected.id), expected) ||
+        dirty.contains(expected.id) ||
+        _saving.containsKey(expected.id)) {
+      error =
+          'The attachment changed or has unsaved edits. Save it and reopen recovery.';
+      notify();
+      return false;
+    }
+    var committed = false;
+    Future<void> commit() async {
+      try {
+        final saved = retainedReference != null
+            ? await repository.restoreAttachmentSource(
+                expected,
+                retainedReference,
+                onProgress: onProgress,
+                isCancelled: isCancelled,
+              )
+            : byteStream != null
+            ? await repository.relinkAttachmentStream(
+                expected,
+                name: name!,
+                expectedChecksum: expectedChecksum!,
+                bytes: byteStream,
+                onProgress: onProgress == null
+                    ? null
+                    : (bytesRead) =>
+                          onProgress(bytesRead, 0, 'Saving new source…'),
+                resumableStageId: resumableStageId,
+                isCancelled: isCancelled,
+              )
+            : await repository.relinkAttachment(
+                expected,
+                name: name!,
+                bytes: bytes!,
+              );
+        final current = find(expected.id);
+        final sourceEdited =
+            current != null &&
+            const [
+              'contentRef',
+              'originalName',
+              'mimeType',
+              'byteLength',
+              'checksum',
+              'attachmentSourceHistory',
+            ].any(
+              (key) =>
+                  jsonEncode(current.properties[key]) !=
+                  jsonEncode(expected.properties[key]),
+            );
+        if (sourceEdited) {
+          failures[expected.id] =
+              'The source changed during recovery. Your draft is retained; review it before saving.';
+        }
+        objects = [
+          for (final object in objects)
+            if (object.id != saved.id)
+              object
+            else if (identical(current, expected))
+              saved
+            else if (sourceEdited)
+              object.copyWith(revision: saved.revision)
+            else
+              object.copyWith(
+                revision: saved.revision,
+                properties: {
+                  ...object.properties,
+                  for (final key in const [
+                    'contentRef',
+                    'originalName',
+                    'mimeType',
+                    'byteLength',
+                    'checksum',
+                    'attachmentSourceHistory',
+                  ])
+                    key: saved.properties[key],
+                },
+              ),
+        ];
+        attachmentRevision++;
+        error = null;
+        committed = true;
+      } catch (e) {
+        error = 'Could not change attachment source: $e';
+      }
+    }
+
+    final work = commit();
+    _saving[expected.id] = work;
+    await work;
+    _saving.remove(expected.id);
+    notify();
+    return committed;
+  }
+
+  Future<bool> recoverMissingAttachment(
+    String reference,
+    Uint8List bytes,
+    String checksum,
+  ) async {
+    try {
+      await repository.recoverMissingAttachment(
+        reference,
+        bytes,
+        expectedChecksum: checksum,
+      );
+      attachmentRevision++;
+      error = null;
+      notify();
+      return true;
+    } catch (e) {
+      error = 'Could not restore original attachment: $e';
+      notify();
+      return false;
+    }
+  }
+
+  Future<bool> recoverMissingAttachmentStream(
+    String reference,
+    Stream<List<int>> bytes,
+    String checksum, {
+    void Function(int bytesRead)? onProgress,
+    String? resumableStageId,
+    bool Function()? isCancelled,
+  }) async {
+    try {
+      await repository.recoverMissingAttachmentStream(
+        reference,
+        bytes,
+        expectedChecksum: checksum,
+        onProgress: onProgress,
+        resumableStageId: resumableStageId,
+        isCancelled: isCancelled,
+      );
+      attachmentRevision++;
+      error = null;
+      notify();
+      return true;
+    } catch (e) {
+      error = 'Could not restore original attachment: $e';
+      notify();
+      return false;
+    }
+  }
+
+  Future<bool> forgetAttachmentSourceVersion(
+    UniversalObject expected,
+    String reference, {
+    void Function(int bytesRead, int totalBytes, String phase)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    try {
+      final saved = await repository.forgetAttachmentSourceVersion(
+        expected,
+        reference,
+        onProgress: onProgress,
+        isCancelled: isCancelled,
+      );
+      final current = find(expected.id);
+      if (current != null && identical(current, expected)) {
+        objects = [
+          for (final object in objects) object.id == saved.id ? saved : object,
+        ];
+      } else if (current != null) {
+        objects = [
+          for (final object in objects)
+            object.id == saved.id
+                ? object.copyWith(
+                    revision: saved.revision,
+                    properties: {
+                      ...object.properties,
+                      'attachmentSourceHistory':
+                          saved.properties['attachmentSourceHistory'],
+                    },
+                  )
+                : object,
+        ];
+      }
+      attachmentRevision++;
+      error = null;
+      notify();
+      return true;
+    } catch (e) {
+      error = 'Could not clean up retained source: $e';
+      notify();
+      return false;
+    }
   }
 
   Future<void> _saveDraft(UniversalObject before) async {
@@ -4129,11 +6069,22 @@ Summary of scope, affected endpoints, and timeline of investigation.
   }
 
   Future<bool> flushAll() async {
+    final productivity = _productivityOperation;
+    if (productivity != null) await productivity.future;
     for (final id in List.of(dirty)) {
       await flush(id);
     }
     await saveSession();
     return dirty.isEmpty && failures.isEmpty && !_settingsSaveFailed;
+  }
+
+  void cancelAllTimers() {
+    for (final timer in _timers.values) {
+      timer.cancel();
+    }
+    _timers.clear();
+    _sessionTimer?.cancel();
+    _externalDebounce?.cancel();
   }
 
   Future<void> retry(String id) async {
@@ -4189,13 +6140,125 @@ Summary of scope, affected endpoints, and timeline of investigation.
     }
   }
 
+  List<Map<String, dynamic>> getDocumentSnapshots(String id) {
+    final object = find(id);
+    if (object == null) return [];
+    final raw = object.properties['revisions'];
+    if (raw is List) {
+      return raw
+          .whereType<Map>()
+          .map((m) => Map<String, dynamic>.from(m))
+          .toList();
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>?> createDocumentSnapshot(
+    String id, {
+    String label = 'Snapshot',
+    String? title,
+    String? body,
+  }) async {
+    final object = find(id);
+    if (object == null) return null;
+    final now = DateTime.now();
+    final snapTitle = title ?? object.title;
+    final snapBody = body ?? object.body;
+    final words = snapBody.trim().isEmpty
+        ? 0
+        : snapBody.trim().split(RegExp(r'\s+')).length;
+
+    final snapshot = {
+      'id': 'rev-${now.millisecondsSinceEpoch}',
+      'revision': object.revision,
+      'timestamp': now.toIso8601String(),
+      'title': snapTitle,
+      'body': snapBody,
+      'wordCount': words,
+      'label': label,
+    };
+
+    final existing = getDocumentSnapshots(id);
+    final updatedList = [snapshot, ...existing].take(30).toList();
+
+    edit(id, properties: {...object.properties, 'revisions': updatedList});
+    await flush(id);
+    return snapshot;
+  }
+
+  Future<bool> restoreDocumentSnapshot(String id, String snapshotId) async {
+    final object = find(id);
+    if (object == null) return false;
+    final snapshots = getDocumentSnapshots(id);
+    final target = snapshots.where((s) => s['id'] == snapshotId).firstOrNull;
+    if (target == null) return false;
+
+    await createDocumentSnapshot(
+      id,
+      label: 'Pre-restore checkpoint',
+      title: object.title,
+      body: object.body,
+    );
+
+    edit(
+      id,
+      title: target['title']?.toString() ?? object.title,
+      body: target['body']?.toString() ?? object.body,
+    );
+    await flush(id);
+    return true;
+  }
+
   Future<void> deleteFolder(String folder) => organize(() async {
     await repository.deleteFolder(folder);
     session.archivedFolders.removeWhere(
       (f) => f == folder || f.startsWith('$folder/'),
     );
+    session.folderColors = {
+      for (final entry in session.folderColors.entries)
+        if (entry.key != folder && !entry.key.startsWith('$folder/'))
+          entry.key: entry.value,
+    };
     persistSession();
   });
+
+  void _purgeNavHistory(Set<String> ids) {
+    if (_navHistory.isEmpty) return;
+    final currentId = (_navIndex >= 0 && _navIndex < _navHistory.length)
+        ? _navHistory[_navIndex]
+        : null;
+    _navHistory.removeWhere(ids.contains);
+    if (_navHistory.isEmpty) {
+      _navIndex = -1;
+    } else if (currentId != null && _navHistory.contains(currentId)) {
+      _navIndex = _navHistory.lastIndexOf(currentId);
+    } else {
+      _navIndex = _navIndex.clamp(0, _navHistory.length - 1);
+    }
+  }
+
+  void _purgeSessionReferences(Set<String> ids) {
+    locationRequests.removeWhere((id, _) => ids.contains(id));
+    session.bookmarkedTabs = session.bookmarkedTabs
+        .where((id) => !ids.contains(id))
+        .toList();
+    session.pinnedTabs = session.pinnedTabs
+        .where((id) => !ids.contains(id))
+        .toList();
+    session.recent = session.recent.where((id) => !ids.contains(id)).toList();
+    session.closedTabs = session.closedTabs
+        .where((id) => !ids.contains(id))
+        .toList();
+    session.positions = Map.of(session.positions)
+      ..removeWhere(
+        (k, _) => ids.contains(k) || ids.any((id) => k.endsWith(':$id')),
+      );
+    session.cameras = Map.of(session.cameras)
+      ..removeWhere((k, _) => ids.contains(k));
+    session.noteViews = Map.of(session.noteViews)
+      ..removeWhere((k, _) => ids.contains(k));
+    _purgeNavHistory(ids);
+  }
 
   Future<void> deletePermanently(String id) async {
     await flush(id);
@@ -4203,6 +6266,9 @@ Summary of scope, affected endpoints, and timeline of investigation.
       await repository.deletePermanently(id);
       mergeRepositoryObjects();
       closeTab(id);
+      if (lastClosed == id) lastClosed = null;
+      _purgeSessionReferences({id});
+      persistSession();
       notify();
     } catch (e) {
       error = '$e';
@@ -4212,8 +6278,18 @@ Summary of scope, affected endpoints, and timeline of investigation.
 
   Future<void> emptyTrash() async {
     try {
+      final trashedIds = objects
+          .where((o) => o.isDeleted)
+          .map((o) => o.id)
+          .toSet();
       await repository.emptyTrash();
       mergeRepositoryObjects();
+      for (final id in trashedIds) {
+        closeTab(id);
+        if (lastClosed == id) lastClosed = null;
+      }
+      _purgeSessionReferences(trashedIds);
+      persistSession();
       notify();
     } catch (e) {
       error = '$e';
@@ -4225,11 +6301,17 @@ Summary of scope, affected endpoints, and timeline of investigation.
   void toggleShowAttachments() =>
       updateSession((s) => s.showAttachments = !s.showAttachments);
 
+  bool get explorerCalendarCollapsed => session.explorerCalendarCollapsed;
+  void toggleExplorerCalendar() => updateSession(
+    (s) => s.explorerCalendarCollapsed = !s.explorerCalendarCollapsed,
+  );
+
   Future<void> refresh() async {
     if (!await flushAll()) return;
     try {
       await repository.refresh();
       mergeRepositoryObjects();
+      _pdfIndexer?.invalidatePath('*');
       error = null;
     } catch (e) {
       error = '$e';
@@ -4242,13 +6324,13 @@ Summary of scope, affected endpoints, and timeline of investigation.
       _changedPaths.addAll(changedPaths ?? {'*'});
       return;
     }
-    if (loading ||
-        !_hasWorkspace ||
-        _checkingExternal ||
-        repository.isBrowser) {
+    if (loading || !hasWorkspace || _checkingExternal || repository.isBrowser) {
       return;
     }
     _checkingExternal = true;
+    if (changedPaths == null || changedPaths.contains('*')) {
+      _pdfIndexer?.invalidatePath('*');
+    }
     try {
       if (!await repository.hasExternalChanges(changedPaths: changedPaths)) {
         return;
@@ -4295,7 +6377,7 @@ Summary of scope, affected endpoints, and timeline of investigation.
 
   Future<void> saveSession() async {
     _sessionTimer?.cancel();
-    if (loading || !_hasWorkspace || repository.readOnly) return;
+    if (loading || !hasWorkspace || repository.readOnly) return;
     _settingsSaveRequested = true;
     final pending = _settingsSave;
     if (pending != null) return pending;
@@ -4330,5 +6412,10 @@ Summary of scope, affected endpoints, and timeline of investigation.
     s.inspectorVisible = false;
     s.sidebarWidth = 240;
     s.secondaryId = null;
+    s.focusMode = false;
+    s.dashboard = {};
+    if (WorkspaceContext.supported(s.spaces)) {
+      s.spaces = {...s.spaces, 'activeId': null};
+    }
   });
 }

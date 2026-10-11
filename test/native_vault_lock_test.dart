@@ -78,4 +78,18 @@ void main() {
       await root.delete(recursive: true);
     }
   });
+
+  test('rapid close and immediate reopen of the same Vault succeeds', () async {
+    final root = await Directory.systemTemp.createTemp('orbit-rapid-reopen-');
+    final store = NativeWorkspaceStore();
+    try {
+      for (var i = 0; i < 10; i++) {
+        await store.initialize(path: root.path);
+        await store.close();
+      }
+    } finally {
+      await store.close();
+      await root.delete(recursive: true);
+    }
+  });
 }

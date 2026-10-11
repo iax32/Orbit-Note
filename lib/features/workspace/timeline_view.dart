@@ -3,6 +3,7 @@ import '../../app/orbit_theme.dart';
 import '../../app/workspace_controller.dart';
 import '../../domain/calendar_event.dart';
 import '../../domain/universal_object.dart';
+import 'task_planning_panel.dart';
 
 class TimelineEntry {
   final UniversalObject object;
@@ -53,7 +54,20 @@ class _TimelineViewState extends State<TimelineView> {
         widget.folderFilter ??
         (widget.viewObject?.properties['folder'] as String?)?.trim();
 
+    Set<String>? queryIds;
+    if (widget.viewObject?.properties['smartQuery'] != null) {
+      try {
+        queryIds = c
+            .queryViewObjects(widget.viewObject!)
+            .map((e) => e.id)
+            .toSet();
+      } on Object {
+        queryIds = {};
+      }
+    }
     bool matchesScope(UniversalObject o) {
+      if (queryIds != null) return queryIds.contains(o.id);
+      if (!c.inActiveSpace(o)) return false;
       if (effectiveFolder != null && effectiveFolder.isNotEmpty) {
         final f = o.properties['folder'];
         if (f is String && f == effectiveFolder) return true;
@@ -85,7 +99,13 @@ class _TimelineViewState extends State<TimelineView> {
         .ofType('orbit.event')
         .where((e) => !e.isDeleted && matchesScope(e));
     for (final e in events) {
-      final schedule = EventSchedule.fromProperties(e.properties);
+      EventSchedule schedule;
+      try {
+        schedule = EventSchedule.fromProperties(e.properties);
+      } on Object {
+        // Imported unsupported events remain available in the explorer.
+        continue;
+      }
       entries.add(
         TimelineEntry(
           object: e,
@@ -144,6 +164,22 @@ class _TimelineViewState extends State<TimelineView> {
       grouped.putIfAbsent(key, () => []).add(entry);
     }
 
+    Future<void> addEvent() async {
+      final now = DateTime.now();
+      final today = calendarDate(now);
+      final tomorrow = calendarDate(now.add(const Duration(days: 1)));
+      final props = <String, dynamic>{
+        'allDay': true,
+        'startDate': today,
+        'endDate': tomorrow,
+        if (effectiveScope != null && effectiveScope.isNotEmpty)
+          'course': effectiveScope,
+        if (effectiveFolder != null && effectiveFolder.isNotEmpty)
+          'folder': effectiveFolder,
+      };
+      await c.create('orbit.event', title: 'New Milestone', properties: props);
+    }
+
     return Column(
       children: [
         Padding(
@@ -160,41 +196,50 @@ class _TimelineViewState extends State<TimelineView> {
                   onChanged: (v) => setState(() => _filter = v.trim()),
                 ),
               ),
-              const SizedBox(width: 12),
-              FilledButton.icon(
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Add milestone / event'),
-                onPressed: () async {
-                  final now = DateTime.now();
-                  final today = calendarDate(now);
-                  final tomorrow = calendarDate(
-                    now.add(const Duration(days: 1)),
-                  );
-                  final props = <String, dynamic>{
-                    'allDay': true,
-                    'startDate': today,
-                    'endDate': tomorrow,
-                    if (effectiveScope != null && effectiveScope.isNotEmpty)
-                      'course': effectiveScope,
-                    if (effectiveFolder != null && effectiveFolder.isNotEmpty)
-                      'folder': effectiveFolder,
-                  };
-                  await c.create(
-                    'orbit.event',
-                    title: 'New Milestone',
-                    properties: props,
-                  );
-                },
-              ),
+              if (entries.isNotEmpty) const SizedBox(width: 12),
+              if (entries.isNotEmpty)
+                FilledButton.icon(
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Add milestone / event'),
+                  onPressed: addEvent,
+                ),
             ],
           ),
         ),
         Expanded(
           child: entries.isEmpty
               ? Center(
-                  child: Text(
-                    'No events or scheduled tasks in this timeline.',
-                    style: TextStyle(color: colors.subtle, fontSize: 13),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.timeline_outlined,
+                          size: 32,
+                          color: colors.subtle,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _filter.isEmpty
+                              ? 'Nothing scheduled yet'
+                              : 'No scheduled items match your filter',
+                          style: OrbitTypography.section(context),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Add a milestone or event, or give a task a due date.',
+                          style: OrbitTypography.secondary(context),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 20),
+                        FilledButton.icon(
+                          onPressed: addEvent,
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add milestone / event'),
+                        ),
+                      ],
+                    ),
                   ),
                 )
               : ListView.builder(
@@ -247,6 +292,37 @@ class _TimelineViewState extends State<TimelineView> {
                                 ),
                               ),
                               child: ListTile(
+                                trailing: IconButton(
+                                  tooltip:
+                                      'Reschedule ${entry.isTask ? 'deadline' : 'event'}',
+                                  icon: const Icon(Icons.event_outlined),
+                                  onPressed:
+                                      c.repository.readOnly || o.isReadOnly
+                                      ? null
+                                      : () async {
+                                          final day = await showDatePicker(
+                                            context: context,
+                                            initialDate: entry.isTask
+                                                ? entry.date
+                                                : entry.date.toLocal(),
+                                            firstDate: DateTime(1),
+                                            lastDate: DateTime(9999, 12, 31),
+                                          );
+                                          if (day != null && context.mounted) {
+                                            await previewCalendarMove(
+                                              context,
+                                              c,
+                                              CalendarDragData(
+                                                o,
+                                                entry.isTask
+                                                    ? 'dueDate'
+                                                    : 'scheduledDate',
+                                              ),
+                                              day,
+                                            );
+                                          }
+                                        },
+                                ),
                                 dense: true,
                                 leading: Container(
                                   width: 38,
@@ -331,7 +407,7 @@ class _TimelineViewState extends State<TimelineView> {
                                         child: Text(
                                           category,
                                           style: TextStyle(
-                                            fontSize: 10,
+                                            fontSize: 12,
                                             color: colors.subtle,
                                           ),
                                         ),
@@ -387,7 +463,7 @@ class _TimelineViewState extends State<TimelineView> {
                                         child: Text(
                                           priority.toUpperCase(),
                                           style: TextStyle(
-                                            fontSize: 9,
+                                            fontSize: 12,
                                             fontWeight: FontWeight.w600,
                                             color:
                                                 priority == 'urgent' ||

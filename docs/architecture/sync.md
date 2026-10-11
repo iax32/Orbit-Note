@@ -1,5 +1,9 @@
 # Sync architecture — implementation contract
 
+2026-10-11: [ADR 0027](../adr/0027-shared-vault-preview-and-drive-backups.md) adds
+separate self-hosted shared editing and immutable Drive backup transfers. Neither
+claims the personal SyncProvider conditional-publication capability described here.
+
 Updated 2026-09-13. **Foundation and native account slice implemented; no end-user
 Vault transfers yet.** Account adapters, secure credential storage, quota UI and
 root/discovery are described in [ADR 0019](../adr/0019-google-account-adapters.md).
@@ -41,6 +45,18 @@ with a last-moment local hash and draft check. Uploads read a verified snapshot,
 a changing source file. Exact Markdown/JSON is decoded/validated but never re-encoded.
 Derived objects/index refresh after apply; controller merging retains local drafts.
 
+Attachment recovery uses a separate native stage under
+`.orbit/device/recovery/attachments/attachment-<id>.part` with a matching JSON
+manifest. The manifest is device-local and records the target, operation,
+expected checksum, source name, and saved byte offset. A process interruption
+leaves this stage discoverable; the recovery dialog can append the remaining
+source stream after the user selects the same file, or explicitly discard it.
+Native startup removes only well-formed stages whose durable progress is older
+than the 30-day retention window; malformed stages and unsupported newer
+workspace formats are preserved. The complete staged hash is verified before
+normal guarded publication. These manifests and partial bytes are excluded
+from sync and portable export.
+
 Conflict alternatives and a descriptor are kept at `.orbit/sync-conflicts/<digest>/`;
 they are recovery data, excluded from sync but retained in portable backups. They do
 not create duplicate live object IDs. Remote deletion also retains a before-image.
@@ -48,7 +64,7 @@ Its local intent stores `tombstoneSource` so startup preserves the exact remote 
 including whitespace/unknown optional fields, instead of reserializing the payload.
 
 Current native limits: 32 MiB per structured document, 2 GiB per blob; no resumable
-network session or abandoned-stage cleanup policy yet. Local snapshot/hash work can
+network session or sync-stage cleanup policy yet. Local snapshot/hash work can
 occupy the repository queue; network download does not. Same-Vault physical Notes
 moves reuse existing recovery. Other owning-format moves reject safely. Replacing
 bytes underneath a referenced checksummed attachment rejects: publish a new content

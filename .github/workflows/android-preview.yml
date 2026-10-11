@@ -1,0 +1,62 @@
+name: Build Android preview APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      ORBIT_GOOGLE_BUILD_MODE: local-only
+      ORBIT_REQUIRE_PRODUCTION_SIGNING: 'true'
+      ORBIT_ANDROID_STORE_FILE: ${{ github.workspace }}/.local/android-preview.jks
+      ORBIT_ANDROID_STORE_PASSWORD: ${{ secrets.ORBIT_ANDROID_PREVIEW_STORE_PASSWORD }}
+      ORBIT_ANDROID_KEY_ALIAS: orbit-preview
+      ORBIT_ANDROID_KEY_PASSWORD: ${{ secrets.ORBIT_ANDROID_PREVIEW_STORE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          channel: stable
+          cache: true
+      - name: Restore private preview signing key
+        env:
+          ORBIT_ANDROID_PREVIEW_KEYSTORE_BASE64: ${{ secrets.ORBIT_ANDROID_PREVIEW_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$ORBIT_ANDROID_PREVIEW_KEYSTORE_BASE64"
+          test -n "$ORBIT_ANDROID_STORE_PASSWORD"
+          mkdir -p .local
+          printf '%s' "$ORBIT_ANDROID_PREVIEW_KEYSTORE_BASE64" | base64 --decode > .local/android-preview.jks
+          chmod 600 .local/android-preview.jks
+      - run: flutter pub get
+      - name: Prepare local-only configuration
+        run: dart --packages=.dart_tool/package_config.json tool/prepare_google_build.dart --platform=android --output=.local/google-build.android.json
+      - name: Build release-mode preview APK
+        run: flutter build apk --release --dart-define-from-file=.local/google-build.android.json
+      - name: Verify APK signature and package artifact
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          cp build/app/outputs/flutter-apk/app-release.apk release-assets/OrbitNote-Android-Preview.apk
+          build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$build_tools/apksigner" verify --verbose --print-certs release-assets/OrbitNote-Android-Preview.apk > release-assets/Android-signature.txt
+          "$build_tools/aapt" dump badging release-assets/OrbitNote-Android-Preview.apk > release-assets/Android-package.txt
+          sha256sum release-assets/OrbitNote-Android-Preview.apk > release-assets/SHA256SUMS-Android.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-preview-apk
+          path: release-assets/*
+          retention-days: 14
+      - name: Remove runner signing material
+        if: always()
+        run: rm -f .local/android-preview.jks

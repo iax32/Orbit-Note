@@ -1,4 +1,4972 @@
-# Current task — Google account and Drive milestone, 2026-09-13
+# Current task — Publish source and Windows/Android artifacts, 2026-10-11
+
+User explicitly authorized pushing the current source to iax32/Orbit-Note and
+publishing Windows and APK artifacts. The original Android signing key and SDK
+are missing after reset. Owner explicitly selected a preview APK with a new key;
+it cannot update the older differently signed Android installation. Build Android
+on the repository's GitHub Actions runner with a dedicated private preview key,
+not an ephemeral debug signing fallback. Retain the key outside source and release
+assets; GitHub Actions stores it only as encrypted repository secrets.
+
+Scope: reconcile older origin/main ancestry while preserving current tested
+source, inspect source for private configuration, commit/push, build current
+release-mode Android preview, verify signature/package metadata, and publish
+artifacts/checksums with accurate limitations. Windows portable release is already
+verified; Google OAuth registration and automatic sync remain unavailable. No
+desktop-control testing or public collaboration hosting. Work in progress.
+
+---
+
+# Completed task — Windows release and Google connection readiness, 2026-10-11
+
+User requested a Windows release with working one-button Google sign-in. The
+owner closed the running app to permit replacement of release files. Scope is
+the existing Windows app, account/backup readiness and portable release packaging;
+no desktop-control testing. Google app registration is a separate external
+prerequisite, not a user account or email substitution.
+
+Implementation: successful sign-in, saved-account restore and account refresh
+automatically discover backups alongside quota and Vaults. Partial failures keep
+useful results and remain immediately retryable. Cancelled or changed-account
+responses cannot populate stale account data. Build/release messaging now reflects
+manual backups/restore accurately; automatic synchronization is not enabled.
+
+Windows release and automated validation complete. The 42 focused Google checks pass
+(.local/release-ready-focused.log); lib/test/tool analysis is clean
+(.local/release-ready-analyze.log). All 1,871 tests pass
+(.local/release-ready-full.log). Format and strict checks pass (540 lib/test files,
+zero final changes, .local/release-ready-format.log and release-ready-strict.log).
+git diff --check passes (.local/release-ready-diff.log).
+Windows x64 release succeeds (.local/release-ready-windows.log); the SDK selection
+already present in CMake remains unchanged. The initial Dart-run helper hit the
+known space-containing SDK hook path; direct short-path Dart execution and the
+short-path Flutter build passed. No SDK/security setting was changed.
+
+The release-assets/OrbitNote-Windows-x64.zip package includes all app DLLs/data,
+the existing standalone collaboration server, setup README and per-file hashes.
+All 56 payload files were verified byte-for-byte against ZIP entries
+(.local/release-ready-package.log). SHA256SUMS-Windows.txt checks the archive.
+Runtime native assets resolve PDFium/SQLite beside the app. Server --help runs;
+the existing loopback server remains running and the app remains closed.
+This is an unsigned portable build, not an installer. No UI/device acceptance
+or live Google authentication/transfer test was performed.
+
+No configured Desktop OAuth client exists in config, environment or
+usual Downloads/Desktop/Documents locations. Google consent-platform registration
+was not completed on the owner's behalf. This release must remain local-only
+until the developer client is imported and a configured build is produced.
+Suggested next task: complete owner Google OAuth registration, then build the
+configured account preview and verify real sign-in, backup and restore.
+
+---
+
+# Completed task — Shared Vault preview and Google Drive backups, 2026-10-11
+
+User requested simultaneous note/Canvas editing with named cursors and Google
+Drive support; selected a self-hosted server and OAuth setup help. Scope is an
+explicit whole-Vault initial copy with live existing active notes/Canvas, private
+owner/editor/viewer invitations, revocation, conservative known-base merging,
+durable server acknowledgement and ordinary local edit/save/history. Drive is
+manual immutable backup/restore, separate from automatic personal Vault sync.
+See ADR-0027 and the shared-Vault/Google activation guides in docs/development.
+
+Implementation complete for this preview. Server journal flush precedes accepted
+edits; incomplete trailing records are repaired on restart, invalid complete
+records refuse startup, and a write failure stops mutations until restart.
+Snapshot IDs deduplicate lost acknowledgements; reused IDs with different bodies
+refuse edits. Delta polling runs at 500 ms. Canvas merges stable placements;
+uncertain overlaps/expired bases/divergent rejoin require explicit recovery.
+Sessions end even when reopening the same Vault UUID. Remote content uses normal
+commands/save/history, preserving unknown data. Viewer notes use the existing Read
+projection; Viewer Canvas permits pan/zoom but prevents placement mutation/undo.
+Presence is ephemeral: Canvas world pointers and note relative viewport pointers,
+not native caret/selection sharing. Credentials stay outside portable Vault data.
+
+Drive uses existing native OAuth/account adapters and narrow drive.file access,
+resumable 1 MiB upload chunks, acknowledgement probing, MD5/SHA-256 verification,
+account-change guards, progress/cancellation and reviewed restore into a new folder.
+No downloaded OAuth client was found in Downloads; client registration remains
+unconfigured. Google console registration/terms were not completed on the owner's
+behalf. The activation guide now starts with plain-language owner setup steps.
+
+Automated validation complete: 17 focused collaboration/Drive checks pass
+(.local/shared-hardening-final.log), including actual two HTTP clients, two local
+application/repository sessions, restart/torn journal/write failure, roles,
+revocation, idempotency, unknown metadata refusal, Viewer scrolling/panning,
+200% narrow controls, exact backup bytes and account isolation. All 1,865 tests
+pass (.local/shared-full-final.log). Final cursor-heartbeat permission notification
+optimization is covered by 36 final collaboration/Drive/composition/workspace
+checks (.local/shared-final-focused.log); it keeps note editor subtrees stable
+while pointer/status changes remain visible.
+Analysis of lib/test/tool is clean (.local/shared-analyze-final.log); strict
+formatting passes with 539 files, zero changes (.local/shared-strict-final.log).
+
+Standalone Windows server build succeeds (.local/shared-server-build.log). It is
+running hidden on 127.0.0.1:47831 with private data under the owner's LocalAppData
+OrbitNote/CollaborationPreview directory; an actual HTTP check refuses anonymous
+access with 403. No Vault was uploaded by this task. Windows app release was not
+rebuilt. JavaScript web release compilation passes (.local/shared-web-build.log);
+web collaboration remains unsupported. The build reports an existing Google SDK
+Wasm incompatibility and Cupertino font warning; no Wasm release is claimed.
+Remote TLS/domain setup, actual multiple-device acceptance and live Google sign-in/
+transfers are unperformed. Initial attachments/other objects are copied; new
+objects, deletions and attachment changes are not continuously streamed. No CRDT,
+E2EE or native text-caret synchronization is claimed.
+Suggested next task: shared-object creation and attachment synchronization.
+
+---
+
+# Completed task — Markdown composition and connected blocks, 2026-10-11
+
+User accepted the full five-part Markdown batch: responsive columns/image-and-text,
+inline drawing blocks using the existing Canvas engine, live object blocks,
+reviewed document-wide replacement, and explicit selection conversion. EDT-02/08/09/13
+subsets. Preserve canonical IDs, Markdown/JSON authority, unknown data, ordinary
+undo/history, offline use and platform boundaries. No desktop-control testing.
+
+Implementation: two/three equal columns with nested Rich editors, Read stacking,
+reverse/unwrap controls and exact UTF-16 mapping; existing media layouts also
+available in Source. Canonical task/view/Canvas source cards with missing-source
+fallbacks, task completion, bounded query previews and shared-engine drawing editing.
+Drawing creation leaves the writing tab open. Replacement review selects matches,
+paginates previews and checks stale source/workspace before applying one undoable edit.
+Conversion accepts complete prose/list blocks into paragraphs, checklists, callouts,
+one-column tables or existing linked Canvas placements. Placements retain their source.
+
+Implementation and automated validation complete. Focused composition/find/media
+checks: 52 pass (.local/composition-final-focused.log), including source reopen/
+failed saving, canonical
+placement identity, task mutation, stale drawing rejection, 200% narrow layouts,
+exact column caret/search ranges and source-cache refresh. Full suite, analysis and
+strict formatting are also recorded in the active task above. No Windows app
+release build requested.
+
+---
+
+# Completed task — Reusable source libraries and reviewed BibTeX interchange, 2026-10-11
+
+User accepted the next citation task. FILE-10/14 and PORT-05 document/library
+subset: ordinary canonical library notes, reusable selected source snapshots,
+reviewed bounded BibTeX import, explicit key/DOI conflict policies, export preserving
+extra fields, provenance navigation and normal note durability/history. No online
+metadata lookup, automatic library-to-document propagation, CSL or TeX execution.
+Implementation and automated validation complete. No desktop-control testing.
+Validation: 22 focused library/citation checks pass (.local/bibtex-focused.log),
+including 11 new cases for nested/escaped fields, macro refusal, unknown-field
+round-trips after edits, selection review, key/DOI conflicts, 1,000-source bounds,
+injection refusal, narrow 200% text and repository reopening/failed-save recovery.
+All 1,830 tests pass (.local/bibtex-full.log). Application/test/tool analysis is
+clean (.local/bibtex-analyze-final.log); format and strict checks cover 527 files
+with zero final changes (.local/bibtex-format.log, .local/bibtex-strict.log).
+Library creation and imports use existing canonical note commands/save/history;
+there is no new store, database dependency or migration. Unknown source JSON/BibTeX
+fields survive updates, while library snapshots retain source-object provenance.
+Specs/formats/status reconciled. Native file-dialog/device acceptance is unperformed;
+Windows release was not rebuilt. Full TeX/BibLaTeX/CSL fidelity remains outside scope.
+Suggested next task: cross-library duplicate review and recoverable source merging.
+
+---
+
+# Completed task — Citation management and automatic bibliographies, 2026-10-11
+
+User accepted the citation/bibliography feature. FILE-10/14 document-local scope:
+manual title/author/year/publisher/DOI/ISBN/URL sources, search/edit/remove unused
+sources, locator insertion, compact author–year and numbered References, Rich/Read
+presentation and automatic bibliography refresh in publishing snapshots. Preserve
+unknown records/fields, code examples, owning Markdown, note history and stale-edit
+guards. No online metadata lookup, CSL, Zotero or cross-note library is included.
+Implementation and automated validation complete. No desktop-control testing.
+Validation: 11 new focused tests pass (.local/citations-focused.log), including
+actual editor insertion/Read presentation, compact 200% text layout, exact Rich
+wrapper deletion, portable reopening/unknown-field retention, literal code and
+unsafe/missing/duplicate source boundaries, and HTML/Word publication snapshots.
+Dialog controller disposal waits for closing transitions; editor mutation checks
+note/workspace identity, original selection context, composition and read-only state.
+All 1,819 tests pass on final implementation (.local/citations-full-final.log).
+flutter analyze --no-pub lib test tool is clean (.local/citations-analyze-final.log);
+dart format lib test and strict format checks pass: 523 files, zero final changes
+(.local/citations-format.log, .local/citations-strict-final.log). Analysis is scoped
+to application/tests/tools because root analysis includes the local dependency cache.
+Existing Markdown save/history remains the durable authority; no migration or new
+database is introduced. Specs/formats/status updated. Native device acceptance and
+full citation-style compliance are unperformed; Windows release was not rebuilt.
+Suggested next task: reusable source libraries with reviewed BibTeX import/export.
+
+---
+
+# Completed task — Document publishing workspace, 2026-10-11
+
+Status: implementation and automated validation complete; native Office/device acceptance unperformed.
+User authorized live A4/Letter pagination, margins/page breaks, typography and
+heading numbering, title/header/page numbers, linked contents and footnotes,
+rich PDF/standalone HTML/editable Word exports with fidelity warnings.
+PORT-05/06/08/09 and EDT-02/08/12 scope. Publishing uses immutable note snapshots
+and original attachment reads; it never rewrites owning Markdown. Existing linked
+section resolution and portable fallbacks are reused. Export files use platform
+save adapters; unsupported content is reported. No desktop-control testing.
+Validation: 37 focused publication/writing/linked-section/legacy-export checks pass
+(.local/publishing-focused-verified.log), including nine new publication tests.
+Actual generated PDF pages were opened, text extracted, links inspected and a
+page rendered for visual inspection (.local/publishing-review.pdf/.png).
+Word package parts cover editable tables, heading bookmarks, native footnote
+relationships and page fields. HTML escapes executable content and embeds local
+resources. Tests cover missing/duplicate footnotes, source preservation,
+canonical linked-section fallback, invalid equations, shared attachment reads,
+no remote image fetch and narrow 200% text layouts. First full run: 1,808 pass
+(.local/publishing-full.log). The final full regression also passes all 1,808
+tests after subsequent refinements (.local/publishing-full-final.log).
+flutter analyze --no-pub lib test tool passes (.local/publishing-analyze.log).
+dart format lib test and strict formatting pass for 520 files
+(.local/publishing-format.log, .local/publishing-strict.log). Diff whitespace check
+passes. Root analysis of this checkout also scans its dependency cache, so explicit
+app/test/tool scope is used. No desktop-control or native Office acceptance.
+Limits: PDF/HTML endnotes; Word math is rendered PNG with TeX alt text; static
+print layout for media sections; format-specific font/pagination differences.
+No printer driver integration. Windows release executable has not been replaced.
+Web JavaScript release builds (.local/publishing-web.log). Existing Google identity
+JSInterop Wasm dry-run and Cupertino font warnings remain; Wasm compatibility
+and browser/device acceptance are not claimed.
+Windows Release flutter_assemble target passes (.local/publishing-windows-assemble.log).
+This compiles Flutter assets/AOT only; the running Windows release executable and
+installed data bundle are not refreshed. A full Windows release rebuild is needed
+to use this update in the desktop app.
+Suggested next task: citation management and automatic bibliographies.
+
+---
+# Completed task — Section header size and line thickness customization, 2026-10-10
+
+Status: complete; 11 focused tests, regression tests, flutter analyze, and strict formatting pass.
+User requested adjustable section headers on the Canvas with font size and underline thickness controls.
+CAN-02/03/04 scope:
+- CanvasElement getters `sectionFontSize` and `sectionStrokeWidth` resolving explicit properties, `headerSize` presets (Small 13px, Medium 18px, Large 24px, Extra Large 32px, Huge 42px), line thickness presets (Hairline 1.0px, Standard 1.5px, Medium 2.5px, Thick 4.0px, Heavy 6.0px), Markdown heading prefixes (`# `, `## `, `### `), or element height scaling.
+- OrbitCanvasPainter renders section titles with proportional font size, stripped markdown prefixes, and matching underline stroke width and position.
+- Canvas SVG export (`canvasToSvg`) includes matching `font-size` and `stroke-width` attributes.
+- Canvas editor selection toolbar exposes Section Header Size dropdown, Increase/Decrease step buttons, and Line Thickness dropdown.
+- Canvas context menu exposes SECTION HEADER SIZE and LINE THICKNESS submenus.
+- Drag-resizing section elements dynamically scales font size and line thickness with height.
+- In-place text editor displays proportional font size, finishes on Enter, and upgrades header size when Markdown prefixes (`# `, `## `, `### `) are typed.
+Validation: 11 tests pass in test/canvas_section_size_test.dart; test/product_polish_test.dart and test/canvas_widget_test.dart pass. flutter analyze --no-pub reports 0 issues. Strict dart formatting passes.
+Suggested next task: Section header alignment options (left, center) and background tint options.
+
+---
+# Completed task — Model assets and narrative templates, 2026-10-11
+
+Status: implementation and automated regression complete; native acceptance unperformed.
+User requested OBJ/GLB viewing, linked Canvas items and story/game-writing templates.
+FILE-02/03, CAN-02/03/04, GAME-01 and EDT-09 scope: bounded offline OBJ and GLB 2
+static geometry previews, orbit/orthographic controls, shaded/wireframe views,
+base-colour tint and scene transforms, missing/invalid/unsupported fallback with
+retry/open original. Add to Canvas creates an ordinary UUID placement referencing
+the canonical attachment; drops and existing placement tools also work. No asset
+duplication/deletion, new dependency or new durable schema. Six searchable Markdown
+templates cover story outline, character arc, world bible, dialogue, branching
+quest and game narrative design. Existing templates keep their order and behaviour.
+27 focused model/template/media tests pass (.local/model-assets-focused.log),
+including seven new parser/viewer/template/placement checks, native restart,
+canonical identity, untouched bytes, GLB node transforms/tint, malformed/sparse/
+compressed/bounds errors, missing files and narrow 200% text layouts.
+All 1,799 tests pass (.local/model-assets-full-final.log), including the concurrent
+section-header work. dart format lib test and strict formatting pass for 515 files
+(.local/model-assets-format.log, .local/model-assets-strict.log). Targeted diff
+whitespace checks pass. Root flutter analyze scanned cached dependency examples
+and reported 245 issues outside lib/test/tool (.local/model-assets-analyze.log);
+flutter analyze --no-pub lib test tool passes with no issues
+(.local/model-assets-analyze-scoped.log).
+No platform release build or installed executable replacement was performed.
+No GUI automation or native/device acceptance is claimed.
+Suggested next task: model thumbnail cards and embedded texture/material support.
+
+---
+# Completed task — Playtest and release workspace, 2026-10-10
+
+Status: implementation and automated checks complete; native acceptance unperformed.
+User authorized build comparison, regression queues, reusable test plans, evidence
+and release readiness together. GAME-01–03 / DEV-02 workflow extension:
+project-mechanic-scoped Playtest & Release from the gameplay workbench; explicit
+baseline/target build results, failed/blocked/unverified/open-task filters,
+baseline and target findings, source-version evidence links, release coverage
+counts and baseline-pass/target-fail regression count. No task auto-completion.
+Mechanics/levels/controls/saves/performance plan presets create ordinary Markdown
+notes; independent unchecked runs retain plan UUID and revision. Verdicts use
+normal recoverable edits; pass requires nonempty fully checked coverage. Changed
+plans require a new run for coverage. No new file format, account, execution,
+automatic game testing or shipping certification. No desktop-control testing.
+37 focused gameplay/workflow/media tests pass (.local/release-workspace-focused.log).
+Tests include build-local verification, persistent restart, independent runs,
+stale forms, incomplete passes, unknown-property retention, unsupported versions,
+write failure recovery, fenced examples and narrow 200% text layouts.
+All 1,781 tests pass (.local/release-workspace-full.log), including five added
+release-workflow regressions. Analysis is clean (.local/release-workspace-analyze.log);
+dart format lib test and strict format pass for 511 files
+(.local/release-workspace-format.log, .local/release-workspace-strict.log).
+Targeted diff whitespace check passes. No desktop-control testing, native/device
+acceptance or platform release build is claimed. Orbit Note is running from the
+Windows release folder; its executable and release files remain unchanged.
+Suggested next task: per-check expected/observed results with linked evidence,
+retaining run history and build-specific coverage.
+
+---
+# Completed task — Gameplay source capture and clipboard continuity, 2026-10-10
+
+Status: implementation and automated validation complete; native acceptance unperformed.
+User requested more gameplay development support and reliable small clipboard
+interactions. DEV-01–03 / GAME-01–02 scope: exact whole-line source ranges,
+gutter/Shift selection, portable code-fence copy, keyboard range copy/cut with
+read-only semantics, graceful clipboard failures, gameplay citation capture into
+the existing validated record form, and Unreal/Godot/Luau source file support.
+New captures clear commit/branch claims; users verify the supplied immutable commit.
+No external file write/execution, schema migration or desktop-control testing.
+Existing Note/Canvas image cut/paste/undo regressions are included in checks.
+All 1,776 tests pass (.local/game-source-full.log), including three new tests for
+capture provenance/invalid ranges, mixed-ending/fence handling, keyboard range
+cut and clipboard failure. The 25-test focused gameplay/source/media run passed
+before the final capture regression was added (.local/game-source-focused.log).
+Analysis is clean (.local/game-source-analyze.log); dart format lib test and
+strict formatting pass for 509 files. Targeted diff whitespace check passes.
+No desktop-control testing was performed, per user preference; native clipboard
+interoperability is not claimed. The app is running from the Windows release
+folder; this task does not replace its executable or build a new release.
+Suggested next task: compare playtest builds and surface unresolved regressions
+per mechanic using canonical findings and verification records.
+
+---
+# Completed task — Note and Canvas clipboard transfers, 2026-10-10
+
+Status: implementation, automated regression and Windows/web release builds complete;
+native clipboard acceptance remains unperformed.
+User requested Ctrl+X on a note image followed by Ctrl+V on Canvas, with
+consistent transfers between surfaces. DES-01/04/05/06 and EDT-04 scope:
+rich image keyboard selection, copy/cut context actions; portable attachment
+paths in Rich and Source copy/cut; image, media-section image/prose and standalone
+object-link placement paste on Canvas; Canvas images/object cards/text to note
+Markdown in Rich and Source, including caret paste; grouped placements/connector
+endpoint/ink-coordinate remapping; successful-write and stale-cut guards.
+Existing attachment/object identity and owning-surface undo remain. No attachment
+byte duplication, object deletion, new durable schema, package or GUI automation.
+Drawings without a Markdown representation retain the literal clipboard fallback.
+References resolve within the existing Vault; this is not cross-Vault byte transfer.
+
+All 1,773 tests pass (.local/media-transfer-full.log), including 13 new clipboard
+regressions. All 67 focused note/Canvas/clipboard/media checks pass
+(.local/media-transfer-focused.log). Tests cover keyboard cut/paste, reverse paste,
+undo, repeated-paste identity, clipboard failure, intervening edits, source caret
+paste, mixed media/code, and group/connector remapping. The full suite caught an
+image-toolbar pointer cancellation regression; immediate completed-click selection
+fixes it and existing image-to-text conversion now passes.
+Analysis is clean (.local/media-transfer-analyze.log); strict format passes for
+509 files (.local/media-transfer-strict-format.log).
+Native clipboard/device acceptance is not claimed; the user prohibited desktop
+control testing. Windows release builds in 84.0s (.local/media-transfer-windows.log):
+build/windows/x64/runner/Release/orbit_note.exe and data/app.so are refreshed.
+The installed release Dart payload matches build/windows/app.so by SHA-256.
+Web JavaScript release builds in 87.5s (.local/media-transfer-web.log). Existing
+Google identity JSInterop Wasm dry-run and Cupertino font warnings remain;
+no Wasm release or real-device clipboard interoperability is claimed.
+Suggested next task: reference-aware clipboard transfer for inline image selections
+and nested live embeds, preserving source provenance and readable fallbacks.
+
+---
+# Completed task — Code studio refinement, 2026-10-10
+
+Status: complete; regression, analysis, formatting, Windows compilation and web build pass.
+User requested another substantial code-editor batch. DEV-01 / EDT-09 scope:
+wrap-aware viewport line numbers and current-line guide, gutter line selection,
+caret reveal, responsive original/draft comparison, HTML/XML/CSS/SCSS block
+comments with nested-delimiter rejection, selection wrappers, selected-line
+deletion, explicit trailing-whitespace cleanup, undoable reset, change status
+and cached draft line ranges. Normal draft history and stale-source Apply remain.
+No execution, language server, external repository write, new durable format or
+dependency. No desktop-control testing.
+
+All 1,760 regression tests pass (.local/code-studio-full.log), including the
+42-test focused studio/code/search/feedback checks (.local/code-studio-focused.log).
+Coverage includes logical-line gutter selection, distant caret reveal and wrapping,
+comparison controller/selection/history preservation across width changes,
+CRLF block-comment round trips, nested-delimiter rejection, literal UTF-16 wrappers,
+line deletion, whitespace cleanup, undoable reset and existing read-only/stale guards.
+Analysis is clean (.local/code-studio-analyze.log); strict format passes for
+507 files (.local/code-studio-strict-format.log). No desktop-control acceptance.
+Windows flutter_assemble Release target passes (.local/code-studio-windows-compile.log);
+build/windows/app.so is refreshed. The app is running from the release folder,
+so runner installation/release replacement is deferred; its data/app.so is unchanged.
+This is Windows Dart compilation, not a refreshed distributable release candidate.
+Web JavaScript release builds in 107.6s (.local/code-studio-web.log). Existing
+Google JSInterop Wasm dry-run and Cupertino icon-font warnings remain; no Wasm
+release or real-device acceptance is claimed.
+Suggested next task: local snippet library with
+searchable language/project tags and linked source provenance.
+
+---
+# Completed task — Code editing tools, 2026-10-10
+
+Status: complete; regression checks and Windows/web release builds pass.
+User requested more code editing tools. Scope: DEV-01 / EDT-09 expanded
+Markdown code drafts: literal find/replace with previous/next, case and whole-word
+matching; go-to-line; duplicate/move selected lines; supported line-comment toggles;
+2/4-space or tab indentation, smart Enter and keyboard shortcuts; draft undo/redo
+and copy; read-only, composing and stale-source guards; compact/enlarged layouts.
+Existing syntax highlighting and normal owning-note apply/save/undo remain.
+No external repository writing, code execution, language server or new dependency.
+
+All 1,753 regression tests pass (.local/code-workbench-full.log), including the
+35-test focused code/search/feedback run (.local/code-workbench-focused.log).
+Coverage includes CRLF/UTF-16 and reversed selections, line moves/duplication,
+comments and unsupported grammars, Unicode replacements, keyboard undo/redo,
+read-only controls, enlarged layouts and existing stale-source apply checks.
+Flutter analysis is clean (.local/code-workbench-analyze.log); strict formatting
+passes for 505 files (.local/code-workbench-strict-format.log).
+Windows release builds in 62.5s (.local/code-workbench-windows.log), output
+build/windows/x64/runner/Release/orbit_note.exe with refreshed data/app.so.
+Web JavaScript release builds in 63.6s (.local/code-workbench-web.log). Existing
+Google JSInterop Wasm dry-run and Cupertino font warnings remain; this is not a
+Wasm release. No desktop-control or real-device acceptance testing was used.
+Suggested next task: source-browser excerpt capture
+into linked technical notes. Stop before implementing the next task.
+
+---
+# Completed task — Structured writing workspace, 2026-10-10
+
+Status: complete; final focused checks, analysis, formatting and Windows/web release builds pass.
+User authorized the complete four-part editor batch: section planning/focus,
+Word-style typing formats, footnote management, and linked-section impact/repair.
+Scope: EDT-02/03/04/10/12/15 and LNK-04/10, using existing source-preserving
+Markdown, normal editor undo/save, and per-pane view state. No new storage schema,
+network service, dependency, or desktop-control acceptance testing.
+
+Writing tools opens Sections, Footnotes and Connections. Sections supports
+heading search, whole-section drag reorder, keyboard-accessible move actions,
+add/rename/delete, outline-only planning and section focus with full-document
+recovery. Descendants travel with their parent. Stable existing block anchors
+resolve restored focus; duplicate/missing headings fall back to the full document.
+View state retains focus/planning and existing caret/scroll/fold restoration.
+Continuous math paragraph mode also restores when the source fingerprint matches;
+changed source falls back safely to the standard rendered mode.
+
+Typing formats show on/off/mixed state, apply across selected supported prose,
+and carry chosen marks into a new paragraph without writing empty delimiters.
+Rich/Source/Split preserve source selections and reversed endpoints where supported.
+Continuous math paragraph editing uses one native field containing authored TeX,
+with rendered editable previews and a return to segmented rendered equations.
+It does not claim seamless native selection across rendered equation widgets.
+
+Footnotes supports marker-click editing, multiline definitions, missing/unused
+and duplicate diagnostics, reference/definition navigation and safe identifier
+renames. Footnote definitions no longer become shortcut-link destinations.
+Escaped/code/comment/frontmatter/linked-fallback examples remain literal.
+Duplicate IDs, collisions, unfinished literal footer contexts, read-only/stale
+edits and stale owner navigation are rejected. Dialog controllers live until
+route disposal, including its closing transition.
+
+Connections lists incoming/outgoing section uses, previews captured content
+before section changes/deletion, opens originals/hosts and repairs section targets
+through the existing picker. Source notes retain identity; no copied live content,
+automatic relinking, or cascaded deletion. Missing targets retain saved fallback.
+No reverse index/database authority is introduced.
+
+All 1,744 regression tests passed (.local/writing-workspace-full.log). The final
+64-test focused run (.local/writing-workspace-final-focused.log) covers section
+movement, typing formats, selection, footnote save/reopen and undo, linked uses,
+literal-context preservation, continuous-math restoration and stale note owners.
+The workspace scrolls as one surface at short heights, avoiding fixed-header
+overflow. Heading dialogs and drag payloads validate document ownership.
+Analysis is clean (.local/writing-workspace-analyze.log); strict formatting covers
+504 files (.local/writing-workspace-strict-format.log). Final Windows release
+build succeeds in 62.9s (.local/writing-workspace-windows.log), output
+build/windows/x64/runner/Release/orbit_note.exe with refreshed data/app.so.
+Web JavaScript release succeeds in 64.2s (.local/writing-workspace-web.log).
+Existing Google JSInterop Wasm dry-run and Cupertino font warnings remain; this
+is not a Wasm release. No desktop control/native UI acceptance is claimed.
+Historical tasks follow.
+Suggested next task: keyboard-driven section planning and impact-panel refinements.
+
+---
+# Completed task — Local document review, 2026-10-10
+
+Status: complete; regression checks and Windows/web release builds pass.
+Authorized EDT-12 scope: selected-passage comments, filterable review sidebar,
+suggested replacements, safe anchors, resolve/reopen, accept/reject, offline
+portable storage and recoverable mutations. No shared threads or account service.
+
+Select text in Rich/Source, then Insert → Comment on selection / Suggest replacement,
+or Ctrl+Alt+M for a comment. Document review opens a dock on wide screens and a
+sheet on narrow/enlarged layouts. Unresolved, comments, suggestions and everything
+filters retain finished receipts; source navigation selects the exact passage.
+Suggested wording is explicit Markdown, including an intentional empty deletion.
+
+Versioned JSON HTML comments live in the owning Markdown document; existing block
+IDs are reused, and safe new block IDs are added when a selection stays intact.
+Otherwise captured quote/context uses UTF-16 source offsets. Duplicate identities,
+missing/changed blocks and ambiguous passages never silently retarget. Explicit
+reattachment captures a new editor selection. Unsupported versions and fenced
+examples remain literal; unknown JSON keys survive review mutations.
+
+Accept changes only the verified passage and its receipt in one editor history
+operation. Resolve/reject/reopen/remove use the same normal save and undo path.
+Failed persistence retains the previous durable source; no alternate database
+authority, package or migration. Metadata is hidden in Rich/Read and available in
+Source. Cross-block/code selections use conservative context matching; this is
+local review, not collaboration or automatic grammar correction.
+
+Thirteen final focused tests pass (.local/document-review-focused.log), covering portable
+CRLF/Unicode metadata, source moves, failed save/reopen, unknown fields, duplicate
+identities, literal examples, explicit reattachment, empty replacement, filters,
+Rich visibility, exact navigation, enlarged layout and editor undo.
+All 1,718 regression tests pass (.local/document-review-full.log); two later tests
+and final anchor/guard refinements pass in the 13-test focused run. Analysis is
+clean (.local/document-review-analyze.log); strict format passes for 499 files
+(.local/document-review-strict-format.log). Windows release builds in 74.1s
+(.local/document-review-windows.log), output build/windows/x64/runner/Release/orbit_note.exe.
+Web JavaScript release builds in 87.1s (.local/document-review-web.log); existing
+Google JSInterop Wasm dry-run and Cupertino font warnings remain. No Wasm release,
+desktop control or native UI acceptance is claimed. The temporary native DLL lock
+from concurrent focused/full tests cleared when the full suite finished; the final
+focused retry passed.
+Suggested next task: review markers and passage navigation within long notes.
+
+---
+# Completed task — Live linked note sections, 2026-10-10
+
+Status: complete; regression checks and web/Windows release builds pass.
+Authorized: section picker/preview, live updates, exact source navigation,
+remove/detach controls, safe fallback/cycle protection, Rich and Read layouts.
+Scope LNK-10 and EDT-08; existing source-preserving projection, stable object
+references, normal save/history and portable Markdown. No package or migration.
+
+Insert → Linked section (also slash commands) searches Markdown notes and previews
+paragraphs, headings and lists/checklists. Insertion anchors the selected source
+through the normal recoverable save; failed saves prevent insertion. Heading
+sections include subordinate headings up to the next peer/ancestor. Explicit
+anchors survive note/heading renames; duplicate/missing targets do not retarget.
+The picker rejects changed source; existing insertion guards reject a changed host.
+
+Rich and Read display the same live selectable preview and exact Open source
+navigation. Rich adds Remove linked section and Make independent copy, using the
+host's existing undo/save ownership. Removal never deletes the source. Detach
+resolves nested sections into ordinary Markdown; saved snapshots are retained for
+unavailable sources. Read preserves its reading-only actions. Source cache changes
+invalidate linked Rich previews without reparsing unrelated typing fields.
+
+Portable format: paired HTML comments contain target/scope metadata; intervening
+quoted Markdown is an insertion-time fallback snapshot. Unsupported/unknown
+metadata remains literal and editable. Opening/rendering does not rewrite it.
+Cycle detection is conservative by note identity, with maximum depth five and
+24 nested previews per root. Each live section is limited to 100,000 characters;
+large fallback previews expose an explicit open/copy path. No hidden source
+truncation. Fenced examples are preserved during explicit detach.
+
+Nine focused tests pass (.local/linked-section-focused.log). All 1,707 tests pass
+(.local/linked-section-full.log); analysis is clean (.local/linked-section-analyze.log)
+and strict format passes for 496 unchanged files (.local/linked-section-strict-format.log).
+Web JavaScript release passes in 78.4s (.local/linked-section-web.log). Existing
+Google JSInterop Wasm dry-run and Cupertino font warnings remain; no Wasm release
+is claimed. Windows release passes in 70.8s (.local/linked-section-windows.log),
+output build/windows/x64/runner/Release/orbit_note.exe. Tests cover
+restart, source-save failure, unknown property preservation, CRLF/Unicode, stable
+heading anchors, list updates, duplicate/missing/cyclic targets, Rich cache refresh,
+source navigation/detach/remove and Read/picker at 390 px with 200% text.
+No desktop control or native UI acceptance is claimed. Local linked content uses
+the current workspace projection; external edits update after normal reconciliation.
+Suggested next task: linked-section backlinks and source-impact previews.
+
+---
+# Completed task — Local source-file browser, 2026-10-10
+
+Status: complete; regression checks and web/Windows release builds pass.
+Authorized: browse source files with highlighting,
+line numbers and search (selected portion of the Git development proposal).
+Scope DEV-01/03/05 local read-only source browsing; software development spec,
+platform adapters and focused workflow. Reuse file_selector and CodeController;
+no package, Git execution, repository write, integration credential or desktop control.
+
+Game dashboard → Browse source files → explicitly selected local folder. Lazy path
+list/filter, numbered highlighted source lines, matching-line search with case toggle,
+previous/next navigation, exact full-file copy, reload and directory refresh. Narrow
+layouts switch file/source panes; enlarged headers scroll within a bounded area.
+Native scans exclude generated folders and symbolic links, show incomplete coverage
+and bound scan depth/count. Reads enforce folder containment, UTF-8 text and a 1 MiB
+preview limit. Missing/binary/oversized files report errors; late asynchronous results
+cannot replace a newer file or update a closed dialog. Files are never imported,
+executed or edited. Folder browsing is native-only; web displays that limitation.
+
+Four focused tests pass (.local/source-browser-focused.log): native exact-byte
+read/unchanged file, ignored folders, traversal/invalid UTF-8/binary/size/missing-file
+errors, language/search behavior, highlighted numbered UI/search/filter, narrow
+200% text and closed-dialog read completion. Initial tests caught a genuine enlarged
+header overflow, fixed before final checks. All 1,698 tests pass
+(.local/source-browser-full.log), analysis is clean (.local/source-browser-analyze.log)
+and strict formatting passes for 493 unchanged files (.local/source-browser-format.log).
+Web JavaScript release passes in 89.4s (.local/source-browser-web.log). Existing
+Google JSInterop Wasm dry-run and Cupertino font warnings remain; no Wasm build
+is claimed. Windows release rebuild passes in 69.7s (.local/source-browser-windows.log)
+after the user confirmed closing the app; gameplay workbench changes are included.
+Output: build/windows/x64/runner/Release/orbit_note.exe. No
+desktop control, mobile/native UI acceptance or signing is claimed.
+Limits: 5,000 source files, 50,000 inspected entries, depth 15, 1 MiB UTF-8 previews;
+over 50,000 characters use explicit plain-text fallback. No Git history/diffs,
+automatic citation capture, saved folder access, cross-file content search or
+cross-line native selection. Suggested next task: exact Git-revision citation capture.
+
+---
+# Completed task — Connected gameplay development workbench, 2026-10-10
+
+Status: implementation complete; Windows release update awaits closing the running
+app. Authorized: all five suggested mechanics workspace, code
+citations, build playtests, finding/fix/verification and technical resume features.
+Scope GAME-01–03 and DEV-02–04; game/software development specs, existing context
+and storage authority contracts. Reuse canonical notes/tasks/resources, ordinary
+Markdown/frontmatter and device-local contexts. No new dependency, storage migration,
+code execution, repository rewrite, cloud integration or desktop control.
+
+Game dashboard opens a responsive workbench with mechanic selection, specification
+and linked evidence, search/build filters and 30-item source pages. Code citations
+retain exact commit/path/line range/excerpt and distinguish captured moving branches.
+Playtests retain build/expected/observed/evidence; fix tasks retain mechanic and build.
+Verification is an append-only linked note with passed/failed/blocked outcome and
+code/screenshot evidence; task completion stays explicit. Device-local continuation
+restores related open tabs/positions, skips missing sources and resets changed ones.
+Validation: six focused tests pass (.local/gameplay-focused.log), including native
+restart, exact fenced Unicode/CRLF excerpts, unknown data preservation, invalid/
+interrupted/failed saves, stale forms, context isolation and enlarged narrow layouts.
+All 1,694 full tests pass (.local/gameplay-full.log); analysis is clean
+(.local/gameplay-analyze.log); strict formatting passes for 487 unchanged files
+(.local/gameplay-format.log). Early widget test teardown waited on a draft in the
+fake-clock harness; corrected in-memory cleanup before final checks. No production
+failure is hidden by that adjustment. Web JavaScript release succeeds in 79.4s
+(.local/gameplay-web.log). Existing Google JSInterop Wasm dry-run and Cupertino
+font warnings remain; they do not prevent the JavaScript release.
+Windows release was interrupted because Orbit Note is running from the release
+folder (close-app request pending); no Windows release success is claimed.
+No desktop control, native UI acceptance, mobile/Wasm release or signing claimed.
+Suggested next task: reviewed local Git citation capture adapter.
+
+---
+# Completed task — Figure captions and linked sources, 2026-10-10
+
+Status: complete. Authorized: the suggested media-section caption/citation task.
+Scope EDT-01/03/04/05/06/07/12; Markdown editing spec, portable media format and
+focused workflow. Reuse local note links, attachment navigation, saves and undo.
+Editable captions, labelled source links, local note picker, source ordering/removal,
+Rich/Read parity and stale-dialog protection. Ordinary Markdown remains readable;
+invalid/future metadata stays literal. No new dependencies or desktop control.
+Focused validation: 17 tests pass (.local/figure-focused.log), including eight new
+caption/source tests. Source escaping and LF/CRLF preservation, malformed/future
+metadata, prohibited destinations, source-count limits, native restart/custom
+properties, Read-source navigation, local note picker and editing, cancellation,
+stale-dialog rejection and captions/chips at 250% text in 360px panes are covered.
+All 1,688 full tests pass (.local/figure-full.log); final analysis is clean
+(.local/figure-analyze-final.log). Strict format passes with 483 unchanged files
+(.local/figure-format-final.log). Windows release succeeds in 70.5s
+(.local/figure-windows-release.log), web JavaScript release succeeds in 79.1s
+(.local/figure-web-release.log). Updated Windows bundle:
+build/windows/x64/runner/Release/. Existing Google JSInterop Wasm dry-run and
+Cupertino font warnings remain; signing, mobile, Wasm and native UI acceptance
+are not claimed. Intermediate analysis reported a missing brace and misplaced
+doc comment; fixed before final analysis/full-suite checks. No desktop control used.
+Limits: single-line plain captions up to 2,000 characters and at most 20 labelled
+sources. No fetched metadata, generated citations/bibliographies or native selection
+across the image boundary. Authored labels remain stable rather than auto-renaming.
+Suggested next task: inline source citation chips beside claims in ordinary prose.
+
+---
+# Completed task — Markdown image-and-text sections, 2026-10-10
+
+Status: complete. Authorized: screenshot-inspired adjacent image/rich text.
+Scope EDT-01/03/04/05/06/08/09/12, Markdown editing specification, open formats,
+feature backlog and focused workflow. Reuse attachment/image rendering, Markdown
+projection and existing note saves/undo. Responsive rounded media layouts, left/right
+placement and size presets, rich editing and Read-mode parity. Ordinary Markdown
+with layout comments retains a vertical fallback outside Orbit. Unsupported markers
+remain literal. No new dependencies, desktop control or unrelated scheduling work.
+Focused validation: nine media tests pass (.local/media-final-focused.log), including
+native save/restart, unknown/malformed markers, mixed LF/CRLF source, fenced-code
+closing comments, Read layout/original navigation, responsive enlarged text,
+inline edits and toolbar routing, image alt/title preservation, stacked conversion
+and stale asynchronous image-picking protection. The editor/model compatibility
+batch passes 63 tests (.local/media-focused.log). Final analysis is clean
+(.local/media-analyze-final.log). All 1,680 full tests pass (.local/media-full.log);
+strict formatting passes for 480 unchanged files (.local/media-format-final.log).
+Windows release succeeds (.local/media-windows-release.log, 87.0s); web JavaScript
+release succeeds (.local/media-web-release.log, 85.7s). Updated Windows bundle:
+build/windows/x64/runner/Release/. Existing Google JSInterop Wasm dry-run and
+Cupertino font warnings remain; mobile, Wasm, signing and native UI acceptance
+are not claimed. Intermediate analysis found missing braces in
+new code; corrected before final analysis/full-suite checks.
+No new storage model, desktop control, mobile acceptance or cross-section native
+selection is claimed. Normal attachment previews retain their loading/recovery path.
+Suggested next task: editable figure captions and linked source citations.
+
+---
+# Completed task — Working-day project scheduling, 2026-10-10
+
+Status: complete. Authorized: working-day calendars and a broader related batch.
+Scope TASK-05/06/09 and VIEW-11; required task planning, collections/views, backlog
+and agent workflow. No new dependencies, migration or desktop control.
+
+Reusable canonical calendar notes, weekday presets, named holidays/extra shifts,
+per-view defaults and per-task bindings; inclusive working effort, forward/backward
+planning, calendar-aware reviewed moves, date pickers and paginated schedule audit.
+Calendar edits retain existing task dates. Missing/future calendars remain visible;
+stale calendar/task edits and failed saves must preserve drafts and previous data.
+Validation: 1,671 full tests pass (.local/work-calendar-full.log), including eight
+new working-calendar cases. Focused compatibility batch passes 17 tests
+(.local/work-calendar-large-layout.log); analysis is clean
+(.local/work-calendar-analyze-final.log). Format and strict formatting pass with
+477 unchanged files (.local/work-calendar-format-final.log). Coverage includes
+Mon–Fri/alternative weeks, holidays/extra shifts, forward/backward calculation,
+DST/leap civil-date arithmetic, milestone snapping, invalid definitions/ranges,
+reviewed save controls, calendar edits retaining dates, stale calendar rejection,
+failed saves, no-working-day rejection, guarded undo, missing-source recovery,
+unrelated legacy edits, and canonical bindings/unknown fields across native restart.
+Gantt, live embeds, calendar and schedule forms fit narrow panes at 250% text.
+Intermediate test compilation missed an extension import; corrected before passing
+focused and full runs. Existing Gantt drag/compatibility coverage remains green.
+Windows release builds successfully (.local/work-calendar-windows-release.log,
+84.0s) and web JavaScript release builds successfully (.local/work-calendar-web-release.log,
+88.0s). Updated Windows bundle: build/windows/x64/runner/Release/.
+Existing Google JSInterop Wasm dry-run and Cupertino font warnings remain;
+native UI, mobile, signing and Wasm acceptance are not claimed.
+
+Limits: daily effort only, 1–3,660 working days, 1,000 date exceptions per calendar,
+bounded scheduling horizon. No automatic holidays, hourly capacity, resource leveling
+or cross-task propagation. View defaults affect reviewed schedules, not all existing
+tasks. Mixed-calendar rows retain their own bindings; background shading uses the
+view calendar. Edits use existing durable recovery and guarded session-only undo.
+
+Suggested next task: critical-path and project-slippage analysis with reviewed
+dependency impact previews; no automatic schedule writes.
+
+---
+# Completed task — Dependency-aware Gantt timelines, 2026-10-10
+
+Status: complete. Authorized: the suggested dependency-aware Gantt feature.
+Scope VIEW-11 and TASK-05/06/09; required collections/views and task planning specs,
+feature backlog and agent workflow. No new dependencies or desktop control.
+
+Implemented saved task Gantt views with explicit inclusive work ranges, independent
+deadline markers, milestones, dependency connectors and warnings; reviewed bar
+moves, range editing, after-blocker suggestions and guarded single-task undo.
+Folder/command creation, Smart View filters and live note embeds reuse canonical
+objects. Unscheduled and unsupported data remain visible/preserved. Automatic
+dependency propagation and cross-object scheduling transactions are outside scope.
+
+Validation: 1,663 full tests pass (.local/gantt-full-final.log), including nine new
+Gantt tests. Final focused compatibility tests pass; the calendar/planning/controller
+focused batch passes 33 tests. Analysis is clean (.local/gantt-analyze-final.log);
+strict format reports 473 unchanged files (.local/gantt-format-final.log).
+Coverage includes native restart and unknown metadata, preserved deadlines/duration,
+missing and unscheduled dependencies, imported cycles, rejected new cycles and
+invalid ranges, stale edits, failed saves, undo protecting later work, combined
+folder/project scope, shared Smart filters, drag cancellation, live note embeds,
+decimal JSON window values, and 360x740 views/forms at 160% text. Assignment editing
+rejects inverted ranges while unrelated edits retain unsupported legacy metadata.
+Task/spec file links and diff whitespace checks pass. An intermediate layout test
+found an overflow, which is fixed; an intermediate full run was intentionally
+cancelled to add the numeric compatibility guard before the final frozen-source run.
+Windows release builds successfully (.local/gantt-windows-release.log, 107.3s);
+web JavaScript release builds successfully (.local/gantt-web-release.log, 97.4s).
+Updated bundle: build/windows/x64/runner/Release/. Existing Google JSInterop Wasm
+dry-run and Cupertino font warnings remain; no Wasm, mobile build, signing or
+desktop-control acceptance is claimed.
+
+Limits: 50 chart rows per page, 14/28/56 calendar-day windows, finish-to-start
+dependency suggestions. Missing/undated dependencies prevent suggestions; completed
+dependencies do not constrain them. Moves require review and update one canonical
+task with guarded session undo. No automatic propagation, resource leveling,
+working-day calendars, critical paths or parent-task date rollups.
+
+Next suggested task: working-day calendars for project scheduling.
+
+---
+# Completed task — Research collections and evidence-based decisions, 2026-10-10
+
+Status: complete.
+Authorized: research/reference workspace and decisions/assumptions as one batch.
+Scope VIEW-01/02/05/06/07, manual PROV-03/04/05, deterministic PROV-06 and available
+history subset PROV-07. Required docs: collections/views, decisions/provenance,
+backlog, agent workflow and existing portable save boundaries. No new dependencies
+or architecture migration; no desktop control.
+
+Implemented:
+- Folder menu and command palette create reusable research collections; new creative
+  projects include a research view linked from their brief. Existing objects and
+  board references retain canonical UUIDs. Membership removal retains source bytes.
+- Local image/text gallery, paginated table and up-to-four-source comparison;
+  persistent tag/type/state/project/text filters, independent per-embed selection,
+  linked project brief, live note embeds and full-view Canvas navigation.
+- Board commentary remains live, with optional independent collection overrides;
+  missing placements fall back to captured details with a visible indicator.
+  Unsupported/malformed collections retain their saved entries without rewriting.
+- Markdown decision/assumption records with rationale/alternatives, explicit state,
+  confidence/importance, supporting evidence, assumption/supersession relations,
+  recorded date and bounded before-edit/review checkpoints. Backlinks and graph
+  reuse typed canonical relations. Ordinary decision logs remain ordinary notes.
+- Direct dependency version warnings include missing/changed evidence and changed,
+  missing/disproved/superseded assumptions. Cached content fingerprints detect
+  external edits with unchanged frontmatter. Review never rewrites reasoning or
+  clears unresolved/disproved assumptions. Stale writes and failed saves report
+  errors while retaining drafts and prior checkpoints.
+
+Validation: 1,654 full tests pass (.local/research-full-final.log), including 11 new
+research tests. Analysis is clean (.local/research-analyze-final.log); strict format
+reports 470 unchanged files (.local/research-format.log); git diff whitespace checks
+pass. Coverage includes native restart/unknown metadata, original attachment bytes,
+state history, external edits with unchanged frontmatter, stale/self/mistyped links,
+read-only records, failed durable saves, malformed collection preservation, live
+embeds and board changes, and 360x740 forms/views at 160% text. An intermediate run
+failed newly added cases while source changes were still in progress; the current
+frozen-source full run passes. Windows release builds successfully
+(.local/research-windows-release-final.log). Web JavaScript release builds successfully (.local/research-web-release-final.log). Existing Google JSInterop Wasm dry-run and Cupertino font warnings remain; no Wasm, mobile release, signing or desktop-control acceptance is claimed. Updated Windows bundle: build/windows/x64/runner/Release/.
+
+Limits: manual membership (up to 5,000 entries), 50-row pages, four compared sources,
+100 links per record relation, 30 retained note checkpoints. Text filters commit on
+Enter. Previews are bounded; Open source retains full original content. No automatic
+board membership, external source monitoring, citation scraping or AI analysis.
+Existing note history restores title/body only, not research state fields. This
+is project record history rather than a complete workspace evolution timeline.
+
+Next suggested task: dependency-aware Gantt project timelines.
+
+---
+# Completed task — Creative reference capture and curation, 2026-10-09
+
+Status: complete.
+Authorized: a larger batch of drag/drop reference capture with linked attachments,
+editable captions and related curation. Scope CAN-02/03/05/08/14 and FILE-01/02/09,
+manual source-attribution subset of FILE-10. Required docs: spatial boards,
+attachments/research, feature map/backlog and implementation workflow. Preserve
+unknown data and unrelated work. No desktop control, remote preview fetching,
+execution, new dependencies or source-file modification.
+
+Implemented: owned canonical sources on creative-board drops and batch import
+from any Canvas; spaced preview cards with column membership/extension; placement
+captions, safe source URLs, tags and review states; bulk state changes, metadata
+search and linked reference-summary notes. Capture scene insertion and curation
+use existing Canvas undo. Failed imports are reported per file and saved sources
+remain available when placement or metadata enrichment fails.
+
+Validation: **1,643 full tests pass** (`.local/reference-full.log`), including seven
+new reference tests. Analysis is clean; strict formatting reports 465 files unchanged.
+Diff whitespace checks pass. Tests cover native restart and original bytes,
+column spacing/extension and lock/future guards, failed metadata enrichment with
+retained sources, mixed-success native-drop batches, caption editing and undo,
+frozen drop positions during pan, source URL validation, metadata search/summary
+links, and 360x740 dialogs at 160% text with malformed metadata. Existing normal
+Canvas diagram imports remain covered. Dialog controllers dispose with the route.
+Windows release and web JavaScript release compile (`.local/reference-windows-release.log`, `.local/reference-web-release.log`). Updated Windows bundle: `build/windows/x64/runner/Release/`. Existing Google JSInterop Wasm dry-run and Cupertino font warnings remain; no Wasm, mobile release, signing or desktop-control acceptance is claimed.
+
+Limits: up to 100 files per capture using existing incoming-file size checks.
+Reference URLs are manually supplied; no scraping, web preview or citation lookup.
+Capture undo removes placements while retaining owned sources. Summary notes are
+snapshots, not live queries. Archived is a placement label, not source deletion.
+No resumable capture job, automatic file deduplication or new media engine claimed.
+
+Next suggested task: reusable reference collections and project comparison views.
+
+---
+# Completed task — Connected creative projects and Canvas removal, 2026-10-09
+
+Status: complete.
+
+Authorized: visible deletion for the pictured Canvas sections/cards and connected
+creative-project boards with briefs, references and milestones. Scope CAN-02/03/14
+and the local creative-planning subset of GAME-01/03. Required docs: spatial boards,
+game development, feature map/backlog and implementation workflow. No desktop
+control, remote services, dependencies or new durable formats.
+
+Implemented:
+- Selected Canvas items have a visible Remove from canvas button. Right-clicking
+  inside a column/frame exposes removal while retaining the Add menu. Existing
+  read-only/lock guards and undo remain; removing a column detaches its children
+  and removing a placement preserves its canonical source object.
+- Notes folder > New Creative Project uses the optional brief form and creates a
+  linked brief, decision log, references board, production board, four real tasks,
+  task view and milestone view. Shared project scope is the brief UUID; cards and
+  Markdown links point to canonical IDs rather than copying source content.
+- Creative stages Explore/Decide/Produce/Review are stored as optional view
+  metadata; existing game milestone defaults remain compatible.
+- Validated repository saves preserve portable objects and recoverable history.
+  Duplicate project paths and unsafe names are rejected. Interrupted setup keeps
+  saved objects visible and reports incomplete setup; it is not an atomic batch
+  or an automatic resumable scaffold.
+
+Validation: **29 focused and 1,636 full tests pass** (`.local/creative-focused-final.log`,
+`.local/creative-full.log`). Analysis is clean; strict formatting reports 462 files
+unchanged. Diff whitespace checks pass. Tests cover native restart, duplicate
+protection, interrupted creation, configured stages, menu/button removal, child
+retention and undo. Project form labels distinguish creating a connected project
+from creating only a brief. A test-exposed context-menu overflow was fixed.
+Windows release and web JavaScript release compile (`.local/creative-windows-release.log`, `.local/creative-web-release.log`). Windows bundle: `build/windows/x64/runner/Release/`. Existing Google JSInterop Wasm dry-run and Cupertino font warnings remain; no Wasm support, mobile release, signing or desktop-control acceptance is claimed.
+
+Next suggested task: reference capture into creative-project boards using linked
+attachments and editable captions.
+
+---
+# Completed task — User feedback repairs and creative/code workflows, 2026-10-09
+
+Authorized: stale recent Vaults, template Canvas deletion, wider Markdown writing,
+local grammar quality, project briefs/creative planning (user-selected), and basic
+HTML/CSS/C++/JavaScript editing. Scope EDT-02/04/09/14, CAN-02/03, GAME-01/03.
+Required docs: Markdown editing, spatial boards, game development, feature map,
+backlog and implementation workflow. Preserve unrelated changes and portable
+formats. No desktop control, remote grammar, code execution or new dependencies.
+
+Implemented:
+- Prune confirmed missing/non-directory recent Vault paths, persisting removal and
+  clearing unavailable selections. Retain unavailable volumes, access failures and
+  unknown preference fields; no knowledge files are deleted.
+- Mark consumed Canvas presets so deleting their starter content stays deleted
+  after reopening. Placement deletion keeps object identity, undo and lock guards.
+- Wider writing defaults (1080 px), toolbar width presets (800/1080/1600/2000), and
+  Settings width range; existing saved widths remain unchanged.
+- Local English confidence filtering, repeated-word alignment fixes, better code
+  exclusion, half-open correction ranges, and stale-text/composition guards.
+- Preserve table cell drag selection by leaving within-block selection to native
+  editors rather than replacing the table subtree with document-selection chrome.
+- Optional creative-brief form, storyboard/playtest templates, and four code-note
+  starters. Expanded code draft editor supports syntax colors, search, wrapping,
+  indentation and native text undo; Apply checks source freshness and uses note save.
+  Light/dark syntax colors and HTML/language aliases use the existing highlighter.
+
+Validation: **67 focused and 1,631 full tests pass** (`.local/feedback-focused-final.log`,
+`.local/feedback-full-final.log`). Analysis is clean; strict formatting reports
+460 files unchanged. Diff whitespace and Canvas schema JSON parsing pass.
+Tests cover preference pruning/restart and unknown fields, preserved writing
+widths, grammar/Markdown exclusions, reversed indentation ranges, template deletion
+and reopening, draft source conflicts, creative form output, table drag selection,
+cross-block selection and dialogs at 360×740 with 160% text.
+Initial validation exposed table-selection reset and code-footer overflow; both
+were repaired and the final focused/full suites rerun successfully.
+**Windows release and web JavaScript release compile** (`.local/feedback-windows-release.log`,
+`.local/feedback-web-release.log`). Windows bundle: `build/windows/x64/runner/Release/`.
+Existing Google JSInterop Wasm dry-run and Cupertino font warnings remain; no
+Wasm support, signed installer, mobile build or desktop-control acceptance claimed.
+
+Limits: limited offline English rules, not a comprehensive multilingual grammar
+engine. The code workspace edits fenced snippets in notes, not arbitrary source
+files; no compiler/debugger/language server or execution. Creative checklists and
+briefs are editable Markdown, not automatically copied into canonical task objects.
+
+Next suggested task: creative-project scaffolding linking a brief, reference board
+and production milestones through existing object identities.
+
+---
+# Completed task — Future calendar occurrences and individual changes, 2026-10-09
+
+Authorized: future occurrences directly on the calendar with individual
+reschedule/cancel controls. Scope EVT-01–03 local recurrence projection/overrides.
+Required docs: calendar/events, task planning, feature map/backlog, ADR 0025,
+implemented formats and workflow. Preserve unrelated work; no desktop control,
+provider sync, dependencies or SQL migration.
+
+Implemented:
+
+- Read-only occurrence presentations with canonical UUID and stable ordinal keys
+  in month/week calendars, planning agenda and day/week timed grids. Repeats are
+  expanded once per visible range. Controls/coverage warnings remain accessible.
+- Change this occurrence: pick date/time with retained duration, cancel or restore
+  original schedule. Regular cadence/resources remain intact. Cancelled records
+  are listed in Repeat & history with Restore. Cross-window moves are included.
+- Guarded validated source commands, recoverable writes and undo; stale/failed
+  edits preserve schedules. Rule edits cannot reset processed count/anchor keys.
+  Unsupported/future override formats remain retained but cannot be edited.
+- Current occurrence completion records actual rescheduled dates/offset, advancing
+  by base cadence. Cancelled current occurrences require skipped recording. ICS
+  current snapshots apply supported current moves/cancellations, retaining UID.
+- Portable versioned overrides and [ADR 0026](../adr/0026-calendar-occurrence-projection.md),
+  no new identities or migrations. Native restart tests cover cancellation metadata.
+
+Validation: **32 focused and 1,622 full tests passed**
+(`.local/event-projection-focused-final.log`, `.local/event-projection-full-final.log`).
+Analysis is clean; strict formatting reports 456 files unchanged. Documentation
+links and diff whitespace pass. Coverage includes stable keys across advancement,
+cross-window moves, cancellation/restore, actual-date history, cancelled final
+occurrence, same-series overlap, stale/failed writes, undo, native restart and
+future-occurrence UI actions. **Windows release and web JavaScript release compile**
+(`.local/event-projection-windows-release.log`, `.local/event-projection-web.log`).
+Windows output: `build/windows/x64/runner/Release/orbit_note.exe` and adjacent
+bundle files. Existing Google JSInterop Wasm dry-run and Cupertino-font warnings
+remain. No signed installer, mobile build, Wasm support or desktop acceptance is
+claimed. Logs: `.local/event-projection-*`.
+
+Limits: projection visits at most 10,000 occurrences per series/window with visible
+warnings; at most 1,000 stored overrides. Paused series show current only, finished
+series retain the last schedule/override, with a cancelled final occurrence hidden.
+Clock gaps stop expansion with review
+feedback. Device timezone changes affect future local dates; no named-zone database,
+RRULE exchange, notifications, sync, drag/resize or historical occurrence editor.
+
+Next suggested task: explicit recurrence coverage and conflict review before
+applying whole-series schedule changes.
+
+---
+
+# Completed task — Rolling event recurrence, 2026-10-09
+
+Authorized: recurring events with occurrence history and device-clock handling.
+Scope: EVT-01–03 local subset. Required docs: calendar/events, feature map/backlog,
+ADR 0022, storage formats and workflow. No desktop control, provider adapter,
+package, migration or unrelated feature work.
+
+Implemented:
+
+- Event details in Calendar planning offer Repeat & history: daily/weekly/monthly/
+  yearly, interval, optional count/inclusive last-start date, pause and six-start
+  preview. The calendar shows the current occurrence on one canonical event.
+- Explicit completed/skipped actions append the original schedule, UTC action
+  time, rule snapshot and device offset, then advance once. Missed dates remain;
+  finished series retain their final dates. History shows the latest 100 records
+  without truncating storage (explicit limit 10,000).
+- All-day recurrence uses civil spans and anchored month-end clamping. Timed
+  recurrence uses device-local start clock with retained elapsed duration;
+  earlier/later repeated-hour choice is explicit, nonexistent clock times refuse
+  the entire save. Edit current time before retrying. No hidden fast-forward.
+- Existing guarded recoverable saves/undo protect against stale actions, failed
+  writes and read-only objects. Unknown metadata survives; unchanged future
+  formats remain editable outside unsupported recurrence controls.
+- [ADR 0025](../adr/0025-rolling-event-occurrences.md) records this same-object
+  rolling model. Portable format/spec/status updated; no SQL/envelope changes.
+
+Validation: **23 focused tests and 1,613 full regression tests passed**
+(`.local/event-repeat-focused-final.log`, `.local/event-repeat-full.log`). Analysis
+is clean; strict formatting reports 454 files with zero changes. Documentation
+links and diff whitespace pass. Native files/empty-index restart and unchanged
+future metadata edits are covered. Clock gap/overlap policy is tested with
+deterministic resolver fixtures; no manual device-timezone or desktop checks.
+Windows debug and web JavaScript release compile
+(`.local/event-repeat-windows-debug.log`, `.local/event-repeat-web.log`). Existing
+Google JSInterop Wasm dry-run and Cupertino font warnings remain; no Wasm,
+signed release or mobile build is claimed. Logs: `.local/event-repeat-*`.
+
+Initial Windows release attempts were blocked by Windows Application Control
+refusing Flutter's windows-x64-release/gen_snapshot.exe during aot_elf_release.
+After the owner's request to retry, **Windows release compiled successfully**;
+output: `build/windows/x64/runner/Release/orbit_note.exe`, with its adjacent bundle
+files. Evidence: `.local/event-repeat-windows-release-retry.log`. Earlier failure logs:
+`.local/event-repeat-windows-release.log` and
+`.local/event-repeat-windows-release-verbose.log`. The agent did not change security policy.
+
+Limits: current occurrence plus preview, no expanded future-occurrence calendar,
+per-instance overrides, named-zone database, RRULE exchange, provider sync or
+notifications. ICS remains a current-schedule snapshot. Device timezone changes
+affect subsequent repeats; actions use the saved rule, not unsaved form edits.
+
+Next suggested task: expanded future-occurrence calendar projection with stable
+occurrence keys and explicit per-occurrence reschedule/cancel choices.
+
+---
+
+# Completed task — Calendar and course planning expansion, 2026-10-09
+
+Owner authorized a substantial calendar update and linked course assignments/exam
+planning. Scope: STUDY-01 course planning subset, TASK-03–06, EVT-01–03 and local
+PORT export. Required docs: calendar/events, tasks/planning, study/university,
+feature map/backlog, storage/open formats, ADR 0022 and agent workflow. Preserve
+unrelated changes. No desktop control, dependency, cloud adapter or database migration.
+
+Implemented:
+
+- Calendar planning from Home/workspace toolbar, existing Calendar and course
+  dashboard. Timed day/week grids, civil-day headers, all-day/deadline rows,
+  overlap lanes, midnight clipping, accessible detail actions and distinct themed
+  exam/study colors. The existing month calendar and undoable moves remain.
+- Thirty-day agenda, selected-date navigation, Today, course/type/text filters,
+  completed toggle, unscheduled work queue, overdue count and explicit estimated
+  effort. Remember view saves versioned device-local filters/date; search stays
+  visible, future settings are retained and cannot be overwritten.
+- Editable assignment, exam, lecture, meeting and study-session presets on real
+  tasks/events: separate deadline/work date, priority, effort estimate, descriptions,
+  timed/all-day intervals, existing-resource picker and missing-source navigation.
+  Links have backlinks; changing event role retains identity and recorded context.
+- Linked study sessions from assignments/exams; exam context displays actual
+  course card workload through its date and opens Study & Review with that horizon.
+  Review due dates/ratings are never changed by choosing an exam. Existing repeat,
+  dependencies, completion and guarded undo are reachable from planning details.
+- Conflict details use actual timed intervals with exclusive ends, including
+  other courses in the current scope. All-day labels do not claim busy hours.
+  Device clock-change events explain elapsed duration; named-zone/RRULE remains later.
+- Filtered ICS export uses stable UUID UIDs, UTC timed dates, exclusive all-day
+  ends, VTODO deadlines/work dates, escaped text and UTF-8-safe 75-octet folding.
+  A schedule on/after its deadline uses X-ORBIT-SCHEDULED-DATE to retain both dates
+  without an invalid VTODO start/due interval. Export does not sync providers.
+- Validated portable calendarPlan metadata, guarded edits/creation, failure
+  feedback and retained unknown fields. Future metadata remains readable and
+  survives unrelated edits. Week navigation/friendly due labels use civil dates
+  rather than 24-hour arithmetic across DST. Narrow 200% controls scroll separately.
+
+Validation: **67 focused tests passed** (`.local/calendar-planning-focused-final.log`),
+including Home focus-session pause/resume with the expanded toolbar. Analysis is
+clean; strict formatting reports 450 files with zero changes. Documentation links
+and diff whitespace checks pass. **1,604 full regression tests passed**
+(`.local/calendar-planning-full-final.log`). Windows debug and web JavaScript
+release compile (`.local/calendar-planning-windows-debug.log` and
+`.local/calendar-planning-web.log`). Existing Google JSInterop Wasm dry-run and
+missing Cupertino font warnings remain; no Wasm, signed release, mobile build or
+desktop acceptance check is claimed. Logs use `.local/calendar-planning-*`.
+Coverage includes native JSON/Markdown/settings restart with an empty derived
+index, future metadata, write failures, stale edits, close during staged creation,
+backlinks, overlap lanes, overnight clipping, ICS Unicode and narrow text layouts.
+
+Limits: manual planning and explicit effort estimates; no inferred study plan,
+Google/Outlook integration, invitations, notifications, event RRULE series,
+named-zone ambiguity resolution, or hour-grid drag/resize. Existing calendar-day
+rescheduling remains available with previews/undo; precise times use the editor.
+The timed grid shows civil clock hours; a repeated hour may be drawn using elapsed
+length when its civil end precedes its start. Saved UTC instants remain authoritative.
+
+Next suggested task: event recurrence with explicit occurrence history and
+device-zone clock-change rules, before reminders or provider synchronization.
+
+---
+
+# Completed task — Study Resume, 2026-10-09
+
+Authorized: STUDY-04 manual course continuity, with CTX-08–11 subsets. Reuse
+existing device-local Space/view descriptors and canonical objects. No desktop
+control, AI inference, package or database migration. Required docs: Study and
+university, Home and work sessions, feature map/backlog, ADR 0022 and workflow.
+
+Implemented:
+
+- Course selector in Study & Review offers Continue studying: a user-written
+  next step, explicit save of open course tabs and reading/writing positions,
+  Resume course, live unfinished course tasks and uncertain material.
+- Device-local versioned Space extension retains UUIDs, revision/title metadata,
+  note cursor/scroll/collapse state, PDF page/zoom and Canvas cameras. It copies
+  no source bodies or bytes. Other tabs, appearance and layout remain intact.
+- Resume flushes drafts, skips deleted sources, falls back to an available tab,
+  resets changed-source offsets, and reloads already-open readers. Missing
+  attachment bytes use existing reader recovery. Nothing resurrects old content.
+- Related material explains same-course + explicitly uncertain provenance.
+  Dismissals survive launches until explicit reset, including across position
+  updates. Failed settings writes remain visible; future/invalid descriptors
+  cannot be overwritten by continuation saves.
+
+Validation: **1,590 full tests and 41 focused tests passed**. Analysis is clean;
+strict formatting reports 444 files with zero changes. Logs:
+`.local/study-resume-full-final.log`, `.local/study-resume-focused-final.log`,
+`.local/study-resume-analyze.log`, `.local/study-resume-format.log`.
+Focused tests cover persistence/restart, changed/deleted sources, write failures,
+future settings, PDF/Canvas state, unrelated tabs and narrow 200% text. Native
+settings round-trip also retains continuation/dismissals/unknown fields.
+
+Windows debug compiled in 19 seconds (`.local/study-resume-windows-debug.log`).
+Web JavaScript release compiled in 94.8 seconds (`.local/study-resume-web.log`).
+Existing Google JSInterop Wasm dry-run and missing Cupertino font warnings remain;
+Wasm support is not claimed. Specification/status/format links and diff whitespace
+checks pass (existing Git CRLF normalization warnings only). No desktop-control test,
+signed release, mobile build or cross-device acceptance is claimed.
+
+Limits: manual save, one continuation per course, within the existing 30-context
+limit. No automatic tracking, cross-device context sync, adaptive suggestions,
+or semantic relocation after source edits. A revised source resets view state.
+Next suggested task: course assignment/exam planning with linked study workload.
+
+---
+
+# Completed task — Study cards and offline review, 2026-10-09
+
+Owner authorized source-linked cards from notes/PDF highlights/OCR passages,
+offline scheduling/history, course and exam queues, explicit understanding states,
+portable export, editable cards and recoverable changes. STUDY-05 and the manual
+review-state subset of STUDY-03. No desktop control, account, external recognition,
+new dependency or separate study database. Preserve unrelated changes.
+
+Required docs: study/university specification, feature map/backlog, storage/open
+formats/universal objects, focused agent workflow and definition of done.
+
+Implemented:
+
+- Ordinary Markdown cards use the existing note title/body and stable UUID, with
+  validated versioned frontmatter schedules, source snapshots and full review
+  history. No database migration/new dependency. Unknown keys/unsupported versions
+  survive unrelated edits and export; invalid changes reject without writes.
+- Guarded durable creation/review/edit commands serialize with planning and Vault
+  closure. Failed writes, stale answers, early/paused ratings and clock rollback
+  do not advance a queue. Undo restores complete content/scheduling unless later
+  edits exist. Native before-file recovery retains the pre-review card.
+- Study & Review from Home/workspace/course dashboards offers due queues,
+  course/search filters, seven-day/exam-horizon workload, answer reveal, visible
+  Again/Hard/Good/Easy intervals, Space/1–4 keyboard controls, pause/resume,
+  editing, lazy card/history lists, refresh and JSON export. Narrow/enlarged text,
+  empty/error/read-only/stale/closed-Vault states use existing dialog components.
+- Note selections, PDF highlight/quote notes and recognized passages make cards
+  with captured source UUID/revision/time/passage and optional page/checksum.
+  OCR bytes are verified before creation; oversized passages are refused rather
+  than silently cut. Source backlinks and inspector mentions find cards. PDF
+  navigation returns to the recorded page. Missing/changed sources retain evidence.
+- Markdown and equation answers render using existing parsers. Images retain
+  text descriptions; open the original source for media. Understanding is an
+  explicit uncertain/learning/understood state on material, never inferred from
+  a review rating. Original note/attachment bytes are not rewritten by cards.
+
+Limits: fixed UTC intervals, not adaptive memory predictions. Exam horizon is
+temporary workload UI state; it does not schedule early reviews or automatic
+exam plans. Refresh updates clock-only due changes. 2,000 question characters,
+100,000 answer/source-passage characters, 500 course characters, 10,000 reviews
+per card; history is never silently truncated. JSON is archival interchange,
+without a dedicated re-import/Anki adapter. Existing Vault backups preserve cards.
+No new Study Resume, Canvas learning-map renderer, cloze/image occlusion,
+notifications or production signing is claimed. See
+[ADR 0024](../adr/0024-portable-study-cards.md) and
+[formats](../architecture/implemented-formats.md).
+
+Validation: **1,585 full Flutter tests passed** (`.local/study-full-final.log`).
+**67 focused checks passed** (`.local/study-focused-final.log`), including source
+backlinks, actual OCR-byte mismatch, PDF page return, unknown/future metadata,
+review timing/caps, failed writes/retry, concurrent ratings/creation, Vault closure,
+restart/index rebuild, trash/restore, understanding independence, equation answers,
+keyboard review and compact 200% text. Native Markdown/recovery acceptance also
+passed independently (`.local/study-native.log`). Analysis has zero issues and
+strict formatting checks 441 files with zero changes (`.local/study-analyze.log`,
+`.local/study-format.log`). Documentation links/diff checks pass. No desktop
+control or system setting changes used.
+
+Windows **debug build passes** (`.local/study-windows-debug.log`), producing
+`build/windows/x64/runner/Debug/orbit_note.exe`. Web **release build passes**
+(`.local/study-web.log`), producing `build/web`. The existing Wasm dry-run warning
+in google_identity_services_web and missing Cupertino font warning remain; no
+Wasm or signed Windows release claim is made. Real-device acceptance and Android/
+iOS builds were not run for this task. Existing platform save adapters report
+unsupported export operations; owning Markdown/Vault backup remains portable.
+
+Status: scoped implementation, automated acceptance and Windows/web compilation
+complete. Suggested next task: Study Resume Context (STUDY-04),
+restoring course reading/writing positions and unfinished work with missing-source
+recovery and explained/dismissible related material.
+
+---
+# Previous task — Local OCR and recognition review, 2026-10-09
+
+Owner authorized all five OCR outcomes: offline PDF/image recognition, unified
+search/source navigation, linked passage notes, review/corrections and background
+progress/pause/cancel/retry with source invalidation. FILE-08 plus FILE-05/09.
+Required docs: attachment/research spec, feature map/backlog, search/storage/open
+formats/object model, agent workflow and definition of done. No desktop control,
+remote recognition, new accounts or system security changes; preserve unrelated edits.
+
+Implemented:
+
+- Windows Media OCR runs on one background worker with window-thread result
+  delivery, using installed profile languages and image bytes only. PDFium renders
+  serial bounded PNGs; copying-restricted PDFs refuse. Missing languages/unsupported
+  decoders/platforms have explicit failures. No new package, network or subprocess.
+- Portable versioned file metadata retains original recognized text, normalized
+  line regions and optional corrections, bound to actual SHA-256/path. Validated
+  recoverable saves reject stale objects/sources. Original bytes/UUIDs stay intact;
+  unknown sibling/page keys and unsupported records survive unrelated edits.
+- Shared search overlays verified OCR on blank PDF pages/images; explicit
+  corrections override native text. Raw property search excludes OCR to prevent
+  stale evidence leaking through metadata. Restart/cache rebuild reconstruct OCR
+  search. Changed sources remove old matches and retain evidence for review;
+  recognize again stages complete replacement, keeping same-source corrections.
+- PDF/image matches mark source lines after displayed-byte verification. Corrected
+  text returns to its page without claiming exact regions. Selected passages create
+  ordinary Markdown notes with UUID page links/checksum provenance; PDF notes reuse
+  connected-note/source navigation. No confidence score is fabricated.
+- Search scanner, PDF Document tools and image preview open a scrollable review
+  panel with serial bulk recognition, progress, pause/resume, cancel, failure/retry,
+  correction save/reset and passage extraction. Panel close leaves work running;
+  Vault close/switch cancels and waits before repository teardown.
+
+Limits: new recognition is Windows-only; other platforms read/search saved text
+and edit corrections. Language/codec support follows Windows; there is no automatic
+language detection or installation. Printed text works best; handwriting, equations,
+columns, rotation/EXIF fidelity are not guaranteed. Geometry marks lines, not glyphs.
+100 MiB source, 500 pages, 2 Mi UTF-16 characters including corrections, 20,000
+lines per record; raster long edge 2,600px, original image guard 100MP. Cancellation
+finishes the current page; only complete files commit. Interrupted jobs restart
+explicitly. Changed sources require explicit re-recognition to replace evidence.
+No redaction, semantic reflow or equation conversion is implied.
+
+Validation: **1,560 full Flutter tests passed** (`.local/ocr-full-final.log`),
+including future-format preservation, cache rebuild from portable records,
+correction/native-text precedence, stale edits/bytes, failed writes and cancellation.
+Earlier 41 focused OCR/search and 21 OCR/native-PDF checks passed
+(`.local/ocr-focused.log`, `.local/ocr-native-flutter.log`). Analysis and strict
+formatting are clean across 436 files (`.local/ocr-analyze.log`,
+`.local/ocr-format-check.log`). Native shipping-engine C++ compiles with /W4 /WX,
+recognizes the generated ORBIT image and rejects corrupt bytes
+(`.local/ocr-native-compile-strict.log`, `.local/ocr-native-run.log`,
+`.local/ocr-native-corrupt.log`). Real PDF rendering/recognized-page navigation
+has headless Flutter acceptance; no desktop control used.
+
+Windows **debug build passes** (`.local/ocr-windows-debug-final.log`), producing
+`build/windows/x64/runner/Debug/orbit_note.exe`. Initial generated-toolchain failures
+were resolved with project-local plugin junctions and restoration of SDK wrapper
+sources. A stale clipboard bridge messenger API was corrected alongside the new
+OCR channel. No Developer Mode, Application Control or other system settings changed.
+Web release builds (`.local/ocr-web.log`); its Wasm dry run reports a dependency
+JS-interop runtime-check incompatibility in google_identity_services_web, and the
+existing Cupertino font warning remains. No Wasm compatibility is claimed.
+Changed documentation links and diff checks pass (existing Git line-ending
+normalization warnings remain). See
+[ADR 0023](../adr/0023-local-ocr-evidence.md) and [formats](../architecture/implemented-formats.md).
+Status: Windows-first implementation/automated acceptance complete. Signed/release
+packaging, real-device/runtime acceptance and other-platform OCR engines are
+separate; no production release artifact is claimed. Suggested next task:
+Android-local recognition using the same portable evidence/review contracts.
+
+---
+# Previous task — Smart Views, Spaces and advanced planning, 2026-10-08
+
+Owner authorized priorities 1, 2 and 3 together: shared validated saved queries
+and a visual builder; named Spaces/layouts and configurable dashboards; recurring
+task occurrences/history, dependency/subtask validation and undoable rescheduling.
+Build on current views, embeds, session state and canonical task objects.
+
+Required docs: features/collections-and-views.md, features/customization-and-spaces.md,
+features/tasks-calendar-and-planning.md, features/calendar-and-events.md,
+architecture/ui-layout.md, architecture/universal-object-model.md,
+architecture/implemented-formats.md, development/agent-workflow.md and
+development/definition-of-done.md. Backlog IDs: VIEW-01/02/03/06/07/10,
+LAY-03/04/05/10, TASK-06/07/09 and EVT-03 (rescheduling subset).
+
+Plan: unify query evaluation before composing contexts/dashboard widgets; add
+validated planning rules and UI; verify restart/unknown-data/read-only/stale/undo
+boundaries and accessible layouts; update formats/architecture and delivery evidence.
+No new cloud/OCR/AI work, arbitrary docking, reminders or external providers.
+No desktop-control testing. Existing unrelated edits remain intact.
+
+Implemented:
+
+- Versioned shared AND/OR queries with property/tag/date/number/relation-ID filters,
+  sort/group/custom columns and an editable visual builder. List/table/board/gallery
+  build visible rows lazily; calendar/timeline project recorded dates. Cells and
+  board moves edit canonical objects. Rename/duplicate reuse definitions; note
+  embeds retain shared sort, Home widgets and Canvas previews resolve the same IDs.
+  Canvas redraws on status/query membership/failure changes without scene edits.
+- Device-local named Spaces/layouts with save/switch/update/rename/duplicate/remove,
+  independent tab/pane/position/camera/search/dashboard state, project/folder scope
+  and optional appearance. All-Vault restores the prior context. Home widgets have
+  add/remove/order/column-span customization with apply/cancel and default reset.
+  Missing/unknown records remain recoverable and content stays in place.
+- Task recurrence with civil daily/weekly/monthly/yearly dates, month-end anchor,
+  same-ID occurrence history and explicit missed-date behavior. Multiple blockers
+  and parent/subtask IDs reject new invalid targets/cycles. Legacy unsupported or
+  unresolved unchanged data survives unrelated edits. Calendar month/week drag,
+  agenda and timeline date-picker moves preview fields, preserve event duration and
+  separate task dates, then save through guarded recoverable commands with undo.
+- Save failures release command locks, concurrent completion cannot duplicate an
+  occurrence, flush/close wait for writes, and undo refuses later edits. Controls
+  fit narrow/landscape and 250% text layouts. Existing Home continuation remains
+  reachable by scrolling. All testing is automated; no desktop control was used.
+
+Formats/architecture: additive metadata and device descriptors only, no schema
+migration or rewriting old sources. [ADR 0022](../adr/0022-smart-views-spaces-and-task-planning.md)
+and [implemented formats](../architecture/implemented-formats.md) describe authority,
+versions, limits and compatibility. Full roadmap IDs remain broader than this batch.
+
+Limits: queries materialize bounded definitions/results in memory; Canvas embeds
+preview and open the full saved view; gallery uses recorded text. Nested predicate
+trees, query-prefilled creation, arbitrary docking/multi-window/portable context
+import, RRULE/named-zone recurrence, reminders, automatic dependency propagation,
+formulas/Gantt/AI and provider calendars remain separate. Quick undo is session-local;
+repository history persists. Device contexts remain excluded from portable backups.
+
+Validation: 60 focused tests passed (.local/productivity-focused.log), including
+restart/unknown formats, stale/failed writes, serialization, same-object edits,
+recurrence/DST civil dates/undo, lazy tables, drag, embeds and large-text layouts.
+Static analysis and strict formatting are clean across 428 files. Web release
+compilation and its Wasm dry run passed (.local/productivity-web.log); the existing
+Cupertino font warning remains. Windows release reached native AOT, then host
+Application Control blocked Flutter's gen_snapshot compiler executable
+(.local/productivity-windows-verbose.log). Security settings were not changed.
+**1,540 full Flutter tests passed** in the isolated final run
+(.local/productivity-full.log). The first parallel attempt lost a generated SQLite
+test DLL to the native build; assets were regenerated after builds finished and
+both storage migration/rebuild tests then passed. Original Vault files were
+unaffected. Documentation links and diff checks pass; existing Git line-ending
+normalization warnings remain. No native release artifact is claimed.
+
+Status: scoped implementation and automated acceptance complete. Windows release
+validation remains blocked by the host compiler policy above; mobile/browser
+runtime acceptance and the separately scoped roadmap features are not claimed.
+Suggested next task: local OCR for scanned PDFs with honest search coverage.
+
+---
+# Previous task — Complete PDF workspace search, 2026-10-08
+
+Scope: implement PDF text search alongside notes, tasks, and Canvas; page-level
+excerpts and verified exact-match navigation; filters before pagination;
+background progress, failures and incomplete coverage; checksum-bound safe
+reindexing. User authorized the complete batch. Relevant backlog: LNK-01,
+LNK-02, LNK-08, LNK-12 and FILE-08 (text-based PDFs, not OCR).
+
+Required docs: architecture/search.md, architecture/references.md,
+features/search-links-and-graph.md, features/attachments-and-research.md,
+development/agent-workflow.md. Originals and stable object identity remain
+authoritative. No desktop-control testing. Disposable cache only, with old
+workspace migration/rebuild evidence.
+
+Implemented:
+
+- One serial background PDF worker per Vault, initialized independently of the
+  reader, with repository-owned reads and a disposable versioned page-text cache.
+  Native schema 3→4 preserves existing FTS/objects; browser cache is session memory.
+- Page excerpts join notes, tasks, metadata and live Canvas locations. Repeated
+  occurrences highlight the correct excerpt range and open their exact page/text.
+  Controller/reader both verify source bytes; progressive pages load before range
+  mapping. Changed bytes reload an already-open reader. Clear match is reversible.
+  Only page navigation is saved; offsets remain transient.
+- Complete native/memory candidates and global locations replace the first-100
+  cutoff. Filters and sorting precede 50-row lazy pagination, with totals and
+  previous/next actions. Background refresh preserves the selected destination.
+- Coverage shows pending/page progress, pause/resume, failed PDFs with retry,
+  no-text/scanned pages and partial text coverage. Cache failures retain session
+  search and report the warning. Original files remain accessible on failure.
+- Actual hashes verify cache reuse and pre/post extraction. Partial work is never
+  searchable. Watch events invalidate immediately; focus/reload catch missed
+  events. Relink/deletion/pause/close cancel obsolete publication/navigation.
+- Behavior tests cover source races, original-byte/metadata preservation, cache
+  restart/rebuild/corruption/migration, limits, progress/retry/coverage, filters
+  beyond 100, pagination/keyboard selection, large-text layouts and real PDF ranges.
+
+Limits: OCR, password retention, collection/Space scope and database cursor paging
+are not delivered. Sources above 100 MiB and extracted text above 32 Mi characters
+fail visibly. Complete query results/text remain materialized in memory. Other
+device/browser runtime acceptance is separate from native automated checks.
+
+Validation: **66 focused tests passed** (.local/pdf-search-focused.log), including
+real PDFium extraction/range navigation and initialization before a reader opens.
+**1,512 full Flutter tests passed** (.local/pdf-search-full.log). Static analysis
+is clean (.local/pdf-search-analyze.log); strict formatting is clean across 417
+files. The final legacy filename-only PDF routing adjustment passed focused tests
+and analysis after the full-suite run. No desktop-control testing was used.
+
+Windows release compilation reached native AOT, then Windows Application Control
+blocked Flutter's compiler executable (.local/pdf-search-windows-verbose.log).
+Generated plugin junctions use the existing documented local build workaround;
+Windows security settings were not changed. **Web release compilation passed**
+using the existing short-SDK-path environment (.local/pdf-search-web-short-path.log),
+including its Wasm dry run. The existing Cupertino font warning remains; this is
+compile evidence, not browser/mobile runtime acceptance. Documentation links and
+`git diff --check` passed, with existing line-ending normalization warnings only.
+
+Status: feature implementation and automated acceptance complete; release build
+validation has the host-policy limitation above.
+Suggested next task: local OCR for scanned PDFs, with explicit coverage and the
+same source-version guards.
+
+---
+# Previous task — Note link picker accessibility and layout, 2026-10-08
+
+Scope: audit the note link picker at narrow widths, enlarged text, and keyboard
+insets. Required context: UI layout and search/link feature contracts. Preserve
+title/alias matching, exact object identities, insertion/repair, and cancellation.
+Use widget tests without desktop control.
+
+Implemented:
+
+- Replaced fixed-size content with the shared scrolling Orbit dialog: heading,
+  query, result status, and variable-height lazy rows share a scroll surface;
+  Cancel remains reachable in the separate footer.
+- Full titles, stable IDs, and aliases wrap. Same-title targets remain distinct
+  and use stable ID as a deterministic title-sort tie-breaker.
+- Arrow keys reveal measured row geometry, including tall-row beginnings; Enter
+  chooses the current selection among multiple matches. Modified arrows retain
+  native text-editing behavior. Repeated Enter cannot complete the dialog twice.
+- Query changes and accessible Clear reset selection/scroll; Clear restores
+  search focus. Empty results cannot select a target. Reveal requests cancel on
+  query changes, row focus changes, and disposal.
+- Result rows merge button, selected state, full label, and activation semantics.
+  Tab/Space activation preserves focus across selection changes. Result counts
+  expose live-region semantics. Dialog motion follows the Orbit motion preference.
+- Added 11 cases for 250% text at portrait/landscape widths, keyboard insets,
+  long titles/IDs/aliases, 30 lazy rows with forward/backward selection,
+  alias search/clear, duplicate titles, exact returned targets, initial queries,
+  modified arrows, repeated Enter, cancellation, and empty states.
+
+Validation: **32 focused tests passed** (.local/note-link-layout-focused.log).
+Formatting and strict formatting are clean across 408 files. Static analysis is
+clean (.local/note-link-layout-analyze.log). **1,476 full Flutter tests passed**
+(.local/note-link-layout-full.log). `git diff --check` passed with existing
+line-ending normalization warnings only.
+No desktop-control testing or platform release build is part of this layout task.
+
+Status: complete.
+Suggested next task: unresolved-link repair dialog accessibility and layout.
+
+---
+
+# Previous task — Quick Switcher accessibility and layout, 2026-10-08
+
+Scope: audit Quick Switcher at narrow widths, enlarged text, and keyboard insets.
+Required context: UI layout and search/link feature contracts. Preserve ranking,
+local object destinations, and create-note commands. Use widget tests without
+desktop control.
+
+Implemented:
+
+- Full titles, context, and create-note labels wrap into variable-height lazy
+  rows. Badges stack below labels at narrow widths or enlarged text sizes.
+- Search and accessible Clear/Close controls remain visible above scrolling
+  results, empty state, and shortcut hints; short windows and keyboard insets
+  do not push dismissal controls out of reach.
+- Arrow selection reveals actual row geometry, including the beginning of rows
+  taller than the viewport. Query changes and clearing reset selection/scroll;
+  obsolete reveal requests cancel on query changes, hover, or disposal.
+- Result rows expose button/selected semantics and support Tab with Space/Enter
+  activation. Focus survives selection changes; modified arrows retain native
+  text-editing behavior. Enter repeats cannot issue duplicate open/create actions.
+- Ranking, exact-match/create behavior, cached results, stable identities, and
+  distinct PDF/file/LaTeX context remain intact.
+- Added 11 widget cases for 250% text in portrait/landscape, keyboard insets,
+  long labels/context/badges, 30 lazy results, backward navigation, query/clear
+  resets, accessible keyboard activation, modified arrows, empty states, and
+  duplicate creation prevention.
+
+Validation: **22 focused tests passed** (.local/quick-switcher-layout-focused.log).
+Static analysis is clean (.local/quick-switcher-layout-analyze.log). Formatting
+and strict formatting are clean across 407 files. **1,465 full Flutter tests
+passed** (.local/quick-switcher-layout-full.log). `git diff --check` passed with
+existing line-ending normalization warnings only.
+No desktop-control testing or platform release build is part of this layout task.
+
+Status: complete.
+Suggested next task: narrow-window and enlarged-text audit of the note link picker.
+
+---
+
+# Previous task — Large-text workspace search and command palette, 2026-10-08
+
+Scope: audit workspace search, previews, saved-search dialogs, and command palette
+at narrow widths, enlarged text, and keyboard insets. Required context: UI layout,
+search composition, and search/link feature contracts. Use widget tests without
+desktop control; preserve bounded search coverage, recipes, and precise locations.
+
+Implemented:
+
+- Search keeps the query field visible while filters, counts, status messages,
+  and lazy results share a scroll surface. Results use actual wrapping heights;
+  full titles, metadata, excerpts, and long filter values remain readable.
+  Preview actions stack beneath result text when width/scaling requires it.
+- Keyboard selection reveals measured lazy-row geometry rather than fixed scaled
+  heights. Query changes/disposal cancel old reveal requests; filter changes
+  reset selection/scroll position. Index limits and sorting/ranking are unchanged.
+- Narrow preview dialogs scroll full headings/context/excerpts with separate
+  Close/Open actions. Wide preview headings/content scroll together, keeping Open
+  reachable in short windows. Source locations and selection-only previews remain
+  unchanged.
+- Save/manage dialogs use shared Orbit scrolling content and action footers.
+  Long recipe names/queries and validation wrap; removal/undo preserves unrelated
+  and unknown recipe metadata. Start-screen section actions wrap.
+- Palette search and Close remain visible while type filters, grouped entries,
+  and shortcut help scroll. New-note shortcut text sits below its label; selected
+  entries reveal their beginning, including rows taller than the viewport.
+  Query/type changes reveal the reset selection; command/navigation behavior stays
+  intact.
+- Added 13 cases at 250% text for portrait/landscape windows, keyboard insets,
+  long filters/titles, 25 lazy results, exact-source previews, error/empty states,
+  saved-search removal/undo, validation/cancellation, palette navigation/close,
+  and a short wide-preview layout.
+
+Validation: **37 focused tests passed** (`.local/search-layout-focused.log`).
+**1,454 full Flutter tests passed** (`.local/search-layout-full.log`). Static
+analysis is clean (`.local/search-layout-analyze.log`); formatting and strict
+formatting are clean across 406 files. `git diff --check` passed with existing
+line-ending normalization warnings only. No desktop-control testing or platform
+release build was used for this layout batch.
+
+Status: complete.
+Suggested next task: narrow-window and enlarged-text audit of Quick Switcher.
+
+---
+
+# Previous task — Large-text object properties and relations, 2026-10-08
+
+Scope: audit object properties, edit forms, relation references/tabs, and local
+graph controls at narrow widths and enlarged text. Required context: UI layout
+and universal object identity/property/relation contracts. Use widget tests
+without desktop control; preserve property types, unknown data, and destinations.
+
+Implemented:
+
+- Property rows stack labels/removal above values when width/text size requires
+  it. Full names, values, IDs, dates, URLs, and long tags wrap; boolean/tag/removal
+  controls have usable targets without clipping the switch.
+- Relation headings/tabs wrap with selected semantics; source titles, precise
+  reference badges, matched text, and snippets remain readable. Unlinked mention
+  actions sit below source headings, preserving the validated link command.
+  Outbound/related object rows opt into wrapping titles.
+- Local graph statistics, hop controls, and hover details wrap within the panel.
+- Property forms use the shared scrolling Orbit dialog and separate action
+  footer. Type choices have variable heights, validation messages wrap fully,
+  and one content scroll surface keeps controls reachable in short windows.
+  Text controllers dispose when their dialog route unmounts.
+- Stored dates outside the date picker's 2000–2100 range open safely; cancellation
+  preserves the original value.
+- Added 11 cases covering 280-pixel inspectors at 250% text in portrait/landscape,
+  unknown metadata preservation, typed updates/removal, source navigation,
+  outbound labels, unlinked conversion, validation/cancellation, keyboard insets,
+  local graph controls, and legacy dates. Existing inspector interaction tests
+  wait for scroll layout before tapping the now-variable-height content.
+
+Validation: **17 focused tests passed** (`.local/inspector-large-text-focused.log`).
+**1,441 full Flutter tests passed** (`.local/inspector-large-text-full.log`).
+Static analysis is clean (`.local/inspector-large-text-analyze.log`); formatting
+and strict formatting are clean across 405 files. `git diff --check` passed with
+existing line-ending normalization warnings only. No desktop-control testing or
+platform release build was used for this layout batch.
+
+Status: complete.
+Suggested next task: narrow-window and enlarged-text audit of workspace search
+and command palette results/actions.
+
+---
+
+# Previous task — Large-text PDF navigation and Canvas search, 2026-10-08
+
+Scope: audit PDF outline, saved pages/name editing, custom zoom, and Canvas search
+at narrow widths, enlarged text, and keyboard insets. Required context: UI layout,
+attachments/research navigation contracts, and spatial board interaction rules.
+Use widget tests without desktop control; preserve native scaling and lazy lists.
+
+Implemented:
+
+- PDF outline and bookmark labels/context wrap in variable-height lazy rows.
+  Their heading, search/sort controls, and list share one scroll surface, keeping
+  Close/Open page in the footer. Bookmark preview sits before the list so it is
+  reachable without traversing every bookmark; page IDs and destinations are unchanged.
+- Keyboard selection reveals measured row geometry rather than assuming a fixed
+  row height. Superseded/disposed reveal requests stop; tall rows reveal their top.
+  Existing outline keyboard coverage now waits for the final layout/reveal frame.
+- Bookmark rename help/failure feedback and zoom validation wrap completely.
+  Failed names remain editable; unavailable pages still cannot be opened.
+- Canvas search fits the actual board viewport. Search/navigation/close controls
+  stay above a bounded scroll surface containing wrapping categories and lazy
+  results. Full titles/snippets wrap; controls have larger targets, and active
+  results reveal themselves when navigating or changing categories/results.
+- Added 10 portrait/landscape cases at 250% text, including long headings, keyboard
+  traversal, absent pages, rename failure, zoom validation, search result selection,
+  and active Canvas search with 240/80-pixel keyboard insets.
+
+Validation: **43 focused tests passed** (`.local/navigation-large-text-focused.log`).
+**1,430 full Flutter tests passed** (`.local/navigation-large-text-full.log`).
+Static analysis is clean (`.local/navigation-large-text-analyze.log`); formatting
+and strict formatting are clean across 404 files. `git diff --check` passed with
+existing line-ending normalization warnings only. No desktop-control testing or
+platform release build was used for this layout batch.
+
+Status: complete.
+Suggested next task: narrow-window and enlarged-text audit of object properties
+and relation inspector controls.
+
+---
+
+# Previous task — Large-text PDF and Canvas panels, 2026-10-08
+
+Scope: continue the accessibility batch through PDF connected notes/review and
+Canvas layers/card inspectors. Required context: UI layout, attachments/research,
+and spatial board specifications. Use widget tests without desktop control.
+
+Implemented:
+
+- Panel headings and actions stack at narrow widths or enlarged text sizes.
+- PDF review filters wrap; review item controls move below their text. Connected
+  note titles and source-version warnings wrap without truncation. Citation drag
+  feedback bounds long titles while preserving the existing drag payload.
+- Canvas layer headings, labels, badges, and controls reflow. The heading and lazy
+  layer list share one scroll surface; Close, Show All, and Unlock All stay in the
+  footer. Selection, visibility, locking, and stacking commands retain their behavior.
+- Canvas card inspectors fit the actual Canvas viewport, including their full
+  height. Type labels wrap, action targets are enlarged, and the title, source
+  warning, details, and footer actions scroll together below the inspector controls.
+- Added 10 portrait/landscape widget cases at 250% text for panel actions, stale
+  citation safeguards, connected-note search/Enter and citation drag feedback,
+  layer visibility/locking/recovery commands, and task/reference actions.
+
+Validation: **52 focused tests passed** (`.local/panel-large-text-focused.log`);
+**1,420 full Flutter tests passed** (`.local/panel-large-text-full.log`).
+`flutter analyze` is clean (`.local/panel-large-text-analyze.log`); formatting
+and strict formatting are clean across 403 files. `git diff --check` passed
+with existing line-ending normalization warnings only. No desktop-control
+testing was used; no platform release build was requested for this batch.
+
+Status: complete.
+Suggested next task: enlarged-text audit of PDF navigation dialogs and Canvas search.
+
+---
+
+# Previous task — Large-text history, backup, and settings batch, 2026-10-08
+
+Scope: audit document history, backup/recovery review, and settings dialogs
+together. Required context: history/recovery feature spec and UI layout contract.
+Use widget tests rather than desktop-control testing; preserve native text scaling.
+
+Implemented:
+
+- Shared Orbit dialogs scroll their headings and content together, with smaller
+  narrow-window insets and footer actions outside the scroll surface.
+- History uses stacked panes on narrow windows or at enlarged text sizes, with
+  bounded revision/diff viewports, wrapping labels and mode controls, and Close.
+  Snapshot label editing owns/disposes its controller and avoids updates after exit.
+- Recovery files show wrapping paths and retain independent bounded list/preview
+  viewports. Export still preserves the retained bytes without changing the source.
+- Backup review lists every validation notice before the folder-picker decision.
+  Cancel/Choose folder remain separate, explicit actions.
+- Settings dropdowns move below their labels when needed, support wrapping menu
+  values, and preserve preference changes. Analytics, sync headings, badges, motion
+  controls, theme previews, swatches, and corner controls reflow with enlarged text.
+- Theme gallery/generator secondary tools live in scrolling content so they cannot
+  crowd out the preview or Close/Cancel/Apply. Color and theme confirmation dialogs
+  scroll headings and content; keyboard insets retain access to color actions.
+
+Validation: 12 new widget cases cover 320×640 portrait and 568×320 landscape at
+250% text, all backup notices and both choices, snapshot selection/preview and
+restore cancellation, byte-preserving recovery export, settings persistence,
+gallery/export/generator/import reflow, 320% snapshot editing with a 240-pixel
+keyboard, and color validation/apply with keyboard insets. **82 focused tests
+passed** (`.local/dialog-large-text-focused.log`); **1,410 full Flutter tests
+passed** (`.local/dialog-large-text-full.log`). `flutter analyze` is clean
+(`.local/dialog-large-text-analyze.log`); formatting and strict formatting are
+clean across 402 files. `git diff --check` passed with existing line-ending
+normalization warnings only. No desktop-control testing was used.
+
+Status: complete.
+Suggested next task: large-text accessibility audit of PDF and Canvas side panels.
+
+---
+
+# Previous task — Recovery dialog font scaling and overflow, 2026-10-08
+
+Audited recovery at 320×640 portrait and 568×320 landscape with 250% text,
+high contrast, long staged filenames/paths/checksums, and paginated history.
+The tests reproduced horizontal overflow in pagination and vertical overflow
+in the fixed title. The recovery dialog now scrolls its title and content as
+one surface while keeping Close/Cancel outside the scroll area. Pagination
+wraps its page label between fixed navigation buttons. Both the main dialog
+and the cleanup confirmation use 16-pixel outer insets; confirmation content
+scrolls and its actions stack with spacing when necessary.
+
+A further regression changes text size to 320% and opens a 240-pixel keyboard
+inset during verification. The operation, progress, and cancellation callback
+survive the layout change; the cancel action stays visible above the keyboard.
+No font scaling is clamped and no authored source text is truncated.
+
+Validation: **7 recovery widget tests passed**, **1,398 full Flutter tests
+passed** (`.local/recovery-font-scale-full.log`), `flutter analyze` clean, and
+strict formatting clean across 400 files. `git diff --check` passed with existing
+line-ending normalization warnings only. No desktop-control testing was used.
+
+Status: complete.
+Suggested next task: large-text accessibility audit of document history,
+backup/restore, and settings dialogs.
+
+---
+
+# Release build attempt — Windows and Android, 2026-10-08
+
+The requested local release builds were attempted from the current worktree.
+The Windows build stopped at Flutter's plugin symlink prerequisite because
+Windows Developer Mode is disabled. The Android release build stopped before
+Gradle because no Android SDK is installed or configured; both `ANDROID_HOME`
+and `ANDROID_SDK_ROOT` are empty. No release artifact was produced by either
+command. After enabling Developer Mode and installing/configuring the Android
+SDK (with a supported JDK), rerun the documented release commands.
+
+Commands attempted:
+
+- `flutter build windows --release --no-pub --dart-define-from-file=.local/google-build.windows.json`
+- `flutter build apk --release --no-pub`
+
+---
+
+# Previous task — Recovery dialog theme-surface contrast audit, 2026-10-08
+
+The recovery dialog now hardens the active color scheme before rendering its
+content. Custom palettes with unreadable `onSurface`, `onSurfaceVariant`,
+`outline`, or `primary` values receive deterministic black/white fallbacks
+that meet the appropriate WCAG threshold while preserving the user's surface
+color. The dialog's high-contrast boundaries, larger controls, and
+reduced-motion behavior remain enabled on top of that fallback.
+
+Added a widget regression that exercises the dialog with light, dark, and a
+deliberately low-contrast custom palette. The focused recovery suite passes 47
+tests; the full Flutter suite passes 1,395 tests.
+
+Status: implementation complete; next implementation task: recovery dialog
+font-scale and text-overflow audit across compact and large accessibility
+settings.
+
+---
+
+# Previous task — Recovery dialog high-contrast and reduced-motion audit, 2026-10-08
+
+The recovery dialog now adapts its visual treatment to accessibility settings.
+High-contrast mode adds a stronger dialog outline, source-card boundaries,
+larger action hit targets, and a thicker progress bar using the active color
+scheme. Reduced-motion mode disables progress ticker animation while retaining
+the live percentage and status updates. These changes preserve the existing
+keyboard and screen-reader behavior.
+
+Added a visual regression covering high-contrast boundaries and reduced-motion
+progress behavior. The focused recovery suite now passes 46 tests; the full
+Flutter suite passes with 1,394 tests. `flutter analyze`, strict formatting,
+and `git diff --check` are clean.
+
+Status: implementation complete; next implementation task: recovery dialog
+theme-surface contrast audit across light, dark, and custom palettes.
+
+---
+
+# Previous task — Recovery dialog accessibility and keyboard feedback, 2026-10-08
+
+The attachment recovery dialog now exposes a named semantic route, announces
+source-history page changes and recovery progress, groups each staged or
+retained source with its identifying details, and keeps the action order
+keyboard traversable. Escape cancels an active operation or closes an idle
+dialog. Ctrl+Page Up/Down changes history pages, and cancellation immediately
+announces that sources remain preserved while disabling repeat requests.
+
+Added widget regressions for semantic pagination controls, keyboard paging, and
+Escape cancellation feedback. The focused recovery suite now passes 45 tests;
+the full Flutter suite passes with 1,393 tests. `flutter analyze`, strict
+formatting, and `git diff --check` are clean.
+
+Status: implementation complete; next implementation task: recovery dialog
+high-contrast and reduced-motion visual audit.
+
+---
+
+# Previous task — Attachment recovery history pagination and cancellation, 2026-10-08
+
+Long retained-source histories are now paginated in the recovery dialog with
+eight entries per page, so inspecting older immutable sources does not create
+an unbounded surface. Restore, relink, resume, and forget operations accept a
+cancellation callback that is checked while every streamed chunk is read.
+Cancelling verification leaves retained history and source bytes untouched;
+cancelling a native staged transfer leaves its durable partial stage available
+for resume. The dialog keeps the cancellation state visible and explains that
+the user's references were preserved.
+
+Added a repository regression proving that cancellation preserves a resumable
+native stage, alongside the existing retained-source and staged recovery
+coverage. The focused native staging, storage, and read-attachment suite now
+passes 43 tests; the full Flutter suite passes with 1,391 tests. `flutter
+analyze`, strict formatting, and `git diff --check` are clean.
+
+Status: implementation complete; next implementation task: recovery dialog
+accessibility audit for paginated history and cancellation feedback.
+
+---
+
+# Previous task — Recovery verification UX for large files, 2026-10-08
+
+Retained-source restore and cleanup now verify native attachment bytes through a
+stream instead of materializing the whole source in memory. The recovery dialog
+shows verification progress for “Use this source” and “Forget retained source”.
+Cleanup verifies the recorded checksum before saving metadata or deleting bytes;
+missing or externally changed files leave their history untouched for recovery.
+
+Added regressions for progress reporting and changed-byte protection. The
+focused native staging, storage, and read-attachment suite passes 42 tests;
+the full Flutter suite passes with 1,390 tests. `flutter analyze`, strict
+formatting, and `git diff --check` are clean.
+
+Status: implementation complete; next implementation task: attachment recovery
+source history pagination and large-file cancellation.
+
+---
+
+# Previous task — Recovery-stage retention cleanup, 2026-10-08
+
+Native attachment recovery now removes abandoned device-local stages during
+Vault startup when their durable progress manifest is more than 30 days old.
+Cleanup deletes only the matching `.part`, manifest, and temporary manifest
+for a well-formed stage. Recent or active stages remain resumable, while
+malformed manifests and workspaces with a newer unsupported format remain
+untouched for inspection and compatibility.
+
+Added a native regression covering the retention cutoff and partial-byte
+removal alongside the existing resume and discard paths. The focused native
+staging and storage suite passes 26 tests; the full Flutter suite passes with
+1,389 tests. Strict formatting, `flutter analyze`, and `git diff --check` are
+clean release checks.
+
+Status: implementation complete; next implementation task: recovery
+verification UX for large files and retained-source cleanup.
+
+---
+
+# Previous task — Resumable attachment recovery after interrupted staging, 2026-10-08
+
+Native attachment recovery now writes a device-local manifest beside its staged
+`.part` bytes. If the process or source stream stops mid-transfer, the stage is
+listed on the next open with its operation, target, checksum, and saved byte
+offset. The recovery dialog lets the user choose the same source to continue
+from that offset, or discard the stage. Resume still verifies the complete
+checksum before the guarded commit; authored references and active source
+metadata are unchanged until that commit succeeds. Browser stores keep the
+bounded non-resumable fallback.
+
+Added native staging and repository regressions for interruption, reopen,
+resume, discard, checksum validation, and the existing streamed recovery paths.
+The focused storage/read/native staging suite contains 40 tests after these
+additions; the full Flutter suite passes with 1,388 tests. Strict formatting,
+`flutter analyze`, and `git diff --check` are clean.
+
+Status: implementation complete; next implementation task: recovery inventory
+cleanup for abandoned stages older than the retention window.
+
+---
+
+# Previous task — Streamed attachment recovery hashing and progress, 2026-10-08
+
+Large attachment recovery now hashes the selected XFile from a stream, reports
+verification and write progress, and reopens the stream for the commit. Native
+Vaults stage bytes on disk while hashing so recovery does not keep a second full
+copy in memory. Browser stores retain a bounded compatibility buffer. Restore
+and relink still require the same checksum and size guards as the previous task.
+
+Added repository regressions for streamed restore, streamed relinking, checksum
+verification, byte progress, and the existing native staging contract. The
+focused storage/read/native staging suite passes 37 tests; the full Flutter
+suite passes with 1,385 tests. Strict formatting, `flutter analyze`, and
+`git diff --check` are clean.
+
+Status: implementation complete; next implementation task: resumable recovery
+after an interrupted staged transfer.
+
+---
+
+# Previous task — Read-mode media source status for PDF quotes, Canvas embeds, and math-adjacent media, 2026-10-07
+
+Read-mode media now reports source drift as well as storage failures. PDF review
+rows show a warning and disable direct navigation when their source checksum no
+longer matches. Canvas citation cards show a source-changed badge while keeping
+the source-open action available for verification. Attachment previews announce
+the replacement revision after refreshed bytes load, including math-adjacent
+images.
+
+Added regressions for stale PDF rows, stale Canvas citation cards, and the
+replacement status announcement. The focused PDF/Canvas action suite passes 25
+tests and the Read attachment suite passes 15 tests; the full Flutter suite
+passes with 1,379 tests. Strict formatting, `flutter analyze`, and
+`git diff --check` are clean.
+
+Status: implementation complete; next implementation task: Read-mode media
+parity for attachment relinking, source history, and user-visible recovery
+choices.
+
+---
+
+# Previous task — Read-mode media actions for PDF quotes, Canvas embeds, and math-adjacent media, 2026-10-07
+
+Read-mode attachment actions now carry through PDF review cards and Canvas
+citation/image previews. PDF quote cards can copy citation text or reopen the
+source page; Canvas previews can copy the quote and open the source PDF or
+original attachment. Math-adjacent images keep the shared title/alt metadata,
+accessible open action, attachment details, and recovery controls.
+
+Added regressions for PDF review actions, Canvas quote/source actions, and the
+shared Read attachment action surface. The focused PDF/Canvas action suite
+passes 24 tests and the Read attachment suite passes 15 tests; the full Flutter
+suite passes with 1,378 tests. Strict formatting, `flutter analyze`, and
+`git diff --check` are clean.
+
+Status: implementation complete; next implementation task: Read-mode media
+parity for PDF quote source-version warnings, Canvas stale-source badges, and
+math-adjacent replacement indicators.
+
+---
+
+# Previous task — Read-mode missing attachment recovery, 2026-10-07
+
+Read attachment previews now distinguish a missing source, a failed Vault read,
+and bytes that cannot be decoded. Each state keeps the authored reference
+untouched and offers Retry. When a watcher revision replaces an existing
+attachment, Read mode shows a refresh state while the new bytes load; decoder
+failures use the same recovery control instead of a dead preview.
+
+Added regressions for missing, failed-read, decode-failure, revision-gated,
+replacement-refresh, metadata, accessibility, and open-original states. The
+focused media/cache tests pass 35 tests; the full Flutter suite passes with
+1,378 tests. Strict formatting, `flutter analyze`,
+and `git diff --check` are clean.
+
+Status: implementation complete; next implementation task: Read-mode media
+parity for attachment actions in PDF quote cards, Canvas embeds, and inline
+math-adjacent media.
+
+---
+
+# Previous task — Read-mode attachment cache invalidation, 2026-10-07
+
+Read-mode and Canvas attachment previews now react to external attachment
+replacements without rebuilding the object index or disturbing note drafts.
+Native Vault watchers expose attachment paths separately from canonical object
+changes, the controller batches them into a lightweight media revision, and
+visible previews reload through generation-fenced caches so an older in-flight
+decode cannot win after a replacement. Read previews also avoid reloading on
+ordinary widget rebuilds; only a path or media revision change starts a new
+read.
+
+Added regressions for revision-gated Read image reloads and decoded Canvas
+attachment invalidation. The focused media/cache tests pass 22 tests; the full
+Flutter suite passes with 1,365 tests. Strict formatting, `flutter analyze`,
+and `git diff --check` are clean.
+
+Status: implementation complete; next implementation task: Read-mode media
+parity for missing attachment recovery and replacement status details.
+
+---
+
+# Previous task — Read PDF, Canvas and image recovery parity, 2026-10-07
+
+Read-mode PDF quote links preserve precise page targets, and Canvas wiki-links
+open their stable object IDs through the existing link router. Local image
+previews now have a retryable loader with an explicit failure state, so a
+temporary vault/read failure can recover without rebuilding the note or losing
+the authored reference.
+
+Added PDF-page, Canvas-object and retry-after-failure regressions. The focused
+Read/media suite passes 20 tests; the full Flutter suite passes with 1,362
+tests. Strict formatting, `flutter analyze`, and `git diff --check` are clean.
+
+Status: implementation complete; next implementation task: Read-mode media
+parity for attachment cache invalidation and stale-preview replacement.
+
+---
+
+# Previous task — Read media activation parity, 2026-10-07
+
+Read mode now keeps media behavior consistent across footnotes, math-adjacent
+images, and dynamic view blocks. Footnote and inline-math paragraphs use the
+shared local attachment preview. Fenced `orbit-view` and `orbit-snapshot`
+blocks render their real interactive view/snapshot widgets in Read mode instead
+of falling back to inert code, while authored source remains unchanged.
+
+Added regressions for footnote images, math-adjacent images and dynamic view
+rendering. The focused Read/callout/editor/footnote suite passes 81 tests; the
+full Flutter suite passes with 1,359 tests. Strict formatting, `flutter analyze`,
+and `git diff --check` are clean.
+
+Status: implementation complete; next implementation task: Read-mode media
+activation parity for PDF quote cards, canvas embeds, and image error recovery.
+
+---
+
+# Previous task — Read attachment activation parity, 2026-10-07
+
+Read-mode attachment images now behave consistently in aligned blocks, tables,
+and block quotes. A shared `ReadAttachmentPreview` preserves the existing image
+renderer while adding an accessible tap target for local relative attachments;
+remote and data images keep ordinary display behavior. Links continue through
+the same note-level router in every surface.
+
+Added regressions for aligned, table, and block-quote attachment images. The
+focused Read/callout/editor suite passes 67 tests; the full Flutter suite passes
+with 1,356 tests. Strict formatting, `flutter analyze`, and `git diff --check`
+are clean.
+
+Status: implementation complete; next implementation task: Read-mode media
+activation parity for footnotes, math-adjacent images, and dynamic view blocks.
+
+---
+
+# Previous task — Read-callout link and attachment activation, 2026-10-07
+
+Read callout bodies now reuse the note's link router for external, internal,
+missing and relative attachment links. Nested callout Markdown also receives the
+same image builder as the surrounding note. Relative attachment images are
+previewable and expose an accessible tap target that opens the original through
+the workspace attachment handler; source Markdown remains unchanged.
+
+Added regressions for external callout links, relative attachment links and
+attachment images. The focused Read/callout/editor suite passes 65 tests; the
+full Flutter suite passes with 1,353 tests. Strict formatting, `flutter analyze`,
+and `git diff --check` are clean.
+
+Status: implementation complete; next implementation task: Read-mode attachment
+activation parity for aligned blocks, tables and block quotes.
+
+---
+
+# Previous task — Read-mode code search parity, 2026-10-07
+
+Read-mode fenced code search now treats authored LF and CRLF line endings as
+equivalent to the renderer's LF display for multiline queries. The query is
+normalized only for matching; authored Markdown and source selection ranges are
+unchanged. Code blocks carry their authored body text into the Read overlay so
+language/info metadata remains outside the searchable segment.
+
+The Find field accepts multiline pasted queries. Exact highlights, viewport
+reveal, Unicode folded matches across prose and code, source preservation and
+Find focus continue to work together. Added regressions cover LF/CRLF multiline
+code, metadata exclusion, folded Unicode across multiple code blocks and focus
+recovery. The Read/code focused suite passes 63 tests; the full Flutter suite
+passes with 1,350 tests. Strict formatting, `flutter analyze`, and
+`git diff --check` are clean.
+
+Status: implementation complete; next implementation task: reliable link and
+attachment opening inside Read callouts.
+
+---
+
+# Previous task — Code search source authority, 2026-10-07
+
+Fenced-code Rich Find now resolves a stale block callback by stable document
+position after fence growth. If a second input event arrives before the parent
+rebuild, it edits the newly parsed code block instead of being silently dropped.
+Fence language info, indentation, delimiter length, CRLF, selection, and shared
+undo remain source-preserving.
+
+Added a back-to-back structural-edit regression. The code-search suite passes
+18 tests; the full Flutter suite passes with 1,346 tests. Strict formatting,
+`flutter analyze`, and `git diff --check` are clean.
+
+Status: implementation complete; next implementation task: rendered-match
+highlighting and precise Read-mode scrolling for code blocks.
+
+---
+
+# Previous task — Structured search source authority, 2026-10-07
+
+Table and callout Find navigation now uses the child editor's latest local
+source when the parent rebuild is still pending. A type change followed
+immediately by a body edit no longer reverts the type or maps the next search
+selection against stale offsets. Table and callout source jumps remain exact,
+including escaped pipes, CRLF body prefixes, title ranges, and shared undo.
+
+Added a regression for the local callout emission race. The structured-search
+suite passes 23 tests; the full Flutter suite passes with 1,345 tests. Strict
+formatting, `flutter analyze`, and `git diff --check` are clean.
+
+Status: implementation complete; next implementation task: exact search
+navigation inside code blocks while retaining fences and source.
+
+---
+
+# Previous task — Find/replace Unicode and selection parity, 2026-10-07
+
+Case-insensitive Find now uses the generated Unicode 15.1 full case-fold map
+instead of relying on regex lowercasing. Expanded folds such as `ß` to `ss`
+map back to exact UTF-16 ranges in the authored Rich/Source segment, while
+partial matches inside one expansion remain literal. Whole-word boundaries are
+still evaluated against the visible segment before selection scope is applied.
+Rich replacements continue through the existing projection and structured edit
+paths, preserving formatting, link targets, tables, callouts, and code safety.
+
+Added regression coverage for expanded Latin folds, Greek sigma folding, the
+Kelvin sign, half-expansion rejection, exact visible/source ranges, and Rich
+replacement across emphasis and links. The focused Find/Replace suite passes
+35 tests after this change. The full Flutter suite passes with 1,344 tests;
+strict formatting and `flutter analyze` are clean.
+
+Status: implementation complete; next implementation task: semantic
+search/navigation inside tables and callouts with precise cell/line highlighting.
+
+---
+
+# Previous task — Cross-platform rich clipboard parity, 2026-10-07
+
+Rich table copy now publishes HTML plus plain text on Windows, Android, iOS,
+Linux, and web. Android uses `ClipData.newHtmlText`, iOS writes one pasteboard
+item with `public.html` and UTF-8 plain text, Linux advertises GTK `text/html`
+and text targets, and web uses `navigator.clipboard.write` with two Blob
+representations. Every host keeps the ordinary plain-text fallback when its
+rich API is unavailable, rejected, or interrupted.
+
+Added platform bridge tests for successful rich writes, missing/rejected bridge
+responses, malformed bridge results, and failure of both rich and plain paths.
+The web release build also succeeds. Native Android/iOS/Linux compilation is
+not available on this Windows validation host; the host source was checked
+against the platform APIs and remains isolated behind the existing channel.
+
+Validation for this slice: platform and table clipboard tests pass with 31
+tests. Strict formatting and `flutter analyze` pass. The web release build
+passes. The full Flutter suite passes with 1,342 tests.
+
+Status: implementation complete; native mobile/Linux builds remain environment
+blocked. Next implementation task: audit find/replace across Rich and Source
+for formatted text, selection boundaries, and exact shared undo.
+
+---
+
+# Previous task — Table drag selection and rich clipboard export, 2026-10-07
+
+Rich tables now support mouse drag selection in addition to Shift-arrow and
+Ctrl/Cmd+A. The selected rectangle is visible during the drag and feeds the
+same TSV/CSV copy and grid-paste paths. Selected cells can publish plain TSV
+plus a native HTML table through the host clipboard bridge; platforms without
+that bridge fall back to ordinary plain clipboard text. Windows writes both
+CF_UNICODETEXT and CF_HTML, while HTML paste continues to use the shared
+conservative converter.
+
+Added regression coverage for drag selection, native HTML payloads, quoted CSV,
+multiline quoted CSV, mixed delimiters, stale requests, and clipboard failures.
+
+Validation for this slice: table, Markdown clipboard, and rich-model tests pass
+with 44 tests. Strict formatting and `flutter analyze` pass, and the full
+Flutter suite passes with 1,336 tests. Windows packaging was attempted but
+Flutter stopped before compilation because Developer Mode symlink support is
+disabled on this machine.
+
+Status: complete. Next implementation task: native rich clipboard parity for
+Android, iOS, web, and Linux hosts.
+
+---
+
+# Previous task — Inline link labels and nested brackets, 2026-10-06
+
+Inline link labels now accept backslash-escaped brackets and matched nested
+bracket pairs, while unmatched labels remain literal. Nested inline links are
+not projected as the outer link, preserving CommonMark’s no-nested-links rule.
+Replacing an escaped label no longer leaves a stale backslash in the authored
+source. Added coverage for nested labels, escaped labels, malformed boundaries,
+source-preserving edits, and nested-link projection.
+
+Validation for this slice: focused Markdown tests pass with 30 tests. Strict
+formatting and `flutter analyze` pass, and the full Flutter suite passes with
+1,306 tests.
+
+Status: complete. Next implementation task: audit inline link label escapes and
+nested brackets while keeping unsupported forms literal.
+
+---
+
+# Previous task — Inline link titles and spacing, 2026-10-06
+
+Inline links now parse quoted, apostrophe, and parenthesized titles separately
+from their destinations. Spaces, tabs, and at most one line ending are accepted
+around the destination, title, and closing delimiter. Empty destinations remain
+valid; malformed titles, blank-line forms, unknown trailing text, and unsupported
+delimiters remain literal source. Authored source and edit boundaries stay exact.
+
+Added coverage for all title delimiters, one-line-ending spacing, CRLF and
+whitespace-only blank lines, escaped versus nested parentheses, source-preserving
+edits, balanced destinations, and malformed-title fallbacks.
+
+Validation for this slice: focused Markdown tests pass with 30 tests. Strict
+formatting and `flutter analyze` pass, and the full Flutter suite passes with
+1,303 tests.
+
+Status: complete. Next implementation task: audit inline link label escapes and
+nested brackets while keeping unsupported forms literal.
+
+---
+
+# Previous task — Reference destination decoding, 2026-10-06
+
+Reference destinations now decode Markdown backslash escapes and named or
+numeric HTML character references for link actions. The authored destination is
+never rewritten: raw Rich blocks, Find/Replace, undo, and source-mode edits keep
+the original escapes/entities. Percent escapes remain unchanged. Added coverage
+for escaped parentheses and fragments, `&amp;`, decimal entities, hexadecimal
+entities, source preservation, and shortcut-link targets.
+
+Validation for this slice: focused Markdown tests pass with 25 tests. Strict
+formatting and `flutter analyze` pass, and the full Flutter suite passes with
+1,301 tests.
+
+Status: complete. Next implementation task: audit title line-ending rules and
+nested delimiters while keeping unsupported forms literal.
+
+---
+
+# Previous task — Reference-definition titles and multiline destinations, 2026-10-06
+
+Reference definitions now follow the CommonMark ownership rules used by the
+project: validated destinations may be empty (`<>`), balanced parentheses and
+escaped punctuation are accepted, titles may use quotes, apostrophes, or
+parentheses and may continue across nonblank lines, and a destination may start
+on the next line. Invalid trailing text remains ordinary source instead of
+silently creating a link. A complete definition stays one raw editing block,
+so Rich editing and Backspace cannot split its title or destination into a
+second paragraph. Definitions in frontmatter, fenced code, and indented code
+remain excluded; the first valid duplicate wins.
+
+The retained Rich block cache is cleared when the definition map changes, so
+shortcut link projections refresh immediately after editing a definition.
+
+Added coverage for LF/CRLF source preservation, all title delimiters, multiline
+titles and destinations, escaped delimiters, empty destinations, malformed
+definitions, duplicate precedence, code/frontmatter exclusions, Find/Replace,
+Rich editing, and undo.
+
+Validation for this slice: focused Markdown, Find/Replace, and Rich editor
+suites pass with 81 tests. `flutter analyze`, strict formatting, and the full
+Flutter suite pass with 1,294 tests.
+
+Status: complete. Next implementation task: audit reference-definition escape
+and entity decoding while keeping authored source editable.
+
+---
+
+# Previous task — Shortcut reference links, 2026-10-06
+
+Rich inline projection now resolves shortcut references such as `[Guide]` only
+when the note contains a matching reference definition. Ordinary bracketed
+prose and image syntax remain visible and literal. Shortcut labels keep their
+authored brackets during edits, expose the same link metadata as full reference
+links, and participate in the document-wide definition refresh path.
+
+Added coverage for case-normalized shortcut matching, ordinary bracketed prose,
+image exclusion, link metadata and source-preserving label edits. Definition
+changes reparse the document and refresh shortcut destinations without creating
+a second content store.
+
+Validation for this slice: strict formatting, analyzer, focused Markdown/find
+suites, and the full Flutter suite pass. The full Flutter suite passes with
+1,285 tests.
+
+Status: complete. Next implementation task: audit reference-definition titles
+and multiline destinations before expanding the inline grammar further.
+
+---
+
+# Previous task — Whole-document reference definitions, 2026-10-06
+
+Markdown documents now collect top-level reference definitions once per parse,
+normalizing labels case-insensitively and folding whitespace. Rich blocks and
+find/replace projections receive that map, so `[Guide][API]` resolves to the
+destination declared later in the note while unresolved references remain
+visible, editable and source-preserving. Definitions inside fenced or indented
+code are ignored, and the first definition wins as CommonMark specifies.
+
+Added coverage for cross-document resolution, case-insensitive labels, fenced
+code exclusions, resolved/unresolved metadata and Rich source edits. Updating
+a definition reparses the document and refreshes link destinations without
+creating a second content store.
+
+Validation for this slice: strict formatting, analyzer, focused Markdown/find
+suites, and the full Flutter suite pass. The full Flutter suite passes with
+1,283 tests.
+
+Status: complete. Next implementation task: add shortcut reference links with
+definition-gated matching, while keeping ordinary bracketed prose literal.
+
+---
+
+# Previous task — Inline link editing parity, 2026-10-06
+
+Rich inline projection now supports CommonMark autolinks and full/collapsed
+reference links. URI autolinks expose their visible label and exact destination;
+email autolinks expose a `mailto:` destination. Reference syntax hides only its
+label while preserving the authored reference identifier and delimiters during
+editing. Image syntax, unmatched brackets and unsupported definitions remain
+literal instead of being guessed.
+
+Added coverage for URI/email autolinks, reference labels and source-preserving
+label edits. This keeps link selection and context-menu discovery consistent
+with existing inline and wiki links without introducing a second link store.
+
+Validation for this slice: strict formatting, analyzer, focused Markdown model
+suites, and the full Flutter suite pass. The full Flutter suite passes with
+1,282 tests.
+
+Status: complete. Next implementation task: make reference definitions resolve
+to destinations across a whole Markdown document while retaining unresolved
+references as editable source.
+
+---
+
+# Previous task — CommonMark editing parity, 2026-10-06
+
+Inline Rich editing now recognizes CommonMark code spans with matching
+backtick runs of any length. Code content keeps exact source boundaries while
+normalizing line endings and the standard edge-space rule, so selection,
+formatting and source-preserving edits remain stable for spans that use two
+backticks around code containing one literal backtick.
+
+Added focused coverage for variable-length code spans, normalized whitespace,
+line-ending folding and unmatched delimiters. This closes the highest-impact
+inline CommonMark gap found in the current editor audit; unsupported Markdown
+extensions and broader CommonMark corner cases remain literal and recoverable.
+
+Validation for this slice: strict formatting, analyzer, the CommonMark and
+boundary-editing suites, and the full Flutter suite pass. The full Flutter
+suite passes with 1,280 tests.
+
+Status: complete. Next implementation task: resolve reference definitions across
+the whole Markdown document.
+
+---
+
+# Previous task — Cross-block native text selection, 2026-10-06
+
+Rich editing now tracks an exact document-level selection while dragging across
+paragraphs or calling `selectDocumentRange`. The range preserves authored
+Markdown, highlights every intersecting block, and supports copy, cut, delete,
+and replacement without converting the note into a second document format.
+
+Selection endpoints are resolved from rendered editable fields, including inline
+Markdown projections. Existing whole-block selection remains available for block
+operations, while ordinary single-block copy and editing keep their native text
+behavior.
+
+Added coverage for exact cross-block source copying/deletion plus the existing
+multi-block selection and Rich editor regression suites.
+
+Validation for this slice: strict formatting, analyzer, the multi-block selection
+suite, the Rich editor widget suite, and the full Flutter suite pass. The full
+Flutter suite passes with 1,276 tests.
+
+Status: complete. Next implementation task: CommonMark inline editing parity.
+
+---
+
+# Previous task — Markdown table interoperability, 2026-10-06
+
+Rich tables now support rectangular selection by shift-click, Shift+Arrow, and
+Ctrl/Cmd+A, with selected ranges copied as interoperable TSV. Table paste now
+accepts TSV, quoted CSV, and HTML tables while preserving the existing authored
+Markdown spelling on untouched cells and retaining bounded row/column safety.
+
+Added coverage for range selection, TSV copy, quoted CSV paste, HTML table paste,
+focus-safe asynchronous clipboard reads, and the existing table undo/regression
+suite.
+
+Validation for this slice: strict formatting, analyzer, the full table clipboard
+suite, and the full Flutter suite pass. The full Flutter suite passes with 1,275
+tests.
+
+Status: complete. Next implementation task: cross-block native text selection.
+
+---
+
+# Previous task — Markdown editor parity, 2026-10-06
+
+The Markdown editor parity pass started after auditing the durable-storage
+milestone against the implementation. Rich and Source paste now prefer the
+clipboard's `text/html` representation when it is available and convert the
+portable subset (headings, emphasis, links, lists, quotes, code, images, and
+simple tables) to authored Markdown. Plain-text paste remains the fallback,
+and clipboard/provider failures leave the document unchanged.
+
+Large Rich notes now switch to a lazy block list after 320 parsed blocks. The
+virtualized path keeps block identity, drag handles, editing controls, and
+exact source offsets; distant jumps use measured seek refinement before focus.
+CommonMark parsing now keeps empty ATX headings, tab-spaced lists, indented code
+runs, no-space block quotes, and setext headings as structural blocks.
+
+Added focused coverage for HTML conversion, entity decoding, simple table
+conversion, image/link preservation, and rich-clipboard fallback. Existing
+multi-block selection, table, and editor regression suites continue to pass.
+
+Remaining parity gaps are cross-block native text selection, the rest of
+CommonMark editing behavior, and rectangular table selection/CSV
+interoperability. These remain tracked in the
+[implementation status](../planning/implementation-status.md).
+
+Validation for this slice: strict formatting, analyzer, the clipboard and
+CommonMark tests, the virtualization jump test, and the existing Rich
+editor/table/selection suites pass. The full Flutter suite passes with 1,272
+tests.
+
+Status: complete. Next implementation task: rectangular table selection and
+CSV/HTML clipboard interoperability.
+
+---
+
+# Previous task — Durable storage and recovery audit, 2026-10-06
+
+The first reliability milestone was audited against the actual implementation
+before starting Markdown parity work.
+
+Completed or already present:
+- OS-level Vault locking is implemented and covered by a separate-process test.
+- Revision history is persisted, bounded, and available through the document
+  history browser.
+- Interrupted-save, failed-write, folder-move, and deletion recovery are
+  journaled and covered by native storage tests.
+- Recovery files are discoverable from the command palette, previewed with a
+  size bound, and exportable without applying or deleting them.
+- Backup import publishes into a separate staged workspace and preserves raw
+  unknown files and quarantined recovery journals.
+
+Remaining durable gaps are now narrowed to streaming very large backup archives,
+browser folder import, binary attachment cache invalidation, arbitrary external
+multi-file transactions, and physical power-loss certification. These are
+explicitly tracked in the [implementation status](../planning/implementation-status.md).
+
+Validation for this audit: strict formatting, analyzer, YAML workflow parsing,
+focused recovery tests, and the full Flutter suite (1,265 tests) pass.
+
+Next implementation task: Markdown editor parity.
+
+---
+
+# Previous task — Release hardening, 2026-10-05
+
+Release engineering and product-scope hardening for the first public Orbit Note
+candidate (`1.0.0+1`, Windows x64).
+
+Delivered in this pass:
+- Release tags run formatting, analyzer, PDFium setup, and the full test suite
+  before packaging.
+- Stable release packaging is frozen to a Windows x64 portable artifact.
+- Release artifacts publish a SHA-256 checksum manifest.
+- The command palette exposes a bounded recovery review/export dialog for
+  interrupted-save and conflict files without applying or deleting originals.
+- README platform claims now match the Windows 1.0 release workflow; Android and
+  Web are explicitly validation builds until their acceptance gates are complete.
+- Release checklist and remaining platform/data-safety gates are documented in
+  [release-hardening-2026-10-05.md](release-hardening-2026-10-05.md) and the
+  [Windows 1.0 acceptance matrix](windows-1.0-acceptance-2026-10-06.md).
+
+Validation: strict Dart formatting, analyzer, focused recovery tests, and the
+full Flutter suite pass locally (1,265 tests). Status: RC code complete;
+external acceptance pending. A clean Windows package, checksum verification,
+and interactive acceptance still need evidence. Local Windows packaging is
+blocked before compilation by the host's disabled Developer Mode symlink
+support; the release workflow's Windows runner is the packaging check.
+
+---
+
+# Previous task — Architectural Blueprint Canvas, 2026-10-05
+
+Architectural drafting treatment for Canvas, based on blueprint paper with a
+technical white-pen preset.
+
+Key accomplishments:
+- Deep blue blueprint paper with white drafting grid, border, registration marks,
+  and a restrained centre line.
+- New **Architectural drafting preset · white pen** menu action selecting blueprint
+  paper, the pen tool, 1.5 px ballpoint ink, and technical white for new strokes.
+- Added **Traditional blueprint · white drawing** for a uniform dark-blue sheet
+  with white drafting lines.
+- Existing blueprint menu action now also configures the technical white pen;
+  existing elements are never recolored.
+- SVG export preserves the blueprint treatment while transparent exports remain
+  transparent.
+- Read-only canvases cannot mutate the paper style.
+
+Status: Complete. Focused canvas tests passed; analyzer clean; strict formatting
+clean; full suite passed (1,262 tests). Evidence: [architectural-blueprint-canvas-2026-10-05.md](architectural-blueprint-canvas-2026-10-05.md).
+Next suggested task: add optional architectural dimension and scale-mark tools
+that create editable vector annotations on the same canvas.
+
+---
+
+# Previous task — PDF Quote Canvas Transclusion & Deep Linking, 2026-10-05
+
+Direct drag-and-drop linking and transclusion of PDF text citations and quotes onto
+the Orbit spatial canvas as cards.
+
+Key accomplishments:
+- Universal Quote Drag & Drop: Dragging citations from PDF selection toolbar, review panel, or connected notes panel onto canvas automatically creates live cards.
+- Quiet Transclusion Card Styling: Default `presentation: 'transclusion'` renders a top accent strip, `PDF CITATION` badge, target wiki-link indicator `[[Source Title · p. X]]`, 3px left-edge accent line, italic quote body, and citation footer `Cited from Source Title · Page X`.
+- Unified Page Deep Linking: `PdfQuoteDragData.referenceTarget` computes `$objectId#page=$page`. Double-clicking or pressing Enter on canvas quote cards navigates directly to the referenced PDF at the exact cited page.
+- Interactive Preview Tooltip: `CanvasCardPreviewTooltip` detects quote cards, shows `PDF CITATION · P. X` badge, renders quote excerpt with left accent line, supports presentation cycling (transclusion, preview, card, compact), and provides "Open in editor" deep linking.
+- High-DPI Vector Painting: `OrbitCanvasPainter` handles both top-level and nested `quote`, `page`, `sourceTitle`, and `sourceId` attributes across transclusion, preview, compact, and standard cards.
+- Comprehensive Testing: 8 new unit and widget tests in `test/pdf_quote_canvas_transclusion_test.dart` covering serialization, controller extraction, canvas drag-and-drop, double-click navigation, tooltip interaction, vector painter modes, and PDF panel drag handles.
+
+Status: Complete. Analyzer clean (0 issues); strict formatting clean across 382 files; all 8 new tests pass, all 38 related regression tests pass. Normal Windows release built successfully (68.5s); smoke launch verified responsive (PID 6480); packaged to release-assets/OrbitNote-Windows-x64.zip (25.9 MB).
+Evidence: [pdf-quote-canvas-transclusion-2026-10-05.md](pdf-quote-canvas-transclusion-2026-10-05.md).
+Next suggested task: Direct transclusion and live linking of LaTeX theorem and equation cards onto the Orbit spatial canvas as cards. Stop before implementing it.
+
+---
+
+# Previous task — Custom Category & Folder Color Identity, 2026-10-04
+
+Interactive color tagger and context cues allowing users to assign individual accent
+colors to workspace folders and notes in the Explorer.
+
+Key accomplishments:
+- Persistent Folder Colors: `SessionState` and `AppPreferences` storage for `Map<String, int> folderColors` with safe serialization and corrupted data resilience.
+- Folder Hierarchy Inheritance: `WorkspaceController.folderColorValue` traverses ancestors, allowing child notes and nested subfolders to inherit subtle color cues from parent folders.
+- Atomic Folder Actions: `WorkspaceController.moveFolder` rewrites folder color paths; `deleteFolder` prunes entries for removed folders and subfolders.
+- Restrained Explorer Rows: `OrbitExplorerRow` renders a 2.5px left-edge accent line via `Stack` + `Positioned` avoiding Flutter non-uniform `borderRadius` assertions, with subtle icon tinting (`withValues(alpha: 0.85)`).
+- Quick Color Picker Modal: `showFolderColorDialog` with 12 curated harmonic color swatches, custom hex input with `#` validation, live Explorer preview card, and reset action.
+- Context Menu Integration: Added "Set folder color…" / "Change folder color…" and "Reset folder color" to folder context menus, and "Set accent color…" / "Change accent color…" to note context menus.
+- Tab Strip Accent Integration: Active tab in `OrbitTabStrip` reflects active note or containing folder accent color along its top 2px indicator bar.
+- Comprehensive Testing: 12 new unit and widget tests in `test/folder_color_identity_test.dart` verifying serialization, controller inheritance, atomic moves/deletions, dialog swatches/hex/reset, and Explorer/tab integration.
+
+Status: Complete. Analyzer clean (0 issues); strict formatting clean across 381 files; all 1,251 tests pass.
+Evidence: [folder-color-identity-2026-10-04.md](folder-color-identity-2026-10-04.md).
+Next suggested task: Direct drag-and-drop linking and transclusion of PDF text citations and quotes onto the Orbit spatial canvas as cards. Stop before implementing it.
+
+---
+
+# Previous task — Visual Language Rewrite, Theming & Customization, 2026-10-04
+
+Major frontend visual-language and theming milestone delivering Obsidian-level visual
+customization paired with Orbit's calm first-party observatory aesthetic and Universal Object
+architecture.
+
+Key accomplishments:
+- Semantic Theme Engine & Tokens: Complete semantic token architecture (`OrbitColors`, `OrbitTypography`,
+  `OrbitCorners`), backward-compatible aliases, dynamic corner style radius mapping (`rounded` vs `subtle`).
+- Five First-Party Theme Packs: Orbit Graphite + Violet (default), Observatory Deep Space + Cyan,
+  Paper Warm Light (light cream with serif typography), Midnight OLED (pure black), and Aurora Forest.
+- Safe JSON serialization/deserialization for themes with graceful fallback defaults.
+- Generic Heatmap View: Data-driven year heatmap with 12 months, day intensity levels, hover tooltips,
+  navigation on tap, metrics summary, standalone view (`viewType: 'heatmap'`), and responsive HomeView card.
+- Visual Banners & Covers: `OrbitCoverBanner` with gradient presets, height presets (`compact`, `standard`, `hero`),
+  darken overlay for contrast, and edit callbacks.
+- Appearance Settings UI: `ThemePresetSelector`, `CornerStyleSelector`, and `LiveThemePreviewCard` with
+  live interactive preview of headings, body, wiki-links, buttons, and corner indicators.
+- Theme Interchange Dialogs: File-picker based export and import dialogs (`showOrbitThemeExportDialog`,
+  `showOrbitThemeImportDialog`) allowing users to package semantic tokens into `.orbit-theme.json` and share
+  them across workspaces with live preview and validation.
+- Theme Gallery & Custom Themes Manager: `showOrbitThemeGalleryDialog` showcasing built-in and imported
+  custom themes with swatches, specs (light/dark, corner style, typography), active indicator, instant theme
+  application, in-place custom theme renaming, and safe deletion with automatic fallback to default `orbit` theme.
+- Persistent Custom Theme Storage: `SessionState` and `AppPreferences` serialization for `customThemes`,
+  dynamic pack lookup in `OrbitThemePack.fromId`, and auto-persistence upon import.
+- Harmonized Color Palette Generator: `OrbitColors.fromSeed`, `OrbitThemePack.fromSeed`, and `OrbitContrast`
+  utility computing WCAG 2.1 relative luminance and contrast ratios. Algorithmically generates full sets of
+  accessible semantic tokens (`background`, `workspace`, `panel`, `raised`, `border`, `accent`, `text`)
+  guaranteeing WCAG AAA contrast for main text and WCAG AA for secondary text across both dark and light modes.
+- Interactive Palette Generator Dialog: `showHarmonizedPaletteDialog` with curated seed presets (Violet, Cyan,
+  Emerald, Sapphire, Amber, Rose, Coral, Teal), custom hex code input, Dark/Light mode switch, live contrast ratio
+  badges (`AAA`, `AA`), live UI mockup preview, instant workspace application, gallery persistence, and file export.
+- Explorer Color Identity: Folder and note color resolution in `OrbitExplorerRow` with subtle left edge tint and icon accent.
+
+Status: Complete. All 1,239 tests pass; analyzer clean (0 issues); strict formatting clean across 387 files.
+Evidence: [visual-language-theming-2026-10-04.md](visual-language-theming-2026-10-04.md).
+Next suggested task: Custom category and project folder color picker allowing users to assign individual accent colors to specific folders, views, or workspaces. Stop before implementing it.
+
+---
+
+# Previous task — Visual ergonomics and interaction quality, 2026-10-03
+
+Owner's attached product-design prompt authorizes a major readability pass in the
+current worktree. Source audit found microscopic board metadata, permanently
+visible Explorer actions, horizontally scrolling tabs and a Game Dev status alias
+mismatch. Scope this delivery around completed subsystems: shared comfortable/
+compact metrics and contrast, semantic zoom, tab overflow, Explorer, task rows/
+cards/detail, and timeline/milestone readability. Refine project health surfaces;
+preserve current storage, IDs, sync, gestures, note source/history and user colors.
+Required docs: visual design/motion, customization/Spaces, collections/views,
+tasks/calendar, feature map/backlog and focused agent workflow. Use realistic
+headless fixtures for rendered review; no desktop interaction automation.
+Stop at a coherent green subsystem boundary as the attached prompt directs;
+record remaining Canvas/focus/view-navigation refinements without claiming them.
+Status: coherent readability/density/tab/task/planning pass complete; the broader
+major design prompt remains partially delivered. All 1,208 tests pass; analyzer
+and strict formatting clean (382 files). Normal Windows release built (62.3s),
+smoke-launched hidden, responded and closed normally. No desktop input automation.
+Evidence and all 33 requested report categories:
+[Visual ergonomics](visual-ergonomics-2026-10-03.md).
+Next suggested task: planning navigation and a real week/month Timeline axis.
+Stop before implementing it.
+
+## Product coherence continuation — 2026-10-04
+
+The next focused subsystem refined Project, Course and Reverse Engineering
+dashboard hierarchy. Repeated section cards, decorative research gradients and
+small all-caps dashboard labels were reduced while preserving content, actions,
+object identity and responsive behavior. Rendered fixtures were reviewed.
+Evidence: [product coherence pass](product-coherence-2026-10-04.md).
+The broader anti-AI-slop prompt remains intentionally scoped; stop before the
+next planning/timeline milestone.
+Validation: 1,209 tests passed; analyzer and strict formatting are clean across
+382 files; Windows release build succeeded in 56.6s. Smoke launch was left to
+the already-running responsive release process (PID 11244).
+
+## Calendar workbench continuation — 2026-10-04
+
+The calendar now has a responsive Month/Week switch, week navigation, focused
+day columns, scrollable event/task entries, and a wrapping header for narrow
+panes. The existing split agenda, object links, task completion, event editing,
+and scope filtering remain intact. Evidence: [calendar workbench refinement](calendar-workbench-2026-10-04.md).
+Validation: 1,210 tests passed; analyzer and strict formatting are clean across
+382 files; Windows release build succeeded. Stop before implementing the next
+timed-axis and drag-rescheduling subsystem.
+
+## Visual and motion refinement — 2026-10-04
+
+Shared shell surfaces now have a darker navigation spine, active destination
+edge motion, a framed Orbit mark fallback, clearer vault metadata, animated tab
+states, and preference-aware control feedback. Validation: 1,211 tests passed;
+analyzer and strict formatting are clean; Windows release build succeeded.
+Evidence: [visual and motion refinement](visual-motion-refinement-2026-10-04.md).
+Validation: focused motion/component/visual checks pass; analyzer and strict
+formatting are clean. Windows release build succeeded.
+
+## Obsidian visual language expansion — 2026-10-05
+
+The shell now offers thirteen curated first-party theme families, applies each
+preset's typography and corner treatment together, and uses an Obsidian-like
+raised header with destination/document breadcrumbs and a command-palette entry
+point. Evidence: [Obsidian visual language expansion](obsidian-visual-language-2026-10-05.md).
+Validation: 1,259 tests pass; analyzer and strict formatting are clean; Windows
+release build succeeded.
+
+## PDF and Canvas workbench surfaces — 2026-10-05
+
+PDF and Canvas now share a quiet, theme-aware `OrbitWorkbenchToolbar` surface
+with context labels that collapse on narrow panes. Existing navigation, reading,
+drawing, selection, search, import/export, and research actions are preserved.
+Evidence: [PDF and Canvas workbench surfaces](pdf-canvas-workbench-surfaces-2026-10-05.md).
+Validation: 38 focused PDF/Canvas tests and the full 1,259-test suite pass;
+analyzer and strict formatting are clean; Windows release build succeeded in
+87.3 seconds.
+Next suggested task: refine the PDF side panels and Canvas inspector with the
+same content-first hierarchy. Stop before implementing it.
+
+## Apple modern theme foundation — 2026-10-05
+
+The semantic theme layer now supplies a consistent modern language for app bars,
+navigation surfaces, bottom sheets, dividers, and progress indicators. Orbit's
+theme families, local color customization, typography, density, and zoom remain
+intact. Evidence: [Apple modern theme foundation](apple-modern-theme-foundation-2026-10-05.md).
+Validation: 1,259 tests pass; analyzer and strict formatting are clean; Windows
+release build succeeded in 113.0 seconds.
+Next suggested task: refine PDF side panels and Canvas inspectors with this same
+content-first hierarchy. Stop before implementing it.
+
+## Inspector and PDF side-panel surfaces — 2026-10-05
+
+Connected Notes, PDF Highlights & Review, and the universal Object Inspector now
+use a shared identity-first `OrbitPanelHeader` with responsive action wrapping.
+Existing filtering, keyboard search, linking, citation dragging, exports,
+editing, and persistence remain unchanged. Evidence: [Inspector and PDF side-panel surfaces](inspector-surfaces-2026-10-05.md).
+Validation: 1,259 tests pass; analyzer and strict formatting are clean; Windows
+release build succeeded in 83.4 seconds.
+Next suggested task: refine Canvas selection properties and advanced PDF research
+controls as separate interaction passes. Stop before implementing them.
+
+## Apple and Obsidian workspace language — 2026-10-05
+
+The activity rail and document tabs now share a calmer desktop workbench
+composition: panel-colored navigation spine, quiet icon-only states, raised
+rounded active tabs, and a separated tab overflow affordance. Existing tab
+pinning, reordering, shortcuts, context menus, and identity behavior remain
+unchanged. Evidence: [Apple and Obsidian workspace language](apple-obsidian-workspace-language-2026-10-05.md).
+Validation: focused controls, shell, tab, PDF, and workspace regressions pass;
+1,259 full tests pass; analyzer and strict formatting are clean; Windows release
+build succeeded in 96.0 seconds.
+Next suggested task: apply the same content-first composition to the note editor
+chrome and dashboard headers. Stop before implementing it.
+
+## Template workspaces continuation — 2026-10-04
+
+University, Game Dev, and Reverse Engineering creation now collect useful
+metadata before scaffolding. Reverse Engineering is visible again from the
+Notes explorer. Research, Content Pipeline, and Personal Planning board
+presets plus Software Design, Research Log, and Book & Course Reading note
+templates were added. Evidence: [template workspaces refinement](template-workspaces-2026-10-04.md).
+Validation: 1,210 tests passed; analyzer and strict formatting are clean across
+382 files; Windows release build succeeded.
+
+## Grammar highlighting precision — 2026-10-04
+
+Ordinary note prose no longer receives spelling underlines because the offline
+lexicon now includes common writing vocabulary. Real typos, grammar rules, code,
+math, URLs, wiki links, and personal dictionaries remain supported. Evidence:
+[grammar highlighting precision](grammar-highlighting-2026-10-04.md).
+Validation: 1,211 tests passed; analyzer and strict formatting are clean across
+382 files; Windows release build succeeded.
+
+---
+
+# Previous task — Whole-app zoom and development workspaces, 2026-10-03
+
+Owner requests browser-like Ctrl zoom and clearer game-development/research views.
+Scope: device-local 75–200% app zoom, Ctrl +/=, Ctrl minus, Ctrl 0 and Settings
+recovery; responsive dashboards/function filters and consistent research creation.
+Required docs: customization/Spaces, game/research specs, spec map/backlog and
+validation workflow. Preserve contents, gestures, identities, animations and
+unknown settings. No desktop automation or live application launch.
+Status: complete; all 1,192 tests pass, analyzer and strict formatting clean.
+Normal Windows release rebuilt successfully (56.0s); no desktop control used.
+Evidence: [Zoom and development workspaces](app-zoom-development-2026-10-03.md).
+
+---
+
+# Previous task — Custom-font clarity and reading comfort, 2026-10-03
+
+Owner reports poor quality/readability with fonts such as Times New Roman and
+requests typography fixes. Required docs: Markdown editing, visual design and
+customization contracts; existing font/editor/layout tests. Scope: refresh cached
+Rich blocks after font/spacing changes, consistent note typography across modes
+and structured fields, natural serif weights, layout/reflow and Settings preview.
+Preserve chosen sizes, source/history, code fonts, animations and unrelated work.
+No desktop automation, font installation or preference/storage migration.
+Status: complete; 77 focused checks and all 1,186 tests pass.
+Analyzer/strict formatting clean; normal Windows release rebuilt (53.6s).
+Native monitor glyph quality remains unverified; no desktop automation used.
+Evidence: [Typography comfort](font-comfort-2026-10-03.md).
+
+---
+
+# Previous task — Game development and reverse engineering, 2026-10-03
+
+Owner requests reading and implementing the documented game-development and
+reverse-engineering features. Required docs: feature specs GAME-01–04 and
+REV-01–05, spec map/backlog, collaboration contract, open questions, storage
+authority and implemented formats, focused agent workflow. No desktop automation.
+Status: broader request in progress; first local implementation pass tested.
+Final complete run: 1,183 tests pass. All 65 focused checks pass, including 17 new
+regressions; analyzer and strict formatting are clean. Normal Windows release
+rebuilt successfully (55.0s); no desktop automation was used. Local pass complete.
+Existing game scaffolds/boards/templates and research dashboards/maps are retained.
+This pass adds research record creation/evidence maps, build-aware address metadata,
+reviewed manual symbol imports, optional creation menus and stable playtest links.
+Custom schema registries, authenticated team sharing and live specialist-tool
+connectors remain unfinished; ordinary Markdown categories are not custom types.
+Evidence and requirement matrix: [Game/research implementation](game-research-2026-10-03.md).
+
+---
+
+# Previous task — Custom Read search coverage, 2026-10-03
+
+Owner requests more useful app improvements without desktop automation. Scope:
+callout title/body Read highlighting and source-verified navigation; confirm
+aligned text coverage and preserve presentation/unknown data. Required docs:
+Markdown editing contract and preceding Read-search evidence. No packages,
+storage changes or native review window. Status: complete, 2026-10-03.
+All 1,166 tests pass, including seven new custom Read checks; 56 focused checks
+pass. Analyzer/strict formatting clean; normal Windows release rebuilt (83.1s).
+Formatted body ambiguity retains conservative fallback; native input unverified.
+Evidence: [Custom Read search](custom-read-search-2026-10-03.md).
+
+---
+
+# Previous task — Read-mode search highlights, 2026-10-03
+
+Owner requests continuing features without desktop automation. Scope: EDT-03/04/13
+transient rendered-match highlights and accurate Read navigation, retaining the
+existing full-document renderer and safe fallback for unmapped custom blocks.
+Required docs: Markdown editing contract and preceding code-search evidence.
+Status: complete, 2026-10-03. All 1,159 tests pass; final focused rerun passes
+70 checks including 1,000 matches in one paragraph. Analyzer/strict format clean;
+normal Windows release rebuilt (83.3s). No packages, stored-source changes or
+native review window. Unmapped custom/LaTeX output retains approximate fallback.
+Evidence: [Read search](read-search-2026-10-03.md).
+
+---
+
+# Previous task — Precise code-block search, 2026-10-02
+
+Owner accepts exact search navigation inside code blocks. Scope: EDT-02/03/04/06/13
+code-body search, exact selection/scroll, live selection scopes and fence-safe
+replacement with shared undo. Required docs: Markdown editing contract and
+[preceding table/callout evidence](table-callout-search-2026-10-01.md).
+No desktop automation, packages, storage changes or unrelated features.
+Status: complete, 2026-10-02. All 1,149 tests pass, including 16 new code-search
+regressions; 106 focused checks pass. Analyzer/strict formatting clean; normal
+Windows release rebuilt (253.0s). Existing structured-field/performance repairs
+preserved. Read scrolling and embedded-widget navigation remain approximate;
+native keyboard/IME acceptance is unverified.
+Evidence: [Code-block search](code-search-2026-10-02.md).
+
+---
+
+# Previous task — Table and callout search navigation, 2026-10-01
+
+Owner requests continuing directly into the next useful task after finishing the
+find/replace pass. Scope: EDT-04/06/11/12/13 search in table cells and callout text,
+exact local selection/navigation, source-preserving replacement and shared undo.
+Required docs: [Markdown editing contract](../features/markdown-and-editing.md),
+[find/replace evidence](find-replace-2026-10-01.md), spec map and EDT backlog rows.
+No desktop automation, new packages, storage changes or unrelated features.
+Status: complete, 2026-10-02. All 1,133 tests pass, including 22 new structured
+search regressions; final new-file rerun passes after brace-only lint cleanup.
+Analyzer/strict formatting clean; normal Windows release rebuilt (96.5s).
+Read navigation remains approximate; native IME acceptance is unverified.
+Prior search and long-note performance repairs preserved.
+Evidence: [Table/callout search](table-callout-search-2026-10-01.md).
+
+---
+
+# Previous task — Find/replace repairs, 2026-10-01
+
+Owner accepts the suggested find/replace audit across formatted text and editor
+modes. Scope: visible prose/source coordinates, selection and whole-word
+boundaries, live counts, navigation focus/scroll, literal replacement and exact
+shared undo. Required docs: [Markdown editing contract](../features/markdown-and-editing.md)
+and [preceding table/clipboard evidence](table-clipboard-2026-10-01.md).
+No desktop automation, packages, persistent format changes or unrelated features.
+Status: complete. All 1,111 tests pass, including 22 new search regressions.
+Analyzer and strict formatting clean; normal Windows release rebuilt (97.1s).
+Read scroll remains approximate; specialized blocks retain literal search.
+Evidence: [Find/replace repairs](find-replace-2026-10-01.md).
+
+---
+
+# Previous task — Table and multiline clipboard repairs, 2026-10-01
+
+Owner accepts the suggested table editing and multiline clipboard audit. Scope:
+cell boundaries/escaping, row and keyboard lifecycle, source preservation, delayed
+clipboard safety, multiline prose projection and shared undo. Required docs:
+[Markdown editing contract](../features/markdown-and-editing.md) and preceding
+[regression evidence](markdown-regressions-2026-10-01.md). No desktop automation,
+packages, storage changes or unrelated features. Status: complete. All 1,089 tests
+pass, including 19 new table/clipboard checks. Final analyzer/format clean; normal
+Windows release rebuilt (259.3s). Native clipboard/IME acceptance is unverified.
+Evidence:
+[Table and clipboard repairs](table-clipboard-2026-10-01.md).
+
+---
+
+# Previous task — Markdown regression repairs, 2026-10-01
+
+Owner accepts the suggested repair of the four editor failures exposed by the
+long-note performance suite. Scope: list/quote exit caret, paragraph Delete input
+verification and selected block handle/menu behavior. Preserve the performance
+work, source/CRLF, selection and shared history; no desktop automation, packages,
+storage changes or new features. Required docs: the preceding
+[performance evidence](long-note-performance-2026-10-01.md) and
+[Markdown editing contract](../features/markdown-and-editing.md).
+Status: complete. All 1,070 tests pass, including the four original regressions
+and 61 focused checks. Analyzer/format clean; normal Windows release rebuilt
+(214.5s). Native input was not tested. Evidence:
+[Markdown regression repairs](markdown-regressions-2026-10-01.md).
+
+---
+
+# Previous task — Long-note performance, 2026-10-01
+
+Owner accepts long-note performance hardening and requests no desktop automation.
+Scope: cached positions/source assembly, inline projection, footer and outline
+work; preserve features, animations and immediate source correctness. No packages
+or storage changes. Status: implemented; analyzer/format clean and normal Windows
+release rebuilt (91.4s). Pure checks and new widget regressions pass. Full suite:
+1,064 passed, four editor failures also reproduced with the old linear lookup paths.
+Mixed-note bookkeeping and spelling-issue lookup benchmarks improve substantially;
+native input/frame latency is not measured. Evidence:
+[Long-note performance](long-note-performance-2026-10-01.md).
+
+---
+
+# Previous task — Native Markdown acceptance, 2026-10-01
+
+Owner accepts the suggested native checks for IME and cross-block undo. Use an
+in-memory review vault, keep user data untouched, restore the normal Windows release.
+Scope: keyboard/Unicode input, paragraph/format history across Rich/Source, controlled
+composition events and repairs for reproduced failures. OS CJK IME is not configured.
+Status: composition history repaired; native composition cancel/commit and paragraph
+undo/redo across Rich/Source observed. Analyzer/format clean; normal Windows release
+rebuilt. Flutter tests blocked by Application Control. Actual OS IME and injected
+ordinary keyboard input remain unverified. Evidence:
+[Native acceptance](markdown-native-acceptance-2026-10-01.md).
+
+---
+
+# Previous task — Markdown hidden-issue audit, 2026-10-01
+
+Owner requests another search for hidden issues. Scope: duplication/reference
+identity, structural conversion, code fencing, alignment selection/CRLF, delayed
+attachments and stale menus. No new packages, storage format or migrations.
+Status: implemented. Ten pure Dart regression groups pass; analyzer and formatting
+clean. Normal Windows release rebuilt (62.0s). Windows Application Control still
+blocks Flutter tests before execution; widget/native acceptance remains unverified. Evidence: [Hidden-issue audit](markdown-hidden-audit-2026-10-01.md).
+
+---
+
+# Previous task — Markdown editing repair, 2026-10-01
+
+Owner requests reliable paragraph insertion/deletion and richer Markdown editing.
+Scope: source-preserving boundaries, formatting selection/typing, clipboard races,
+keyboard shortcuts and regression coverage. No storage format or dependency changes.
+Status: repairs delivered. Seven pure Dart regression groups passed; analyzer
+and formatting clean. Normal Windows release rebuilt (65.2s). Flutter test execution
+is blocked by Windows Application Control; native acceptance remains unverified. Evidence: [Markdown editing repair](markdown-editing-repair-2026-10-01.md).
+
+---
+
+# Previous task — Search workspace, 2026-10-01
+
+Owner authorizes a useful, coherent batch of new features. Selected LNK-01/12
+subset: saved query/filter recipes, recent opened searches, richer bounded-result
+filters, deterministic sorting, previews, keyboard selection and match emphasis.
+Use existing local search and precise navigation; no new index, packages or cloud.
+Preserve unknown settings and canonical knowledge. Status: implementation delivered;
+analyzer/format clean, native sample review and pure Dart checks passed. Normal
+Windows release built (58.3s). Flutter tests are blocked by Windows Application
+Control before execution; do not claim complete acceptance. Evidence:
+[Search workspace](search-workspace-2026-10-01.md).
+
+---
+
+# Previous task — Architectural composition, 2026-09-30
+
+Owner request: attached architectural/product leverage pass. Audit and evidence:
+[Search and precise-reference composition](architecture-composition-2026-09-30.md).
+Implemented: rich shared search/deep targets, lazy prose anchors, live block cards,
+Canvas-element links, precise backlink context, separate appearance preferences,
+background native search projection and oversized spatial-bound safety.
+Status: delivered subsystem complete. All 1,027 tests passed; analyzer and format
+clean. Normal Windows release built (61.0s), launched and observed Saved locally.
+Native interaction acceptance is partial; Android SDK unavailable. Existing
+FTS/grid/sync and unrelated work are preserved. Remaining PDF indexing/controller
+extraction are documented; stop before the next milestone.
+
+---
+
+# Previous task — Interface colors and Bookshelf, 2026-09-30
+
+Owner request: customize each part of the UI and overhaul the heavy Bookshelf.
+Scope/evidence: [Interface colors and Bookshelf](colors-bookshelf-2026-09-30.md).
+Status: implemented and validated. 1,012 full-suite tests passed; six focused
+checks passed after final corrections. Analyzer and formatting clean. Normal
+Windows release built (77.0s) and launched. Final native interaction review was
+interrupted by user activity; see the task report for remaining validation limits.
+Preserve existing content, reading tools, animations and performance improvements.
+
+---
+
+# Previous task — Product coherence, 2026-09-29
+
+Owner request: attached Product Coherence + Native Power + Design Quality milestone.
+Audit and selected P0/P1 scope: [Product coherence](product-coherence-2026-09-29.md).
+Preserve the prior [canvas performance](canvas-performance-2026-09-28.md) improvements.
+Status: selected discovery/layout pass complete, 2026-09-30. Full suite: 1,006
+passed; 19 collection/view checks passed after native-review correction. Analyzer
+and formatting clean. Normal Windows release built and launched. Android blocked
+by missing SDK. Native screen evidence and deliberate deferrals are in the task.
+No storage migrations, identity changes, plugin runtime or sync protocol changes.
+
+---
+
+# Previous task — Windows Release Build & Virtual Reading Rooms with Bookshelf Library, 2026-09-28
+
+Owner request: "build windows release" and "Make the pdf reader like a phone reader too, add a feature so i can read pdfs like i read with bookmarking etc. pages and making pdfs favourites etc. modern reading app that combines a powerful PDF/eBook reader with cozy virtual reading rooms and personal Library."
+
+Status: Complete and verified.
+- Production Windows Release Executable: `build\windows\x64\runner\Release\orbit_note.exe` (compiled successfully with Flutter 3.44.8, Visual Studio 2026, and Windows SDK 10.0.26100.0).
+- Virtual Reading Rooms: 6 environments with vector-painted weather atmospheres, ambient audio channel mixer, paper tone filters (Normal, Cozy Sepia, Editorial Warm, Dark Mode), distraction-free Zen mode, page bookmarks, favorite starring, and Book Memories archive export to Orbit Note.
+- Personal Bookshelf & Library View (`OrbitLibraryView`): hero card, shelves filtering, reading activity stats, and quick-search.
+- Static Analysis: 0 errors, 0 warnings (`flutter analyze --no-pub lib/`).
+- Automated Tests: 100% pass rate in `test/reading_rooms_and_library_test.dart`.
+
+---
+# Previous task — Markdown Note Templates Engine, LaTeX Theorems & Canvas Rigor, Word Goal Milestones, 2026-09-28
+
+Owner request: "continue adding more features"
+Scope: High-value native personal knowledge features expanding desktop workflows:
+1. Markdown Note Templates Engine & Dialog (EDT-09, STUDY-02): Curated catalog of structured starter templates (Cornell Notes, Meeting Notes & Action Items, Weekly Review & Retrospective, Literature & Research Note, Daily Standup & Focus Log, Project RFC / Feature Spec, and Blank Note), interactive modal browser (`NoteTemplateDialog`), and integrated creation from workspace header "+", tab bar, and Command Palette.
+2. LaTeX Theorems, Definitions & Proof Environments (EDT-12, NOTE-07): Formal mathematics template (`theorem_proof`) added to `LatexTemplates.all` with AMS theorem environments (`\newtheorem{theorem}`, `\begin{proof}`, etc.), and Unicode transclusion formatting on spatial canvas cards via `CanvasRichText.formatMathToUnicode` for blackboard bold sets ($\mathbb{R}, \mathbb{C}, \mathbb{N}, \mathbb{Z}, \mathbb{Q}$), `\qed`, and theorem/proof blocks.
+3. Word Goal Milestone Completion & Dynamic Accent Indicator (EDT-13, MOT-01, MOT-04): Enhanced live word goal badge (`footer-target-goal-badge`) in `NoteEditor` with responsive `OrbitColors` accent/success styling and milestone completion state (`✓ Goal reached`).
+4. Template Insertion into Active Document (EDT-09): Added "Insert Template…" action in `NoteEditor` and Command Palette to insert structured templates directly at caret position.
+
+Implemented:
+- Markdown Note Templates Catalog (`lib/features/notes/note_templates.dart`):
+  - Created `NoteTemplate` model with `id`, `name`, `description`, `icon`, `defaultTitle`, `body`, and `tags`.
+  - Built `NoteTemplates` catalog with 7 structured templates: `cornell`, `meeting`, `weeklyReview`, `literature`, `dailyStandup`, `projectRfc`, and `blank`.
+  - Added `byId(id)` lookup and `search(query)` filtering across name, description, tags, and body content.
+- Note Template Browser & Preview Dialog (`lib/features/notes/note_template_dialog.dart`):
+  - Built `NoteTemplateDialog` featuring search filtering, template item cards with badges and tags, side-by-side selectable preview pane, double-click selection, and creation / insertion modes.
+- Workspace & Navigation Integration (`lib/features/workspace/workspace_shell.dart`, `command_palette.dart`, `note_editor.dart`):
+  - In `WorkspaceShell`: Added "New Note from Template…" in header "+" menu (`ValueKey('new-note-from-template')`) and tab bar new note menu.
+  - In `CommandPalette`: Added "New note from template..." and "Insert template into active note..." commands.
+  - In `NoteEditor`: Added "Insert Template…" to actions popup menu and updated live goal badge to support dynamic theme colors and milestone celebratory label.
+- LaTeX Theorems & Mathematical Rigor on Canvas (`lib/features/notes/latex/latex_templates.dart`, `lib/features/canvas/canvas_rich_text.dart`):
+  - Added `theoremProof` template to `LatexTemplates.all` with definitions, Banach Fixed-Point theorem, and Cauchy sequence proofs.
+  - Extended `CanvasRichText.formatMathToUnicode` to parse theorem environments (`\begin{theorem}`, `\begin{definition}`, `\begin{proof}`, etc.), `\qed` ($\blacksquare$), and blackboard bold sets ($\mathbb{R}, \mathbb{C}, \mathbb{N}, \mathbb{Z}, \mathbb{Q}$).
+- Automated Test Suite (`test/note_templates_and_goal_test.dart`):
+  - Added 7 comprehensive unit and widget tests covering catalog lookup, search filtering, LaTeX theorem parsing, canvas math transclusion, dialog interaction, shell integration, and editor goal milestones with 100% pass rate.
+
+Validation:
+- Test suite: `test/note_templates_and_goal_test.dart` (7 tests passed), `test/tags_readability_footnotes_test.dart` (12 tests passed) — 19/19 tests passed cleanly.
+- Static analysis: 0 warnings, 0 errors (`flutter analyze --no-pub`: "No issues found!").
+- Formatting clean across all 316 files (`dart format --output=none --set-exit-if-changed lib test`).
+
+Suggested next task: Direct drag-and-drop linking and transclusion of PDF text citations and quotes onto the Orbit spatial canvas as cards.
+
+---
+
+# Previous task — Document Tags Explorer Filter, Readability Metrics, Footnotes Quick-Insert & Canvas Sticky Tinting, 2026-09-28
+
+Owner request: "add more features"
+Scope: High-value native personal knowledge features expanding desktop workflows:
+1. Document Readability & Complexity Analytics (EDT-13): Flesch Reading Ease score, Flesch-Kincaid Grade level estimation, average sentence length, average word length, and syllable counting heuristic integrated into DocumentStats and DocumentStatsDialog's dedicated Readability card.
+2. Markdown Footnotes Quick-Insert (EDT-12): Markdown footnote auto-indexing helper (`MarkdownEditing.insertFootnote`) finding highest existing `[^n]`, inserting `[^n+1]` at current caret, and appending `[^n+1]: ` at document bottom, wired to `Ctrl+Shift+F` in NoteEditor.
+3. Document Tag Management & Explorer Tag Filter (TAG-01): `WorkspaceController` tag aggregation (`allTags`, `tagsForObject`, `countForTag`, `addTagToObject`, `removeTagFromObject`), explorer filtering via `activeTagFilter`, quick-filter popup button (`explorer-tag-filter-button`), active tag filter chip bar (`#tag ✕`), and Command Palette commands.
+4. Canvas Sticky Note Swatch Color Tinting (CAN-02): Dynamic hex/int color parsing for sticky notes in `OrbitCanvasPainter`.
+
+Implemented:
+- Document Readability & Complexity Analytics (`lib/features/notes/document_stats_dialog.dart`):
+  - Added fields: `fleschReadingEase`, `fleschKincaidGrade`, `readingEaseLabel`, `gradeLevelLabel`, `averageSentenceLength`, `averageWordLength`, and `syllables`.
+  - Added rule-based syllable counting heuristic `_countSyllables(String word)` with silent 'e', diphthong, and suffix handling.
+  - Implemented Flesch Reading Ease ($206.835 - 1.015 \times \text{ASL} - 84.6 \times \text{ASW}$) and Flesch-Kincaid Grade Level ($0.39 \times \text{ASL} + 11.8 \times \text{ASW} - 15.59$) with safe zero-division fallbacks.
+  - Built responsive `_ReadabilityCard` in `DocumentStatsDialog` displaying reading ease badge, grade level indicator, and text metrics.
+- Markdown Footnotes Quick-Insert (`lib/features/notes/markdown_editing.dart`, `lib/features/notes/note_editor.dart`):
+  - Added `MarkdownEditing.insertFootnote(TextEditingValue value)`: scans for all `\[\^(\d+)\]` patterns to calculate next index, embeds marker at caret, and appends reference definition line at the document bottom.
+  - Bound `Ctrl+Shift+F` keyboard shortcut in `NoteEditor` to invoke footnote insertion.
+- Document Tag Management & Explorer Tag Filter (`lib/app/workspace_controller.dart`, `lib/features/workspace/workspace_shell.dart`, `lib/features/workspace/command_palette.dart`):
+  - In `WorkspaceController`: added `activeTagFilter` with reactive notifications, `allTags` aggregator gathering tags from both object properties (`'tags': [...]`) and markdown body hashtags (`#tag`), `tagsForObject(id)`, `countForTag(tag)`, `addTagToObject(id, tag)`, and `removeTagFromObject(id, tag)`.
+  - In `WorkspaceShell`: integrated `activeTagFilter` into explorer object pruning, added `explorer-tag-filter-button` popup menu, and added active tag filter chip bar (`#tag ✕`) with 1-click dismissal button (`clear-active-tag-filter`).
+  - In `CommandPalette`: added "Filter explorer by tag...", "Clear active tag filter", and "Add tag to current document..." commands.
+- Canvas Sticky Note Swatch Color Tinting (`lib/features/canvas/canvas_painter.dart`):
+  - Added custom color parsing (hex string `#RRGGBB` or int) for sticky notes in `OrbitCanvasPainter._element()` under `case 'sticky':`.
+- Automated Test Suite (`test/tags_readability_footnotes_test.dart`):
+  - 12 comprehensive unit and widget tests covering readability score calculation, syllable heuristic, footnote auto-indexing, tag manipulation, and explorer tag filter UI with 100% pass rate.
+
+Validation:
+- Test suite: `test/tags_readability_footnotes_test.dart` (12 tests passed), `test/note_editor_stats_test.dart`, `test/notes_editing_test.dart`, `test/note_footnotes_underline_test.dart` (17 tests passed).
+- Static analysis: 0 warnings, 0 errors (`flutter analyze --no-pub`: "No issues found!").
+- Formatting clean across all 313 files (`dart format --output=none --set-exit-if-changed lib test`).
+
+Suggested next task: Direct transclusion and live linking of LaTeX theorem and equation cards onto the Orbit spatial canvas.
+
+---
+
+# Previous task — Accent Palettes, Editor & Storage Settings, Canvas Presets & Tactile Animations, 2026-09-28
+
+Owner request: "Continue adding more features and more animations." / "add more animations and add more settings features" / "continue"
+Scope: High-value native settings and premium tactile interaction animations strictly adhering to Orbit Note's "quiet observatory" dark graphite design philosophy (MOT-01 through MOT-06; `docs/design/motion.md` and `docs/design/visual-design.md`). Custom accent themes with animated transitions, configurable auto-save and auto-snapshot on close, editor view defaults and Bionic Speed Reading, Focus Timer duration customization with ambient breathing glow, Document Revision History diffs, Markdown Table generator dialog, canvas paper and grid defaults, audio playback speed defaults, note editor line spacing, vault cache optimizer, and tactile motion primitives (`OrbitAnimatedProgress`, `OrbitPulseBadge`, `OrbitBounceButton`, `OrbitFadeSwitcher`).
+
+Implemented:
+- Observatory Accent Color Theme System (`lib/app/orbit_theme.dart`, `orbit_app.dart`, `session_state.dart`, `workspace_views.dart`):
+  - Defined 6 observatory accent presets: Observatory Violet (`#8B7CF6`), Nebula Cyan (`#06B6D4`), Emerald Aurora (`#10B981`), Solar Flare Amber (`#F59E0B`), Crimson Nova Rose (`#F43F5E`), and Cobalt Deep Blue (`#3B82F6`).
+  - Added dynamic theme color resolution in `orbitDarkTheme(accentColor: ...)` with synchronized ColorScheme seeding, hover tones, and 160ms animated transitions via `themeAnimationDuration` in `OrbitNoteApp`.
+  - Built interactive Accent palette chip selector with animated checkmarks, tooltips, and live instant feedback in `SettingsView`.
+- Editor Defaults, Line Spacing & Bionic Speed Reading (`lib/features/workspace/workspace_views.dart`, `session_state.dart`, `note_editor.dart`):
+  - Added Default Editor View Mode selector (`rich`, `write`, `split`, `read`) with automatic fallback in `NoteEditor` when opening notes without prior saved state.
+  - Added Default New Document Format selector (`markdown` vs `latex`).
+  - Added Editor Line Spacing dropdown (`1.4` Compact, `1.6` Standard, `1.8` Relaxed) with live propagation to raw Markdown, hint text, and preview stylesheets.
+  - Added Bionic Speed Reading default toggle (`bionicReadingDefault`).
+  - Wrapped editor view modes in `OrbitContentTransition` (`identity: mode`) for 4px subtle, quiet cross-mode arrivals.
+- Canvas & Spatial Board Settings (`lib/features/workspace/workspace_views.dart`, `session_state.dart`, `canvas_editor.dart`):
+  - Added Default Canvas Paper & Grid Preset selector (`dots`, `grid`, `graph`, `cross`, `hex`, `blueprint`, `lines`, `ruled`, `isometric`, `blank`).
+  - Added Canvas Snap to Grid default toggle (`canvasSnapToGrid`).
+  - Seamlessly forwarded defaults to `CanvasEditor` via `WorkspaceShell`.
+- Audio & Voice Memo Settings (`lib/features/workspace/workspace_views.dart`, `session_state.dart`, `audio_player_card.dart`, `canvas_editor.dart`):
+  - Added Default Playback Speed selector (`1.0x`, `1.25x`, `1.5x`, `2.0x`) initialized dynamically in `OrbitAudioPlayerCard`.
+- Storage Debounce, Auto-Snapshot & Vault Optimizer (`lib/features/workspace/workspace_views.dart`, `session_state.dart`, `workspace_controller.dart`):
+  - Added configurable Auto-Save Debounce Interval: 500ms (Fast), 1000ms (Balanced, Default), 2500ms (Relaxed).
+  - Added Auto-Snapshot on Document Close (`autoSnapshotOnClose`).
+  - Added "Optimize Vault Cache" action button with tactile icon and verification SnackBar.
+- Focus & Deep Work Timer Customization (`lib/features/workspace/workspace_views.dart`, `focus_timer.dart`, `session_state.dart`):
+  - Added custom duration selectors for Focus sessions (15m, 20m, 25m, 30m, 45m, 60m), Short breaks (3m, 5m, 10m), and Long breaks (15m, 20m, 30m).
+  - Added `FocusTimerController.configureDurations` to dynamically update timer modes and cycles in real time.
+- Premium Tactile Animation Primitives (`lib/app/orbit_components.dart`, `focus_timer.dart`):
+  - `OrbitAnimatedCounter`: Implicitly animated rolling counter widget for smooth integer transitions.
+  - `OrbitHoverLiftCard`: Tactile micro-lift container (`translateY: -3.0px`), border accent brightening, and soft shadow bloom on hover.
+  - `OrbitBreathingGlow`: Ambient breathing ring glow pulse using smooth sine easing with eager `AnimationController` initialization.
+  - `OrbitAnimatedProgress`: Implicitly animated linear progress bar replacing raw `LinearProgressIndicator` in project cards.
+  - `OrbitPulseBadge`: Tactile animated badge with an ambient pulsing ping ring around a status pip, integrated into Observatory Vault Analytics (`TELEMETRY LIVE`).
+  - `OrbitBounceButton`: Micro-interaction container delivering springless press scale feedback (`0.94` on tap down, returning to `1.0`), suppressing travel under reduced and off motion.
+  - `OrbitFadeSwitcher`: Restrained opacity crossfade widget between children for smooth mode/panel switching.
+- Document Revision History & Visual Diff Inspector (`lib/features/notes/document_history_dialog.dart`, `note_editor.dart`, `command_palette.dart`):
+  - Full LCS line-by-line diff engine, revision snapshots list, diff vs preview view, and pre-restore safety checkpoints.
+- Bionic Speed Reading Engine (`lib/features/notes/bionic_reading.dart`, `note_editor.dart`):
+  - Prefix fixation bolding engine with inline code, URLs, LaTeX formulas, and wiki-link preservation.
+- Visual Markdown Table Generator (`lib/features/notes/table_editor_dialog.dart`, `note_editor.dart`):
+  - Interactive grid dimension steppers, column alignment, header editors, and GFM markdown insertion.
+- Automated Test Suite (`test/settings_and_animations_test.dart`, `test/audio_player_and_focus_timer_test.dart`, `test/document_history_and_table_test.dart`):
+  - 38 comprehensive unit and widget tests across `settings_and_animations_test.dart` (22 tests) and `audio_player_and_focus_timer_test.dart` (16 tests) with 100% pass rate.
+  - Clean route cleanup and eager controller lifecycles in `_OrbitBreathingGlowState` and `_OrbitPulseBadgeState`.
+
+Validation:
+- Full test suites: `test/settings_and_animations_test.dart` (22 tests passed), `test/audio_player_and_focus_timer_test.dart` (16 tests passed).
+- Static analysis: 0 warnings, 0 errors (`flutter analyze --no-pub`: "No issues found!").
+- Formatting clean across all 312 files (`dart format --output=none --set-exit-if-changed lib test`).
+- Production Windows release binary built in 61.4s (`build\windows\x64\runner\Release\orbit_note.exe`). Verified clean launch via process smoke test (PID 9128).
+- Packaged release distribution in `release-assets\OrbitNote-Windows-x64.zip` (25.6 MB).
+
+Suggested next task: Direct transclusion and live linking of LaTeX theorem and equation cards onto the Orbit spatial canvas.
+
+---
+
+# Previous task — Audio Voice Memos, Focus / Pomodoro Timer & Tactile Motion Polish, 2026-09-27
+
+Owner request: "Continue adding more features and more animations."
+Scope: High-value native productivity features with rich, tactile motion strictly adhering to Orbit Note's "quiet observatory" dark graphite design philosophy (MOT-01 through MOT-06; `docs/design/motion.md` and `docs/design/visual-design.md`). Interactive Audio Voice Memo player card with animated waveform visualizer for notes and spatial canvas (FILE-01, FILE-02), deep-work Focus / Pomodoro Timer with breathing radial progress ring (STUDY-01, DES-01), tactile task completion animation with recoverable undo snackbar (MOT-04, TASK-01), and standardized dialog transitions.
+
+Implemented:
+- Interactive Audio Voice Memo & Visual Audio Player Card (`lib/features/canvas/audio_player_card.dart`, `canvas_editor.dart`, `canvas_painter.dart`, `scene.dart`):
+  - Added `'audio'` to `canvasElementTypes` in `scene.dart`.
+  - Added high-DPI custom vector painting for `'audio'` cards in `OrbitCanvasPainter._element()`: rounded dark graphite card, border, circular play button glyph, memo title, audio badge, and 24-bar waveform with progress highlighting and PNG raster export.
+  - Built `OrbitAudioPlayerCard`: interactive tactile audio player with play/pause toggle, live animated waveform frequency bars (28 bars with gentle sine modulation during playback, suppressed under reduced motion), clickable/draggable scrubber bar, playback speed cycling ($1.0\times, 1.25\times, 1.5\times, 2.0\times$), volume mute/unmute, and expandable `OrbitDisclosure` transcript viewer with 1-click clipboard copy.
+  - Added `_addAudioMemo()` and "+ Add" menu item in `CanvasEditor` with Cyan/Teal (#06B6D4) minimap element coding. Double clicking on canvas audio elements triggers the interactive `OrbitAudioPlayerCard` in `showOrbitDialog`.
+- Deep Work Focus / Pomodoro Timer with Breathing Progress Ring (`lib/features/workspace/focus_timer.dart`, `workspace_shell.dart`, `command_palette.dart`):
+  - Created `FocusTimerController`: tracks modes (Focus 25m, Short Break 5m, Long Break 15m), active countdown, pause/reset/skip, session streaks, and 4-block Pomodoro cycle tracking.
+  - Built `FocusTimerProgressRing`: custom-painted circular progress ring with radial sweep gradient, countdown timer in monospace tabular digits, and a subtle breathing pulse glow that activates only during active focus sessions and ceases when idle/paused/reduced-motion.
+  - Built `FocusTimerDialog`: modal dialog with mode chips, large radial ring, play/pause, reset, skip controls, and 4-dot cycle streak indicator.
+  - Added `FocusTimerMiniButton` in `WorkspaceShell` header toolbar (`focus-timer-button`) showing remaining time and active accent tint.
+  - Added "Open Focus & Pomodoro Timer" and "Start Focus session" commands to `CommandPalette`.
+- Tactile Task Completion Animation & Recoverable Recovery Action (`lib/features/workspace/workspace_views.dart`):
+  - Wrapped `Checkbox` in `AnimatedScale` with `OrbitMotion.micro` and `OrbitMotion.ease`, producing tactile scale feedback on completion (suppressed under reduced-motion and off modes).
+  - Tapping task completion now displays an immediate recoverable SnackBar with an "Undo" action, directly fulfilling MOT-04 and TASK-01 requirements for understandable recovery paths.
+- Refined Dialog System (`lib/app/orbit_components.dart`, `command_palette.dart`, `quick_switcher_dialog.dart`):
+  - Added `OrbitMotionScope.isReduced(context)` and `isOff(context)` convenience methods.
+  - Made `OrbitDisclosure` accept both `visible` and `expanded` parameters for unified usage.
+  - Converted `showCommandPalette` and `showQuickSwitcher` to use `showOrbitDialog`.
+- Automated Test Suite (`test/audio_player_and_focus_timer_test.dart`):
+  - Added 16 comprehensive unit and widget tests covering:
+    - `OrbitAudioPlayerCard` rendering, play/pause toggle, speed cycling, transcript expansion, and clipboard copy.
+    - Canvas `audio` element recognition, vector painting in `OrbitCanvasPainter`, and raster export with `renderCanvasToPng()`.
+    - `FocusTimerController` timer state, pause, reset, mode advancement, and 4-session long break transition.
+    - `FocusTimerDialog` and `FocusTimerMiniButton` widget rendering and dialog trigger.
+    - `TaskRow` tactile completion, recoverable undo SnackBar, and 1-click reversion.
+
+Validation:
+- Full test suite: **930 tests passed cleanly across 125 test files** (`flutter test --no-pub`), with 0 regressions.
+- Static analysis: 0 warnings, 0 errors (`flutter analyze --no-pub`: "No issues found!").
+- Formatting clean across all 307 files (`dart format --output=none --set-exit-if-changed lib test`).
+
+Suggested next task: Document History / Revisions Inspector Panel allowing users to inspect and restore past edit snapshots for notes.
+
+---
+
+# Previous task — Quiet Observatory Animation & Tactile Motion Polish, 2026-09-27
+
+Owner request: "Add more animations to Orbit Note make it feel premiun and rich, stick to the oribit note designb philosophie"
+Scope: Bounded, tactile interaction motion strictly adhering to Orbit Note's "quiet observatory" dark graphite design philosophy (MOT-01 through MOT-06; `docs/design/motion.md` and `docs/design/visual-design.md`). Standardized motion primitives, spatial horizontal panel entrances, floating HUD/popover fade+scale, tactile card hover illumination with micro-scale press feedback, dynamic selection indicator expansion, and standardized dialog transition styles, while strictly suppressing travel/scaling under reduced-motion preferences and zero-delay immediate rendering under off mode. Preserves direct typing, ink drawing, camera navigation, and offline persistence boundaries.
+
+Implemented:
+- Motion Primitives & Tactile Components (`lib/app/orbit_components.dart`):
+  - `OrbitEntrance`: Extended with `spatial: true` and configurable `offset` (e.g., `Offset(6, 0)`), providing smooth horizontal/vertical slide-in arrivals; automatically suppresses spatial displacement under reduced motion mode.
+  - `OrbitFadeScale`: Built with `TweenAnimationBuilder<double>` for quiet, subtle fade + micro-scale (0.95 -> 1.0) entrances for floating HUDs, toolbars, and tooltips, without requiring manual lifecycle controllers.
+  - `OrbitCard`: Created a tactile container widget with preference-aware hover border illumination (`c.accent` with alpha), background transition (`c.panel` -> `c.hover`), and springless micro-scale press feedback (`0.985`), honoring reduced and off motion settings.
+  - `OrbitPillBadge`: Tactile badge with smooth `AnimatedContainer` and `AnimatedDefaultTextStyle` color transitions.
+  - `OrbitControl`: Indicator bar now dynamically expands width from 0 to 14px on selection using `OrbitMotion.control` and `OrbitMotion.ease`.
+  - `showOrbitDialog<T>`: Standardized modal dialog helper with 200ms `OrbitMotion.dialog` ease-out cubic animation style.
+- Workspace & Shell Navigation Animations (`lib/features/workspace/workspace_shell.dart`, `orbit_explorer_row.dart`, `document_breadcrumbs.dart`):
+  - Inspector sidebar wrapped in spatial `OrbitEntrance` (`offset: Offset(6, 0)`) for smooth horizontal glide.
+  - Document tabs animate background color changes and hover transitions via `AnimatedContainer` using `OrbitMotion.micro`.
+  - Document breadcrumb chips wrapped in `_BreadcrumbChip` with smooth hover illumination.
+  - Explorer tree item selection and focus transitions smoothed with `curve: OrbitMotion.ease`.
+  - `showMoveToFolderDialog` upgraded to use `showOrbitDialog`.
+- Note & Document Editor Animations (`lib/features/notes/note_editor.dart`):
+  - Docked `NoteOutlinePanel` and `LatexInspector` sidebars wrapped in spatial `OrbitEntrance` (`offset: Offset(6, 0)`).
+- Spatial Canvas Overlays & Tooltips (`lib/features/canvas/canvas_editor.dart`):
+  - Card preview tooltip (`CanvasCardPreviewTooltip`), canvas minimap card, selection indicator HUD, and canvas search overlay wrapped in `OrbitFadeScale`.
+- Automated Test Suite (`test/motion_enhancements_test.dart`):
+  - 10 new comprehensive unit and widget tests covering:
+    - `OrbitEntrance` spatial motion in normal mode, travel suppression in reduced mode, and zero-ticker rendering in off mode.
+    - `OrbitFadeScale` scale and opacity transitions, scale suppression in reduced mode, and instant off mode.
+    - `OrbitCard` hover and tap press scale feedback.
+    - `OrbitPillBadge` rendering, styling, and tap handling.
+    - `OrbitControl` indicator expansion from 0 to 14px on selection.
+    - `showOrbitDialog` helper execution with dialog motion timing.
+
+Validation:
+- Full test suite: 914 tests passed cleanly across 124 test files (`flutter test --no-pub`), with 0 regressions.
+- Static analysis: 0 warnings, 0 errors (`flutter analyze --no-pub`: "No issues found!").
+- Formatting clean across all 304 files (`dart format --output=none --set-exit-if-changed lib test`).
+
+Suggested next task: Audio voice memos and visual audio player card for Canvas boards and notes.
+
+---
+
+# Previous task — Canvas & Math Grid Presets Expansion, 2026-09-27
+
+Owner request: "Add more grid presets and stuff to Orbit Note, the ones we have keep them. Just add some more"
+Scope: Preserve all 8 existing canvas background paper grid presets (`dots`, `grid`, `graph`, `cornell`, `lines`, `ruled`, `isometric`, `blank`), add 6 new high-utility canvas background grid presets (`cross`, `hex`, `blueprint`, `music`, `ledger`, `triangular`) with full interactive painter and raster PNG export support, and add Math Grid builder presets (Identity matrices, 2D Rotation, Column Vectors, Piecewise cases, Aligned systems) with quick-insert preset picker in the Rich Note Math Grid dialog.
+
+Implemented:
+- Canvas Grid Presets Expansion (`lib/features/canvas/canvas_editor.dart`, `canvas_painter.dart`):
+  - Preserved all 8 existing background presets intact.
+  - Added 6 new canvas presets in the paper style selection menu:
+    - `cross`: Cross / Reticle grid with subtle `+` tick marks at intersection nodes for CAD/drafting layouts.
+    - `hex`: Regular pointy-topped hexagonal honeycomb grid with continuous tessellation for organic chemistry, game boards, and biology sketches.
+    - `blueprint`: Architectural blueprint grid featuring deep cyan background tint, minor 0.6px grid, and major 1.2px divisions.
+    - `music`: Musical notation manuscript staff with 5-line staves, measure bar lines, and clean vertical inter-staff margins.
+    - `ledger`: Accounting / columnar ledger with ruled rows, alternating debit/credit column shading, and title header area.
+    - `triangular`: 60-degree isometric equilateral triangle grid mesh for geometric tessellation and 3D wireframes.
+  - Full vector painter implementation in `OrbitCanvasPainter._grid()` handling infinite canvas pan/zoom, theme contrast adaption, and pixel-perfect high-DPI raster PNG export via `renderCanvasToPng()`.
+- Math Grid Builder Presets (`lib/features/notes/rich/math_grid_editor.dart`):
+  - Created `MathGridPreset` data model and defined 9 standard academic presets in `mathGridPresets`: 2×2 Identity, 3×3 Identity, 2×2 Zero Matrix, 2D Rotation Matrix, 3D Column Vector, 2×2 General Matrix, 2-Case Piecewise, 3-Case Piecewise, and 2×2 Aligned Equation System.
+  - Added interactive preset selector popup button (`math-grid-preset-button`) in `_MathGridDialog` header to populate rows, columns, matrix brackets, and initial cell contents with 1 click.
+- Automated Test Suite (`test/grid_presets_test.dart`):
+  - Added 18 comprehensive tests covering:
+    - OrbitCanvasPainter painting all 14 presets without errors at standard zoom, zoomed in (2.5x), and zoomed out (0.25x).
+    - `renderCanvasToPng` raster export across new presets.
+    - Paper style dropdown containing all 14 items with correct icons and localized tooltips.
+    - `mathGridPresets` configurations and interactive button population.
+
+Validation:
+- Full test suite: 904 tests passed cleanly across 123 test files (`flutter test --no-pub`), with 0 regressions.
+- Static analysis: 0 warnings, 0 errors (`flutter analyze --no-pub`: "No issues found!").
+- Formatting clean across all 303 files (`dart format --output=none --set-exit-if-changed lib test`).
+
+Suggested next task: Audio voice memos and visual audio player card for Canvas boards and notes.
+
+---
+
+# Previous task — GitHub Actions CI/Release Automation & Desktop UX Polish, 2026-09-27
+
+Concurrent owner request in this chat: [LaTeX rich document redesign](latex-rich-editor-2026-09-27.md).
+That task records its scope and validation separately to preserve this shared
+workspace's ongoing desktop/release work.
+
+Owner request: "build windows release and apk", "yes lets od that, and after that lets add more tiny little features that are npot big but noticasble"
+Scope: GitHub Actions CI and Release compilation workflows for Android APK and Windows x64 zip packaging, plus high-utility native desktop polish features (Explorer folder collapse/expand all, Explorer duplicate shortcut Ctrl+D, real-time selection range indicator, instant document metric cycling, and 1-click Copy Note as Markdown).
+
+Implemented:
+- GitHub Actions CI & Release Workflows (`.github/workflows/ci.yml`, `.github/workflows/release.yml`):
+  - Added `workflow_dispatch` trigger for manual on-demand pipeline execution.
+  - Release workflow builds Android APK (`flutter build apk --release`) and packages Windows x64 executable and assets into a distributable ZIP.
+  - Conditional publish release step: uploads artifacts on tag pushes (`refs/tags/v*`), while permitting manual compilation runs without tags.
+- Explorer Folder Collapse & Expand All (`lib/app/workspace_controller.dart`, `workspace_shell.dart`, `note_folder_explorer.dart`, `command_palette.dart`):
+  - Added `allKnownFolders`, `collapseAllFolders()`, `expandAllFolders()`, and `areAllFoldersCollapsed` to `WorkspaceController`.
+  - Added `explorer-collapse-expand-all` toolbar button in `WorkspaceShell` when exploring notes, toggling between collapse all and expand all with dynamic tooltip.
+  - Added keyboard shortcut `Ctrl+Shift+E` inside `NoteFolderExplorer`.
+  - Added "Collapse all folders in explorer" and "Expand all folders in explorer" to `CommandPalette`.
+- Explorer Note Duplication Shortcut `Ctrl+D` (`lib/features/workspace/note_folder_explorer.dart`):
+  - Pressing `Ctrl+D` on selected or focused items directly duplicates notes with `(Copy)` suffix.
+- Real-Time Selection Range Counter in Footer (`lib/features/notes/note_editor.dart`):
+  - Updated `note-line-col-indicator` to dynamically display selection bounds: `Ln X, Col Y (N selected)` for single-line selections and `Ln X, Col Y (M lines, N selected)` for multi-line selections.
+- Instant Metric Cycling on Footer Document Stats (`lib/features/notes/note_editor.dart`):
+  - Added dedicated `document-stats-toggle` button to instantly cycle metric display modes: Words & Chars -> Characters only -> Chars (no spaces) -> Read time.
+  - Preserved `document-stats` click action to open the full `DocumentAnalytics` dialog.
+- 1-Click Copy Entire Note as Markdown (`lib/features/notes/note_editor.dart`, `command_palette.dart`):
+  - Added "Markdown" option to `note-copy-as-menu`, `Ctrl+Shift+C` shortcut, and Command Palette command.
+- Documentation & Shortcuts Cheatsheet (`lib/features/notes/shortcuts_dialog.dart`):
+  - Documented `Ctrl+Shift+C`, `Ctrl+Shift+E`, and `Ctrl+D`.
+
+Validation:
+- Full test suite: 880 tests passed cleanly across 122 test files (`flutter test --no-pub`), including 7 new tests in `test/explorer_collapse_and_editor_polish_test.dart` with 0 regressions.
+- Static analysis: 0 errors, 0 warnings (`flutter analyze --no-pub`: "No issues found!").
+- Formatting clean across all 300 files (`dart format --output=none --set-exit-if-changed lib test`).
+
+Suggested next task: Audio voice memos and visual audio player card for Canvas boards and notes.
+
+---
+
+# Previous task — Navigation History Menus, Universal Document Duplication, Word Goal Dialog & Radial Progress Ring, 2026-09-27
+
+Owner request: "Continue adding more features" (High-value, native desktop features adhering strictly to Orbit Note's "quiet observatory" dark graphite design system, local-first offline invariants, and zero AI noise).
+Scope: Chronological navigation history menu & direct jump stack on Back/Forward buttons, universal document duplication for notes, canvases, and views in explorer/tabs/command palette, interactive Word Goal setting dialog with presets, and mini radial progress rings in NoteEditor header and footer.
+
+Implemented:
+- Navigation History Menus & Direct Jump (`lib/app/workspace_controller.dart`, `lib/features/workspace/workspace_shell.dart`):
+  - Added deduplicated `backHistory` and `forwardHistory` getters to `WorkspaceController` tracking visited documents (up to 12 entries).
+  - Added `jumpToHistoryObject(id)` method for jumping directly across history steps.
+  - Added secondary-click (right-click) and long-press gesture detectors to Back and Forward buttons in `WorkspaceShell`.
+  - Right-clicking Back reveals a floating popup menu of previous documents with their type icon, title, and folder path; selecting any document jumps directly to it.
+  - Right-clicking Forward reveals future documents in the forward stack with 1-click jump.
+  - Updated tooltips to indicate `Right-click for history`.
+- Universal Document & View Duplication (`lib/app/workspace_controller.dart`, `note_folder_explorer.dart`, `workspace_shell.dart`, `command_palette.dart`):
+  - Added `duplicateObject(id)` and `duplicateObjects(ids)` to `WorkspaceController` supporting notes, canvases, tasks, events, and views.
+  - Automatically copies body, data (canvas elements), and properties, adding a `(Copy)` title suffix and opening the copy.
+  - Added "Duplicate note", "Duplicate canvas", "Duplicate task", "Duplicate view" directly in the Note Folder Explorer object context menu.
+  - Added "Duplicate X items" batch action in Explorer multi-select menu.
+  - Added "Duplicate Tab" action in tab context menu.
+  - Added "Duplicate current document" command in Command Palette.
+- Word Goal Setting Dialog & Mini Radial Progress Ring (`lib/features/notes/word_goal_dialog.dart`, `note_editor.dart`):
+  - Created `WordGoalProgressRing`: a custom-painted circular progress ring showing percentage completed, turning emerald green on 100%+ completion.
+  - Created `WordGoalDialog`: a sleek, overflow-safe modal with quick preset chips (250 Draft, 500 Short, 1000 Article, 1500 Essay, 2000 Deep Dive, 5000 Paper), custom word count input with live progress calculation, "Clear Goal" button, and "Set Goal" action.
+  - Embedded `WordGoalProgressRing` inside the NoteEditor toolbar `note-word-goal-badge`, opening `showWordGoalDialog` on tap.
+  - Embedded `WordGoalProgressRing` inside `footer-target-goal-badge` in the editor footer status bar.
+  - Added "Word Goal…" action to `note-copy-as-menu`.
+- Command Palette Enhancements (`lib/features/workspace/command_palette.dart`):
+  - Added "Duplicate current document" when active object is open.
+  - Added "Reopen closed tab" when closed tabs exist.
+  - Added "Go back in navigation history" and "Go forward in navigation history".
+
+Validation:
+- Full test suite: 873 tests across 121 test files passed cleanly (`flutter test --no-pub`), including 7 new tests in `test/navigation_history_and_word_goal_test.dart`.
+- Zero analyzer warnings or errors (`flutter analyze --no-pub`: "No issues found!").
+- Formatting clean across 299 files (`dart format --output=none --set-exit-if-changed lib test`).
+- Production Windows release binary built in 87.8s (`build\windows\x64\runner\Release\orbit_note.exe`).
+- Verified executable launches cleanly (PID 18964).
+- Packaged release distribution in `release-assets\OrbitNote-Windows-x64.zip` (24.4 MB).
+
+Suggested next task: Keyboard navigation within the Back/Forward history menu and custom hotkey bindings for document duplication (`Ctrl+D` in explorer).
+
+---
+
+# Previous task — Desktop Polish, Bug Fixes & Windows Release, 2026-09-27
+
+Owner request: "continue adding bug fixes you can find. Check for errors that cant be revealed directly. check for mistakes etc too. Make this app feel less ai sloppy. Add more featuires too", "build windowsa release and fix error in this app".
+Scope: Thorough audit for subtle/hidden errors, eliminate rough edges and "AI sloppy" gaps, introduce polished desktop interaction features (mouse back/forward buttons, Quick Switcher tags and ranking, auto-expanding collapsed folders on creation, mode-switching cursor continuity, copy feedback), guarantee 100% test coverage, zero analyzer issues, and package the production Windows release.
+
+Implemented:
+- Desktop Navigation & Mouse Button Support (`lib/features/workspace/workspace_shell.dart`):
+  - Added dedicated pointer listener on the workspace shell for mouse back (button 8) and mouse forward (button 16) navigation.
+  - Supported universal `Ctrl+O` as well as `Ctrl+E` for launching the Quick Switcher.
+  - Added SnackBar feedback when clicking "Copy Reference" on tab context menu.
+- Quick Switcher Intelligence & Ranking (`lib/features/workspace/quick_switcher_dialog.dart`):
+  - Enabled matching against document tags (`properties['tags']`) in addition to titles and folders.
+  - Upgraded sorting hierarchy: exact title match > title prefix > title substring > tag match > folder match.
+- Explorer Folder Auto-Expansion on Creation (`lib/features/workspace/note_folder_explorer.dart`):
+  - Creating any new document, canvas, or subfolder under a collapsed folder now automatically expands the folder so the user receives immediate visual feedback.
+- Editor Mode Switching Caret Continuity (`lib/features/notes/note_editor.dart`):
+  - Switching from Source mode to Rich mode now retains the exact UTF-16 character offset and auto-focuses the target block via `jumpTo`.
+  - Live UTF-16 document caret & selection synchronization from Rich mode back to `NoteEditor`, driving real-time footer `Ln X, Col Y` and analytics.
+- Defensive Bug Fixes & Regex Edge Cases:
+  - Fixed `setState()` timing in `_recordSelection` via schedulerPhase check: avoids build-phase exceptions while ensuring immediate updates during user events.
+  - Whole-word regex in `_buildSearchRegex()` now handles word and non-word boundaries correctly.
+  - Guarded `_selected` indexing in `CommandPalette` against out-of-bounds keys.
+  - Added `context.mounted` guard in `_showTabContextMenu`.
+- Smart URL Paste over Selection (`lib/features/notes/note_editor.dart`, `lib/features/notes/rich/rich_markdown_editor.dart`):
+  - Intercepts paste when URL is on clipboard and text is selected, wrapping as `[selectedText](url)` in both Rich and Source modes.
+
+Validation:
+- Full test suite of 866 tests across 120 test files passed cleanly (`flutter test --no-pub`).
+- Zero issues on static analysis (`flutter analyze --no-pub`).
+- Clean formatting verified with `dart format --output=none --set-exit-if-changed lib test` across 297 files.
+- Windows production release built in 94.3s (`build\windows\x64\runner\Release\orbit_note.exe`).
+- Verified binary launch cleanly via automation (PID 21820).
+- Packaged production distribution in `release-assets\OrbitNote-Windows-x64.zip` (25.5 MB).
+
+Suggested next task: Profiling memory consumption and cache retention in long-running workspace sessions with 100+ documents.
+
+---
+
+# Current task — Quiet interaction motion, 2026-09-27
+
+Owner request: add more animations that fit Orbit Note's design philosophy.
+Scope: bounded interaction transitions (MOT-01, MOT-02 and a small MOT-04 subset),
+preserving immediate editing, drawing, persistence and keyboard access.
+
+Implemented:
+- Workspace/tab content arrivals with 4px travel and a restrained fade; only the
+  current editor remains mounted, so input and focus are not delayed.
+- Inspector entrance, calendar expand/collapse, month arrival, rotating chevron,
+  and day selection feedback.
+- PDF notes/review panel size transitions with state retention and hidden-focus
+  exclusion; no PDF rendering or camera changes.
+- Shared control underline/icon transitions, explorer selection easing, and task
+  completion tint. Outline/task/drop hover feedback now follows motion settings.
+- Normal/Reduced/Off and OS reduction are honored; no repeating decoration.
+
+Validation: full suite of 858 tests passed (`flutter test --no-pub`), including
+six focused motion tests, line and auto-pairing tests, breadcrumbs, bookmarks,
+PDF workflows, and workspace views. Analysis found no issues (`flutter analyze --no-pub`);
+formatting and no-change check passed across 295 files. Windows production release
+built in 31.0s (`build\windows\x64\runner\Release\orbit_note.exe`), verified running,
+and packaged to `release-assets\OrbitNote-Windows-x64.zip` (25.5 MB). Behavior: [motion system](../design/motion.md).
+
+Suggested next task: native performance review of large populated workspaces.
+
+---
+
+## Previous task — Go to Line (Ctrl+G), Live Line:Column Status Indicator, Auto-Pairing & Delimiter Wrapping, and Line Move/Duplicate Shortcuts, 2026-09-27
+
+Owner request: "go on and more little but noticiable features and no ai slop", "Go for more tiny but noticeable features" (Subtle, highly noticeable productivity and editing enhancements strictly adhering to Orbit Note's "quiet observatory" dark graphite design system, local-first offline invariants, and zero AI slop).
+Scope: Universal Go to Line modal (`Ctrl+G`), real-time footer `Ln X, Col Y` cursor position indicator with 1-click jump, smart bracket and quotation auto-pairing with step-over and apostrophe safety, selection wrapping with brackets/quotes/markdown syntax (`*`, `_`, `~`, `$`, `` ` ``), backspace empty pair deletion, line movement shortcuts (`Alt+Up` / `Alt+Down`), and line duplication (`Shift+Alt+Down`).
+
+Implemented:
+- Live Line:Column Footer Status Indicator (`lib/features/notes/note_editor.dart`):
+  - Added interactive `note-line-col-indicator` in the editor footer alongside document analytics.
+  - Dynamically computes and displays `Ln ${pos.line}, Col ${pos.column}` reactively updated on cursor movement and text entry.
+  - Formatted with compact typography and tabular digits for zero-jitter layout stability.
+  - Hover tooltip indicates `Go to Line (Ctrl+G)`.
+  - 1-click tap triggers the Go to Line dialog.
+- Go to Line Floating Modal (`lib/features/notes/go_to_line_dialog.dart`, `note_editor.dart`):
+  - Compact floating prompt (max width 380px) triggered via `Ctrl+G` or footer indicator tap.
+  - Header displays total document lines range (`Lines 1 to N`).
+  - Autofocused input with live validation supporting `line` or `line:col` notation (e.g. `42` or `42:5`).
+  - Live feedback preview showing target destination.
+  - Clamps targets safely within document boundaries.
+  - Submitting jumps cursor directly to target line and column, brings position into view (`bringIntoView`), and scrolls preview in split/read modes.
+- Smart Bracket & Quotation Auto-Pairing & Step-Over (`lib/features/notes/markdown_editing.dart`, `note_editor.dart`):
+  - Auto-pairs open brackets and quotes when caret is collapsed:
+    - `(` -> `()` with cursor placed inside
+    - `[` -> `[]` with cursor placed inside
+    - `{` -> `{}` with cursor placed inside
+    - `"` -> `""` with cursor placed inside
+    - `'` -> `''` with cursor placed inside
+    - `` ` `` -> `` `` `` with cursor placed inside
+    - `$` -> `$$` with cursor placed inside
+  - Smart apostrophe protection: typing `'` after letters (e.g. `don't`, `it's`) does not auto-pair second quote.
+  - Quote safety: typing `"` or `'` directly before word characters does not auto-pair.
+  - Consecutive step-over: typing matching closing bracket or quote (`]`, `)`, `}`, `"`, `'`, `` ` ``, `$`) steps over the character instead of duplicating it.
+  - Backspace pair deletion: pressing Backspace when caret is positioned between empty pairs (`()`, `[]`, `{}`, `""`, `''`, `` `` ``, `$$`, `**`, `__`, `~~`) deletes both delimiters cleanly.
+- Selection Wrapping with Delimiters (`lib/features/notes/markdown_editing.dart`, `note_editor.dart`):
+  - Typing `(`, `[`, `{`, `"`, `'`, `` ` ``, `*`, `_`, `~`, or `$` around active text selection wraps the selection instead of replacing it.
+  - Selection is cleanly preserved around the enclosed text for immediate follow-up styling or typing.
+- Move Line & Duplicate Line Shortcuts (`lib/features/notes/markdown_editing.dart`, `note_editor.dart`):
+  - `Alt+Up` / `Alt+Down`: Fluidly moves active line or selected lines up/down without clipboard cut/paste, preserving relative cursor position. Bounded at document boundaries.
+  - `Shift+Alt+Down`: Duplicates current line or selected lines downwards with cursor preserved at identical column position.
+- Shortcuts Cheatsheet & Documentation Updates (`lib/features/notes/shortcuts_dialog.dart`):
+  - Added `Ctrl+G` (Go to line) under Navigation & Search.
+  - Added `Shift+Alt+Down` (Duplicate line downwards) and `Alt+Up`/`Alt+Down` (Move line / block up/down) under Blocks & Structure.
+
+Validation:
+- 12 comprehensive unit and widget tests in `test/editor_line_and_pairing_features_test.dart`:
+  - `lineAndColumnOf` 1-indexed line and column calculations across boundaries, newlines, and empty text.
+  - `totalLinesOf` and `offsetOfLine` mapping and boundary clamping.
+  - `wrapSelection` with brackets, quotes, markdown formatting, and math syntax.
+  - `handleAutoWrapOrPair` selection wrapping, collapsed auto-pairing, step-over, and apostrophe suppression.
+  - `handleBackspacePair` empty pair deletion across `()`, `[]`, `""`, `$$`.
+  - `moveLine` line swapping up/down and top/bottom boundary guards.
+  - `duplicateLine` line cloning downwards with cursor preservation.
+  - `GoToLineDialog` input parsing (`line` and `line:col`), validation feedback, submit, and cancel.
+  - `NoteEditor` line/col footer indicator rendering and dynamic updates.
+- 45 regression tests verified and passing across `document_breadcrumbs_and_pin_test.dart`, `quick_switcher_and_note_actions_test.dart`, `note_outline_and_target_features_test.dart`, `note_productivity_features_test.dart`, `workspace_tabs_bookmarks_test.dart`, and `notes_navigation_test.dart`. All 57 tests passed.
+- `dart format --output=none --set-exit-if-changed lib test` clean across 295 files.
+- `flutter analyze --no-pub` reported 0 errors and 0 warnings ("No issues found!").
+
+Suggested next task: Document History / Revisions Inspector Panel allowing users to inspect and restore past edit snapshots for the current note.
+
+---
+
+## Previous task — Document Breadcrumbs Trail, Tab Pinning Header Control, Word Goal Progress Badge & Quick Copy Options, 2026-09-27
+
+Owner request: "go on and more little but noticiable features and no ai slop" (High-utility productivity features adhering strictly to the "quiet observatory" dark graphite design system, local-first offline invariants, and zero AI fluff).
+Scope: Document Breadcrumbs navigation trail (`DocumentBreadcrumbs`) showing Vault > Folder > Subfolder > Document with popovers for sibling navigation, folder navigation, new note creation, and quick actions; 1-click `note-pin-toggle` header control; live `note-word-goal-badge` header indicator; and Wiki-Link (`[[...]]`) & relative path options in `note-copy-as-menu`.
+
+Implemented:
+- Document Breadcrumbs Trail (`lib/features/workspace/document_breadcrumbs.dart`):
+  - Slim 28px horizontal hierarchy bar located at the top of `NoteEditor` (Vault > Folder... > Document Title).
+  - Truncates gracefully with `SingleChildScrollView(scrollDirection: Axis.horizontal)` so it never causes layout overflows in narrow or split panes.
+  - Interactive Vault segment (`breadcrumb-vault`):
+    - Displays vault icon and vault name (`Personal Vault` or custom vault name).
+    - Popover menu with root folders and action to create new note in vault root.
+  - Interactive Folder segment(s) (`breadcrumb-folder-i`):
+    - Popover menu listing direct child subfolders and up to 20 active sibling notes and canvases in that folder.
+    - Sibling objects show their respective type icon (`orbit.note`, `orbit.canvas`, `orbit.file`, `orbit.task`).
+    - Currently active document is indicated with an active checkmark.
+    - Selecting any sibling note/canvas instantly navigates to it (`onOpenObject`).
+    - Action item `+ New note in "<folder>"` spins up a blank note directly in the targeted folder.
+  - Interactive Document segment (`breadcrumb-document`):
+    - Displays document icon (custom emoji, LaTeX formula symbol, or note icon) with bold font styling.
+    - Quick actions menu:
+      - `Copy relative path`: Copies e.g. `Notes/Projects/Design.md` to clipboard with toast confirmation.
+      - `Copy wiki-link`: Copies `[[Design]]` to clipboard.
+      - `Copy object ID`: Copies universal UUID.
+      - `Move to folder...`: Opens `showMoveToFolderDialog` to relocate the note to any vault folder with real-time filter search.
+      - `Bookmark note` / `Remove bookmark`: Toggles bookmark state with amber accent feedback.
+      - `Pin tab` / `Unpin tab`: Toggles pin state with violet accent feedback.
+- Tab Pinning Note Header Control (`note-pin-toggle` in `lib/features/notes/note_editor.dart`, `workspace_shell.dart`):
+  - 1-click header button placed alongside `note-bookmark-toggle` reflecting whether the active tab is pinned (`Icons.push_pin_rounded` in violet when pinned; `Icons.push_pin_outlined` when unpinned).
+  - Synchronized with `WorkspaceController.isPinned` and tab strip pins.
+- Word Goal Progress Header Badge (`note-word-goal-badge` in `lib/features/notes/note_editor.dart`):
+  - Dynamic progress badge displayed in the toolbar when target words are set (e.g. `350/500`).
+  - Displays violet outline when in progress and turns emerald green with a checkmark once target is achieved.
+  - 1-click tap opens the target words / document stats dialog for immediate goal adjustment.
+- Wiki-Link & Relative Path Fast Copy (`note-copy-as-menu` in `lib/features/notes/note_editor.dart`):
+  - Added "Wiki-Link" (`[[Title]]`) and "Relative Path" (`Folder/Title.md`) directly in the header "Copy as..." dropdown.
+- WorkspaceController & Shell Integration (`lib/app/workspace_controller.dart`, `workspace_shell.dart`):
+  - Added `c.objectFolder(id)` helper method.
+  - Wired vault name, folder paths, active objects, folder lookup, `onMoveToFolder`, and `onCreateNoteInFolder` into both primary and secondary panes.
+
+Validation:
+- 9 comprehensive tests in `test/document_breadcrumbs_and_pin_test.dart`:
+  - Renders vault, folder hierarchy, and document segments accurately.
+  - Folder segment popover opens, lists sibling objects, and navigates on tap.
+  - New note in folder action executes `onCreateNoteInFolder`.
+  - Document popover triggers bookmark and pin actions.
+  - `showMoveToFolderDialog` lists folders, filters, and selects target folder.
+  - Header pin button toggles pin state and displays active tooltip.
+  - Word goal badge displays words and target progress.
+  - `note-copy-as-menu` offers Wiki-Link and Relative Path options.
+- 36 regression tests verified and passing (`test/quick_switcher_and_note_actions_test.dart`, `test/note_outline_and_target_features_test.dart`, `test/note_productivity_features_test.dart`, `test/workspace_tabs_bookmarks_test.dart`, `test/notes_navigation_test.dart`). All 45 tests passed.
+- `dart format --output=none --set-exit-if-changed lib test` clean across 293 files.
+- `flutter analyze --no-pub` reported 0 errors and 0 warnings ("No issues found!").
+
+Suggested next task: Document History / Revisions Inspector Panel allowing users to inspect and restore past edit snapshots for the current note.
+
+---
+
+## Previous task — Quick Switcher & Note Header Focus/Bookmark Controls, 2026-09-27
+
+Owner request: "go on and more little but noticiable features and no ai slop" (Subtle, highly noticeable productivity and navigation enhancements following Orbit Note's "quiet observatory" design tokens, local-first offline invariants, and zero AI noise).
+Scope: Universal Quick Switcher overlay (`Ctrl+E`), document jump with tabs/recents/bookmarks/all, fallback instant note creation, and 1-click Note Editor header bookmark and focus mode toggle controls.
+
+Implemented:
+- Universal Quick Switcher Overlay (`lib/features/workspace/quick_switcher_dialog.dart`, `workspace_shell.dart`):
+  Lightweight modal overlay (max width 580px, max height 480px) triggered via `Ctrl+E` or the tab bar flash button (`quick-switcher-button`).
+  Categorizes items by Open Tabs, Recent Documents (MRU order), and Bookmarks.
+  Instant fuzzy search across titles and parent folders.
+  Keyboard-first navigation with `ArrowUp` / `ArrowDown` selection, auto-scroll viewport centering, `Enter` to open, and `Esc` to dismiss.
+  Clean fallback when query doesn't match an existing title: displays "Create new note [query]" action to spin up notes without losing flow.
+- Note Editor Bookmark & Focus Mode Header Controls (`lib/features/notes/note_editor.dart`, `workspace_shell.dart`):
+  Direct 1-click header buttons seamlessly reflecting active state:
+  - `note-bookmark-toggle`: Golden accent when bookmarked, allows quick bookmarking (`Ctrl+Shift+D`) directly from note header.
+  - `note-focus-mode-toggle`: Violet accent when in Focus Mode (`F11`), toggles chrome/sidebar immersion with full tooltips.
+- Keyboard Shortcuts Cheatsheet Integration (`lib/features/notes/shortcuts_dialog.dart`):
+  Added `Ctrl+E` (Quick Switcher) under Navigation & Search.
+
+Validation:
+- 5 comprehensive unit and widget tests passed (`test/quick_switcher_and_note_actions_test.dart`):
+  - Displays open tabs, recents, bookmarks, and filters accurately.
+  - Keyboard navigation with Arrow keys and Enter opens selected note.
+  - Fallback create note option appears and creates note.
+  - Note header bookmark button toggles state and updates icon/tooltip.
+  - Note header focus mode button toggles state and updates icon/tooltip.
+- 31 regression tests verified and passed (`test/note_outline_and_target_features_test.dart`,
+  `test/note_productivity_features_test.dart`, `test/workspace_tabs_bookmarks_test.dart`,
+  `test/notes_navigation_test.dart`). All 36 tests passed.
+- `dart format --output=none --set-exit-if-changed` verified 0 formatting differences across 291 files.
+- `flutter analyze --no-pub` reported 0 errors and 0 warnings ("No issues found!").
+
+Suggested next task: Breadcrumb navigation trail in Note and Canvas headers displaying the hierarchy path (Vault > Folder > Document) with click-to-navigate dropdown menus.
+
+---
+
+## Previous task — Note Outline Rail, Target Goals & Fast Format Copy, 2026-09-26
+
+---
+
+## Previous task — Product design and UI quality, 2026-09-24
+
+Owner request: major product-design/design-system quality brief, followed by
+continued small, noticeable refinements. Implementation and release validation
+completed on 27 September; see the [quality review](../design/product-quality-review-2026-09-26.md)
+for native review coverage and remaining visual checks.
+
+Delivered: semantic selected/pressed/focus colors and typography, stable mode
+controls, common toolbar separators, continuation-first Home, cleaner capture and
+inspector identity, preferences-first Settings, Calendar short-pane overflow fix,
+PDF navigation-first toolbar with overflow affordance, and a keyboard command
+palette with grouped commands and object-type filtering. Home hides raw LaTeX
+preambles; note statistics are contextual and do not label LaTeX as prose.
+
+Evidence: [pre-implementation audit](../design/product-quality-audit-2026-09-24.md),
+7 new quality tests including 16 desktop size/scaling combinations, and an
+81-test focused regression pass. Native baselines and reviewed post-change screens
+are under `work/ui/product-quality`. The final report distinguishes physical
+Windows checks from simulated display scaling and records remaining limits.
+
+Final combined-code validation: 852 tests passed, analyzer clean, format check
+clean (300 files), production Windows release built in 56.5s and launched.
+Native smoke covered Home/Explorer, Tasks, Settings, empty Canvas and command
+palette keyboard selection/dismissal. Corrected the reading-progress update
+during equation layout and refreshed the Help regression test for the newer
+shortcuts dialog. Next suggested task: populated Canvas/PDF native review and
+physical DPI-transition checks.
+
+---
+
+## Previous task — Dedicated LaTeX Document Editor & Mathematics Authoring Pass, 2026-09-24
+
+Owner request: Dedicated LaTeX editing experience suitable for university mathematics, engineering, computer science, physics, academic writing, proofs, assignments, exercise sheets, reports, and research notes.
+Scope: Visual academic document editor, structured AST parser/serializer, bidirectional Markdown <-> LaTeX converter, starter templates, math palette, matrix/cases builder, academic preview, pure-Dart offline PDF export, and LaTeX inspector.
+
+Implemented:
+- Lossless AST parser & serializer (`lib/features/notes/latex/latex_document.dart`):
+  Parses full `.tex` documents into structured `LatexBlock`s (title, author, date,
+  abstract, sections, equations, theorems, proofs, tables, figures, lists, page breaks,
+  preamble, comments, raw). Round-trips cleanly preserving comments and unknown packages/commands.
+- Academic starter templates (`lib/features/notes/latex/latex_templates.dart`):
+  Blank, University Assignment, Exercise Sheet / Problem Set, Research Paper / Report,
+  and Quick Formula Sheet.
+- Safe format converter & modal dialog (`latex_converter.dart`, `latex_format_dialog.dart`):
+  Bidirectional `markdownToLatex` and `latexToMarkdown` with warning detection. Format
+  switcher badge in note header allows "Convert In-Place" or safe non-destructive "Create Copy".
+- Real-time syntax highlighter & smart autocompleter (`latex_syntax_highlighter.dart`):
+  Highlights environments, commands, math modes, and comments; autocompletes `\begin{...}`
+  environments, `\ref{...}` labels, and standard academic macros.
+- Searchable math symbol palette (`latex_math_palette.dart`):
+  11 categorized tabs (Basic, Operators, Relations, Sets, Logic, Calculus, Greek, Linear Algebra,
+  Brackets, Arrows) with natural language search aliases ("belongs to", "real numbers", "gradient").
+- Matrix & Piecewise cases builder (`lib/features/notes/rich/math_grid_editor.dart`):
+  Visual grid editor supporting `pmatrix`, `bmatrix`, `Bmatrix`, `vmatrix`, `Vmatrix`,
+  `matrix`, `aligned`, and `cases` with dynamic row/column insertion and deletion.
+- Visual academic block editor (`rich_latex_editor.dart`):
+  Block-based editing with title/author/date header, section hierarchy, interactive equation
+  cards with quick math toolbar (Frac, Sqrt, Power, Subscript, Sum, Int, Matrix, Cases, Palette),
+  theorems/lemmas/definitions, proofs with Halmos tombstone `□`, tables, and figures.
+- Academic live preview (`latex_preview.dart`):
+  Renders formatted academic paper preview with numbered sections, display math with equation
+  numbers, theorem cards, proofs with Halmos tombstone `□`, horizontally-scrollable formulas,
+  and formatted text with inline math `$x^2$`.
+- Document inspector sidebar (`latex_inspector.dart`):
+  Document class, paper size, base font size, margins/geometry selector, active package manager,
+  custom preamble/macros editor, and live document outline navigator.
+- Pure-Dart offline PDF generator (`lib/features/notes/export/pdf_export_service.dart`):
+  Produces valid `%PDF-1.4` documents directly without external native TeX distributions
+  or C++ plugins. Supports title, author, date, sections, paragraphs, equations, theorems,
+  tables, and automatic page numbering.
+- Integrated into `NoteEditor`, `WorkspaceShell` (+ New menu & tabs), and Command Palette.
+
+Validation:
+- 25 focused unit and integration tests passed: `test/latex_document_test.dart`,
+  `test/pdf_export_test.dart`, `test/latex_editor_integration_test.dart`, and
+  `test/rich_math_editor_test.dart`.
+- `dart format lib/features/notes/export lib/features/notes/latex test/...` passes cleanly.
+- `flutter analyze --no-pub` reported 0 errors and 0 warnings.
+- `flutter build windows --release` succeeded: `build\windows\x64\runner\Release\orbit_note.exe` in 71.7s.
+
+Suggested next task: Direct transclusion and live linking of LaTeX theorem and equation cards onto the Orbit spatial canvas.
+
+---
+
+## Previous task — Bookmark sorting and keyboard navigation, 2026-09-24
+
+Owner request: Add bookmark sorting and arrow-key navigation.
+Scope: FILE-11 bookmark browser interaction; no persistence format changes.
+
+Implemented:
+- Sort by page ascending/descending or name A–Z/Z–A. Names compare without case;
+  duplicate names use page number as a stable tie-breaker. Sort choice is local to
+  the open dialog and does not rewrite stored bookmarks.
+- Up/Down in the focused filter selects the previous/next filtered, sorted
+  bookmark. Selection is bounded, updates the preview, and scrolls into view.
+  Enter retains its existing Open page behavior; unavailable pages stay disabled.
+- Sorting retains the selected page and current preview. Filtering and renaming
+  reveal the retained/replacement selection. Boundary presses do not reload the
+  same preview; empty results handle arrows safely.
+- Stable row keys, text-scaled row heights and a minimum one-row viewport support
+  reordered lists, short windows and enlarged text.
+
+Validation: all four focused bookmark-dialog tests passed (sort direction/ties,
+selection preservation, 60-bookmark keyboard navigation/Enter, narrow 200% text,
+and existing rename failure/search behavior). Full checks/build pending.
+Evidence: `.local/pdf-bookmark-navigation-focused.log`. No manual native visual
+review in this pass.
+
+Suggested next task: bookmark-browser keyboard navigation from focused result rows.
+
+---
+
+## Previous task — Named PDF bookmarks and previews, 2026-09-24
+
+Owner request: Add named personal bookmarks with search and page previews.
+Scope: FILE-11 bookmarks using existing object metadata/save boundaries.
+
+Implemented:
+- Saved pages opens a searchable bookmark browser with names, page numbers,
+  a preview of the selected page, and an explicit Open page action (or Enter).
+- Rename existing bookmarks; a blank name restores the page-number label.
+  Failed saves retain the typed name for retry, and read-only readers omit rename.
+- Previews render the current selection only, bounded to 480px on its longest
+  edge. Native and Flutter image resources are disposed after PNG conversion.
+  Source changes block stale preview results, navigation and rename callbacks.
+- Legacy `pdfBookmarks` remains an integer list. Optional `pdfBookmarkNames`
+  adds names alongside it, preserving unrelated properties and unknown map keys.
+  Removing a page bookmark leaves its name dormant for compatibility/re-adding.
+- Missing/out-of-range pages remain listed with an explanation; opening and
+  rendering them are disabled. The original attachment is unchanged.
+
+Validation: full suite passed 787 tests (`.local/pdf-bookmarks-tests.log`), including
+persistence/reopen, original-byte preservation, failed save/retry, unknown metadata
+preservation, search, stale-page guards and real PDF preview/navigation. Analysis
+found no issues; formatting/no-change check passed. Windows release build succeeded
+in 53.6 seconds (`.local/pdf-bookmarks-build.log`). No fresh manual native visual review.
+
+Suggested next task: keyboard arrow navigation and sorting in the bookmark browser.
+
+---
+
+## Previous task — Searchable PDF outline, 2026-09-22
+
+Owner request: Add more reading/navigation features.
+Scope: FILE-11 searchable embedded outline, retaining existing PDF source data.
+
+Implemented:
+- Replaced the outline dropdown with a searchable dialog. Matching ignores case
+  and surrounding whitespace, searches all query words across heading and parent
+  names, and shows parent paths/page numbers to distinguish repeated headings.
+- Removed the old ten-level display cutoff using iterative traversal. Results
+  render lazily; long headings have full-path tooltips.
+- Up/Down selects and scrolls through navigable entries; Enter opens selection.
+  Heading groups remain visible but cannot trigger a jump. Pointer/Tab activation
+  is retained; empty results and PDFs without headings have explicit messages.
+- Opening a heading honors its full PDF destination (position/zoom where specified),
+  remembers the departing page, and ignores results from a replaced viewer.
+- Outline loading disables the button until finished. Read failures are explained
+  separately from an absent outline and do not block normal page navigation.
+
+Validation: three focused outline tests passed, covering parent-heading search,
+exact destinations, depth beyond 10, keyboard scrolling through 50 results and
+the empty state at 320x480/200% text. Full suite: 784 tests passed
+(`.local/pdf-outline-tests.log`); analysis and formatting clean. Production
+Windows x64 release build completed cleanly (`orbit_note.exe` + `app.so` 16.3 MB,
+packaged `release-assets\OrbitNote-Windows-x64.zip` 25.3 MB). Tests use synthetic
+outline nodes plus reader integration on a real PDF without embedded headings;
+no native visual review or large-document performance benchmark in this pass.
+
+Suggested next task: named personal bookmarks with search and page previews.
+
+---
+
+## Previous task — PDF reading and navigation tools, 2026-09-22
+
+Owner request: Add more Acrobat-style features; preference: reading and navigation.
+Scope: FILE-11 research-reader improvements, offline and without rewriting PDFs.
+
+Implemented:
+- Zoom menu: 400% preset and Custom zoom with fractional percentages, optional
+  percent suffix, keyboard submission and validation against the viewer's bounds.
+  Cancel makes no change; non-finite, invalid and out-of-range values are rejected.
+  A stale dialog cannot change a newly mounted document/viewer.
+- Document tools menu: first/last page and previous/next visited page.
+  Explicit page jumps and internal PDF links remember the departing page;
+  new jumps clear forward history. History is session-local, bounded to 100 prior
+  jumps, cleared on source replacement, and restores page numbers rather than
+  precise scroll positions or zoom. Scrolling/search matches do not create entries.
+- Document information: title, page count/current page, current page dimensions
+  in mm, encryption state, and source copying permission where supplied by engine.
+  This is informational and does not unlock or change PDF permissions.
+
+Validation: 11 focused PDF tests passed (including real PDF navigation, custom
+zoom and history isolation). Full suite: 781 tests passed; analysis found no issues;
+formatting and no-change check passed. Windows release build succeeded in 53.4s
+(`.local/pdf-reading-build.log`). No new dependencies,
+storage format changes, or manual native visual review.
+Evidence: `.local/pdf-reading-focused.log`.
+
+Suggested next task: a searchable outline panel for long PDFs.
+
+---
+
+## Previous task — PDF keyboard navigation, 2026-09-22
+
+Owner request: Proceed with keyboard navigation in connected notes and thumbnails.
+Scope: FILE-11/FILE-12 interaction and focus recovery; preserve original PDFs,
+note identities and persistence behavior.
+
+Implemented:
+- Opening connected notes focuses its filter, including repeated openings of the
+  retained panel. Enter opens the first filtered note; no matches does nothing.
+  Escape closes the panel and returns focus to the reader.
+- Connected-note controls and lazy results now share one scrollable area, so
+  constrained heights and enlarged text do not clip controls or empty messages.
+- Opening thumbnails focuses the rail and reveals the current page. Up/Down and
+  Home/End navigate pages with bounded selection and scroll the thumbnail into
+  view. Enter returns focus to the reader; Escape closes the rail and returns
+  focus. A visible focus border and selected page semantics expose its state.
+- Focus nodes and scroll controller are disposed with the reader.
+
+Validation: nine PDF reliability tests pass, including actual-PDF keyboard paging,
+  boundaries, focus recovery via Ctrl+F, repeated connected-note opening, and
+  note filtering/activation at 320x320 with 200% text. Full suite: 779 tests passed
+  (`.local/pdf-keyboard-tests.log`). Analysis found no issues; required formatting
+  and no-change check passed. Windows release built in 52.7 seconds
+  (`.local/pdf-keyboard-build.log`).
+Evidence: `.local/pdf-keyboard-focused.log`. No new manual native visual review.
+
+Suggested next task: audit PDF search keyboard shortcuts and focus recovery when
+closing search or switching between reader panes.
+
+---
+
+## Previous task — PDF controls in narrow and short panes, 2026-09-22
+
+Owner request: Proceed with the suggested PDF toolbar and annotation-dialog audit.
+Scope: FILE-11/FILE-12 layout reliability at narrow widths and enlarged text;
+preserve document bytes, annotation identities, persistence and current styling.
+
+Implemented:
+- PDF search input occupies its own row; match status and navigation controls
+  wrap below it. Reproduced a 116px overflow at 320px width and 200% text before
+  fixing it. The regression opens search on a real PDF, types and closes it.
+- Highlights panel uses one scrollable area for controls and a lazily built
+  review list. Reproduced a 37px vertical overflow in a 280x320 window at 200%
+  text. Filters and review actions remain reachable by scrolling.
+- Checked review dialog save/failure handling at 320x480 and 200% text; no
+  production dialog change was needed. Stale-source edit protection is retained.
+
+Validation: formatting and no-change check passed; analysis found no issues.
+Full suite: 777 tests passed (`.local/pdf-layout-tests.log`). Windows release build
+succeeded in 49.9 seconds (`.local/pdf-layout-build.log`).
+Reproduction logs: `.local/pdf-layout-before.log`
+and `.local/pdf-search-before.log`. This pass uses automated layout and interaction
+checks, not a new native visual review.
+
+Suggested next task: audit connected-notes and PDF thumbnail navigation with
+keyboard input and constrained pane heights.
+
+---
+
+## Previous task — Search and calendar layout reliability, 2026-09-21
+
+Owner request: Look for more issues like the formula-menu overflow and fix them.
+Scope: Targeted layout and interaction audit; preserve the current design language
+and unrelated work. No new features or storage changes.
+
+Implemented:
+- Canvas search: give the input its own row and allow result navigation controls
+  to wrap, keeping a usable typing area in narrow panes and at enlarged text sizes.
+- Command palette: normalize surrounding whitespace consistently so recent
+  knowledge and command matches remain available for padded/blank queries.
+- Explorer calendar: replace fixed day-cell heights with a minimum height and
+  content-driven sizing so enlarged dates and activity dots fit.
+
+Validation: Reproduced the search and calendar failures before fixing them.
+All 18 focused tests pass, including a 280px search pane at 200% text and an
+expanded calendar at 200% text. Full suite: 775 tests passed. Static analysis:
+no issues. Required formatting and no-change check passed. Windows release build
+succeeded in 50.0 seconds (`.local/layout-audit-build.log`). Validation for this
+pass is automated; a fresh native visual review was not performed.
+Evidence: `.local/layout-audit-before.log`, `.local/calendar-layout-before.log`,
+`.local/layout-audit-focused.log`, and `.local/layout-audit-tests.log`.
+
+Suggested next task: audit PDF toolbars and annotation dialogs at narrow widths
+and enlarged text sizes.
+
+---
+
+## Previous task — Dense Mathematical Canvas & Transclusion Rendering & Minimap Spatial Search Radar, 2026-09-21
+
+Owner request: "There have been some design changes, stick to them, dont change the design language. Continue on adding new features"
+Scope: Implement mathematical formula rendering for Canvas cards, live transclusions, and sticky notes (`CAN-02`, `CAN-15`, `NOTE-07`), alongside Minimap Spatial Search Radar Dots (`CAN-14`), adhering strictly to the newly delivered design language (4/8/12/16 spacing scale, graphite surfaces, neutral hover/pressed states, and quiet violet selection).
+
+Implemented:
+- Dense Mathematical Canvas Rich Text Engine (`lib/features/canvas/canvas_rich_text.dart`):
+  - Added `CanvasRichLineType.displayMath`, `codeBlock`, and `blockquote`.
+  - Added pure-Dart mathematical typesetting engine (`formatMathToUnicode`, `_formatFraction`, `_toSuperscript`, `_toSubscript`, `formatInlineMath`):
+    - Converts LaTeX Greek symbols (`\alpha`, `\beta`, `\pi`, `\theta`, `\sigma`, `\Delta`, `\Omega`, `\infty`, etc.).
+    - Converts mathematical operators (`\times`, `\div`, `\pm`, `\leq`, `\geq`, `\neq`, `\approx`, `\in`, `\sum`, `\int`, `\partial`, etc.).
+    - Formats fractions into clean Unicode vulgar fractions or single-line quotients (`a / b`).
+    - Formats radicals into unicode roots (`√(x)`, `³√(8)`).
+    - Formats sub- and superscripts (`x₀`, `y¹²`, `e⁻ˣ`).
+  - Added support for inline `$formula$` across headings, checklists, bullet points, numbered lists, and paragraphs.
+  - Multi-line `$$ ... $$` math block detection and single-line `$$...$$` equations.
+  - Updated `hasRichFormatting` to detect `$$`, `$`, code blocks, and blockquotes so mathematical notes automatically route through the rich layout engine.
+  - Custom display math rendering on graphite cards with centered formula alignment.
+- Canvas Minimap Spatial Search Radar Dots (`CAN-14` refinement in `lib/features/canvas/canvas_editor.dart`):
+  - Updated `CanvasMinimapPainter` with `searchMatchIds: Set<String>` and `activeSearchMatchId: String?`.
+  - Paints glowing amber radar pings (`#F59E0B`) at matching element coordinates on the minimap radar.
+  - Paints an active gold targeting ring on the currently focused search result (`activeSearchMatchId`).
+  - Added compact search match counter badge in the minimap RADAR header with tooltip feedback, wrapped in `Expanded` to eliminate layout overflow.
+- Quick Formula / Math Note Insertion (`lib/features/canvas/canvas_editor.dart`):
+  - Added `"Formula / math card"` action (`Icons.functions`) to the Canvas toolbar "Add / organize board content" `PopupMenuButton`.
+  - Added `"Add Formula / Math Note"` action to the Canvas right-click context menu.
+  - Added `_addFormulaCard({CanvasPoint? at})` creating a sticky note pre-populated with LaTeX formulas.
+
+Validation:
+- `test/canvas_math_transclusion_test.dart`: 10 passed (LaTeX unicode formatting, display math blocks, transclusions, minimap radar pings, targeting ring, and minimap badge UI).
+- `test/canvas_transclusion_minimap_test.dart`: 8 passed.
+- `test/workspace_tabs_bookmarks_test.dart`: 13 passed.
+- `test/bootstrap_test.dart`: 3 passed.
+- Full project `flutter analyze --no-pub`: 0 issues found.
+- `dart format --output=none --set-exit-if-changed lib test`: 0 changed.
+
+Suggested next task: Audio voice memos and visual audio player card for Canvas boards and notes.
+
+---
+
+## Previous task — UI/UX refinement, 2026-09-21
+
+Completed the calmer Home, compact explorer creation/filter menus and calendar,
+quieter tabs, contextual Canvas tools, Inspector cleanup, responsive note headers,
+same-note split views, recent-object palette ordering, and paragraph Ctrl+A fix.
+Existing storage and object identities were preserved.
+
+Validation of the UI refinement snapshot: 764 tests passed; 18 focused UI
+acceptance tests and split-view regression passed; static analysis and formatting
+were clean. Windows production release built in 60.2 seconds and launched.
+That binary and native captures predate the subsequent Canvas work above.
+Detailed audit, screenshots and scope limits: [UI refinement review](../design/ui-refinement-review.md).
+
+Follow-up validation with the newer Canvas changes: all 774 tests passed,
+analysis found no issues, and formatting was clean. Fixed the formula context
+menu label overflowing by allowing its text to wrap within the menu width.
+The combined production Windows release also built successfully in 54.1 seconds.
+
+Suggested next visual task: review dense mathematical boards and complex equation
+fidelity using the newer Canvas rendering.
+
+## Previous task — Workspace Tabs, Bookmarking & Backlinks Local Context Graph with 1-Click Linking (Option 2 & Option 5), 2026-09-21
+
+Owner request: "Lets go with Option 2 and Option 5(also add like bookamrking tabs andf stuff like that too, also bookmark icons too)"
+Scope: Document tabs management and bookmarking with amber accents and dropdown access, pure-Dart backlinks and unlinked mentions engine, interactive 2D Local Context Graph with spring physics, 1-click mention linking (`+ Link`), and NoteEditor quick-access backlinks button.
+
+Implemented:
+- Workspace Tabs & Bookmarking Engine (Option 5):
+  - Added `bookmarkedTabs` list to `SessionState` (`lib/app/session_state.dart`) with robust JSON serialization and backward compatibility.
+  - Added `isBookmarked(id)`, `toggleBookmark(id)`, `bookmarkTab(id)`, `unbookmarkTab(id)`, and `bookmarkedObjects` in `WorkspaceController` (`lib/app/workspace_controller.dart`), using copy-on-write immutable list operations to avoid mutations on unmodifiable list views.
+  - Tab bar bookmark icons: Every document tab displays an interactive bookmark icon button (`Icons.bookmark` / `Icons.bookmark_border`) with gold amber accent (`#F59E0B`), allowing instant bookmarking with one click.
+  - Tab bar header additions: "+ New Tab" button (`new-tab-button`, `Icons.add`) for quickly adding blank notes into the tab bar, and "Bookmarks" dropdown menu (`workspace-bookmarks-button`, `Icons.bookmarks_outlined`) for instant 1-click navigation to any bookmarked document.
+  - Tab context menu action: Right-clicking any tab displays "Bookmark Tab" / "Remove Bookmark" with keyboard shortcut `Ctrl+Shift+D`.
+  - Global keyboard shortcut: `Ctrl+Shift+D` toggles bookmark status for the currently active tab.
+- Backlinks & Unlinked Mentions Engine (Option 2):
+  - Pure-Dart domain engine (`lib/domain/backlinks.dart`): Zero Flutter or platform dependencies; works universally offline and on web/cross-platform.
+  - `findLinkedMentions`: Scans all notes and canvases for wiki-links `[[targetId]]` and `[[targetId|Custom Label]]`.
+  - `findForbiddenRanges`: Identifies code blocks (``` and `), math blocks ($$ and $), URLs, HTML tags, and existing wiki-links to prevent false-positive unlinked mentions.
+  - `findUnlinkedMentions`: Searches note bodies for occurrences of other object titles and aliases outside forbidden ranges.
+  - `extractContextSnippet`: Extracts surrounding sentence/paragraph context with boundary ellipses (`...`).
+  - `linkMentionInMarkdown`: Transforms plain mention occurrences into wiki-links `[[targetId|Original Text]]`.
+  - `WorkspaceController` integration: Added `linkedMentions(targetId)`, `unlinkedMentions(targetId)`, and `linkUnlinkedMention(mention)` using validated reversible commands via `c.edit(id, body: newBody)`.
+- Interactive 2D Local Context Graph (`lib/features/workspace/local_context_graph.dart`):
+  - Force-directed 2D physics layout simulating repulsive Coulomb forces and attractive Hooke springs.
+  - Visual focal halo: Pulsing radiant gold halo around the focal node.
+  - Node styling: Type-coded colors (notes: blue/teal, boards: purple/violet, tasks: amber/gold).
+  - Graph controls: 1-hop vs 2-hop radius selector, fit-to-view button, node count badge, hover tooltips, and tap-to-navigate.
+  - Responsive layout: Adapts smoothly to narrow inspector panes without layout overflow.
+- Object Inspector Relations Overhaul (`lib/features/workspace/object_inspector.dart`):
+  - Relations section now includes:
+    - Embedded interactive `LocalContextGraph` with toggle button.
+    - Linked Mentions tab with contextual snippets and object type badges.
+    - Unlinked Mentions tab with contextual snippets and 1-click **`+ Link`** button.
+    - Outbound Links tab with link direction indicators.
+    - Related Objects tab.
+- Note Editor Backlinks Toggle (`lib/features/notes/note_editor.dart`):
+  - Added `note-backlinks-toggle` (`Icons.hub_outlined`) in the note header toolbar, wired up to open the relations panel.
+
+Validation:
+- Automated test suites:
+  - `test/workspace_tabs_bookmarks_test.dart` (8/8 tests passing):
+    - SessionState serialization and deserialization.
+    - Graceful handling of null/missing bookmarkedTabs.
+    - Controller toggle, bookmark, unbookmark idempotency.
+    - Controller bookmarkedObjects resolution.
+    - Tab bar bookmark icon click toggling.
+    - Ctrl+Shift+D keyboard shortcut on active tab.
+    - "+ New Tab" button and bookmarks menu button rendering.
+  - `test/backlinks_unlinked_mentions_test.dart` (7/7 tests passing):
+    - Linked mentions detection (`[[noteA]]` and `[[noteA|My Label]]`).
+    - Unlinked mentions detection matching target note titles.
+    - Unlinked mentions skipped inside code blocks, math blocks, and existing wiki-links.
+    - Context snippet extraction with clean ellipses.
+    - 1-click markdown link replacement `linkMentionInMarkdown`.
+    - Controller `linkedMentions` and `unlinkedMentions` queries.
+    - Controller `linkUnlinkedMention` command mutation and persistence.
+  - `test/bootstrap_test.dart` (passing).
+  - `test/canvas_auto_arrange_test.dart` (8/8 tests passing).
+- Static analysis & formatting:
+  - `dart format --output=none --set-exit-if-changed lib test`: 262 files format-clean (0 diffs).
+  - `flutter analyze --no-pub`: **No issues found!** (0 errors, 0 warnings, 0 lints).
+- Release Builds:
+  - Windows x64: Compiled release bundle via `flutter build windows --release --dart-define-from-file=.local/google-build.windows.json` (52.9s). Output: `build\windows\x64\runner\Release\orbit_note.exe` + `app.so` (16.2 MB), packaged as `release-assets\OrbitNote-Windows-x64.zip` (25.2 MB).
+  - Android APK: Blocked locally due to missing Android SDK / JDK toolchain on current Windows host (`[!] No Android SDK found. Try setting the ANDROID_HOME environment variable`). Building via GitHub Actions CI (`.github/workflows/release.yml`) or installing local Android SDK & JDK 17 required for local APK generation.
+
+Suggested next task:
+- Canvas Minimap Spatial Search Radar Dots (CAN-14 refinement) or Graph Fullscreen View (GRAPH-01): Expand the 2D local context graph into a full-workspace global interactive knowledge graph view.
+
+# Previous task — Canvas Spatial Search & Jump-to-Element Filter Overlay (CAN-14), 2026-09-21
+
+Owner request: "finish and build windows release", "lets do it" (Canvas Spatial Search & Jump-to-Element Filter Overlay `CAN-14` / `LNK-12`).
+Scope: Pure-Dart spatial search engine for elements across `CanvasScene`, floating `CanvasSearchOverlay` HUD (`Ctrl+F`), match counter badge, navigation controls (Enter / Shift+Enter), category filter chips (`All`, `Cards`, `Text & Notes`, `Shapes`, `Media`), expandable results drawer, spatial jump navigation with bounded camera zoom centering, visual match highlighting in `OrbitCanvasPainter` (amber outline and active gold halo focus ring), and official Windows x64 release build packaging.
+
+Implemented:
+- Pure-Dart Spatial Search Engine (`lib/canvas/canvas_search.dart`):
+  - `searchCanvasElements`: Pure-Dart, zero-dependency search engine running in sub-millisecond execution time.
+  - Matches across all canvas element types: sticky notes, text blocks, frames, columns, geometric shapes, connectors, images, links, and cards.
+  - `MapCanvasObjectLookup` / `CanvasObjectLookup`: Resolves card universal object references for deep querying across note title, markdown body excerpt, tags (`#tag`), project, folder, status, and priority metadata.
+  - Spatial reading order: sorts matches in top-to-bottom, left-to-right order based on world coordinates.
+  - Category classification (`CanvasSearchCategory`): filters results strictly by `all`, `cards`, `text`, `shapes`, and `media`.
+  - Contextual snippet extraction with surrounding boundary ellipses.
+- Canvas Search HUD Widget (`lib/features/canvas/canvas_search_overlay.dart`):
+  - Floating top-centered HUD card (`CanvasSearchOverlay`) with ambient drop shadow and rounded corners.
+  - Instant live search `TextField` autofocusing on activation with `Ctrl+F` / `Cmd+F`.
+  - Dynamic match counter pill (e.g. `1 of 5` or `0 matches`).
+  - Navigation action buttons: Previous (`Shift+Enter`), Next (`Enter`), and Close (`Esc`).
+  - Category filter pills row (`All`, `Cards`, `Text & Notes`, `Shapes`, `Media`).
+  - Expandable results drawer listing matches with type badges, titles, and snippets.
+  - Tapping any match directly navigates and highlights that element.
+- Canvas Editor Integration & Jump Navigation (`lib/features/canvas/canvas_editor.dart`):
+  - Added search state: `_showSearchHud`, `_searchController`, `_searchFocusNode`, `_searchResults`, `_activeSearchIndex`, `_searchCategory`.
+  - Keyboard shortcuts in `_key`:
+    - `Ctrl+F` / `Cmd+F`: toggles search HUD open/closed and autofocuses search input.
+    - `Escape`: closes search HUD and restores canvas focus.
+    - `Enter`: cycles to next match.
+    - `Shift+Enter`: cycles to previous match.
+  - Toolbar Search Button: Added `canvas-search-button` `IconButton` next to primary tools with active tint state.
+  - Spatial Jump Navigation (`_jumpToSearchMatch`): smoothly centers camera on element bounds, adjusts zoom comfortably (clamped `0.4x` to `1.25x`), and selects the matching element.
+- OrbitCanvasPainter Match Highlighting (`lib/features/canvas/canvas_painter.dart`):
+  - Added `searchMatchIds` and `activeSearchMatchId` properties to painter.
+  - Paints glowing amber outline around all matching elements.
+  - Paints active gold halo target ring around the currently focused match.
+  - Updates `shouldRepaint` when search matches or active match change.
+- Windows Release Packaging:
+  - Built official Windows release binary via `flutter build windows --release --dart-define-from-file=.local/google-build.windows.json`.
+  - Packaged `release-assets/OrbitNote-Windows-x64.zip` (25.2 MB) containing `orbit_note.exe` and runner dependencies.
+
+Validation:
+- Automated test suite: `test/canvas_search_test.dart` (12/12 tests passing in ~1.2s):
+  - Direct element text search in sticky notes and text blocks.
+  - Referenced card titles, bodies, and tags (`#physics`).
+  - Referenced card project, folder, status, and priority metadata.
+  - Links by URL query (`orbitnote.dev`).
+  - Spatial reading order sorting (top-to-bottom, left-to-right).
+  - Category filtering (`cards`, `text`, `shapes`, `media`).
+  - Empty and whitespace-only query handling.
+  - Painter repainting on `searchMatchIds` and `activeSearchMatchId` changes.
+  - Search highlight outline and active focus halo rendering without errors.
+  - `CanvasSearchOverlay` widget interactions: counter, chips, cycling buttons, drawer items, dismiss.
+  - `CanvasEditor` toolbar search button toggle, `Ctrl+F` shortcut, and `Escape` dismiss.
+  - Match cycling with Next/Previous buttons and camera bounds updating.
+- Regression tests: `test/canvas_transclusion_minimap_test.dart`, `test/canvas_pen_features_test.dart` (15/15 tests passing).
+- Static analysis & formatting: `dart format --output=none --set-exit-if-changed lib test` passed cleanly (0 diffs); `flutter analyze --no-pub` reported **No issues found!**
+- Windows release build: `build\windows\x64\runner\Release\orbit_note.exe` built in 52.2s.
+
+Suggested next task:
+- Canvas Minimap Spatial Search Radar Dots: Display search match pings on the canvas minimap radar overlay to visually locate results across giant canvas boards.
+
+# Previous task — Structured Collection Views: Universal Table View & Universal Kanban Board, 2026-09-20
+
+Owner request: "yes lets add 1 first and then 2" (referring to 1. Structured Collection Views: Kanban Board & Table View, followed by 2. Canvas Spatial Search / Jump-to-Element).
+Scope: Implement high-priority items `VIEW-01` (Universal Table View), `VIEW-02` (Universal Kanban Board), `VIEW-03` (Configurable Columns & Sorting), `VIEW-04` (Dynamic Kanban Grouping & Presets), `VIEW-06` (Universal Object Identity Invariant: view transitions never alter underlying Markdown bodies or identity), and `VIEW-07` (Embedded Table format in Dynamic View blocks).
+
+Implemented:
+- Universal Table View (`lib/features/workspace/collection_table_view.dart`):
+  - Multi-column tabular presentation of any collection of `UniversalObject`s (notes, tasks, canvases).
+  - Smart Query collections (scoped by folder, course, project, or context) vs. Manual collections (explicit `memberIds`).
+  - Customizable columns toggle popup menu (`Title`, `Type`, `Folder`, `Status`, `Priority`, `Tags`, `Updated`).
+  - Bi-directional column header sorting with visual sort indicator arrows (`arrow_upward` / `arrow_downward`).
+  - Search bar filtering title, status, folder, and tags in real-time.
+  - Type filter pills (`All`, `Notes`, `Tasks`, `Boards`).
+  - Direct inline property editing:
+    - Status badge dropdown (`Todo`, `In Progress`, `In Review`, `Done`, `Backlog`, `Blocked`).
+    - Priority pill popup (`🔴 Urgent`, `🟠 High`, `🔵 Medium`, `⚪ Low`).
+    - Folder assignment dialog modal (`Move to Folder`).
+    - Tag chip list with tag addition dialog (`#tag`) and removal icons.
+    - Inline task checkbox toggling completed state and status between `todo` and `done`.
+    - Object rename dialog modal.
+  - "Add Item" action button creating Notes, Tasks, or Canvases pre-configured to the current collection scope.
+- Universal Kanban Board (`lib/features/workspace/collection_kanban_view.dart`):
+  - Multi-column spatial board displaying cards grouped by configurable properties.
+  - Dynamic `groupBy` selector (`status`, `priority`, `project`, `folder`, `type`).
+  - Preset switcher for domain-tailored status workflows (`universal`, `software`, `gamedev`, `bugs`, `university`, `hypotheses`, `functions`).
+  - Interactive drag-and-drop card movements between columns using Flutter `Draggable` and `DragTarget`:
+    - Moving a card between columns mutates the target property on the object without touching note Markdown content (`VIEW-06`).
+    - Drag feedback with elevated card shadow and rotation styling.
+  - Fallback column for objects without the target property (`No Status`, `No Priority`, `Uncategorized`).
+  - Inline card addition button (`+ Add Card`) in column headers.
+  - Slide-in preview peek panel for reviewing card details and opening full objects.
+- Multi-View Saved View Host Integration (`lib/features/workspace/saved_view_host.dart`):
+  - Added `Table` view tab alongside `List`, `Board`, `Calendar`, and `Timeline`.
+  - Dynamic routing from `'table'` to `CollectionTableView` and `'board'` to `CollectionKanbanView`.
+  - Persistent active view switcher tab row with automatic view configuration preservation.
+- Dynamic View Block Table Format (`lib/features/notes/rich/dynamic_view_block.dart`):
+  - Extended `DynamicViewConfig` parser and serializer with `format` (`table` | `list`) and `viewId` (`view: <id>`).
+  - Embedded responsive mini-table format inside Markdown notes rendering interactive titles, type icons, status pills, and task checkboxes.
+  - Direct reference resolution from saved view objects (`view: <id>`).
+- Controller Teardown Safety (`lib/app/workspace_controller.dart`):
+  - Added `cancelAllTimers()` method to safely cancel pending autosave debounce timers during teardown without blocking async test execution.
+
+Validation:
+- Automated test suite: `test/collection_views_test.dart` (7/7 tests passing in ~1.2s):
+  - `DynamicViewConfig` parses and serializes `format: table` and `view: <id>` reference.
+  - `CollectionTableView` renders smart collection items matching folder/scope with customizable columns and sorting.
+  - `CollectionTableView` respects manual collection membership (`memberIds`).
+  - `CollectionKanbanView` groups objects by status with drag-and-drop property updates without Markdown alteration (`VIEW-06`).
+  - `CollectionKanbanView` groups objects by priority columns (`🔴 Urgent`, `🟠 High`, `🔵 Medium`, `⚪ Low`).
+  - `SavedViewHost` toggles between `List`, `Board`, and `Table` tabs.
+  - `DynamicViewBlock` with `format: table` renders embedded mini-table headers and items.
+- Formatting: `dart format --output=none --set-exit-if-changed lib test` clean (0 diffs).
+- Analysis: `flutter analyze --no-pub` reported **No issues found!**
+
+Suggested next task:
+- Canvas Spatial Search & Jump-to-Element Filter Overlay (`CAN-14`): Instant Ctrl+F / Cmd+F canvas search HUD zooming and panning to matching cards, elements, and annotations.
+
+# Previous task — Pure Dart Offline English Spell & Grammar Check with Interactive Right-Click Word Fixes, 2026-09-20
+
+Owner request: "add english grammar check for orbit note and like right clikc fix words" Scope: Pure Dart, completely offline, zero-network English spell checking and grammar checking engine for Orbit Note. Real-time wavy underline annotations (red for spelling, blue for grammar), interactive right-click context menu offering ranked replacement suggestions (`✨ Fix: "..."`), custom dictionary management (`➕ Add to Dictionary`), session word ignoring (`🚫 Ignore`), exclusion masks for Markdown code blocks, inline code, math formulas, URLs, and wikilinks, global toggle in Settings under Editor, quick toggle in NoteEditor header bar, and full persistence across sessions in `SessionState`.
+
+Implemented:
+- Offline English Spell & Grammar Engine (`lib/domain/grammar/spell_grammar_engine.dart`):
+  - Pure-Dart, high-performance engine executing in sub-millisecond speeds with zero network dependencies.
+  - Core English lexicon spanning common vocabulary, everyday nouns, verbs, adjectives, and morphological inflection analysis (plural `-s`, `-es`, `-ies`, past `-ed`, gerund `-ing`, adverb `-ly`).
+  - High-frequency typo lookup dictionary (`teh`, `recieve`, `definately`, `seperate`, `wierd`, `occured`, etc.) with instant exact correction mapping.
+  - Damerau-Levenshtein distance algorithm ($\le 2$) with character transposition, insertion, deletion, and substitution for ranked phonetic and visual suggestions.
+  - Curated grammar rules:
+    - Repeated words detection (`the the`, `in in`, `and and`).
+    - Indefinite article agreement (`a` vs `an` with phonetic vowel sound and silent 'h' exception analysis).
+    - Homophone confusions (`could of` $\to$ `could have`, `their are` $\to$ `there are`, `its a` $\to$ `it's a`, `your welcome` $\to$ `you're welcome`, `better then` $\to$ `better than`, `to much` $\to$ `too much`).
+    - Subject-verb agreement (`they is` $\to$ `they are`, `he are` $\to$ `he is`, `I is` $\to$ `I am`).
+    - Standalone pronoun capitalization (`i` $\to$ `I`, `i'm` $\to$ `I'm`, `i've` $\to$ `I've`).
+    - Double punctuation detection (`,,` $\to$ `,`, `;;` $\to$ `;`).
+  - Exclusion masking protecting code blocks (```...```), inline code (`...`), math blocks & inline math ($$...$$ and $...$), URLs (`http://`, `https://`, `orbit://`), wikilinks (`[[...]]`), markdown link targets, and HTML tags from false positives.
+  - User dictionary and per-session ignore support.
+- Session Persistence & Custom Dictionary (`lib/app/session_state.dart`):
+  - Added `bool spellCheckEnabled` (default `true`) and `List<String> userDictionary` (default `[]`).
+  - Serialized and deserialized in `SessionState.fromJson` and `toJson`.
+- Rich Markdown Prose Annotation & Context Menu (`lib/features/notes/rich/rich_markdown_editor.dart`):
+  - `_StyledController` renders custom `TextSpan`s with wavy underlines (`TextDecorationStyle.wavy`) in red (`#EF4444`) for spelling and blue (`#3B82F6`) for grammar issues while preserving formatting marks (bold, italic, strike, link, code).
+  - In `_RichTextBlock` and `_InlineMathParagraph`, `contextMenuBuilder` integrates with `AdaptiveTextSelectionToolbar.buttonItems`:
+    - `✨ Fix: "..."` substitutes the error, repositions caret, and registers change in undo/redo history.
+    - `➕ Add "..." to Dictionary` adds word to user dictionary and persists across restarts.
+    - `🚫 Ignore "..."` suppresses warnings for the current session.
+    - Standard clipboard buttons (Cut, Copy, Paste, Select All) are preserved.
+- Note Editor Header & Source Mode Integration (`lib/features/notes/note_editor.dart`, `lib/features/workspace/workspace_shell.dart`):
+  - Added quick toggle header button `IconButton` with key `ValueKey('note-spellcheck-toggle')` in `NoteEditor` toolbar.
+  - `_GrammarAnnotatedController` powers `note-title` and `_source` (`note-body`) with real-time wavy underlines and right-click context menu fixes.
+  - Session state callbacks (`onToggleSpellCheck`, `onAddToUserDictionary`) forwarded from `WorkspaceShell`.
+- Settings Workspace View (`lib/features/workspace/workspace_views.dart`):
+  - Added `SwitchListTile` with key `ValueKey('settings-spellcheck-switch')` under the Editor section.
+  - Displays custom dictionary word count and `TextButton.icon` with key `ValueKey('settings-clear-dictionary-button')` to wipe custom entries.
+
+Validation:
+- Automated test suite: `test/spell_grammar_check_test.dart` (14/14 tests passing in ~1.5s):
+  - Engine validates correct words without false positives.
+  - Detects typos (`recieve`, `teh`, `definately`) and suggests corrections.
+  - Evaluates repeated words, indefinite article agreement (`a apple`, `an banana`), homophones (`could of`, `your welcome`), subject-verb agreement (`They is`, `He are`), and pronoun capitalization.
+  - User dictionary and session ignore suppressions.
+  - Exclusion masks ignore code blocks, inline code, math formulas, URLs, and wikilinks.
+  - `NoteEditor` renders quick toggle button and responds to taps.
+  - `SessionState` serializes and deserializes spell check fields.
+  - Right-click context menu presents `✨ Fix: "the"`, `➕ Add "teh" to Dictionary`, `🚫 Ignore "teh"` and updates text on fix.
+  - `SettingsView` toggles spell check and clears user dictionary.
+- Editor regression tests: `test/rich_editor_widget_test.dart` (22/22 passing).
+- Static analysis & formatting: `dart format --output=none --set-exit-if-changed` reported 0 diffs; `flutter analyze --no-pub` reported **No issues found!**
+
+Limits:
+- Grammar and spell engine is optimized for English offline analysis. Multi-language dictionary packs can be integrated via pluggable lexicon providers in future tasks.
+
+Suggested next task:
+- Structured Collection Views (VIEW-02 Kanban Board & VIEW-01 Table View): Multi-column card pipelines by status/property, drag-and-drop column transitions, and synchronized tabular metadata views.
+
+# Previous task — Times New Roman Font Family Selection & Universal Typography Propagation, 2026-09-20
+
+Owner request: "can you add  an option to use times new roman font" Scope: Universal font family selection across the knowledge OS, support for Times New Roman (along with Segoe UI, Georgia, and Consolas), global preference in Settings -> Editor & Appearance, quick font switcher in NoteEditor header bar, dynamic theme propagation across app controls and markdown prose, monospace preservation for code blocks, and canvas spatial rendering with element-level font overrides.
+
+Implemented:
+- Session & Global Configuration (`lib/app/session_state.dart`):
+  - Added `fontFamily = 'Segoe UI'` field to `SessionState`.
+  - Serializes and deserializes `fontFamily` in `toJson` / `fromJson`, validating against supported fonts (`Segoe UI`, `Times New Roman`, `Georgia`, `Consolas`) with fallback to `'Segoe UI'`.
+- Dynamic Theme Typography Propagation (`lib/app/orbit_theme.dart`, `lib/app/orbit_app.dart`):
+  - `orbitDarkTheme({bool compact = false, String fontFamily = 'Segoe UI'})`: applies the active font family dynamically across all text theme styles, headings, body text, lists, and input decoration label/hint styles.
+  - Removed static `const` barriers on `TextTheme` and replaced hardcoded `'Segoe UI'` references in `ThemeData.fontFamily`, `labelStyle`, and `popupMenuTheme.labelTextStyle`.
+  - In `OrbitNoteApp` (`lib/app/orbit_app.dart`), Riverpod watches `(c.session.compact, c.session.motion, c.session.fontFamily)` to immediately re-theme the entire application when font changes occur.
+- Settings Appearance & Typography (`lib/features/workspace/workspace_views.dart`):
+  - Added "Font family" dropdown setting (`ValueKey('settings-font-family-dropdown')`) in `SettingsView` under the Editor section.
+  - Subtitle shows font description (e.g. `Times New Roman (Academic Serif)`).
+  - Provides options: `Segoe UI (Default Sans)`, `Times New Roman (Serif)`, `Georgia (Serif)`, `Consolas (Code)`.
+- Note Editor Font Quick Switcher & Rich Markdown Prose (`lib/features/notes/note_editor.dart`, `lib/features/notes/rich/rich_markdown_editor.dart`, `lib/features/workspace/workspace_shell.dart`):
+  - Added header font switcher `PopupMenuButton<String>` with key `ValueKey('note-font-family-menu')` directly in `NoteEditor` app bar.
+  - Quick font switcher updates active session font family and notifies the shell (`onFontFamilyChanged`).
+  - `RichMarkdownEditor` respects `fontFamily` for heading blocks, paragraph text, inline styled spans, and math prose formulas.
+  - Code blocks (`MarkdownBlockKind.code`) and code marks strictly preserve `monospace` styling.
+- Canvas Spatial Typography & Per-Element Overrides (`lib/features/canvas/canvas_rich_text.dart`, `lib/features/canvas/canvas_painter.dart`, `lib/features/canvas/canvas_editor.dart`):
+  - `CanvasRichText.draw` and `CanvasRichText.hitTestCheckbox` accept dynamic `fontFamily`.
+  - `OrbitCanvasPainter` propagates global `fontFamily` to all canvas elements (text, sticky notes, cards, and checklists).
+  - Supports per-element font overrides via `element.data['fontFamily']`.
+  - Canvas context menu adds `'FONT FAMILY'` submenu with `Default (${widget.fontFamily})` and `Times New Roman (Serif)` options for text, sticky notes, and cards, recorded in undo/redo history.
+
+Validation:
+- Automated test suite: `test/font_family_typography_test.dart` (10/10 tests passing in ~2 seconds):
+  - SessionState defaults, serialization, fallback.
+  - OrbitTheme typography and input decoration propagation.
+  - SettingsView font family dropdown selection and session state persistence.
+  - NoteEditor header font menu switcher and callback.
+  - RichMarkdownEditor block typography with monospace code block preservation.
+  - CanvasRichText.draw font family propagation.
+  - CanvasEditor OrbitCanvasPainter font family propagation.
+- Regression test suites: `test/rich_editor_widget_test.dart` (38/38 passing) and `test/canvas_rich_text_test.dart` (2/2 passing).
+- Static analysis & formatting: `dart format --output=none --set-exit-if-changed lib test` passed cleanly with 0 diffs; `flutter analyze --no-pub` reported **No issues found!**
+
+Limits:
+- Times New Roman is bundled/rendered as a platform system font across Windows, macOS, iOS, Android, and web. Custom TTF/OTF external font imports are not in scope.
+
+Suggested next task:
+- Canvas spatial search / jump-to-element filter overlay with spotlight highlight (CAN-14).
+
+# Previous task — Real-Time Bidirectional Canvas-to-Note Block Transclusion (CAN-02, CAN-15, NOTE-07) & Spatial Minimap Radar Navigation (CAN-01, CAN-15), 2026-09-20
+
+Owner request: "add that: Real-Time Bidirectional Canvas-to-Note Block Transclusion or Spatial Minimap Navigation (CAN-02, CAN-15, NOTE-07): Live embedded note block synchronization directly on spatial canvas cards, and an interactive minimap radar overlay in the canvas corner for instant navigation across large boards." Scope: CAN-02, CAN-03, CAN-15, NOTE-07, live transclusion card presentation, rich markdown rendering, bidirectional synchronization, live in-canvas transclusion editing dialog, universal object identity, spatial minimap radar overlay with concentric range rings, type-coded miniature elements, tactical viewport brackets, and minimap HUD header with quick fit-all action.
+
+Implemented:
+- Live Embedded Note Block Transclusion (`lib/features/canvas/canvas_painter.dart`):
+  - Card presentation mode: `'transclusion'` (`presentation == 'transclusion'`).
+  - Distinct top accent bar in violet (`#8B5CF6`) with rounded corners.
+  - Live Transclusion header badge: `LIVE TRANSCLUSION · [[Note Title]]` with targeted block reference indicator (`#^blockId`) if specified.
+  - Divider line and rich live markdown rendering using `CanvasRichText.draw` directly from `objects[element.objectId]!.body` (or specific target block if `blockId` / `blockRef` is set).
+  - Footer status indicator: `Bidirectional sync · N chars` or block reference tag.
+  - Graceful fallback for unresolved/missing note objects, warning user that removing placement does not delete the original note.
+- Bidirectional Canvas-to-Note Synchronization (`lib/features/canvas/canvas_editor.dart`):
+  - Card presentation cycle `_cycleCardPresentation` updated to include `'transclusion'`: `['card', 'preview', 'transclusion', 'properties', 'compact']`.
+  - Floating card tooltip presentation button updated to display `Icons.sync_alt` for transclusion.
+  - Card context menu additions:
+    - `pres_transclusion`: "Live Note Transclusion (CAN-02/NOTE-07)" with `Icons.sync_alt`.
+    - `edit_transclusion_content`: "Edit Transcluded Note Content..." with `Icons.edit_note`.
+  - Live in-canvas transclusion editing dialog (`_editTransclusionContent`): allows editing note title and body directly in canvas without leaving context. Updates `_objects[objectId]`, immediately triggers canvas repaint, and invokes `widget.onUpdateObjectProperties` to persist to host vault.
+  - Double-clicking a transclusion card directly launches `_editTransclusionContent`.
+  - Universal Object Identity: multiple cards pointing to the same `objectId` synchronously display and update the identical content in real time.
+- Spatial Minimap Radar Overlay Navigation (`lib/features/canvas/canvas_editor.dart`):
+  - Concentric circular radar guide rings and center crosshairs (`+`) rendered on the minimap content centroid for instant orientation across vast canvas boards.
+  - Type-coded miniature elements: vivid violet (`#8B5CF6`) with sync dot for transclusions, blue (`#3B82F6`) for standard cards, purple (`#A855F7`) for ink/handwriting, amber (`#F59E0B`) stroke outlines for frames/sections, emerald (`#10B981`) for geometric shapes.
+  - Glowing radar camera viewport indicator with tactical corner brackets.
+  - Enhanced minimap card HUD header: `RADAR` label with icon, real-time zoom percentage readout (e.g. `100%`), and quick "Fit All" (`Icons.fit_screen`, `canvas-minimap-fit-btn`) button to instantly center and frame all board contents.
+
+Validation:
+- Format & analyzer: `dart format --output=none --set-exit-if-changed lib test` passed cleanly (249 files format-clean); `flutter analyze --no-pub` reported **No issues found!**
+- Automated tests:
+  - `test/canvas_transclusion_minimap_test.dart`: 8 tests passing (transclusion presentation with live note body, block reference extraction, unresolved reference fallback, minimap radar range rings and type-colored elements, minimap toggle with HUD header and fit-all button, context menu transclusion option, live transclusion editing dialog and host notification, universal object identity multi-card synchronization).
+  - `test/canvas_character_recognition_test.dart`: 18/18 tests passing.
+  - `test/runtime_audit_fixes_test.dart`: 5/5 tests passing.
+  - `test/product_polish_batch2_test.dart`: 16/16 tests passing.
+
+Limits:
+- Sub-block targeting uses regex heading and block-ID patterns (`^blockId`); nested block folding inside transclusion cards will be covered in advanced block nesting tasks.
+
+Suggested next task:
+- Canvas spatial search / jump-to-element filter overlay with spotlight highlight (CAN-14).
+
+# Previous task — Handwriting Character (Letters & Numbers) Recognition & Ink Auto-Correction, 2026-09-20
+Owner request: "can you add like letter recognition adn numbers recognition too, like when drawin a letter it automatically corrects it into a real letter, same for number, same for lines circles etc., keep it as a feature tho dont enable it automatically" Scope: CAN-16, INK-04, INK-09, pure Dart point-cloud handwriting character recognizer, letters A-Z, digits 0-9, symbols, multi-stroke character settling, unified gesture arbitration, toolbar toggle (disabled by default), context menu actions.
+
+Implemented:
+- Pure Dart Point-Cloud Character Recognizer (`lib/canvas/character_recognizer.dart`):
+  - Fast, zero-dependency point-cloud handwriting classifier ($P$ Dollar family algorithm) running entirely offline in sub-millisecond execution time.
+  - Resampling to canonical $N = 32$ equidistant points, aspect-ratio preserving bounding box normalization, and centroid centering.
+  - Comprehensive canonical templates:
+    - Digits: `0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`
+    - Uppercase & lowercase letters: `A` through `Z`, `a` through `z`
+    - Math & punctuation symbols: `+`, `-`, `=`, `?`, `!`
+  - Multi-stroke and unistroke support: handles single-stroke and multiple stroke combinations (e.g. 2-stroke 'T' bar+stem, 'X' crossing diagonals, '=' parallel bars, '+' cross, '4' L+stem, 'A' caret+bar).
+  - Bounded aspect-ratio and orientation heuristics to reliably disambiguate upright characters ('6' vs '9', 'M' vs 'W', narrow '1'/'I' vs wide '-').
+  - `convertInkToText`: Converts ink `CanvasElement` into a clean renderable `text` element matching original bounds, position, and color.
+- Unified Ink Gesture Classifier (`lib/canvas/shape_recognizer.dart`):
+  - `recognizeInkGesture`: Evaluates strokes against both geometric shapes (`RecognizedShape`) and handwriting characters (`RecognizedCharacter`).
+  - Size and glyph arbitration: large strokes ($> 75$px) prioritize geometric shapes (ellipse, rectangle, diamond, line, arrow), while character-sized glyphs prioritize digits and letters.
+  - `convertInkGesture`: Drops in clean vector shapes or text elements seamlessly.
+- Canvas Interaction & Opt-in Auto-Correction (`lib/features/canvas/canvas_editor.dart`):
+  - **Disabled by default**: State `_autoRecognizeInk = false`, preserving normal raw inking unless explicitly enabled by the user.
+  - **Toolbar Toggle Button**: `Icons.auto_fix_high` in pen toolbar with clear tooltip (`Auto-recognize ink active: Converts handwriting to text & shapes (K)` / `Auto-recognize ink to text & shapes (disabled, shortcut K)`).
+  - **Keyboard Shortcut**: `K` toggles auto-recognition mode on/off when pen or highlighter is active.
+  - **On-Stroke Auto-Correction**: When enabled, immediately converts recognized characters and shapes on pointer up. Includes an 850ms multi-stroke settlement buffer that automatically groups multi-stroke characters (such as drawing the crossbar of 'T' or the second slash of 'X') into a single unified character.
+  - **Context Menu Actions**:
+    - "Auto-Recognize (Text or Shape)": Analyzes selected ink strokes and converts them to text or shapes on demand.
+    - "Convert Stroke to Text": Converts selected stroke(s) into real text elements, including multi-stroke selection combinations.
+  - **Undo/Redo**: Full integration with `_history`, allowing users to press `Ctrl+Z` to revert any auto-correction back to the raw ink stroke.
+
+Validation:
+- Format & analyzer: `dart format --output=none --set-exit-if-changed lib test` passed cleanly (248 files format-clean); `flutter analyze --no-pub` reported **No issues found!**
+- Automated tests (all 18 new tests and full canvas regression suite passing cleanly):
+  - `test/canvas_character_recognition_test.dart`: 18 tests passing (digit recognition '1', '0', '7'; letter recognition 'C', 'L', 'S', 'V', 'Z'; multi-stroke characters 'T', 'X', '=', '+'; unified gesture classifier for circles, boxes, and letters; text element conversion; toolbar toggle button visibility and toggle behavior; context menu text recognition actions).
+  - `test/canvas_advanced_features_test.dart`: 17/17 tests passing.
+  - `test/canvas_export_backgrounds_test.dart`: 11/11 tests passing.
+  - `test/canvas_pen_features_test.dart`: 7/7 tests passing.
+
+Limits:
+- Cursive connected multi-word script recognition is not implemented; isolated character and multi-stroke glyph recognition is supported.
+
+Suggested next task:
+- Real-time bidirectional canvas-to-note block transclusion or spatial canvas minimap navigation widget (CAN-02, CAN-15, NOTE-07).
+
+# Previous task — Canvas Advanced Features: Lasso Selection, Shape Recognition, Auto-Arrange & Diagram Export, 2026-09-20
+- Stroke Shape Recognition & Cleanup (`INK-09`, `CAN-16`, `lib/canvas/shape_recognizer.dart`, `lib/features/canvas/canvas_editor.dart`):
+  - Pure-Dart geometric stroke classifier evaluating normalized radial deviation, 4-corner bounding proximity, and stroke vector geometry.
+  - Detects circles/ellipses (`avgRadialDev < 0.14`), rectangles/squares (4-corner hits within `0.14 * min(W, H)`), diamonds (edge midpoints without corner hits), lines, and directional arrows (arrowhead barb direction reversal detection).
+  - Context menu stroke-to-shape conversion: "Convert Stroke to Clean Shape" with Auto-Detect, Clean Rectangle, Clean Ellipse, Clean Diamond, and Clean Arrow actions.
+- Advanced Auto-Arrange Layouts (`CAN-10`, `lib/canvas/arrangement.dart`, `lib/features/canvas/canvas_editor.dart`):
+  - **Mind Map**: Radially balances connected/selected nodes across left and right branches from a root/centroid node with curved connectors.
+  - **Timeline**: Arranges elements along a horizontal chronological progression axis with uniform spacing and connector lines.
+  - **Vertical Tree**: Hierarchical top-down layered level tree layout with root-to-leaf connector preservation.
+  - Context menu actions: "Mind Map Tree", "Timeline Road Map", "Vertical Tree".
+- Ruled & Isometric Grid Backgrounds (`INK-07`, `lib/features/canvas/canvas_painter.dart`, `lib/features/canvas/canvas_editor.dart`):
+  - **Ruled Paper**: Notebook/legal ruled lines with a distinct red margin rule at 72pt and horizontal guidelines.
+  - **Isometric Grid**: 30° triangular grid for 3D sketching, axonometric projections, and technical drawings.
+  - Added to paper style dropdown menu in canvas bottom bar alongside plain, grid, dot, and cornell presets.
+- Mermaid Flowchart & Structured Note Export Interop (`CAN-16`, `PORT-05`, `lib/canvas/diagram_export.dart`, `lib/canvas/diagram_import.dart`, `lib/features/canvas/canvas_editor.dart`, `lib/features/workspace/workspace_shell.dart`):
+  - Full bidirectional Mermaid flowchart generation (`exportToMermaid`) with customizable directions (`TD`, `LR`, `BT`, `RL`), shape delimiters (`[]`, `()`, `([])`, `(())`, `{}`), connectors (`-->`, `-.->`, `==>`, `<-->`, `---`), and frames mapped to subgraphs (`subgraph id["Title"]`).
+  - Selection-to-Note Extraction (`extractSelectionToMarkdown`): 1-click action in selection context menu generating a markdown note with backlinks (`[Title](orbit://canvas/id)`), embedded Mermaid diagram, checklist checkboxes (`- [ ]`, `- [x]`), card bodies, and relationship summaries.
+  - Enhanced Export Dialog with responsive `Wrap` layout, compact `SegmentedButton` controls, live Mermaid preview, and 1-click clipboard copy.
+
+Validation:
+- Format & analyzer: `dart format --output=none --set-exit-if-changed lib test` passed cleanly (246 files format-clean); `flutter analyze --no-pub` reported **No issues found!**
+- Automated tests (all 28 new and updated tests passing cleanly):
+  - `test/canvas_advanced_features_test.dart`: 17 unit and widget tests passing (Mermaid export syntax, directions, subgraphs, selection scoping, markdown extraction, shape recognition for circles, rectangles, arrows, force override, ray-casting point-in-polygon, mind map layout, timeline layout, vertical tree layout, scaled SVG vector export, lasso selection interaction, and ruled/isometric background paper styles).
+  - `test/canvas_export_backgrounds_test.dart`: 11 tests passing (Vector SVG generation, standard shapes, ink paths, connectors, transparent backgrounds, raster PNG generation, graph and cornell background rendering, export dialog popup and dismiss, paper style menu options).
+  - Canvas regression test suites (`test/canvas_pen_features_test.dart`, `test/canvas_diagram_import_test.dart`, `test/canvas_arrangement_test.dart`) passing with zero regressions.
+
+Limits:
+- Real-time OCR handwriting recognition remains a future extension for local-first raw ink strokes.
+
+Suggested next task:
+- Real-time bidirectional canvas-to-note block transclusion or spatial canvas minimap navigation widget (CAN-02, CAN-15, NOTE-07).
+
+# Previous task — Canvas Mobile, Tablet & Laptop Support, Drawing Tools & New Pen Styles, 2026-09-19
+- Drawing Enhancements & Quick Palette (`lib/features/canvas/canvas_editor.dart`):
+  - **Ruler / Straight-Line Assist**: Hold `Shift` key or toggle Ruler mode (`Icons.straighten`, shortcut `R`) to snap freehand strokes into crisp, perfectly straight 2-point lines connecting stroke origin to pointer.
+  - **Quick Color Swatch Bar**: Directly accessible row of 7 curated color chips (Violet, Blue, Mint, Amber, Rose, Dark Slate, White) in the toolbar for 1-tap switching without opening dropdown menus.
+  - **Heavy Thickness Preset**: Added 20.0px Heavy thickness option for bold brush and marker strokes.
+- Mobile, Tablet & Laptop Multi-Touch and Gestures (`lib/features/canvas/canvas_editor.dart`):
+  - **Multi-Touch Gestures**: Implemented multi-finger tracking via `_touchPointers`. When 2 fingers touch, automatically cancels any accidental active single-finger ink preview and smoothly scales (`zoomAt`) and pans (`pan`) the canvas camera around the touch midpoint.
+  - **Hardware Stylus & Palm Rejection**: Stylus barrel button (`kSecondaryMouseButton`) and inverted stylus automatically act as eraser; in default palm rejection mode (`_fingerDraws == false`), single touch pans, two touches pinch-zoom, and stylus inks.
+  - **Laptop Trackpad & Keyboard Shortcuts**: Smooth damped trackpad pinch-to-zoom and pan via `onPointerPanZoomUpdate`; keyboard shortcuts for zoom in (`+`/`=`), zoom out (`-`), reset zoom to 100% (`0`), fit screen (`1`), and ruler toggle (`R`).
+
+Validation:
+- Format & analyzer: `dart format --output=none --set-exit-if-changed lib test` passed cleanly (243 files format-clean); `flutter analyze --no-pub` reported **No issues found!**
+- Automated tests (all 11 tests passing cleanly):
+  - `test/canvas_pen_features_test.dart`: verifies pen style popup (Ballpoint, Pencil, Calligraphy, Brush, Fountain, Marker), ruler straight-line assist mode (2-point straight stroke creation), multi-touch two-finger pinch-to-zoom camera updating, keyboard shortcuts (`+`, `-`, `0`), and `OrbitCanvasPainter` multi-pen rendering.
+  - `test/canvas_widget_test.dart`: verifies touch panning in pen mode with palm rejection and pen gestures creating ink.
+  - Full canvas regression suite (`test/canvas_layers_highlighter_test.dart`, `test/canvas_engine_test.dart`, `test/canvas_connectors_test.dart`, `test/pdf_quote_extraction_test.dart`, `test/pdf_split_view_test.dart`) passed with zero regressions (38/38 tests).
+
+Limits:
+- Real-time handwriting-to-text recognition (OCR/HTR) remains a future extension for local-first raw ink strokes.
+
+Suggested next task:
+- Canvas export to vector SVG / high-resolution image dialog presets or note slash-command formula presets (PORT-05, CAN-16, EDT-13).
+
+# Previous task — Canvas Pen Drawing Tools & PDF Text Extraction to Notes and Canvas, 2026-09-19
+
+Owner request: "add like pen feasturs, so i can use a pen fpor example to draw on the canvas. also add mroe of them cool features to excteact text to notes, for example if i select text on the pdf and then right click there should appear a list like extract text to canvas or extact text to note, or even drag the text into note or canvas window whoich would be so cool and easy to use. Stuff like that that make orbit noter unique." Scope: CAN-01, CAN-03, INK-01, INK-02, INK-03, PDF-01, PDF-02, NOTE-05, drag-and-drop interop.
+
+Implemented:
+- Canvas Pen Drawing System (`lib/features/canvas/canvas_editor.dart`, `lib/features/canvas/canvas_painter.dart`):
+  - Added multi-style pen options: Ballpoint (solid uniform line), Fountain (pressure-sensitive dynamic line with velocity/force tapering), Marker (semi-translucent bold felt-tip), and Highlighter.
+  - Smooth Bezier rendering: implemented quadratic Bezier curve smoothing for ink stroke segments with per-sample pressure calculation (`p` property).
+  - Configurable stroke thickness (1.5px fine, 3.0px medium, 6.0px bold, 12.0px thick) and configurable eraser radius (10px, 20px, 36px).
+  - Hardware stylus & palm rejection: automatic detection of inverted stylus (`PointerDeviceKind.invertedStylus`) to switch to eraser, active stylus (`PointerDeviceKind.stylus`) to draw, and a toolbar toggle for palm rejection (disabling finger drawing so touch gestures strictly pan the canvas).
+  - Enhanced canvas toolbar with pen style popup, thickness selector, eraser size menu, and finger inking/palm-rejection toggle button.
+- PDF Text Extraction & Drag-and-Drop (`lib/domain/pdf_quote_transfer.dart`, `lib/features/pdf/pdf_reader.dart`, `lib/app/workspace_controller.dart`, `lib/features/notes/rich/rich_markdown_editor.dart`, `lib/features/workspace/workspace_shell.dart`):
+  - Created `PdfQuoteDragData` transferable model storing source `objectId`, `title`, `page`, `text`, `checksum`, `markdownQuote`, and `citation` link.
+  - Enhanced PDF reader context menu on text selection with:
+    - Draggable quote handle (`Draggable<PdfQuoteDragData>`) showing a styled preview card while dragging.
+    - "Extract to Canvas" action: extracts selected quote directly onto the active canvas or creates a new canvas card with link and citation.
+    - "Insert into active note" action: when a note is open beside the PDF, directly appends the quote and markdown wikilink citation (`[[pdfId#page=X|Title · p. X]]`).
+    - "Extract to new note" action: creates a dedicated linked note referencing the quote.
+  - Implemented `DragTarget<PdfQuoteDragData>` in `RichMarkdownEditor`: users can drag selected text directly from the PDF into any open note, visually highlighting the editor during hover and cleanly inserting the formatted quote block on drop.
+  - Enhanced `DragTarget` in `CanvasEditor`: seamlessly accepts `PdfQuoteDragData` alongside existing drag types, dropping a card element with the citation and quote at the exact drop location.
+  - Added `extractPdfQuoteToActiveNote` and `extractPdfQuoteToCanvas` to `WorkspaceController` and connected them in `WorkspaceShell`.
+
+Validation:
+- Format & analyzer: `dart format --output=none --set-exit-if-changed lib test` passed with 0 unformatted files; `flutter analyze --no-pub` reported **No issues found!**
+- Automated tests:
+  - `test/canvas_pen_features_test.dart`: verifies toolbar controls (pen styles, thickness, eraser radius, palm rejection toggle), ink stroke creation with pen style and pressure, drag-and-drop onto canvas, and multi-style painting with `OrbitCanvasPainter`.
+  - `test/pdf_quote_extraction_test.dart`: verifies `PdfQuoteDragData` formatting/serialization, `extractPdfQuoteToActiveNote` appending to active notes, `extractPdfQuoteToCanvas` creating cards, and `RichMarkdownEditor` drag-and-drop reception.
+  - All existing test suites pass (`pdf_split_view_test.dart`, `canvas_layers_highlighter_test.dart`, `workspace_controller_test.dart`).
+
+Limits:
+- Real-time handwriting-to-text recognition (OCR/HTR) is out of scope for local-first raw ink strokes and may be explored in a future ML extension.
+
+Suggested next task:
+- Canvas export to vector SVG / high-resolution image dialog presets or note slash-command formula presets (PORT-05, CAN-16, EDT-13).
+
+# Previous task — PDF Split View Blank White Fix & Vault Reopen / Switching Reliability, 2026-09-19
+
+Implemented:
+- PDF Split View Viewport Geometry & Resizing (`lib/features/pdf/pdf_reader.dart`):
+  - Fixed vertical offset calculation in `_fitComfort`: preserved `centerPosition.dy` when valid and within page boundaries instead of applying compounding offset displacement that threw the camera off into blank outer margin space.
+  - Safe bounds calculation: guarded available width/height math with `math.max(1.0, ...)`, clamped camera coordinates within document layout boundaries, and added graceful fallback to `calcMatrixFitWidthForPage`.
+  - Responsive split resizing: updated `onViewSizeChanged` to re-fit comfort mode with vertical position preservation when `_comfort` is active, and re-fit page width via `calcMatrixFitWidthForPage` when in standard viewing mode, preventing wide-screen zoom overflow into white margins.
+  - Initial split sizing: updated `onViewerReady` to fit width when `_restoreZoom` is absent, and guarded `_goToAnnotation` against non-finite scale coordinates.
+- Vault Switching, Session State & Concurrency (`lib/infrastructure/storage/native_vault_lock.dart`, `lib/infrastructure/storage/native_workspace_store.dart`, `lib/app/workspace_controller.dart`, `lib/features/workspace/workspace_shell.dart`):
+  - Windows file lock latency: added a retry loop (up to 6 attempts, 50ms interval) to `NativeVaultLock.acquire` to handle Windows kernel asynchronous file lock release latency when closing and immediately reopening or switching back to the same vault.
+  - Path normalization: normalized file paths using `p.normalize(file.path)` and lowercased on Windows to prevent lock tracking discrepancies in `_held`.
+  - Symlink resilience: wrapped `_root.resolveSymbolicLinks()` in `try/catch` in `NativeWorkspaceStore` to avoid crashes on Windows mapped drives, subst drives, or network locations.
+  - Actionable flush error reporting: updated `WorkspaceController._doInitialize` to report clear user-facing error messages when `flushAll()` fails during an explicit vault switch instead of silently aborting.
+  - Safe recovery isolation: ensured `_doInitialize` recovery only attempts to reopen `previousPath` when `previousPath != path`, preventing destructive self-recovery wipeout loops when reopening the active vault.
+  - Desktop zoom isolation: prevented copying large full-screen primary pane `zoom` into secondary split pane reading state in `openPdfNote` and `openPdfSource`.
+  - Split rendering deduplication: guarded `WorkspaceShell.content` to ensure split view is only engaged when `secondary.id != object.id`, and awaited `c.initialize` with error snackbar feedback in `switchVault`.
+
+Validation:
+- Format & analyzer: `dart format --output=none --set-exit-if-changed lib test` passed cleanly (240 files format-clean); `flutter analyze --no-pub` reported **No issues found!**
+- Automated tests (all 28 tests passing cleanly):
+  - `test/pdf_split_view_test.dart`: verifies PDF renders correctly beside a note, zoom remains within bounds, visible rect intersects page layout, and resizing split pane maintains document visibility without drifting into blank margins.
+  - `test/native_vault_lock_test.dart`: verifies process locks, rejection of secondary stores, release on close, and 10 rapid close-and-immediate-reopen cycles of the same vault.
+  - `test/pdf_reader_test.dart`: all 6 PDF reader tests passing.
+  - `test/workspace_controller_test.dart`: all 17 workspace controller tests passing.
+
+Limits:
+- Cross-process file locking uses OS advisory/exclusive locks (`vault.lock`); cloud storage syncing layers should use separate sync replicas.
+
+Suggested next task:
+- Canvas diagram export to vector SVG / high-resolution image dialog presets or note slash-command formula presets (PORT-05, CAN-16, EDT-13).
+
+# Previous task — Explorer Mini Calendar Widget, Month Navigation & Daily Note Integration, 2026-09-19
+
+Owner request: add a calendar widget at the top left in the explorer view. Scope: EXP-01, ORG-09, temporal navigation, daily notes.
+
+Implemented:
+- ExplorerMiniCalendar (`lib/features/workspace/explorer_mini_calendar.dart`):
+  - Compact monthly calendar widget rendered at the top of the Explorer sidebar (below Vault header and above Quick Actions).
+  - Clean header with Month/Year label (e.g. "September 2026"), quick "Today" jump button, `<` (previous month) and `>` (next month) navigation, and `▲`/`▼` collapse/expand toggle.
+  - 7-day civil column grid (Monday to Sunday) using `calendarMonthDays(month)` from `lib/domain/calendar_event.dart`.
+  - Smart row optimization: conditionally skips the 6th row if it contains zero days of the visible month, keeping the widget vertically compact.
+  - Today highlight with accent border and bold text; selection state background tint; muted opacity for adjacent-month dates.
+  - Content indicators: subtle dot indicators beneath day numbers for existing daily notes (`orbit.note` with `dailyDate`) and scheduled tasks/events (`entriesOn`).
+  - Clicking any date calls `c.openTodayNote(date: day)`, automatically opening the daily note if it exists or creating it with template headings and embedded task dynamic view if new.
+  - Collapsible mode: collapses down to a single compact 32px header bar with expand chevron, preserving maximum vertical space for the file/folder tree when desired.
+- Session & Workspace integration:
+  - Added `explorerCalendarCollapsed` flag to `SessionState` (`lib/app/session_state.dart`) with JSON persistence.
+  - Added `c.explorerCalendarCollapsed` getter and `c.toggleExplorerCalendar()` to `WorkspaceController` (`lib/app/workspace_controller.dart`).
+  - Integrated `ExplorerMiniCalendar` in `WorkspaceShell` (`lib/features/workspace/workspace_shell.dart`).
+- Automated tests (`test/explorer_mini_calendar_test.dart`):
+  - Comprehensive suite verifying rendering, month navigation, today jump, daily note creation & idempotency on tap, collapse/expand toggle, and scheduled event integration.
+
+Validation:
+- Format & analyzer: `dart format --output=none --set-exit-if-changed lib test` passed (239 files format-clean); `flutter analyze --no-pub` reported **No issues found!**
+- Automated tests: `test/explorer_mini_calendar_test.dart`, `test/workspace_explorer_drop_test.dart`, and `test/workspace_ui_test.dart` all passed cleanly (4/4 tests).
+- Scoped diff check: `git diff --check` passed with 0 whitespace issues in modified files.
+
+Limits:
+- Mini calendar focuses on temporal daily note navigation and activity awareness; detailed scheduling/time blocks are handled in the dedicated full Calendar View (`OrbitDestination.calendar`).
+
+Suggested next task:
+- Canvas diagram export to vector SVG / high-resolution image dialog presets or note slash-command formula presets (PORT-05, CAN-16, EDT-13).
+
+# Previous task — Rich Multi-Block Drag-and-Drop Reordering, Keyboard Movement (Alt+Up/Down) & Selection Duplication, 2026-09-17
+
+Owner request: continue adding features — implement rich multi-block drag-and-drop reordering,
+keyboard-driven paragraph/block shifting (Alt+Up / Alt+Down), and multi-block duplication in Orbit Note's
+`RichMarkdownEditor`. Scope: EDT-02, EDT-04, EDT-09, ADR-0011 source-preserving rich projection.
+
+Implemented:
+- Multi-block drag state & feedback: extended `Draggable<List<MarkdownBlock>>` to drag either
+  a single block or the full multi-block selection (`selectedBlocks`).
+- Stacked drag feedback: `_buildDragFeedback` renders a layered drop-shadowed card stack with
+  a primary badge indicating the exact block count (e.g. `3 blocks`) when dragging multiple blocks.
+- Smart drop target validation: `DragTarget<List<MarkdownBlock>>` rejects drop targets contained
+  within the moving selection (`!details.data.contains(block)`), displays insertion indicators,
+  and dims all dragged blocks (`Opacity(0.35)`).
+- Atomic multi-block movement engine (`_moveBlocks`): contiguously extracts non-blank source
+  blocks with their trailing blank spacers, inserts them atomically before or after the target block,
+  preserves inter-block blank line rhythm, and automatically restores multi-block selection over
+  the relocated block range.
+- Keyboard-driven movement (`Alt+Up` / `Alt+Down`):
+  - In `_RichTextBlockState.keyEvent`: typing users can press `Alt+Up` or `Alt+Down` to immediately
+    slide their active paragraph up or down without losing cursor position or text field focus.
+  - In `_handleEditorKeyEvent` on `_editorFocusNode`: pressing `Alt+Up` or `Alt+Down` while multiple
+    blocks are selected smoothly slides the entire selected block bundle up or down.
+- Context menu adaptation: "Move up" and "Move down" dynamically adapt to "Move selected blocks up"
+  and "Move selected blocks down" (annotated with `Alt+↑` and `Alt+↓`), and "Duplicate" adapts to
+  "Duplicate selected blocks" (annotated with `Ctrl+D`), cloning the entire selection in-place below with instant re-selection.
+- Keyboard duplication (`Ctrl+D` / `Cmd+D`): duplicates the active block or multi-block selection in-place.
+- Full undo/redo integration: all movement and duplication mutations register cleanly with Orbit Note's
+  universal document history (`Ctrl+Z` / `Ctrl+Y`).
+
+Validation:
+- Format & analyzer: `dart format --output=none --set-exit-if-changed lib test` passed
+  (237 files format-clean); `flutter analyze --no-pub` reported **No issues found!**
+  Scoped diff check `git diff --check` passed with 0 whitespace issues in modified files.
+- Automated tests: dedicated test suite in `test/rich_editor_multi_block_reorder_test.dart`
+  passed all 7 tests cleanly covering single/multi-block Alt+Up/Down, Ctrl+D duplication, undo/redo,
+  and drag targets.
+- Editor regression suite: all 22 tests in `test/rich_editor_widget_test.dart` and 8 tests in
+  `test/rich_editor_multi_block_selection_test.dart` passed with zero regressions.
+
+Limits:
+- Cross-note drag-and-drop between separate windows remains a future platform adapter extension;
+  all intra-document single and multi-block drag-and-drop and keyboard movements operate reliably.
+
+Suggested next task:
+- Canvas diagram export to vector SVG / high-resolution image dialog presets or note slash-command
+  formula presets (PORT-05, CAN-16, EDT-13).
+
+# Previous task — Canvas Card Preview Tooltips, Inline Thumbnail Rendering & Dynamic View Embedding, 2026-09-17
+
+Owner request: continue adding features — implement canvas card preview tooltips, inline thumbnail rendering,
+and bidirectional dynamic view embedding on spatial boards. Scope: CAN-03, CAN-04, CAN-09, FILE-05.
+
+Implemented:
+- Universal Canvas cards referencing notes, tasks, images, PDFs, or dynamic views support 4 distinct
+  presentations (`compact`, `card`, `preview`, `properties`) with faithful inline thumbnail/content rendering.
+- Canvas card hover preview tooltips (`CanvasCardPreviewTooltip`) with calm debounce (350ms) showing
+  rich formatted summaries, metadata tags/projects, task status, PDF quotes, and quick actions
+  (`Open`, `Mark Done` / `Mark Open`, `Cycle Presentation`, `Copy WikiLink`).
+- Interactive on-canvas card controls: direct checkbox toggle on task cards, dynamic view item opening,
+  presentation cycling, and "Add Dynamic View" in context menu routing directly to universal object commands.
+- Inline thumbnails and dynamic view queries with live progress bars and item lists.
+
+Validation:
+- Format & analyzer: format-clean across all files; `flutter analyze --no-pub` reported **No issues found!**
+- Automated tests: 11 tests in `test/canvas_card_previews_test.dart` passed cleanly covering
+  helpers, element presentations, painter rendering, hover tooltip interactions, and on-canvas checkbox toggling.
+
+Suggested next task:
+- Implement rich drag-and-drop reordering for multi-block selections, or canvas card
+  preview tooltips and inline thumbnail rendering (CAN-09, FILE-05).
+
+# Previous task — Reliable Selection, Copy & Multi-Block Operations Across Multiple Rich Paragraphs, 2026-09-17
+
+# Previous task — Paragraph controls and duplicate empty prompts, 2026-09-17
+
+Owner follow-up: restore discoverable paragraph moving and between-line insertion;
+fix two adjacent empty paragraph prompts. Scope: EDT-02/04/09, existing Rich
+projection and source-preserving contract.
+
+Implemented: hovering a paragraph reveals its existing add/move/menu/collapse
+controls in the fixed right gutter, preserving the aligned text edge. Hovering a
+blank separator reveals a thin insertion line and plus button. Keyboard focus and
+touch accessibility remain supported. Focusing a trailing blank now removes the
+redundant zero-byte end-of-document field; no authored source or blank lines are
+deleted. Regression reproduces Enter at a heading followed by trailing blank lines.
+
+Validation: format/no-change formatting passed (234 files); analyzer found no
+issues; scoped diff whitespace check passed. Full suite: **612 passed, 9 failed**,
+with the same pre-existing startup/canvas/home/explorer failures as the previous
+pass. Editor regressions, including moving, between-paragraph insertion and the
+new duplicate-prompt case, passed. Logs: `.local/paragraph-controls-{analyze,
+all-tests,windows-build}.log`. Windows release rebuild passed (76.4s), output:
+`build/windows/x64/runner/Release/orbit_note.exe`.
+
+Suggested next task: reliable selection/copy across multiple Rich paragraphs.
+
+# Previous task — Calm rich editor layout and text alignment, 2026-09-16
+
+Owner request: repair offset headings, distracting paragraph-insertion controls,
+and the detached formatting toolbar; add left/center/right alignment and improve
+the writing experience. Scope: EDT-02/03/04/09/12, within ADR-0011's existing
+source-preserving Markdown projection. Preserve other in-progress features.
+
+Implemented: consistent title/heading/prose edge; document-aligned compact toolbar
+with More formatting; quiet right-hand block controls that do not activate while
+typing or crossing prose; no full-width insertion divider. Fixed slash-menu
+overflow and made basic writing commands immediately reachable. Added paragraph
+and heading alignment in Rich, Source and Read, with portable Markdown comments,
+undo and aligned Enter continuation. Unknown syntax stays unchanged.
+
+Validation completed 2026-09-17:
+- All **107 note/Markdown editor tests passed** on the final source, including
+  layout geometry, quiet typing controls, CRLF/unknown-source preservation,
+  alignment editing/undo/Read mode and empty-paragraph Enter continuation.
+- `dart format lib test`, no-change formatting (234 files), `flutter analyze`
+  and scoped `git diff --check` passed. No dependency or storage migration.
+- Windows release build passed (55.5s). The rebuilt app remained running and
+  responsive during a five-second smoke test; only that test process was closed.
+- Desktop (1600px) and narrow (390px) captures were visually inspected:
+  `work/ui/editor-layout-desktop.png`, `work/ui/editor-layout-narrow.png`.
+- Full suite during this pass: **610 passed, 9 failed** in existing startup,
+  canvas, home and explorer workflows. The prior slash-command editor failure is
+  fixed. The final empty-alignment refinement was then covered by the passing
+  107-test editor suite. Logs: `.local/editor-layout-{analyze,all-tests,
+  final-tests,windows-build}.log`.
+
+Limits: alignment targets individual paragraphs/headings, not arbitrary ranges
+across blocks or every embedded object. Other readers may ignore its comment.
+Native cross-block text selection remains unfinished. Narrow toolbars scroll;
+touch/accessibility controls remain visible. No claim that all editor bugs or the
+nine unrelated suite failures are resolved.
+
+Suggested next task: make selection/copy across multiple Rich blocks reliable.
+
+# Previous task — Dynamic Views, Frozen Snapshots, Periodic Reviews, Unresolved WikiLinks & Quick Capture Inbox, 2026-09-16
+
+Owner request: Implement focused Knowledge Workflow + Dynamic Views + Periodic Review + Beginner UX system for Orbit Note:
+1. Dynamic Views in notes: ````orbit-view ... ```` code blocks in portable Markdown querying Universal Objects (tasks, recent notes, backlinks, activity, progress bars, upcoming deadlines, files) with interactive checkboxes and visual configuration dialog (zero raw SQL/Dataview syntax).
+2. Live Views vs Frozen Snapshots: ````orbit-snapshot ... ```` code blocks preserving historical review states, with 1-click "Freeze as Snapshot" and "Restore Live View".
+3. Today / Daily Note as Generated Dashboard: native Markdown notes named `YYYY-MM-DD` pre-populating embedded dynamic views for open tasks and reflection headings.
+4. Day → Week → Month → Quarter → Year Periodic Review Flow: Temporal navigation bar with period switcher, factual aggregation without subjective AI opinions, and 1-click generation of review notes with embedded dynamic views and `# Reflection` sections.
+5. Generated Project Dashboards: Semantic project overview (progress bar, open tasks, completed tasks, recent notes, canvases, files, activity) accessed via `openProjectDashboard(String projectName)`.
+6. Unresolved WikiLinks as First-Class Citizens: Missing link detection, mentions list, and 1-click note creation with auto-resolution via `showUnresolvedLinkDialog`.
+7. Quick Capture Inbox & Review Later: Zero-friction text capture input separating capture from organizing, with card-by-card triage dialog (`showInboxReviewDialog`).
+8. Progressive Disclosure: Calm beginner dashboard, collapsible properties, organized slash commands.
+
+Implemented:
+- Dynamic Views in Markdown (`lib/features/notes/rich/dynamic_view_block.dart`):
+  - `DynamicViewConfig`: key-value YAML serialization/parsing (`type`, `status`, `project`, `folder`, `period`, `sort`, `limit`, `title`).
+  - `DynamicViewBlock`: `ConsumerStatefulWidget` rendering live tasks with direct checkbox completion, progress indicators, notes, backlinks, activity, and files; visual configuration modal with dropdowns; "Freeze as Snapshot" button.
+- Frozen Snapshots (`lib/features/notes/rich/snapshot_block.dart`):
+  - `SnapshotConfig` & `SnapshotItem`: parses and writes `orbit-snapshot` YAML blocks with timestamp, static frozen items, and completion states.
+  - `SnapshotBlock`: renders static snapshot with historical timestamp badge and "Restore Live View" action.
+- Editor & Slash Commands (`lib/features/notes/rich/rich_markdown_editor.dart` & `note_editor.dart`):
+  - Code block renderer recognizes `orbit-view`, `view`, `orbit-snapshot`, and `snapshot` languages.
+  - Grouped slash command palette (`DYNAMIC VIEWS`, `BASIC BLOCKS`, `RICH MEDIA & MATH`, `KNOWLEDGE & CALLOUTS`).
+  - Missing WikiLinks (`orbit-missing:...`) route to `showUnresolvedLinkDialog`.
+- Unresolved WikiLinks Dialog (`lib/features/notes/unresolved_link_dialog.dart`):
+  - Modal displaying missing title, referencing notes with 1-click open, `Create Note`, and `Search Similar`.
+- Quick Capture Inbox & Triage (`lib/features/workspace/inbox_review_dialog.dart`):
+  - Card-by-card triage modal with project/folder assignment, task conversion, archiving, and deletion.
+- Project Dashboard (`lib/features/workspace/project_dashboard_view.dart` & `saved_view_host.dart`):
+  - Semantic project dashboard with progress indicator, tasks checklist, recent notes, and activity history.
+  - Integrated into saved views under viewType `'project'`.
+- Controller Enhancements (`lib/app/workspace_controller.dart`):
+  - `unresolvedWikiLinks()`: finds and groups missing `[[...]]` links.
+  - `quickCapture(text, {asTask})` and `inboxObjects`.
+  - `processInboxItem(id, {project, folder, asTask, archive, delete})`.
+  - `notesCreatedBetween`, `tasksCompletedBetween`, `tasksUnfinishedBetween`, `projectsActiveBetween`.
+  - `openTodayNote({date})`, `openReviewNote({periodName, title, initialBody})`, `openProjectDashboard(projectName)`.
+- Temporal Review Navigation & Home View (`lib/features/workspace/workspace_views.dart`):
+  - `TemporalZoom` (Day, Week, Month, Quarter, Year) with period navigation buttons, reset to current, and 1-click Review Note creation.
+  - Quick Capture input field and Inbox triage banner.
+  - Factual periodic review metrics (notes, completed tasks, open loops, active projects).
+- Automated Tests (`test/knowledge_workflow_dynamic_views_test.dart`):
+  - 12 comprehensive unit and widget tests covering config parsing/serialization, unresolved WikiLinks, quick capture & triage, temporal query boundaries, today/review note creation, DynamicViewBlock rendering and task toggling, SnapshotBlock freezing and live restoration, ProjectDashboardView, and HomeView temporal navigation.
+
+Validation evidence:
+- Quality checks:
+  - `dart format lib test` and `dart format --output=none --set-exit-if-changed lib test` passed with 0 unformatted files.
+  - `flutter analyze --no-pub` reported **No issues found!** across all 230 files.
+- Automated test suites:
+  - `flutter test --no-pub test/knowledge_workflow_dynamic_views_test.dart`: 12/12 passed cleanly.
+  - `flutter test --no-pub test/workspace_explorer_drop_test.dart`: 2/2 passed cleanly.
+  - `flutter test --no-pub test/workspace_ui_test.dart`: passed cleanly.
+
+Limits:
+- Dynamic views query Universal Objects within the active workspace/vault; Markdown code blocks remain 100% standard and portable across external tools.
+- Periodic reviews emphasize factual aggregation over subjective AI generation to maintain user trust and knowledge clarity.
+
+Next suggested task:
+- Implement bidirectional Canvas-to-Dynamic-View embedding and card reference syncing (CAN-18, EDT-15).
+
+# Previous task — Unified Explorer Filtering, Quick Actions & Multi-View Drag-and-Drop, 2026-09-16
+
+Implemented:
+- Explorer quick actions toolbar (`lib/features/workspace/workspace_shell.dart`):
+  - Action buttons row: `Note`, `Canvas`, `Open PDF`, `Open Image`, `Import` with compact icons, tooltips, and keyboard accessibility.
+- Explorer type filter chips (`lib/features/workspace/workspace_shell.dart`):
+  - Filter chips: `All`, `Notes`, `Canvases`, `PDFs`, `Images`, `Tasks` with `ValueKey('filter-chip-$key')` and dynamic active section headers with count badges (e.g. `PDFS · 3`, `IMAGES · 2`).
+  - Search box enhancements with clear button (`Icons.clear`) when text is entered and count indication.
+- Folder explorer item distinction (`lib/features/workspace/note_folder_explorer.dart`):
+  - Image files distinguished with `Icons.image_outlined` and tertiary theme tinting.
+- Top header quick menu (`lib/features/workspace/workspace_shell.dart`):
+  - `PopupMenuButton<String>` with tooltip `'Open & Import Files'` providing quick access to `New Note`, `New Canvas`, `Open PDF…`, `Open Image…`, and `Import File…` with overflow-safe constraints.
+- Multi-view drag-and-drop file integration (`lib/features/workspace/workspace_shell.dart`):
+  - Wrapped Explorer sidebar and main view area with `DropTarget` (`explorer-drop-target` and `content-drop-target`).
+  - Drop feedback border and status messages.
+  - Context-aware routing:
+    - **Canvas**: Bitmapped images (.png, .jpg, .webp, .gif) create positioned image elements; vector diagrams (.mermaid, .mmd, .svg) parse into layout elements; PDFs and other files create interactive `card` elements referencing the file object with universal object identity.
+    - **Notes**: PDFs insert stable `ObjectReference` markdown links (`[[<id>|Title]]`); images insert markdown image syntax (`![Title](<rel-path>)`); other files insert markdown attachment links.
+    - **Explorer / Global**: Imports files into the local vault attachments folder (`Attachments/<checksum>/...`) and immediately opens the first object.
+- Automated tests (`test/workspace_explorer_drop_test.dart`):
+  - `TestDropItem` simulating in-memory file drops without filesystem dependency.
+  - Test 1: Explorer quick actions, type filter chips (`canvases`, `pdfs`, `images`, `tasks`, `all`), search filter clear button, and header popup menu.
+  - Test 2: File drops onto Canvas (PDF card and Mermaid diagram), Note (markdown link), and Explorer (vault import and auto-open).
+
+Validation evidence:
+- Automated tests:
+  - `flutter test --no-pub test/workspace_explorer_drop_test.dart` passed (2/2 tests).
+  - `flutter test --no-pub test/workspace_ui_test.dart` passed.
+  - `flutter test --no-pub test/canvas_diagram_import_test.dart` passed (17/17 tests).
+- Quality checks:
+  - `dart format --output=none --set-exit-if-changed lib test` passed (0 unformatted files).
+  - `flutter analyze --no-pub` reported **No issues found!** (0 errors, 0 warnings, 0 lints).
+
+Limits:
+- Drag-and-drop uses `desktop_drop` which handles desktop platforms (Windows, macOS, Linux) and web; mobile platforms use the Quick Action buttons and system file picker.
+- Deduplication ensures files with matching SHA-256 hashes reuse the existing vault attachment and object identity.
+
+Next suggested task:
+- Implement canvas card preview tooltips and inline thumbnail rendering for attached PDFs and images on canvas cards (CAN-09, FILE-05).
+
+# Previous task — Universal Canvas Diagramming & Import Engine, 2026-09-16
+
+Implemented:
+- Pure Dart diagram parsing & layout engine (`lib/canvas/diagram_import.dart`), completely decoupled from Flutter UI and network:
+  - Mermaid flowchart parser (`parseMermaidFlowchart`): supports `graph TD`, `graph LR`, `graph BT`, `graph RL`, `flowchart ...`, node shapes (`[]` rect, `()` capsule, `([])` rounded pill, `[[]]` subroutine, `[()]` cylinder/database, `(())` circle/state, `{}` decision diamond), connection styles (`-->`, `---`, `-.->`, `==>`, `<-->`, labels `-->|...|`), chained statements (`A --> B --> C`), cycle-safe topological ranking DAG layout algorithm.
+  - Orbit Canvas JSON importer (`parseCanvasJson`): parses exported JSON arrays or canvas structures, generates new non-colliding UUIDs, remaps all connector endpoints (`startId`, `endId`), groups imported elements, and centers layout around target viewport center.
+  - Outline to Mind Map & Tree importer (`parseOutlineDiagram`): parses Markdown headings and indented bullet lists into hierarchical tree data, generates Radial Mind Maps (alternating left/right branch radiation), Horizontal Trees (left-to-right hierarchy), and Vertical Trees (top-to-bottom hierarchy).
+  - SVG vector shape importer (`parseSvgDiagram`): parses `<rect>`, `<circle>`, `<ellipse>`, `<line>`, `<text>` elements into native CanvasElement shapes.
+  - Production diagram templates catalog (`getDiagramTemplates()`): curated catalog of 7 production templates across Architecture, Engineering, Planning, Productivity, Strategy, and Workflows (Decision Flowchart, Cloud Microservices Architecture, Sequence/Auth Flow, Entity-Relationship Diagram, State Machine Loop, Mind Map Knowledge Hub, Product Roadmap).
+- Flutter import modal dialog (`lib/features/canvas/canvas_import_dialog.dart`):
+  - 4 tabs: Templates, Mermaid Flowchart editor with sample loader & live syntax feedback, Markdown Outline converter with layout picker (Radial Mind Map, Tree H, Tree V), and File picker/importer (.json, .mermaid, .mmd, .txt, .svg).
+  - Fully responsive, overflow-free layout with Material 3 styling.
+- Canvas editor integration (`lib/features/canvas/canvas_editor.dart`):
+  - Top toolbar action button (`Icons.file_upload_outlined`) with tooltip `Import diagrams & templates (Ctrl+I)`.
+  - Background context menu entry "Import Diagrams & Content...".
+  - Keyboard shortcut `Ctrl+I` / `Cmd+I`.
+  - Atomic transaction undo/redo: imported elements are assigned a cohesive group ID and committed via `_history.commit()`.
+
+Validation evidence:
+- All **17 unit and widget tests** in `test/canvas_diagram_import_test.dart` passed cleanly:
+  - Mermaid DAG ranking, orientations, node shapes, styles, cycles, and empty inputs.
+  - Canvas JSON import, UUID remapping, connector rewiring, and bounds normalization.
+  - Outline to Radial Mind Map, Horizontal Tree, and Vertical Tree layouts.
+  - SVG vector element parsing and position offsets.
+  - Pre-built diagram templates generation and verification.
+  - Full UI widget tests for `CanvasImportDialog` tab switching, sample loading, template insertion, and toolbar integration.
+- Codebase-wide checks:
+  - `dart format lib test` and `dart format --output=none --set-exit-if-changed lib test` passed with 0 unformatted files.
+  - `flutter analyze --no-pub` reported **No issues found!** across all 223 files.
+  - Core canvas tests (`canvas_engine_test.dart`, `canvas_connectors_test.dart`, `canvas_groups_test.dart`, `canvas_widget_test.dart`) passed with zero regressions.
+
+Limits:
+- Mermaid support focuses on flowcharts/DAGs (`graph` and `flowchart`). State, sequence, and class diagrams can be represented via the built-in templates and flowchart notation.
+- SVG parser extracts geometric primitives (`rect`, `circle`, `ellipse`, `line`, `text`); complex SVG paths are mapped to bounding rects or notes.
+
+Next suggested task:
+- Implement Canvas diagram export to standard SVG and Mermaid syntax (CAN-16, PORT-05) enabling bidirectional round-trip diagram interoperability.
+
+# Previous task — PDF reader reliability and connected notes, 2026-09-16
+
+Owner request: fix PDF reading bugs and strengthen its note-taking workflow.
+Scope: audit and repair reproducible FILE-04/05/09/11/12/13 and LNK-03/04 issues;
+preserve original bytes, note identity, source-version guards and all prior changes.
+Required context: attachments-and-research, search-links-and-graph, implemented
+formats, ADRs 0013–0015 and the existing application save/recovery contract.
+
+Plan: cover reader retry/document lifecycle, page/zoom restoration, selection over
+existing highlights, failed-comment recovery, and PDF/note navigation with native
+regressions. Add searchable connected notes using existing objects/backlinks and
+precise source return. Run format/analyze/full tests, independent PDF checks,
+Windows release build and visual/startup checks. Record verified fixes and remaining
+limits; "all bugs" is not a claim that untested PDFs/platforms are bug-free.
+
+Status: implementation complete; validation details in
+[PDF reliability report](pdf-reader-reliability-2026-09-16.md). The full application
+suite has unrelated failures; this pass does not claim a clean overall release.
+Existing annotated-export release checks below predate this pass.
+
+# Previous task — Annotated PDF copies, 2026-09-15
+
+Owner asked to resume feature work after the computer reset. The active source is
+`C:\Users\isa\Desktop\Orbit Note`; the Documents/Codex copy is a historical
+bootstrap snapshot, not the source to merge over this checkout. Continue the prior
+PDF handoff (FILE-12/14); Google stays paused. Prior uncommitted work is retained.
+Required context: [PDF specification](../features/attachments-and-research.md),
+[implemented formats](../architecture/implemented-formats.md), ADRs 0013/0014/0015,
+and [storage/save contract](../architecture/storage-formats.md).
+
+Implemented: **Save filtered review as annotated PDF** in the review panel creates
+a separate ordinary PDF attachment in the Vault. Highlights, underlines, strikeouts
+and page comments use standard PDF annotations, with Unicode note bodies, colors,
+stable note references and printable flags. Each region becomes one annotation;
+multi-region notes repeat their comment. Open/resolved is included in comment text,
+not represented as a native PDF review-state conversation. Existing PDF content,
+embedded annotations and form values are retained; unsaved Orbit form drafts are
+not applied by this action. Original bytes and editable Orbit notes stay unchanged.
+
+Export uses the existing PDFium worker with an isolated in-memory document. It
+verifies the actual source-byte checksum, region validity and supported metadata;
+protected/signed/XFA PDFs, stale sources, unknown review versions, missing pages
+and excessive input are rejected. The reader prevents duplicate requests and
+checks note snapshots before saving; the application rechecks source/note snapshots
+at the save boundary. Failure leaves notes available for retry. Rotation/crop
+coordinates are converted through PDFium. No new runtime dependency, schema,
+migration or storage authority. Existing attachment save/recovery is reused.
+
+Validation complete for the available toolchain: all **575 tests passed** (40s),
+including six new regressions for native export, failed-save retry/busy state,
+byte/source safety, form preservation, rotation/crop and durable save/reopen.
+The existing review-panel regression also verifies exporting the filtered items.
+`dart format lib test` and the no-change check passed (219 files),
+`flutter analyze` reported no issues (10.3s), and `git diff --check` passed.
+Independent `tool/check_pdf_annotation_export.py` passed for standard types,
+Unicode, colors, geometry, rotation/crop, images/text and an editable pypdf
+round-trip. Poppler-rendered two-page and rotated exports were visually inspected;
+the independent round-trip's first-page rendering is pixel-identical. Poppler
+reported fallback-font configuration warnings; the inspected text rendered legibly.
+`flutter build web --no-pub` passed (51.6s), with existing Google JS-interop WASM
+dry-run and Cupertino font advisories; this is not a WASM runtime acceptance claim.
+Logs: `.local/pdf-export-{tests,analyze,web-build,windows-build}.log`.
+Generated QA artifacts: `.local/pdf-export-qa/` (ignored).
+
+Environment: restored pinned Flutter 3.44.8 / Dart 3.12.2 in ignored `.local`, with
+official archive SHA-256 verification; no dependency upgrades. Repaired the ignored
+`.local/flutter-env.ps1` helper for the new account and SDK short path. Project-local
+plugin junctions avoid changing Windows Developer Mode.
+
+Windows validation completed 2026-09-16 after explicit owner approval to restore
+the C++ tools: Visual Studio Build Tools 2022 17.14.41, Windows SDK 10.0.26100.0,
+and the ATL component required by flutter_secure_storage_windows were installed.
+Both installers completed successfully (exit 0). No application code changes were
+needed. `flutter build windows --release --no-pub` passed in 16.5s. Executable:
+`build/windows/x64/runner/Release/orbit_note.exe`. A five-second hidden startup
+check found the rebuilt process alive and responding. The test instance was then
+stopped by its recorded process ID because its hidden window did not accept a
+close request. Evidence: `.local/pdf-export-windows-build.log`,
+`.local/pdf-export-doctor.log`, `.local/pdf-export-smoke.json`.
+The prior Windows build blocker is resolved. Full native interactive export and
+physical-device acceptance remain unverified; the 575-test/analyzer/format/web
+results above remain the latest application-code checks.
+
+Limits: native export only; web retains Markdown export. No annotation import,
+shared ink, redaction, signatures or PDF content editing. Exported copies can be
+opened externally through the existing file action. Native resolution threads,
+arbitrary PDF metadata and original serialization are not promised round-trip into
+Orbit. Originals/sidecars remain the authoritative editable source.
+
+Next suggested task: import supported annotations from a separately reviewed PDF
+as source-versioned notes, with preview, duplicate detection and reversible import.
+
+# Previous task — PDF review workspace, 2026-09-14
+
+Owner request: add useful Acrobat-inspired work tools while preserving Orbit's
+local-first knowledge model. Scope: FILE-04/05/11/12/13; Google remains paused.
+Required references: [PDF/research spec](../features/attachments-and-research.md),
+[implemented formats](../architecture/implemented-formats.md), ADRs 0013/0014/0015,
+and the existing application save/recovery contract. Preserve prior editor work.
+
+Implemented batch:
+
+- Page comments, including scans/diagrams with no selectable text, create linkable
+  notes and visible page markers. A failed create keeps the typed comment for retry.
+- Edit review notes from the reader; change markup color/type and resolve/reopen.
+  The editor explicitly edits the same note's Markdown body, with normal save/history.
+  Concurrent edits/source changes reject stale dialogs; failed saves retain drafts.
+- Review panel filters text, open/resolved, markup type and current page; sorts by
+  page or newest. Filters survive closing/reopening the panel in the same session.
+- Copy/export the filtered review as Markdown or save it as an ordinary linked note
+  beside the PDF. Summary links use UUIDs for both annotations and source pages;
+  stale source versions are labelled. Large summaries are bounded; source is retained.
+- Hide/show review markup without deleting notes. Unknown properties/region fields,
+  source checksums and original PDF bytes remain intact. No package/schema migration.
+
+Validation resumed 2026-09-15 after the prior usage-limit interruption. The moved
+Flutter SDK was located in the local backup and the ignored build helper repaired;
+Flutter remains 3.44.8 / Dart 3.12.2, with no dependency upgrade.
+`dart format lib test tool` and the no-change format check passed (218 files).
+`flutter analyze` reported no issues (22.6s). All **569 tests passed** (60s),
+including seven new review regressions for persistence, stale/failure safety,
+filtering, editing, source-linked summaries and page-comment retry. The existing
+real-PDF rendering/form/comfort and Rich editor regressions also pass. Ten targeted
+reader/review tests passed with desktop screenshot capture on 2026-09-14; the
+result was inspected. Logs: `.local/pdf-review-*.log`; visual artifact:
+`work/ui/pdf-highlights.png`.
+
+`flutter build windows --release` succeeded (60.3s). Executable:
+`build/windows/x64/runner/Release/orbit_note.exe`. A five-second startup smoke check
+confirmed the rebuilt process remained running and responding; that test instance
+was then closed. Evidence: `.local/pdf-review-windows-build.log` and
+`.local/pdf-review-smoke.json`. `git diff --check` passed. No full native interactive
+review session, physical phone test or OS Save As dialog test was performed.
+
+Boundaries: Orbit review metadata is not written into the original PDF. This batch
+does not implement annotated-PDF export, OCR, redaction, signatures, arbitrary PDF
+text editing, or native comment import. Page markers use a bounded automatic grid,
+not free placement/dragging. Real-phone and OS Save As dialog acceptance is pending.
+
+Next suggested task: export a separate standards-compatible annotated PDF with
+round-trip tests in an independent reader, preserving originals and version guards.
+
+# Previous task — Restore the math catalog and stabilize direct editing, 2026-09-14
+
+Owner correction: the reduced palette and unstable editing were not acceptable.
+"GeoGebra-like" meant typing into equations naturally, not introducing a solver
+or a different product UI. Keep the original searchable LaTeX table, support
+editing values in place, and keep the equation visible. Google remains paused.
+Required references remain the editing specification, ADR 0011 and agent workflow
+linked in the previous pass below. Preserve all unrelated work.
+
+Implemented correction:
+
+- The original **1,473-entry** searchable/category-filtered table is shared by the
+  direct editor and Advanced editor. Symbols & templates opens it next to the
+  equation; it stays open while inserting entries or editing values. New equations
+  open it immediately. Escape/Close dismiss it without deleting the equation.
+- The equation and controls keep their positions when fields focus or the table
+  opens. The table anchors above/below the equation without covering it and follows
+  document scrolling. Fields no longer acquire separate input-box decorations.
+- Symbol insertion restores the actual caret instead of jumping to the end.
+  Registry-backed standalone symbols (including arrows) remain editable glyphs.
+  Exact command matching avoids misclassifying `\leftarrow` as a scalable delimiter.
+- Backspace in an empty fraction half retains the other half; empty root degrees
+  and script/limit arguments remove only that structure. Nonempty values are kept.
+- Ctrl/Cmd+A selects the whole equation; copy/cut/paste/delete and replacement
+  typing operate on that selection. Cut waits for successful clipboard copy;
+  clipboard failure leaves the equation intact. Stale asynchronous clipboard work
+  cannot overwrite a changed equation. Empty equations retain an editable slot.
+
+Same source-span projection, Markdown durability and shared undo; no new package,
+storage format, schema, migration or ADR. Arbitrary partial selection spanning
+several equation parts remains unfinished. Complex TeX/matrices retain the existing
+Advanced/grid editor and safe renderer fallback; this is not full Word parity.
+
+Validation (2026-09-14): `dart format lib test tool` and no-change format check
+passed (216 files); `flutter analyze` reported no issues (6.9s); all **562 tests
+passed** (41s), including eight new correction regressions. Coverage includes the
+full table remaining open/clear of the equation, insertion caret, arrow glyphs,
+empty-argument preservation, whole selection/delete/cut/paste and clipboard-failure
+safety. Existing Markdown round-trip, shared undo and narrow-layout tests pass.
+The captured desktop catalog view was visually inspected. `git diff --check` passed.
+
+`flutter build windows --release` succeeded (48.7s). Executable:
+`build/windows/x64/runner/Release/orbit_note.exe`. The rebuilt process stayed alive
+and responding for a five-second startup smoke check, then was closed. Clipboard
+behavior was checked through Flutter's mocked platform channel, not a manual native
+copy/paste session. Real-phone typing and native interactive acceptance remain
+unverified. Logs: `.local/math-correction-*.log` and `.local/math-correction-smoke.json`;
+screenshot: `work/ui/math-catalog-rich.png`. These are ignored local artifacts.
+
+Next suggested task (do not start automatically): source-preserving partial
+selection across equation structures, including Shift+arrow and replacement undo.
+
+# Previous pass — Direct rich math editing, 2026-09-14
+
+Owner direction: pause Google work; make equations editable directly in Rich
+Notes, with a Word/GeoGebra-style input experience. Preserve all existing cloud
+and unrelated work. Scope: EDT-03/04/06/09/12/15. Required references:
+[editing specification](../features/markdown-and-editing.md),
+[source-preserving projection](../adr/0011-source-preserving-rich-markdown.md),
+and [workflow](../development/agent-workflow.md).
+
+Delivered and validated:
+
+- One editable expression replaces the duplicated renderer/slot forms. Fractions,
+  nested fractions, roots/degrees, powers/subscripts and operator limits edit in place.
+- `/`, `^`, `_` create structures at the caret/selection; Tab/Shift+Tab and arrows
+  navigate slots. Common symbols insert at the remembered caret. New inline/block
+  equations immediately focus a selectable placeholder, without opening Studio.
+- Exact source spans feed the existing note callback and shared history. Unbraced
+  arguments gain braces only on edit; command spellings and unrelated Markdown stay
+  intact. Empty inline equations retain an editable placeholder. Newly edited inline
+  boundary whitespace is trimmed to retain Markdown's equation delimiter grammar.
+- Complex environments/scalable delimiters retain the existing renderer, grid
+  editor where supported, and Advanced equation editor/full symbol catalog.
+
+No new dependencies, storage schema, migration, remote service or ADR. This is a
+bounded projection refinement, not full Word or GeoGebra parity. Cross-structure
+native selection/deletion, exact mathematical typesetting in every editable slot,
+and direct editing of arbitrary TeX/matrix environments remain limitations. There
+is no symbolic solver/plotter; ordinary equation values are editable offline.
+
+Next suggested task (do not start automatically): keyboard selection/removal across
+equation structures with source-preserving undo and direct matrix cell editing.
+
+Validation (2026-09-14): `dart format lib test tool` and the no-change format check
+passed (215 files); `flutter analyze` reported no issues (7.4s); all **554 tests
+passed** (44s), including 21 added math tests. They cover nested/source-span edits,
+command boundary safety, empty inline slots, rapid events/IME, keyboard navigation,
+symbol menu focus, direct insertion, cross-mode undo and Markdown reopen. Existing
+render-only test assertions now check the editable component in Rich and retain
+the original renderer assertions in Read. Desktop/narrow viewport visual checks
+passed, including larger text; a rendered screenshot was inspected locally.
+
+`flutter build windows --release` succeeded (50.8s). Executable:
+`build/windows/x64/runner/Release/orbit_note.exe`. Its process stayed running and
+responding for the five-second startup smoke check, then was closed. Native pen,
+real-phone typing and a full interactive Windows acceptance session were not
+performed. Logs: `.local/direct-math-*.log` and `.local/direct-math-smoke.json`;
+visual evidence: `work/ui/rich-lecture.png`. These are local ignored artifacts.
+
+# Paused by owner — Google account and Drive milestone, 2026-09-13
 
 Owner prompt: attachment `5fdf20f6-ee67-477c-b3f7-99c8fd9e3794/pasted-text.txt`.
 Continue the existing provider-neutral engine; Windows and Android first.
@@ -9,6 +4977,19 @@ See [audit, delivery map and validation](../planning/google-account-milestone-20
 and [developer setup](../development/google-drive-sync-setup.md).
 Do not advertise cloud synchronization or set conditional-publication capability
 until the transfer safety contract is proven. Preserve earlier work below.
+
+2026-09-14 account-isolation follow-up: bind full Drive operations and listed
+Vaults to the initiating Google account, revalidate selected folder ownership,
+and serialize device-local root preparation. Six new failure/concurrency tests
+cover these boundaries. Registration remains unfinished: the owner declined use
+of their personal email as public support contact and the pending policy
+acceptance. Do not infer permission from a generic request to continue.
+
+2026-09-14 release follow-up: Windows/Android release jobs now validate and embed
+platform Google app configuration. A missing client ID fails a requested Google
+account preview build; local-only remains an explicit mode. Release notes explain
+that Vault transfers remain unfinished. Public support address clarification is
+pending; no Google registration, policy consent or personal contact was submitted.
 
 # Previous task — Runtime hardening, 2026-09-13
 
@@ -28,7 +5009,46 @@ now available. Safety/reconciliation foundations and the native repository repli
 adapter are implemented; Google Drive, auth and cloud UI remain unfinished. Preserve the
 completed feature work below. See [cloud status](../features/cloud-sync.md).
 
-# Current task — Work & Study Focus Sessions with Honest Tracking, Local Summaries & Release v0.2.1 (CTX-04, CTX-05, CTX-06, CTX-07, CTX-11, CTX-12)
+# Current task — Universal Object Properties, Typed Metadata Editor, Relations Explorer & Release v0.2.2 (ORG-02, ORG-03, ORG-08)
+
+Status: delivered and validated, 2026-09-13.
+
+Delivered Universal Object typed properties management, interactive in-place metadata editing, Add Property modal with live validation (number, date, url, boolean, tags), and a comprehensive Relations & References Explorer (inbound backlinks, outbound wiki-link references, and contextual siblings) inside the Context Inspector (**ORG-02, ORG-03, ORG-08**), along with release packaging and version bump to `v0.2.2` under the core Orbit Note invariant: "ONE STABLE UNIVERSAL OBJECT IDENTITY".
+
+### Delivered Capabilities
+1. **WorkspaceController Relations & Property Mutations (`lib/app/workspace_controller.dart`)**:
+   - `outboundLinks(String id)`: parses wiki-links from the object's body, resolves candidates through `linkTargets` and `linkBindings`, and returns target `UniversalObject`s.
+   - `relatedObjects(String id)`: context discovery finding objects sharing the same `project`, same `folder`, or common `tags`, capped at 10 items.
+   - `updateProperty(String id, String key, dynamic value)`: immutable property updates via `edit(id, properties: {...})` and automatic local save debounce.
+   - `removeProperty(String id, String key)`: removes user property while preserving schema integrity.
+2. **Context Inspector & Typed Metadata Editor (`lib/features/workspace/object_inspector.dart`)**:
+   - Identity & Header: Type icon, uppercase type badge, object title, UUID row with "Copy UUID" clipboard button, and formatted Created & Updated timestamps.
+   - In-place Typed Property Editors:
+     - Checkbox/Boolean: direct Switch toggle with instant feedback.
+     - Number: numerical badge opening dialog with `num.tryParse` live validation.
+     - Date: date badge opening Flutter date picker and formatting `YYYY-MM-DD`.
+     - Tags: wrap of removable chips with `#tag` styling plus `+ Tag` chip to add new tags.
+     - URL: clickable link with `Icons.open_in_new` launching URL via `url_launcher`, with edit button and url scheme validation.
+     - Text / Other: string display with edit dialog.
+     - Delete Property action: quick button on every property row.
+   - Add Property Modal:
+     - Name input with non-empty and collision validation against existing properties.
+     - Type dropdown: Text, Number, Checkbox, Date, Tags, URL.
+     - Dynamic value input tailored to selected type with live validation.
+   - Relations & References Section:
+     - Segmented tabs: `Backlinks (count)`, `Outbound (count)`, `Related (count)`.
+     - Displays referencing and referenced objects via `ObjectRow`, with one-tap navigation `c.openObject(id)`.
+     - Graceful empty states for each relation tab.
+   - Actions: Rename Object button and Move to Trash button.
+3. **Workspace Shell Integration (`lib/features/workspace/workspace_shell.dart`)**:
+   - Replaced old minimal inspector with `ObjectInspector(controller: c, onRename: renameObject)`.
+   - Expanded inspector sidebar width to 300px for optimal layout and breathing room.
+4. **Validation Evidence**:
+   - 522/522 tests passing across entire suite (`test/object_inspector_properties_test.dart` added covering all unit and widget behaviors).
+   - 0 warnings in `flutter analyze`.
+   - 100% format-clean across all 205 dart files.
+
+# Previous task — Work & Study Focus Sessions with Honest Tracking, Local Summaries & Release v0.2.1 (CTX-04, CTX-05, CTX-06, CTX-07, CTX-11, CTX-12)
 
 Status: delivered and validated, 2026-09-13.
 
@@ -1067,4 +6087,3 @@ Delivered a comprehensive productivity, project management, and university workf
 - Windows 64-bit release build compiled: `build\windows\x64\runner\Release\orbit_note.exe`.
 - Deployed executable and assets to `C:\Users\iax\Desktop\Orbit Note Windows App` and generated archive `C:\Users\iax\Desktop\OrbitNote-Windows-x64.zip`.
 - Android release APK compiled via OpenJDK 17 and Android SDK Platform 34: `build\app\outputs\flutter-apk\app-release.apk` (93.8MB) and copied to `C:\Users\iax\Desktop\OrbitNote-release.apk`.
-

@@ -25,6 +25,7 @@ class CanvasImageCache {
   final LinkedHashMap<String, ui.Image> _images = LinkedHashMap();
   final Set<String> _pending = {};
   final Set<String> _failed = {};
+  final Map<String, int> _generations = {};
   bool _disposed = false;
   Set<String> _wanted = {};
 
@@ -54,8 +55,12 @@ class CanvasImageCache {
     }
     if (_pending.length >= 4) return;
     _pending.add(reference);
+    final generation = _generations[reference] ?? 0;
+    var stale = false;
     try {
       final bytes = await loader(reference);
+      stale = generation != (_generations[reference] ?? 0);
+      if (stale) return;
       if (_disposed) return;
       if (bytes == null) {
         _failed.add(reference);
@@ -80,7 +85,8 @@ class CanvasImageCache {
       codec.dispose();
       descriptor.dispose();
       buffer.dispose();
-      if (_disposed || !_wanted.contains(reference)) {
+      stale = generation != (_generations[reference] ?? 0);
+      if (_disposed || !_wanted.contains(reference) || stale) {
         frame.image.dispose();
         return;
       }
@@ -93,8 +99,42 @@ class CanvasImageCache {
       if (!_disposed) _failed.add(reference);
     } finally {
       _pending.remove(reference);
+      if (stale && !_disposed && _wanted.contains(reference)) {
+        // A replacement landed while the old decode was in flight. Schedule
+        // one fresh read after releasing the pending slot.
+        Future<void>.microtask(() => ensure(reference));
+      }
       if (!_disposed) onChanged();
     }
+  }
+
+  /// Drop decoded and failed entries so a replaced attachment cannot leave a
+  /// stale preview visible. In-flight decodes are fenced by a generation token.
+  void invalidate(String reference) {
+    _generations[reference] = (_generations[reference] ?? 0) + 1;
+    _images.remove(reference)?.dispose();
+    _failed.remove(reference);
+    if (!_disposed && _wanted.contains(reference)) {
+      ensure(reference);
+      onChanged();
+    }
+  }
+
+  /// Invalidate every currently visible/decoded attachment. The workspace
+  /// controller batches native watcher events, so this remains cheap while
+  /// guaranteeing replacement for references that changed during a batch.
+  void invalidateAll() {
+    final references = {..._wanted, ..._images.keys, ..._failed};
+    for (final reference in references) {
+      _generations[reference] = (_generations[reference] ?? 0) + 1;
+      _images.remove(reference)?.dispose();
+      _failed.remove(reference);
+    }
+    if (_disposed) return;
+    for (final reference in _wanted) {
+      ensure(reference);
+    }
+    onChanged();
   }
 
   void dispose() {
@@ -103,5 +143,6 @@ class CanvasImageCache {
       image.dispose();
     }
     _images.clear();
+    _generations.clear();
   }
 }

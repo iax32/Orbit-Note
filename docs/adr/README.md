@@ -36,3 +36,11 @@ for the earlier decision. Routine files, widgets and bug fixes do not need ADRs.
 - [0016 — Provider-neutral sync](0016-provider-neutral-sync.md): proposed protocol, Google Drive/WebDAV priority, audit and production release gates.
 - [0018 — Recoverable folder commands](0018-recoverable-folder-commands.md): accepted native mixed-object command capability, staged recovery and safe refusal by unsupported adapters.
 - [0019 — Google account adapters](0019-google-account-adapters.md): native account authorization, secure sessions, quota semantics and explicit transfer safety gate.
+- [0020 — Precise-reference composition](0020-precise-reference-composition.md): lazy prose anchors, typed targets, shared search projection and compatible preference ownership.
+- [0021 — Checksum-bound PDF search](0021-checksum-bound-pdf-search.md): disposable page text, verified source navigation, complete candidates and pagination after filtering.
+- [0022 — Smart Views, Spaces and task planning](0022-smart-views-spaces-and-task-planning.md): shared validated queries, device-local contexts/dashboard descriptors and recoverable same-identity planning commands.
+- [0023 — Local OCR evidence](0023-local-ocr-evidence.md): Windows background recognition, portable corrections and verified source/page search.
+- [0024 — Portable study cards](0024-portable-study-cards.md): same-identity Markdown cards, deterministic offline scheduling, source snapshots and durable review history.
+- [0025 — Rolling event occurrences](0025-rolling-event-occurrences.md): same-identity events, explicit history and device-clock recurrence policy.
+- [0026 — Calendar occurrence projection](0026-calendar-occurrence-projection.md): stable occurrence keys, bounded future schedules and recoverable individual overrides.
+- [0027 — Shared Vault preview and Drive backups](0027-shared-vault-preview-and-drive-backups.md): self-hosted capability grants, conservative live merges, ordinary local history, independent Drive backups and explicit activation gates.

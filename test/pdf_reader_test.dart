@@ -56,6 +56,76 @@ void main() async {
   }
 
   testWidgets(
+    'page comments keep unsaved input and markup visibility is reversible',
+    (tester) async {
+      var succeeds = false;
+      String? comment;
+      int? page;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: orbitDarkTheme(),
+          home: Scaffold(
+            body: OrbitPdfReader(
+              objectId: 'page-comments',
+              title: 'Scanned diagram',
+              checksum: 'v1',
+              loadBytes: () async => researchPdf(),
+              onOpenOriginal: () {},
+              onOpenExternal: (_) {},
+              onReadingState: (_, _) {},
+              onQuote: (_, _) async {},
+              onBookmarks: (_) {},
+              onPageComment: (p, text) async {
+                page = p;
+                comment = text;
+                return succeeds;
+              },
+            ),
+          ),
+        ),
+      );
+      await settleNative(
+        tester,
+        () =>
+            tester
+                .widget<IconButton>(
+                  find.byWidgetPredicate(
+                    (w) => w is IconButton && w.tooltip == 'Add page comment',
+                  ),
+                )
+                .onPressed !=
+            null,
+      );
+      await tester.ensureVisible(find.byTooltip('Hide review markup'));
+      await tester.tap(find.byTooltip('Hide review markup'));
+      await tester.pump();
+      expect(find.byTooltip('Show review markup'), findsOneWidget);
+      await tester.ensureVisible(find.byTooltip('Show review markup'));
+      await tester.tap(find.byTooltip('Show review markup'));
+      await tester.ensureVisible(find.byTooltip('Add page comment'));
+      await tester.tap(find.byTooltip('Add page comment'));
+      await tester.pumpAndSettle();
+      final input = find.widgetWithText(TextField, 'Comment');
+      await tester.enterText(input, 'Check the lighting diagram');
+      await tester.tap(find.text('Save page comment'));
+      await tester.pumpAndSettle();
+      expect(page, 1);
+      expect(comment, 'Check the lighting diagram');
+      expect(find.textContaining('Your comment is kept here'), findsOneWidget);
+      expect(find.text('Check the lighting diagram'), findsOneWidget);
+      succeeds = true;
+      await tester.tap(find.text('Save page comment'));
+      await tester.pumpAndSettle();
+      expect(find.text('Comment on page 1'), findsNothing);
+      expect(find.text('Highlights · 0'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 1));
+    },
+    skip: !pdfiumReady,
+  );
+
+  testWidgets(
     'real PDF renders, navigates, searches, bookmarks and copies page links',
     (tester) async {
       await prepareCapture(tester);
@@ -166,9 +236,11 @@ void main() async {
                 .onPressed !=
             null,
       );
+      await tester.ensureVisible(find.byTooltip('Next page'));
       await tester.tap(find.byTooltip('Next page'));
       await tester.pump(const Duration(milliseconds: 500));
       expect(page, 2);
+      await tester.ensureVisible(find.byTooltip('Create document from PDF'));
       await tester.tap(find.byTooltip('Create document from PDF'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Game design decision'));
@@ -176,9 +248,11 @@ void main() async {
       expect(createdDocument, ResearchDocument.design);
       expect(documentPage, 2);
       expect(documentQuote, '');
+      await tester.ensureVisible(find.byTooltip('Bookmark page'));
       await tester.tap(find.byTooltip('Bookmark page'));
       await tester.pump();
       expect(bookmarks, [2]);
+      await tester.ensureVisible(find.byTooltip('PDF zoom and reading tools'));
       await tester.tap(find.byTooltip('PDF zoom and reading tools'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('200%'));
@@ -187,6 +261,7 @@ void main() async {
           .widget<PdfViewer>(find.byType(PdfViewer))
           .controller!;
       expect(toolViewer.currentZoom, closeTo(2, .01));
+      await tester.ensureVisible(find.byTooltip('Fit page width'));
       await tester.tap(find.byTooltip('Fit page width'));
       await tester.pumpAndSettle();
       expect(
@@ -206,9 +281,11 @@ void main() async {
         toolViewer.layout.pageLayouts[1].height * toolViewer.currentZoom,
         lessThanOrEqualTo(toolViewer.viewSize.height),
       );
+      await tester.ensureVisible(find.byTooltip('Copy page reference'));
       await tester.tap(find.byTooltip('Copy page reference'));
       await tester.pump();
       expect(clipboard, '[[paper#page=2|Research · p. 2]]');
+      await tester.ensureVisible(find.byTooltip('Find in PDF · Ctrl+F'));
       await tester.tap(find.byTooltip('Find in PDF · Ctrl+F'));
       await tester.pump();
       await tester.enterText(
@@ -220,6 +297,7 @@ void main() async {
         tester,
         () => find.text('2 matches').evaluate().isNotEmpty,
       );
+      await tester.ensureVisible(find.byTooltip('Page thumbnails'));
       await tester.tap(find.byTooltip('Page thumbnails'));
       await tester.pump();
       expect(find.text('1'), findsWidgets);
@@ -227,6 +305,7 @@ void main() async {
       final delegate = pdf.controller!.textSelectionDelegate;
       await tester.runAsync(delegate.selectAllText);
       await tester.pump();
+      await tester.ensureVisible(find.byTooltip('Create document from PDF'));
       await tester.tap(find.byTooltip('Create document from PDF'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Playtest finding'));
@@ -235,6 +314,7 @@ void main() async {
       expect(documentPage, 1);
       expect(documentQuote, isNotEmpty);
       documentSaveSucceeds = false;
+      await tester.ensureVisible(find.byTooltip('Create document from PDF'));
       await tester.tap(find.byTooltip('Create document from PDF'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Research note'));
@@ -305,14 +385,19 @@ void main() async {
       await tester.enterText(filter, 'unmatched phrase');
       await tester.pump();
       expect(find.byTooltip('Open highlight note and comments'), findsNothing);
+      await tester.ensureVisible(find.byTooltip('Close highlights'));
       await tester.tap(find.byTooltip('Close highlights'));
       await tester.pump();
+      await tester.ensureVisible(find.byTooltip('Highlights and comments'));
       await tester.tap(find.byTooltip('Highlights and comments'));
       await tester.pump();
       expect(find.text('unmatched phrase'), findsOneWidget);
       await tester.enterText(filter, '');
       await tester.pump();
       await captureUi(tester, 'pdf-highlights');
+      await tester.ensureVisible(
+        find.byTooltip('Open highlight note and comments'),
+      );
       await tester.tap(find.byTooltip('Open highlight note and comments'));
       expect(openedAnnotation, 'highlight');
       refreshReader(() => checksum = 'replacement');
@@ -373,6 +458,7 @@ void main() async {
         await tester.pump(const Duration(milliseconds: 200));
       }
       await captureUi(tester, 'pdf-phone-visual');
+      await tester.ensureVisible(find.byTooltip('Text-only reading'));
       await tester.tap(find.byTooltip('Text-only reading'));
       await tester.pump();
       await settleNative(
@@ -384,12 +470,15 @@ void main() async {
         tester.widget<SelectableText>(find.byType(SelectableText)).data,
         contains('Orbit research page one'),
       );
+      await tester.ensureVisible(find.byTooltip('Larger reading text'));
       await tester.tap(find.byTooltip('Larger reading text'));
       await tester.pump();
       expect(find.text('Page 1 · 22 pt'), findsOneWidget);
+      await tester.ensureVisible(find.byTooltip('Return to visual reading'));
       await tester.tap(find.byTooltip('Return to visual reading'));
       await tester.pump();
       expect(find.byType(SelectableText), findsNothing);
+      await tester.ensureVisible(find.byTooltip('Original page'));
       await tester.tap(find.byTooltip('Original page'));
       await tester.pump();
       expect(find.byTooltip('Comfort reading'), findsOneWidget);

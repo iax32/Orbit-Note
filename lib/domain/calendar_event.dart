@@ -30,8 +30,8 @@ const _monthNames = [
 String formatFriendlyDueDate(DateTime? date, {DateTime? now}) {
   if (date == null) return '';
   final current = now ?? DateTime.now();
-  final target = DateTime(date.year, date.month, date.day);
-  final today = DateTime(current.year, current.month, current.day);
+  final target = DateTime.utc(date.year, date.month, date.day);
+  final today = DateTime.utc(current.year, current.month, current.day);
   final diff = target.difference(today).inDays;
 
   if (diff == 0) return 'Today';

@@ -80,6 +80,8 @@ void main() {
       r'$fruit',
     );
     await tester.tap(find.text('Replace all'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Apply '));
     await tester.pump();
     expect(body, '# Topic\n\$fruit \$fruit a.b');
     expect(tester.takeException(), isNull);

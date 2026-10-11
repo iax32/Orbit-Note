@@ -5,10 +5,20 @@
   "required": ["schemaVersion", "elements"],
   "properties": {
     "schemaVersion": {"const": 1},
+    "canvasPresetApplied": {
+      "type": "boolean",
+      "description": "True once the starter preset was consumed or the board edited; an empty board must not seed again."
+    },
     "elements": {
       "type": "array",
       "items": {
         "type": "object",
+        "properties": {
+          "referenceTarget": {
+            "type": "string",
+            "description": "Optional portable precise target on the same UUID as objectId. Resolve current canonical source; never copy source body."
+          }
+        },
         "description": "Known elements have id/type and geometry. Unknown elements must be preserved without rewriting them.",
         "additionalProperties": true
       }

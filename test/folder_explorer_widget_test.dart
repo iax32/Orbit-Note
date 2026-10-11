@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:orbit_note/app/workspace_controller.dart';
@@ -65,6 +66,10 @@ void main() {
       ).read(workspaceProvider.notifier);
       c.openObject(note.id);
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('explorer-type-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('filter-chip-notes')));
+      await tester.pumpAndSettle();
       expect(find.byKey(ValueKey('folder-note:${note.id}')), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('folder:Notes/Research')));
       await tester.pumpAndSettle();
@@ -73,6 +78,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(ValueKey('folder-note:${note.id}')), findsOneWidget);
       final rootRow = find.byKey(const ValueKey('folder:Notes'));
+      final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await pointer.addPointer(location: Offset.zero);
+      await pointer.moveTo(tester.getCenter(rootRow));
+      await tester.pumpAndSettle();
       await tester.tap(
         find.descendant(
           of: rootRow,
@@ -130,6 +139,10 @@ void main() {
       // 1. Create Reverse Engineering Project
       final reOverview = await c.createReverseEngineeringProject('GameClient');
       expect(reOverview, isNotNull);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('explorer-type-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('filter-chip-notes')));
       await tester.pumpAndSettle();
 
       expect(find.text('Reverse Engineering'), findsWidgets);

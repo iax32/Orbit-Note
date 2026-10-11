@@ -15,7 +15,10 @@ enum CanvasArrangement {
   grid,
   stackH,
   stackV,
-  radial;
+  radial,
+  mindMap,
+  timeline,
+  treeV;
 
   String get label => switch (this) {
     left => 'Align left',
@@ -30,6 +33,9 @@ enum CanvasArrangement {
     stackH => 'Stack horizontally',
     stackV => 'Stack vertically',
     radial => 'Arrange in radial circle',
+    mindMap => 'Arrange in mind map',
+    timeline => 'Arrange in timeline',
+    treeV => 'Arrange in vertical tree',
   };
 }
 
@@ -185,6 +191,113 @@ List<CanvasElement> arrangeCanvas(
       final targetLeft = targetCenterX - e.width / 2;
       final targetTop = targetCenterY - e.height / 2;
       results.add(e.translated(CanvasPoint(targetLeft - e.x, targetTop - e.y)));
+    }
+    return results;
+  }
+
+  if (action == CanvasArrangement.mindMap) {
+    final center = bounds.center;
+    var rootIndex = 0;
+    var minDist = double.infinity;
+    for (var i = 0; i < elements.length; i++) {
+      final d = (elements[i].bounds.center - center).length;
+      if (d < minDist) {
+        minDist = d;
+        rootIndex = i;
+      }
+    }
+
+    final root = elements[rootIndex];
+    final rootCenter = root.bounds.center;
+    final others = <CanvasElement>[];
+    for (var i = 0; i < elements.length; i++) {
+      if (i != rootIndex) others.add(elements[i]);
+    }
+
+    final rightBranch = <CanvasElement>[];
+    final leftBranch = <CanvasElement>[];
+    for (var i = 0; i < others.length; i++) {
+      if (i % 2 == 0) {
+        rightBranch.add(others[i]);
+      } else {
+        leftBranch.add(others[i]);
+      }
+    }
+
+    final results = <CanvasElement>[root];
+    const horizontalGap = 80.0;
+    const verticalGap = 20.0;
+
+    if (rightBranch.isNotEmpty) {
+      final totalH =
+          rightBranch.fold<double>(0.0, (sum, e) => sum + e.height) +
+          (rightBranch.length - 1) * verticalGap;
+      var curY = rootCenter.y - totalH / 2;
+      final targetX = root.x + root.width + horizontalGap;
+      for (final e in rightBranch) {
+        results.add(e.translated(CanvasPoint(targetX - e.x, curY - e.y)));
+        curY += e.height + verticalGap;
+      }
+    }
+
+    if (leftBranch.isNotEmpty) {
+      final totalH =
+          leftBranch.fold<double>(0.0, (sum, e) => sum + e.height) +
+          (leftBranch.length - 1) * verticalGap;
+      var curY = rootCenter.y - totalH / 2;
+      for (final e in leftBranch) {
+        final targetX = root.x - e.width - horizontalGap;
+        results.add(e.translated(CanvasPoint(targetX - e.x, curY - e.y)));
+        curY += e.height + verticalGap;
+      }
+    }
+
+    return results;
+  }
+
+  if (action == CanvasArrangement.timeline) {
+    final sorted = [...elements]..sort((a, b) => a.x.compareTo(b.x));
+    const hGap = 40.0;
+    const vOffset = 36.0;
+    final axisY = bounds.center.y;
+    var cursorX = bounds.left;
+
+    return sorted.asMap().entries.map((entry) {
+      final i = entry.key;
+      final e = entry.value;
+      final isTop = i % 2 == 0;
+      final targetY = isTop ? axisY - e.height - vOffset : axisY + vOffset;
+      final res = e.translated(CanvasPoint(cursorX - e.x, targetY - e.y));
+      cursorX += e.width + hGap;
+      return res;
+    }).toList();
+  }
+
+  if (action == CanvasArrangement.treeV) {
+    final sorted = [...elements]..sort((a, b) => a.y.compareTo(b.y));
+    final root = sorted.first;
+    final children = sorted.sublist(1);
+
+    const levelGap = 64.0;
+    const siblingGap = 28.0;
+
+    final totalChildrenWidth =
+        children.fold<double>(0.0, (sum, e) => sum + e.width) +
+        (children.length - 1) * siblingGap;
+    final startX = math.min(
+      root.x,
+      root.bounds.center.x - totalChildrenWidth / 2,
+    );
+
+    final results = <CanvasElement>[root];
+    var cursorX = startX;
+    final targetY = root.y + root.height + levelGap;
+
+    for (final child in children) {
+      results.add(
+        child.translated(CanvasPoint(cursorX - child.x, targetY - child.y)),
+      );
+      cursorX += child.width + siblingGap;
     }
     return results;
   }

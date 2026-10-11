@@ -13,6 +13,25 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('Vector SVG Export Engine (CAN-14, PORT-05, INK-10)', () {
+    test('canvasToSvg preserves the architectural blueprint treatment', () {
+      final scene = CanvasScene.fromJson({
+        'schemaVersion': 1,
+        'elements': <Map<String, dynamic>>[],
+      });
+
+      final svg = canvasToSvg(scene, backgroundStyle: 'blueprint');
+      expect(svg, contains('fill="#173f69"'));
+      expect(svg, contains('orbit-blueprint-grid'));
+      expect(svg, contains('stroke="#f4f8ff"'));
+
+      final transparent = canvasToSvg(
+        scene,
+        backgroundStyle: 'blueprint',
+        transparent: true,
+      );
+      expect(transparent, isNot(contains('orbit-blueprint-grid')));
+    });
+
     test('canvasToSvg generates valid XML SVG with header and defs', () {
       final scene = CanvasScene.fromJson({
         'schemaVersion': 1,
@@ -415,6 +434,10 @@ void main() {
           },
         ],
       };
+
+      tester.view.physicalSize = const Size(1400, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
 
       await tester.pumpWidget(
         MaterialApp(

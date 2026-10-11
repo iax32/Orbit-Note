@@ -405,7 +405,9 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        final highlighterButton = find.byTooltip('Highlighter (Y)');
+        await tester.tap(find.byTooltip('Draw and erase'));
+        await tester.pumpAndSettle();
+        final highlighterButton = find.text('Highlighter (Y)');
         expect(highlighterButton, findsOneWidget);
 
         await tester.tap(highlighterButton);

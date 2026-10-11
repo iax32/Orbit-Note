@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
 import '../../../app/orbit_theme.dart';
 import 'note_highlight.dart';
 import 'note_underline.dart';
 import 'note_math.dart';
+import 'structured_text_projection.dart';
+import '../read_search_overlay.dart';
+import '../note_typography.dart';
+import '../read_attachment_preview.dart';
 
 enum CalloutType {
   definition(
@@ -201,34 +206,102 @@ class CalloutBlock extends StatefulWidget {
     super.key,
     required this.source,
     required this.onChanged,
+    this.onUndo,
+    this.onRedo,
+    this.onFocused,
+    this.textStyle,
   });
 
   final String source;
   final ValueChanged<String> onChanged;
+  final VoidCallback? onUndo, onRedo;
+  final VoidCallback? onFocused;
+  final TextStyle? textStyle;
 
   @override
-  State<CalloutBlock> createState() => _CalloutBlockState();
+  State<CalloutBlock> createState() => CalloutBlockState();
 }
 
-class _CalloutBlockState extends State<CalloutBlock> {
+class CalloutBlockState extends State<CalloutBlock> {
   late ParsedCallout _parsed;
   late final TextEditingController _bodyCtrl;
   final FocusNode _focus = FocusNode();
+  TextRange? _headerSelection;
+  String? _emitted;
+
+  TextSelection? get sourceSelection {
+    final parts = CalloutSourceParts(_emitted ?? widget.source);
+    final header = _headerSelection;
+    if (header != null) {
+      return TextSelection(
+        baseOffset: parts.titleStart + header.start,
+        extentOffset: parts.titleStart + header.end,
+      );
+    }
+    final selection = _bodyCtrl.selection;
+    if (!selection.isValid) return null;
+    return TextSelection(
+      baseOffset:
+          parts.headerEnd + parts.body.sourceOffset(selection.baseOffset),
+      extentOffset:
+          parts.headerEnd +
+          parts.body.sourceOffset(
+            selection.extentOffset,
+            end: !selection.isCollapsed,
+          ),
+    );
+  }
 
   @override
   void initState() {
     super.initState();
     _parsed = ParsedCallout.parse(widget.source);
-    _bodyCtrl = TextEditingController(text: _parsed.body);
+    _bodyCtrl = TextEditingController(
+      text: CalloutSourceParts(widget.source).body.text,
+    );
+    _focus.onKeyEvent = (node, event) {
+      final keyboard = HardwareKeyboard.instance;
+      if (event is! KeyDownEvent ||
+          !(keyboard.isControlPressed || keyboard.isMetaPressed)) {
+        return KeyEventResult.ignored;
+      }
+      final undo = event.logicalKey == LogicalKeyboardKey.keyZ;
+      final redo =
+          event.logicalKey == LogicalKeyboardKey.keyY ||
+          undo && keyboard.isShiftPressed;
+      if (!undo && !redo) return KeyEventResult.ignored;
+      final callback = redo ? widget.onRedo : widget.onUndo;
+      if (callback == null) return KeyEventResult.ignored;
+      if (_bodyCtrl.value.composing.isCollapsed) callback();
+      return KeyEventResult.handled;
+    };
+    _focus.addListener(() {
+      if (_focus.hasFocus && _headerSelection != null) {
+        setState(() => _headerSelection = null);
+      }
+      if (_focus.hasFocus) widget.onFocused?.call();
+    });
   }
 
   @override
   void didUpdateWidget(covariant CalloutBlock oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.source != oldWidget.source && !_focus.hasFocus) {
+    if (widget.source != oldWidget.source && widget.source != _emitted) {
+      _emitted = null;
+      _headerSelection = null;
       _parsed = ParsedCallout.parse(widget.source);
-      if (_bodyCtrl.text != _parsed.body) {
-        _bodyCtrl.text = _parsed.body;
+      final body = CalloutSourceParts(widget.source).body.text;
+      if (_bodyCtrl.text != body) {
+        _bodyCtrl.value = TextEditingValue(
+          text: body,
+          selection: TextSelection(
+            baseOffset: _bodyCtrl.selection.baseOffset.clamp(0, body.length),
+            extentOffset: _bodyCtrl.selection.extentOffset.clamp(
+              0,
+              body.length,
+            ),
+          ),
+        );
       }
     }
   }
@@ -241,12 +314,20 @@ class _CalloutBlockState extends State<CalloutBlock> {
   }
 
   void _updateType(CalloutType newType) {
+    final source = _emitted ?? widget.source;
+    final parts = CalloutSourceParts(source);
+    if (parts.typeEnd <= parts.typeStart) return;
     _parsed = ParsedCallout(
       type: newType,
       title: _parsed.title,
       body: _bodyCtrl.text,
     );
-    widget.onChanged(_parsed.toMarkdown());
+    _emitted = source.replaceRange(
+      parts.typeStart,
+      parts.typeEnd,
+      newType.name,
+    );
+    widget.onChanged(_emitted!);
     setState(() {});
   }
 
@@ -256,7 +337,56 @@ class _CalloutBlockState extends State<CalloutBlock> {
       title: _parsed.title,
       body: newBody,
     );
-    widget.onChanged(_parsed.toMarkdown());
+    _emitted = CalloutSourceParts(_emitted ?? widget.source).editBody(newBody);
+    widget.onChanged(_emitted!);
+  }
+
+  bool selectSource(int offset, {int length = 0}) {
+    final source = _emitted ?? widget.source;
+    final parts = CalloutSourceParts(source);
+    if (offset < parts.headerEnd) {
+      setState(
+        () => _headerSelection = TextRange(
+          start: (offset - parts.titleStart).clamp(0, _parsed.title.length),
+          end: (offset + length - parts.titleStart).clamp(
+            0,
+            _parsed.title.length,
+          ),
+        ),
+      );
+      return true;
+    }
+    final start = parts.body.visibleOffset(offset - parts.headerEnd);
+    final end = parts.body.visibleOffset(offset + length - parts.headerEnd);
+    _bodyCtrl.selection = TextSelection(baseOffset: start, extentOffset: end);
+    _focus.requestFocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || (_emitted ?? widget.source) != source) return;
+      final context = _focus.context;
+      if (context != null) Scrollable.ensureVisible(context, alignment: .15);
+    });
+    return true;
+  }
+
+  InlineSpan _headerSpan(Color highlight) {
+    final text = _parsed.headerDisplay;
+    final selection = _headerSelection;
+    final titleOffset = text.lastIndexOf(_parsed.title);
+    if (selection == null || selection.isCollapsed || titleOffset < 0) {
+      return TextSpan(text: text);
+    }
+    final start = titleOffset + selection.start,
+        end = titleOffset + selection.end;
+    return TextSpan(
+      children: [
+        TextSpan(text: text.substring(0, start)),
+        TextSpan(
+          text: text.substring(start, end),
+          style: TextStyle(backgroundColor: highlight),
+        ),
+        TextSpan(text: text.substring(end)),
+      ],
+    );
   }
 
   @override
@@ -273,94 +403,101 @@ class _CalloutBlockState extends State<CalloutBlock> {
         border: Border.all(color: colors.border.withValues(alpha: 0.6)),
       ),
       clipBehavior: Clip.antiAlias,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(width: 4, color: effectiveColor),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Header with Icon, Type Badge, and Quick Switcher
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    color: effectiveColor.withValues(alpha: 0.08),
-                    child: Row(
-                      children: [
-                        Icon(type.icon, size: 16, color: effectiveColor),
-                        const SizedBox(width: 8),
-                        Text(
-                          _parsed.headerDisplay,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: effectiveColor,
-                          ),
+      child: Stack(
+        children: [
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: SizedBox(width: 4, child: ColoredBox(color: effectiveColor)),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header with Icon, Type Badge, and Quick Switcher
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  color: effectiveColor.withValues(alpha: 0.08),
+                  child: Row(
+                    children: [
+                      Icon(type.icon, size: 16, color: effectiveColor),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text.rich(
+                          _headerSpan(effectiveColor.withValues(alpha: .25)),
+                          key: const ValueKey('callout-header'),
+                          style:
+                              (widget.textStyle ??
+                                      const TextStyle(fontSize: 14))
+                                  .copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: effectiveColor,
+                                  ),
                         ),
-                        const Spacer(),
-                        PopupMenuButton<CalloutType>(
-                          tooltip: 'Change callout type',
-                          icon: Icon(
-                            Icons.swap_horiz,
-                            size: 16,
-                            color: colors.subtle,
-                          ),
-                          padding: EdgeInsets.zero,
-                          itemBuilder: (_) => [
-                            for (final t in CalloutType.values)
-                              PopupMenuItem(
-                                value: t,
-                                child: Row(
-                                  children: [
-                                    Icon(t.icon, size: 16, color: t.color),
-                                    const SizedBox(width: 8),
-                                    Text(t.label),
-                                  ],
-                                ),
+                      ),
+                      PopupMenuButton<CalloutType>(
+                        tooltip: 'Change callout type',
+                        icon: Icon(
+                          Icons.swap_horiz,
+                          size: 16,
+                          color: colors.subtle,
+                        ),
+                        padding: EdgeInsets.zero,
+                        itemBuilder: (_) => [
+                          for (final t in CalloutType.values)
+                            PopupMenuItem(
+                              value: t,
+                              child: Row(
+                                children: [
+                                  Icon(t.icon, size: 16, color: t.color),
+                                  const SizedBox(width: 8),
+                                  Text(t.label),
+                                ],
                               ),
-                          ],
-                          onSelected: _updateType,
-                        ),
-                      ],
-                    ),
+                            ),
+                        ],
+                        onSelected: _updateType,
+                      ),
+                    ],
                   ),
+                ),
 
-                  // Editable Callout Content
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    child: TextField(
-                      controller: _bodyCtrl,
-                      focusNode: _focus,
-                      maxLines: null,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: colors.text,
-                        height: 1.5,
-                      ),
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        hintText: 'Type callout contents...',
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
-                        fillColor: Colors.transparent,
-                      ),
-                      onChanged: _onBodyChanged,
-                    ),
+                // Editable Callout Content
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
                   ),
-                ],
-              ),
+                  child: TextField(
+                    key: const ValueKey('callout-body'),
+                    controller: _bodyCtrl,
+                    focusNode: _focus,
+                    maxLines: null,
+                    style:
+                        (widget.textStyle ??
+                                const TextStyle(fontSize: 14, height: 1.5))
+                            .copyWith(color: colors.text),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      hintText: 'Type callout contents...',
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                      fillColor: Colors.transparent,
+                    ),
+                    onChanged: _onBodyChanged,
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -441,7 +578,18 @@ class CalloutBlockSyntax extends md.BlockSyntax {
 /// Element builder that renders callout boxes with colored side bar,
 /// prominent icon, bold colored header, and rich markdown body.
 class CalloutElementBuilder extends MarkdownElementBuilder {
-  CalloutElementBuilder();
+  CalloutElementBuilder({
+    this.typography = const NoteTypography(),
+    this.linkBuilder,
+    this.onTapLink,
+    this.imageBuilder,
+    this.onOpenAttachment,
+  });
+  final NoteTypography typography;
+  final MarkdownElementBuilder? linkBuilder;
+  final void Function(String, String?, String)? onTapLink;
+  final Widget Function(Uri, String?, String?)? imageBuilder;
+  final ValueChanged<String>? onOpenAttachment;
 
   @override
   bool isBlockElement() => true;
@@ -497,13 +645,19 @@ class CalloutElementBuilder extends MarkdownElementBuilder {
                       children: [
                         Icon(type.icon, size: 16, color: effectiveColor),
                         const SizedBox(width: 8),
-                        Text(
-                          headerDisplay,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.3,
-                            color: effectiveColor,
+                        Expanded(
+                          child: ReadSearchText(
+                            text: title,
+                            leadingLength: headerDisplay.length - title.length,
+                            child: SelectableText(
+                              headerDisplay,
+                              key: const ValueKey('read-callout-title'),
+                              style: typography.body().copyWith(
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0,
+                                color: effectiveColor,
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -515,39 +669,52 @@ class CalloutElementBuilder extends MarkdownElementBuilder {
                         horizontal: 14,
                         vertical: 10,
                       ),
-                      child: MarkdownBody(
-                        data: body,
-                        selectable: true,
-                        inlineSyntaxes: [
-                          HighlightInlineSyntax(),
-                          MarkTagInlineSyntax(),
-                          UnderlineInlineSyntax(),
-                          InsInlineSyntax(),
-                          MathInlineSyntax(),
-                        ],
-                        builders: {
-                          'mark': HighlightElementBuilder(),
-                          'u': UnderlineElementBuilder(),
-                          'ins': UnderlineElementBuilder(),
-                          'math-inline': MathElementBuilder(),
-                        },
-                        styleSheet:
-                            MarkdownStyleSheet.fromTheme(
-                              Theme.of(context),
-                            ).copyWith(
-                              p: TextStyle(
-                                fontSize: 14,
-                                color: colors.text,
-                                height: 1.55,
+                      child: ReadSearchGroup(
+                        child: MarkdownBody(
+                          data: body,
+                          selectable: true,
+                          onTapLink: onTapLink,
+                          imageBuilder: (uri, imageTitle, alt) {
+                            final image =
+                                imageBuilder?.call(uri, imageTitle, alt) ??
+                                Text(alt ?? imageTitle ?? uri.toString());
+                            if (uri.scheme.isNotEmpty ||
+                                onOpenAttachment == null) {
+                              return image;
+                            }
+                            return ReadAttachmentPreview(
+                              uri: uri,
+                              description: alt ?? imageTitle,
+                              onOpen: onOpenAttachment,
+                              child: image,
+                            );
+                          },
+                          inlineSyntaxes: [
+                            HighlightInlineSyntax(),
+                            MarkTagInlineSyntax(),
+                            UnderlineInlineSyntax(),
+                            InsInlineSyntax(),
+                            MathInlineSyntax(),
+                          ],
+                          builders: {
+                            'a': ?linkBuilder,
+                            'mark': HighlightElementBuilder(),
+                            'u': UnderlineElementBuilder(),
+                            'ins': UnderlineElementBuilder(),
+                            'math-inline': MathElementBuilder(),
+                          },
+                          styleSheet: typography
+                              .markdown(Theme.of(context))
+                              .copyWith(
+                                code: TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 13,
+                                  backgroundColor: Theme.of(
+                                    context,
+                                  ).colorScheme.surfaceContainerHighest,
+                                ),
                               ),
-                              code: TextStyle(
-                                fontFamily: 'monospace',
-                                fontSize: 13,
-                                backgroundColor: Theme.of(
-                                  context,
-                                ).colorScheme.surfaceContainerHighest,
-                              ),
-                            ),
+                        ),
                       ),
                     ),
                 ],

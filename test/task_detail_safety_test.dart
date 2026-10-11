@@ -1,9 +1,12 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:orbit_note/app/workspace_controller.dart';
 import 'package:orbit_note/application/workspace_repository.dart';
 import 'package:orbit_note/features/workspace/workspace_views.dart';
 import 'package:orbit_note/infrastructure/storage/memory_object_index.dart';
+import 'package:orbit_note/infrastructure/storage/object_codec.dart';
 import 'support/memory_store.dart';
 
 void main() {
@@ -39,8 +42,9 @@ void main() {
     testWidgets('TaskDetail preserves $kind blocker without assertion', (
       tester,
     ) async {
+      final store = MemoryStore();
       final repo = WorkspaceRepository(
-        store: MemoryStore(),
+        store: store,
         index: MemoryObjectIndex(),
       );
       await repo.initialize();
@@ -52,11 +56,18 @@ void main() {
       final id = kind == 'missing'
           ? '00000000-0000-4000-8000-000000000001'
           : blocker.id;
-      final task = await repo.create(
-        typeId: 'orbit.task',
-        title: 'Task',
-        properties: {'blockedBy': id},
+      final created = await repo.create(typeId: 'orbit.task', title: 'Task');
+      // Exercise old/imported unresolved references, rather than adding an
+      // invalid new edge through the now-validated command boundary.
+      final path = repo.objectPath(created.id)!;
+      store.files[path] = Uint8List.fromList(
+        utf8.encode(
+          ObjectCodec().encode(created.copyWith(properties: {'blockedBy': id})),
+        ),
       );
+      await repo.close();
+      await repo.initialize();
+      final task = repo.objects.singleWhere((o) => o.id == created.id);
       final controller = WorkspaceController()
         ..repository = repo
         ..objects = repo.objects;

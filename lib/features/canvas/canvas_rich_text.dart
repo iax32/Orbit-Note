@@ -11,6 +11,9 @@ enum CanvasRichLineType {
   checklistChecked,
   bullet,
   numbered,
+  displayMath,
+  codeBlock,
+  blockquote,
   paragraph,
   empty,
 }
@@ -44,6 +47,358 @@ class CanvasRichText {
   static final RegExp _bulletRegex = RegExp(r'^\s*[-*]\s+(.*)$');
   static final RegExp _numberedRegex = RegExp(r'^\s*(\d+)\.\s+(.*)$');
 
+  /// Converts common LaTeX mathematical constructs into clean Unicode symbols and formatting.
+  static String formatMathToUnicode(String tex) {
+    if (tex.trim().isEmpty) return '';
+    var s = tex.trim();
+
+    // Strip out display math delimiters if passed in
+    if (s.startsWith(r'$$') && s.endsWith(r'$$') && s.length >= 4) {
+      s = s.substring(2, s.length - 2).trim();
+    } else if (s.startsWith(r'$') && s.endsWith(r'$') && s.length >= 2) {
+      s = s.substring(1, s.length - 1).trim();
+    }
+
+    // Replace text formatting wrappers: \text{...}, \mathrm{...}, \mathbf{...}, etc.
+    s = s.replaceAllMapped(
+      RegExp(r'\\(?:text|mathrm|mathbf|mathit|textbf|textrm)\{([^}]*)\}'),
+      (m) => m.group(1)!,
+    );
+
+    // Theorem and proof environments
+    s = s.replaceAllMapped(
+      RegExp(
+        r'\\begin\{(theorem|lemma|definition|proposition|corollary|example)\}(?:\[([^\]]*)\])?',
+        caseSensitive: false,
+      ),
+      (m) {
+        final env = m.group(1)!.toLowerCase();
+        final name = env[0].toUpperCase() + env.substring(1);
+        final opt = m.group(2);
+        return opt != null && opt.isNotEmpty ? '[$name ($opt)] ' : '[$name] ';
+      },
+    );
+    s = s.replaceAll(
+      RegExp(
+        r'\\end\{(theorem|lemma|definition|proposition|corollary|example)\}',
+        caseSensitive: false,
+      ),
+      '',
+    );
+    s = s.replaceAll(
+      RegExp(r'\\begin\{proof\}', caseSensitive: false),
+      '[Proof] ',
+    );
+    s = s.replaceAll(RegExp(r'\\end\{proof\}', caseSensitive: false), ' ∎');
+    s = s.replaceAll(r'\qed', '∎');
+    s = s.replaceAll(r'\mathbb{R}', 'ℝ');
+    s = s.replaceAll(r'\mathbb{C}', 'ℂ');
+    s = s.replaceAll(r'\mathbb{N}', 'ℕ');
+    s = s.replaceAll(r'\mathbb{Z}', 'ℤ');
+    s = s.replaceAll(r'\mathbb{Q}', 'ℚ');
+
+    // Common fractions: \frac{a}{b}
+    while (s.contains(r'\frac')) {
+      final fracMatch = RegExp(r'\\frac\{([^{}]*)\}\{([^{}]*)\}').firstMatch(s);
+      if (fracMatch == null) break;
+      final num = fracMatch.group(1)!.trim();
+      final den = fracMatch.group(2)!.trim();
+      final replacement = _formatFraction(num, den);
+      s = s.replaceRange(fracMatch.start, fracMatch.end, replacement);
+    }
+
+    // Square roots: \sqrt[n]{x} and \sqrt{x}
+    s = s.replaceAllMapped(RegExp(r'\\sqrt\[([^\]]+)\]\{([^}]+)\}'), (m) {
+      final n = _toSuperscript(m.group(1)!);
+      return '$n√(${m.group(2)!})';
+    });
+    s = s.replaceAllMapped(
+      RegExp(r'\\sqrt\{([^}]+)\}'),
+      (m) => '√(${m.group(1)!})',
+    );
+
+    // Greek letters (lowercase)
+    const greekLower = {
+      r'\alpha': 'α',
+      r'\beta': 'β',
+      r'\gamma': 'γ',
+      r'\delta': 'δ',
+      r'\epsilon': 'ε',
+      r'\varepsilon': 'ε',
+      r'\zeta': 'ζ',
+      r'\eta': 'η',
+      r'\theta': 'θ',
+      r'\vartheta': 'ϑ',
+      r'\iota': 'ι',
+      r'\kappa': 'κ',
+      r'\lambda': 'λ',
+      r'\mu': 'μ',
+      r'\nu': 'ν',
+      r'\xi': 'ξ',
+      r'\pi': 'π',
+      r'\varpi': 'ϖ',
+      r'\rho': 'ρ',
+      r'\varrho': 'ϱ',
+      r'\sigma': 'σ',
+      r'\varsigma': 'ς',
+      r'\tau': 'τ',
+      r'\upsilon': 'υ',
+      r'\phi': 'φ',
+      r'\varphi': 'ϕ',
+      r'\chi': 'χ',
+      r'\psi': 'ψ',
+      r'\omega': 'ω',
+    };
+    greekLower.forEach((k, v) => s = s.replaceAll(k, v));
+
+    // Greek letters (uppercase)
+    const greekUpper = {
+      r'\Gamma': 'Γ',
+      r'\Delta': 'Δ',
+      r'\Theta': 'Θ',
+      r'\Lambda': 'Λ',
+      r'\Xi': 'Ξ',
+      r'\Pi': 'Π',
+      r'\Sigma': 'Σ',
+      r'\Upsilon': 'Υ',
+      r'\Phi': 'Φ',
+      r'\Psi': 'Ψ',
+      r'\Omega': 'Ω',
+    };
+    greekUpper.forEach((k, v) => s = s.replaceAll(k, v));
+
+    // Mathematical symbols & operators
+    const mathSymbols = {
+      r'\times': '×',
+      r'\div': '÷',
+      r'\cdot': '·',
+      r'\pm': '±',
+      r'\mp': '∓',
+      r'\neq': '≠',
+      r'\ne': '≠',
+      r'\leq': '≤',
+      r'\le': '≤',
+      r'\geq': '≥',
+      r'\ge': '≥',
+      r'\approx': '≈',
+      r'\equiv': '≡',
+      r'\sim': '∼',
+      r'\propto': '∝',
+      r'\infty': '∞',
+      r'\partial': '∂',
+      r'\nabla': '∇',
+      r'\hbar': 'ℏ',
+      r'\sum': '∑',
+      r'\prod': '∏',
+      r'\int': '∫',
+      r'\iint': '∬',
+      r'\iiint': '∭',
+      r'\oint': '∮',
+      r'\in': '∈',
+      r'\notin': '∉',
+      r'\subset': '⊂',
+      r'\subseteq': '⊆',
+      r'\supset': '⊃',
+      r'\supseteq': '⊇',
+      r'\cup': '∪',
+      r'\cap': '∩',
+      r'\setminus': '∖',
+      r'\forall': '∀',
+      r'\exists': '∃',
+      r'\nexists': '∄',
+      r'\emptyset': '∅',
+      r'\neg': '¬',
+      r'\lor': '∨',
+      r'\land': '∧',
+      r'\leftarrow': '←',
+      r'\rightarrow': '→',
+      r'\to': '→',
+      r'\Leftarrow': '⇐',
+      r'\Rightarrow': '⇒',
+      r'\implies': '⇒',
+      r'\iff': '⇔',
+      r'\leftrightarrow': '↔',
+      r'\Leftrightarrow': '⇔',
+      r'\circ': '∘',
+      r'\bullet': '•',
+      r'\star': '⋆',
+      r'\angle': '∠',
+      r'\perp': '⊥',
+    };
+    mathSymbols.forEach((k, v) => s = s.replaceAll(k, v));
+
+    // Functions
+    const funcs = [
+      r'\sin',
+      r'\cos',
+      r'\tan',
+      r'\csc',
+      r'\sec',
+      r'\cot',
+      r'\arcsin',
+      r'\arccos',
+      r'\arctan',
+      r'\sinh',
+      r'\cosh',
+      r'\tanh',
+      r'\ln',
+      r'\log',
+      r'\exp',
+      r'\det',
+      r'\dim',
+      r'\ker',
+      r'\lim',
+    ];
+    for (final f in funcs) {
+      s = s.replaceAll(f, f.substring(1));
+    }
+
+    // Subscripts: _{...} or _x
+    s = s.replaceAllMapped(
+      RegExp(r'_\{([^{}]+)\}'),
+      (m) => _toSubscript(m.group(1)!),
+    );
+    s = s.replaceAllMapped(
+      RegExp(r'_([0-9a-zA-Z\+\-\=])'),
+      (m) => _toSubscript(m.group(1)!),
+    );
+
+    // Superscripts: ^{...} or ^x
+    s = s.replaceAllMapped(
+      RegExp(r'\^\{([^{}]+)\}'),
+      (m) => _toSuperscript(m.group(1)!),
+    );
+    s = s.replaceAllMapped(
+      RegExp(r'\^([0-9a-zA-Z\+\-\=])'),
+      (m) => _toSuperscript(m.group(1)!),
+    );
+
+    // Clean up LaTeX spacing and delimiters
+    s = s.replaceAll(r'\left(', '(').replaceAll(r'\right)', ')');
+    s = s.replaceAll(r'\left[', '[').replaceAll(r'\right]', ']');
+    s = s.replaceAll(r'\left\{', '{').replaceAll(r'\right\}', '}');
+    s = s
+        .replaceAll(r'\,', ' ')
+        .replaceAll(r'\;', ' ')
+        .replaceAll(r'\quad', '  ');
+    s = s.replaceAll(r'\\', ' ');
+
+    // Strip stray unescaped backslashes before words
+    s = s.replaceAllMapped(RegExp(r'\\([a-zA-Z]+)'), (m) => m.group(1)!);
+
+    return s;
+  }
+
+  static String _formatFraction(String num, String den) {
+    if (num == '1' && den == '2') return '½';
+    if (num == '1' && den == '4') return '¼';
+    if (num == '3' && den == '4') return '¾';
+    if (num == '1' && den == '3') return '⅓';
+    if (num == '2' && den == '3') return '⅔';
+    if (num == '1' && den == '5') return '⅕';
+    if (num.length <= 3 &&
+        den.length <= 3 &&
+        !num.contains(' ') &&
+        !den.contains(' ')) {
+      return '$num / $den';
+    }
+    return '($num) / ($den)';
+  }
+
+  static String _toSuperscript(String input) {
+    const map = {
+      '0': '⁰',
+      '1': '¹',
+      '2': '²',
+      '3': '³',
+      '4': '⁴',
+      '5': '⁵',
+      '6': '⁶',
+      '7': '⁷',
+      '8': '⁸',
+      '9': '⁹',
+      '+': '⁺',
+      '-': '⁻',
+      '=': '⁼',
+      '(': '⁽',
+      ')': '⁾',
+      'n': 'ⁿ',
+      'i': 'ⁱ',
+      'x': 'ˣ',
+      'y': 'ʸ',
+      'z': 'ᶻ',
+      'a': 'ᵃ',
+      'b': 'ᵇ',
+      'c': 'ᶜ',
+      'd': 'ᵈ',
+      'e': 'ᵉ',
+      'k': 'ᵏ',
+      'm': 'ᵐ',
+      'p': 'ᵖ',
+      'r': 'ʳ',
+      's': 'ˢ',
+      't': 'ᵗ',
+    };
+    final sb = StringBuffer();
+    for (var i = 0; i < input.length; i++) {
+      final ch = input[i];
+      sb.write(map[ch] ?? ch);
+    }
+    return sb.toString();
+  }
+
+  static String _toSubscript(String input) {
+    const map = {
+      '0': '₀',
+      '1': '₁',
+      '2': '₂',
+      '3': '₃',
+      '4': '₄',
+      '5': '₅',
+      '6': '₆',
+      '7': '₇',
+      '8': '₈',
+      '9': '₉',
+      '+': '₊',
+      '-': '₋',
+      '=': '₌',
+      '(': '₍',
+      ')': '₎',
+      'a': 'ₐ',
+      'e': 'ₑ',
+      'h': 'ₕ',
+      'i': 'ᵢ',
+      'j': 'ⱼ',
+      'k': 'ₖ',
+      'l': 'ₗ',
+      'm': 'ₘ',
+      'n': 'ₙ',
+      'o': 'ₒ',
+      'p': 'ₚ',
+      'r': 'ᵣ',
+      's': 'ₛ',
+      't': 'ₜ',
+      'u': 'ᵤ',
+      'v': 'ᵥ',
+      'x': 'ₓ',
+    };
+    final sb = StringBuffer();
+    for (var i = 0; i < input.length; i++) {
+      final ch = input[i];
+      sb.write(map[ch] ?? ch);
+    }
+    return sb.toString();
+  }
+
+  /// Formats inline math notation (`$formula$`) in [text] to mathematical Unicode.
+  static String formatInlineMath(String text) {
+    if (!text.contains(r'$')) return text;
+    return text.replaceAllMapped(
+      RegExp(r'(?<!\\)\$(?!\$)(.+?)(?<!\\)\$'),
+      (match) => formatMathToUnicode(match.group(1)!),
+    );
+  }
+
   /// Parse a single line of text into a [CanvasRichLine].
   static CanvasRichLine parseLine(String rawLine, int lineIndex) {
     final trimmed = rawLine.trim();
@@ -56,12 +411,38 @@ class CanvasRichText {
       );
     }
 
+    // Check single-line display math: $$...$$
+    if (trimmed.startsWith(r'$$') &&
+        trimmed.endsWith(r'$$') &&
+        trimmed.length >= 4) {
+      final mathContent = trimmed.substring(2, trimmed.length - 2).trim();
+      return CanvasRichLine(
+        type: CanvasRichLineType.displayMath,
+        rawText: rawLine,
+        contentText: formatMathToUnicode(mathContent),
+        lineIndex: lineIndex,
+      );
+    }
+
+    // Check blockquote: > quote
+    if (trimmed.startsWith('> ') || trimmed == '>') {
+      final quoteContent = trimmed.length > 2
+          ? trimmed.substring(2).trim()
+          : '';
+      return CanvasRichLine(
+        type: CanvasRichLineType.blockquote,
+        rawText: rawLine,
+        contentText: formatInlineMath(quoteContent),
+        lineIndex: lineIndex,
+      );
+    }
+
     final h3 = _h3Regex.firstMatch(rawLine);
     if (h3 != null) {
       return CanvasRichLine(
         type: CanvasRichLineType.heading3,
         rawText: rawLine,
-        contentText: h3.group(1)!,
+        contentText: formatInlineMath(h3.group(1)!),
         lineIndex: lineIndex,
       );
     }
@@ -71,7 +452,7 @@ class CanvasRichText {
       return CanvasRichLine(
         type: CanvasRichLineType.heading2,
         rawText: rawLine,
-        contentText: h2.group(1)!,
+        contentText: formatInlineMath(h2.group(1)!),
         lineIndex: lineIndex,
       );
     }
@@ -81,7 +462,7 @@ class CanvasRichText {
       return CanvasRichLine(
         type: CanvasRichLineType.heading1,
         rawText: rawLine,
-        contentText: h1.group(1)!,
+        contentText: formatInlineMath(h1.group(1)!),
         lineIndex: lineIndex,
       );
     }
@@ -91,7 +472,7 @@ class CanvasRichText {
       return CanvasRichLine(
         type: CanvasRichLineType.checklistChecked,
         rawText: rawLine,
-        contentText: checked.group(1)!,
+        contentText: formatInlineMath(checked.group(1)!),
         lineIndex: lineIndex,
       );
     }
@@ -101,7 +482,7 @@ class CanvasRichText {
       return CanvasRichLine(
         type: CanvasRichLineType.checklistUnchecked,
         rawText: rawLine,
-        contentText: unchecked.group(1)!,
+        contentText: formatInlineMath(unchecked.group(1)!),
         lineIndex: lineIndex,
       );
     }
@@ -111,7 +492,7 @@ class CanvasRichText {
       return CanvasRichLine(
         type: CanvasRichLineType.bullet,
         rawText: rawLine,
-        contentText: bullet.group(1)!,
+        contentText: formatInlineMath(bullet.group(1)!),
         lineIndex: lineIndex,
       );
     }
@@ -121,7 +502,7 @@ class CanvasRichText {
       return CanvasRichLine(
         type: CanvasRichLineType.numbered,
         rawText: rawLine,
-        contentText: num.group(2)!,
+        contentText: formatInlineMath(num.group(2)!),
         prefix: '${num.group(1)}.',
         lineIndex: lineIndex,
       );
@@ -130,31 +511,106 @@ class CanvasRichText {
     return CanvasRichLine(
       type: CanvasRichLineType.paragraph,
       rawText: rawLine,
-      contentText: rawLine,
+      contentText: formatInlineMath(rawLine),
       lineIndex: lineIndex,
     );
   }
 
-  /// Parses all lines in [text].
+  /// Parses all lines in [text], handling multi-line math and code blocks.
   static List<CanvasRichLine> parseLines(String text) {
     final rawLines = text.split('\n');
-    return List<CanvasRichLine>.generate(
-      rawLines.length,
-      (i) => parseLine(rawLines[i], i),
-      growable: false,
-    );
+    final result = <CanvasRichLine>[];
+    var inCodeBlock = false;
+    var inMathBlock = false;
+    final mathLines = <String>[];
+    var mathStartIndex = 0;
+
+    for (var i = 0; i < rawLines.length; i++) {
+      final raw = rawLines[i];
+      final trimmed = raw.trim();
+
+      // Check code block fences
+      if (trimmed.startsWith('```')) {
+        if (inCodeBlock) {
+          inCodeBlock = false;
+          continue;
+        } else {
+          inCodeBlock = true;
+          continue;
+        }
+      }
+      if (inCodeBlock) {
+        result.add(
+          CanvasRichLine(
+            type: CanvasRichLineType.codeBlock,
+            rawText: raw,
+            contentText: raw,
+            lineIndex: i,
+          ),
+        );
+        continue;
+      }
+
+      // Check multi-line display math fences: $$
+      if (trimmed == r'$$') {
+        if (inMathBlock) {
+          inMathBlock = false;
+          final combined = mathLines.join(' ');
+          result.add(
+            CanvasRichLine(
+              type: CanvasRichLineType.displayMath,
+              rawText: '\$\$\n${mathLines.join('\n')}\n\$\$',
+              contentText: formatMathToUnicode(combined),
+              lineIndex: mathStartIndex,
+            ),
+          );
+          mathLines.clear();
+          continue;
+        } else {
+          inMathBlock = true;
+          mathStartIndex = i;
+          mathLines.clear();
+          continue;
+        }
+      }
+
+      if (inMathBlock) {
+        mathLines.add(trimmed);
+        continue;
+      }
+
+      result.add(parseLine(raw, i));
+    }
+
+    if (inMathBlock && mathLines.isNotEmpty) {
+      result.add(
+        CanvasRichLine(
+          type: CanvasRichLineType.displayMath,
+          rawText: mathLines.join('\n'),
+          contentText: formatMathToUnicode(mathLines.join(' ')),
+          lineIndex: mathStartIndex,
+        ),
+      );
+    }
+
+    return result;
   }
 
-  /// Whether [text] contains any rich markdown formatting (headings, checklists, lists).
+  /// Whether [text] contains any rich markdown formatting (headings, checklists, lists, math, code).
   static bool hasRichFormatting(String text) {
     return text.contains('#') ||
         text.contains('[ ]') ||
         text.contains('[x]') ||
         text.contains('[X]') ||
+        text.contains(r'$$') ||
+        text.contains(r'$') ||
+        text.contains('```') ||
+        text.contains('> ') ||
         text.split('\n').any((l) {
           final t = l.trimLeft();
           return t.startsWith('- ') ||
               t.startsWith('* ') ||
+              t.startsWith('> ') ||
               RegExp(r'^\d+\.\s').hasMatch(t);
         });
   }
@@ -169,10 +625,11 @@ class CanvasRichText {
     required CanvasTextCache textCache,
     double defaultFontSize = 15.0,
     int? maxLines,
+    String fontFamily = 'Segoe UI',
   }) {
     if (bounds.width <= 0 || bounds.height <= 0 || text.isEmpty) return;
 
-    final lines = parseLines(text);
+    final lines = textCache.richLines(text);
     const boxSize = 14.0;
     const boxRadius = 3.5;
     const itemGap = 4.0;
@@ -191,7 +648,7 @@ class CanvasRichText {
         case CanvasRichLineType.heading1:
           currentY += 4.0;
           final style = TextStyle(
-            fontFamily: 'Segoe UI',
+            fontFamily: fontFamily,
             fontSize: 18.5,
             fontWeight: FontWeight.bold,
             color: colors.onSurface,
@@ -210,7 +667,7 @@ class CanvasRichText {
         case CanvasRichLineType.heading2:
           currentY += 3.0;
           final style = TextStyle(
-            fontFamily: 'Segoe UI',
+            fontFamily: fontFamily,
             fontSize: 16.5,
             fontWeight: FontWeight.w600,
             color: colors.onSurface,
@@ -229,7 +686,7 @@ class CanvasRichText {
         case CanvasRichLineType.heading3:
           currentY += 2.0;
           final style = TextStyle(
-            fontFamily: 'Segoe UI',
+            fontFamily: fontFamily,
             fontSize: 15.0,
             fontWeight: FontWeight.w600,
             color: colors.onSurface,
@@ -249,7 +706,7 @@ class CanvasRichText {
           final textLeft = bounds.left + 22.0;
           final textWidth = math.max(1.0, bounds.width - 22.0);
           final style = TextStyle(
-            fontFamily: 'Segoe UI',
+            fontFamily: fontFamily,
             fontSize: defaultFontSize,
             color: colors.onSurface,
             height: 1.35,
@@ -292,7 +749,7 @@ class CanvasRichText {
           final textWidth = math.max(1.0, bounds.width - 22.0);
           final mutedColor = colors.onSurfaceVariant.withValues(alpha: 0.65);
           final style = TextStyle(
-            fontFamily: 'Segoe UI',
+            fontFamily: fontFamily,
             fontSize: defaultFontSize,
             color: mutedColor,
             decoration: TextDecoration.lineThrough,
@@ -344,7 +801,7 @@ class CanvasRichText {
           final textLeft = bounds.left + 16.0;
           final textWidth = math.max(1.0, bounds.width - 16.0);
           final style = TextStyle(
-            fontFamily: 'Segoe UI',
+            fontFamily: fontFamily,
             fontSize: defaultFontSize,
             color: colors.onSurface,
             height: 1.35,
@@ -373,7 +830,7 @@ class CanvasRichText {
           final textWidth = math.max(1.0, bounds.width - prefixWidth);
 
           final prefixStyle = TextStyle(
-            fontFamily: 'Segoe UI',
+            fontFamily: fontFamily,
             fontSize: defaultFontSize,
             color: colors.onSurfaceVariant,
             fontWeight: FontWeight.w600,
@@ -388,7 +845,7 @@ class CanvasRichText {
           prefixPainter.paint(canvas, Offset(bounds.left, currentY));
 
           final style = TextStyle(
-            fontFamily: 'Segoe UI',
+            fontFamily: fontFamily,
             fontSize: defaultFontSize,
             color: colors.onSurface,
             height: 1.35,
@@ -403,9 +860,132 @@ class CanvasRichText {
           currentY += painter.height + itemGap;
           linesRendered++;
 
+        case CanvasRichLineType.displayMath:
+          currentY += 4.0;
+          final mathStyle = TextStyle(
+            fontFamily: fontFamily,
+            fontSize: defaultFontSize + 1.5,
+            fontStyle: FontStyle.italic,
+            color: colors.onSurface,
+            height: 1.35,
+          );
+          final mathPainter = textCache.layout(
+            line.contentText,
+            mathStyle,
+            math.max(1.0, bounds.width - 24.0),
+            null,
+          );
+          final boxHeight = mathPainter.height + 12.0;
+          final mathBoxRect = Rect.fromLTWH(
+            bounds.left,
+            currentY,
+            bounds.width,
+            boxHeight,
+          );
+
+          // Calm graphite surface container
+          final rrect = RRect.fromRectAndRadius(
+            mathBoxRect,
+            const Radius.circular(6.0),
+          );
+          canvas.drawRRect(
+            rrect,
+            Paint()
+              ..color = colors.surfaceContainerHighest.withValues(alpha: 0.35)
+              ..style = PaintingStyle.fill,
+          );
+          canvas.drawRRect(
+            rrect,
+            Paint()
+              ..color = colors.outlineVariant.withValues(alpha: 0.25)
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.0,
+          );
+
+          // Subtle left formula indicator
+          canvas.drawRRect(
+            RRect.fromRectAndCorners(
+              Rect.fromLTWH(bounds.left, currentY, 3.0, boxHeight),
+              topLeft: const Radius.circular(6.0),
+              bottomLeft: const Radius.circular(6.0),
+            ),
+            Paint()..color = accent.withValues(alpha: 0.8),
+          );
+
+          // Center formula text in the box
+          final textX = bounds.left + (bounds.width - mathPainter.width) / 2;
+          final textY = currentY + (boxHeight - mathPainter.height) / 2;
+          mathPainter.paint(canvas, Offset(textX, textY));
+          currentY += boxHeight + itemGap + 2.0;
+          linesRendered++;
+
+        case CanvasRichLineType.codeBlock:
+          currentY += 2.0;
+          final codeStyle = TextStyle(
+            fontFamily: 'Consolas',
+            fontSize: math.max(10.0, defaultFontSize - 1.5),
+            color: colors.onSurface,
+            height: 1.35,
+          );
+          final codePainter = textCache.layout(
+            line.contentText,
+            codeStyle,
+            math.max(1.0, bounds.width - 16.0),
+            null,
+          );
+          final boxHeight = codePainter.height + 8.0;
+          final codeBoxRect = Rect.fromLTWH(
+            bounds.left,
+            currentY,
+            bounds.width,
+            boxHeight,
+          );
+          final codeRRect = RRect.fromRectAndRadius(
+            codeBoxRect,
+            const Radius.circular(4.0),
+          );
+          canvas.drawRRect(
+            codeRRect,
+            Paint()
+              ..color = colors.surfaceContainerHighest.withValues(alpha: 0.40)
+              ..style = PaintingStyle.fill,
+          );
+          codePainter.paint(canvas, Offset(bounds.left + 8.0, currentY + 4.0));
+          currentY += boxHeight + itemGap;
+          linesRendered++;
+
+        case CanvasRichLineType.blockquote:
+          currentY += 2.0;
+          final textLeft = bounds.left + 14.0;
+          final textWidth = math.max(1.0, bounds.width - 14.0);
+          final quoteStyle = TextStyle(
+            fontFamily: fontFamily,
+            fontSize: defaultFontSize,
+            fontStyle: FontStyle.italic,
+            color: colors.onSurfaceVariant,
+            height: 1.35,
+          );
+          final quotePainter = textCache.layout(
+            line.contentText,
+            quoteStyle,
+            textWidth,
+            null,
+          );
+          canvas.drawLine(
+            Offset(bounds.left + 3.0, currentY + 2.0),
+            Offset(bounds.left + 3.0, currentY + quotePainter.height - 2.0),
+            Paint()
+              ..color = colors.outlineVariant
+              ..strokeWidth = 2.5
+              ..strokeCap = StrokeCap.round,
+          );
+          quotePainter.paint(canvas, Offset(textLeft, currentY));
+          currentY += quotePainter.height + itemGap;
+          linesRendered++;
+
         case CanvasRichLineType.paragraph:
           final style = TextStyle(
-            fontFamily: 'Segoe UI',
+            fontFamily: fontFamily,
             fontSize: defaultFontSize,
             color: colors.onSurface,
             height: 1.35,
@@ -437,10 +1017,11 @@ class CanvasRichText {
     required Offset clickOffset,
     required CanvasTextCache textCache,
     double defaultFontSize = 15.0,
+    String fontFamily = 'Segoe UI',
   }) {
     if (bounds.width <= 0 || bounds.height <= 0 || text.isEmpty) return null;
 
-    final lines = parseLines(text);
+    final lines = textCache.richLines(text);
     const itemGap = 4.0;
     var currentY = bounds.top;
 
@@ -451,7 +1032,7 @@ class CanvasRichText {
         case CanvasRichLineType.heading1:
           currentY += 4.0;
           final style = TextStyle(
-            fontFamily: 'Segoe UI',
+            fontFamily: fontFamily,
             fontSize: 18.5,
             fontWeight: FontWeight.bold,
             height: 1.3,
@@ -467,7 +1048,7 @@ class CanvasRichText {
         case CanvasRichLineType.heading2:
           currentY += 3.0;
           final style = TextStyle(
-            fontFamily: 'Segoe UI',
+            fontFamily: fontFamily,
             fontSize: 16.5,
             fontWeight: FontWeight.w600,
             height: 1.3,
@@ -483,7 +1064,7 @@ class CanvasRichText {
         case CanvasRichLineType.heading3:
           currentY += 2.0;
           final style = TextStyle(
-            fontFamily: 'Segoe UI',
+            fontFamily: fontFamily,
             fontSize: 15.0,
             fontWeight: FontWeight.w600,
             height: 1.3,
@@ -500,7 +1081,7 @@ class CanvasRichText {
         case CanvasRichLineType.checklistChecked:
           final textWidth = math.max(1.0, bounds.width - 22.0);
           final style = TextStyle(
-            fontFamily: 'Segoe UI',
+            fontFamily: fontFamily,
             fontSize: defaultFontSize,
             height: 1.35,
           );
@@ -528,7 +1109,7 @@ class CanvasRichText {
         case CanvasRichLineType.bullet:
           final textWidth = math.max(1.0, bounds.width - 16.0);
           final style = TextStyle(
-            fontFamily: 'Segoe UI',
+            fontFamily: fontFamily,
             fontSize: defaultFontSize,
             height: 1.35,
           );
@@ -543,7 +1124,7 @@ class CanvasRichText {
         case CanvasRichLineType.numbered:
           final textWidth = math.max(1.0, bounds.width - 22.0);
           final style = TextStyle(
-            fontFamily: 'Segoe UI',
+            fontFamily: fontFamily,
             fontSize: defaultFontSize,
             height: 1.35,
           );
@@ -555,9 +1136,58 @@ class CanvasRichText {
           );
           currentY += painter.height + itemGap;
 
+        case CanvasRichLineType.displayMath:
+          currentY += 4.0;
+          final mathStyle = TextStyle(
+            fontFamily: fontFamily,
+            fontSize: defaultFontSize + 1.5,
+            fontStyle: FontStyle.italic,
+            height: 1.35,
+          );
+          final mathPainter = textCache.layout(
+            line.contentText,
+            mathStyle,
+            math.max(1.0, bounds.width - 24.0),
+            null,
+          );
+          final boxHeight = mathPainter.height + 12.0;
+          currentY += boxHeight + itemGap + 2.0;
+
+        case CanvasRichLineType.codeBlock:
+          currentY += 2.0;
+          final codeStyle = TextStyle(
+            fontFamily: 'Consolas',
+            fontSize: math.max(10.0, defaultFontSize - 1.5),
+            height: 1.35,
+          );
+          final codePainter = textCache.layout(
+            line.contentText,
+            codeStyle,
+            math.max(1.0, bounds.width - 16.0),
+            null,
+          );
+          currentY += codePainter.height + 8.0 + itemGap;
+
+        case CanvasRichLineType.blockquote:
+          currentY += 2.0;
+          final textWidth = math.max(1.0, bounds.width - 14.0);
+          final quoteStyle = TextStyle(
+            fontFamily: fontFamily,
+            fontSize: defaultFontSize,
+            fontStyle: FontStyle.italic,
+            height: 1.35,
+          );
+          final quotePainter = textCache.layout(
+            line.contentText,
+            quoteStyle,
+            textWidth,
+            null,
+          );
+          currentY += quotePainter.height + itemGap;
+
         case CanvasRichLineType.paragraph:
           final style = TextStyle(
-            fontFamily: 'Segoe UI',
+            fontFamily: fontFamily,
             fontSize: defaultFontSize,
             height: 1.35,
           );

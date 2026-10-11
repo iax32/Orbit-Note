@@ -34,6 +34,9 @@ class GoogleCloudController extends ChangeNotifier {
   GoogleAccount? get account => auth.account;
   GoogleStorageQuota? quota;
   List<GoogleRemoteVault> vaults = [];
+  List<GoogleDriveBackup> backups = [];
+  double? transferProgress;
+  bool _cancelTransfer = false;
   String? message, rootId;
   bool busy = false, reconnectRequired = false, _disposed = false;
   bool signingIn = false;
@@ -86,29 +89,43 @@ class GoogleCloudController extends ChangeNotifier {
   void _clearAccountData() {
     quota = null;
     vaults = [];
+    backups = [];
     rootId = null;
     _refreshed = null;
   }
 
   Future<void> _refresh() async {
     final generation = _generation, subject = account?.subject;
+    bool current() =>
+        !_disposed && generation == _generation && subject == account?.subject;
     GoogleCloudError? error;
     try {
       final next = await drive.quota();
-      if (generation != _generation || subject != account?.subject) return;
+      if (!current()) return;
       quota = next;
     } on GoogleCloudError catch (e) {
+      if (!current()) return;
       error = e;
       quota = null;
     }
     try {
       final next = await drive.listVaults();
-      if (generation != _generation || subject != account?.subject) return;
+      if (!current()) return;
       vaults = next;
     } on GoogleCloudError catch (e) {
+      if (!current()) return;
       error ??= e;
     }
-    _refreshed = DateTime.now();
+    try {
+      final next = await drive.listBackups();
+      if (!current()) return;
+      backups = next;
+    } on GoogleCloudError catch (e) {
+      if (!current()) return;
+      error ??= e;
+    }
+    // An incomplete refresh must remain retryable, even inside the cache window.
+    _refreshed = error == null ? DateTime.now() : null;
     if (error != null) throw error;
     reconnectRequired = false;
   }
@@ -141,6 +158,73 @@ class GoogleCloudController extends ChangeNotifier {
     _clearAccountData();
     reconnectRequired = false;
   });
+  Future<void> refreshBackups() => _run(() async {
+    final generation = _generation, subject = account?.subject;
+    final next = await drive.listBackups();
+    if (!_disposed &&
+        generation == _generation &&
+        subject == account?.subject) {
+      backups = next;
+    }
+  });
+  Future<void> uploadBackup(
+    Future<String> Function() snapshot,
+  ) => _run(() async {
+    _cancelTransfer = false;
+    transferProgress = 0;
+    _notify();
+    try {
+      final subject = account?.subject, generation = _generation;
+      final source = await snapshot();
+      if (subject == null ||
+          account?.subject != subject ||
+          generation != _generation) {
+        throw const GoogleCloudError(
+          'account',
+          'The account changed before the backup could be uploaded.',
+        );
+      }
+      await drive.uploadBackup(
+        source,
+        isCancelled: () => _cancelTransfer || _disposed,
+        onProgress: (sent, total) {
+          transferProgress = sent / total;
+          _notify();
+        },
+      );
+      backups = await drive.listBackups();
+      message =
+          'Verified backup uploaded. Local editing remains independent; automatic sync is not enabled.';
+    } finally {
+      transferProgress = null;
+    }
+  });
+  Future<String?> downloadBackup(GoogleDriveBackup backup) async {
+    String? result;
+    await _run(() async {
+      _cancelTransfer = false;
+      transferProgress = 0;
+      try {
+        result = await drive.downloadBackup(
+          backup,
+          isCancelled: () => _cancelTransfer || _disposed,
+          onProgress: (received, total) {
+            transferProgress = total == 0 ? 0 : received / total;
+            _notify();
+          },
+        );
+        message = 'Backup downloaded and verified. Review it before restoring.';
+      } finally {
+        transferProgress = null;
+      }
+    });
+    return result;
+  }
+
+  void cancelTransfer() {
+    _cancelTransfer = true;
+  }
+
   void cancel() {
     _generation++;
     auth.cancel();

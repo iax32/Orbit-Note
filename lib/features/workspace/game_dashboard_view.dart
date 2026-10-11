@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import '../../app/orbit_theme.dart';
 import '../../app/workspace_controller.dart';
 import '../../domain/universal_object.dart';
+import 'dashboard_columns.dart';
 import 'workspace_views.dart';
+import 'gameplay_workbench.dart';
+import 'source_browser_dialog.dart';
 
 class GameDashboardView extends StatelessWidget {
   const GameDashboardView({
@@ -94,11 +97,12 @@ class GameDashboardView extends StatelessWidget {
             ? 'Games/${scope ?? "Project"}/Production'
             : 'Games/${scope ?? "Project"}/Design');
 
-    final result = await showDialog<bool>(
+    final route = DialogRoute<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: Text(isBug ? 'New Bug Report' : 'New Game Task'),
+          scrollable: true,
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -112,7 +116,11 @@ class GameDashboardView extends StatelessWidget {
                       : 'e.g. Implement dash mechanics',
                   isDense: true,
                 ),
-                onSubmitted: (_) => Navigator.pop(ctx, true),
+                onSubmitted: (_) {
+                  if (titleCtrl.text.trim().isNotEmpty) {
+                    Navigator.pop(ctx, true);
+                  }
+                },
               ),
               const SizedBox(height: 14),
               DropdownButtonFormField<String>(
@@ -161,7 +169,9 @@ class GameDashboardView extends StatelessWidget {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
+              onPressed: () {
+                if (titleCtrl.text.trim().isNotEmpty) Navigator.pop(ctx, true);
+              },
               child: const Text('Create'),
             ),
           ],
@@ -169,11 +179,15 @@ class GameDashboardView extends StatelessWidget {
       ),
     );
 
-    if (result == true && titleCtrl.text.trim().isNotEmpty) {
+    final result = await Navigator.of(context).push(route);
+    final title = titleCtrl.text.trim();
+    await route.completed;
+    titleCtrl.dispose();
+    if (result == true && title.isNotEmpty) {
       if (isBug) {
         await controller.createBugReport(
           folder: targetFolder,
-          title: titleCtrl.text.trim(),
+          title: title,
           project: scope ?? '',
           severity: selectedSeverity ?? 'major',
           discipline: selectedDiscipline,
@@ -313,278 +327,255 @@ class GameDashboardView extends StatelessWidget {
           o.id != viewObject.id;
     }).toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
-    return ListView(
-      padding: const EdgeInsets.all(28),
-      children: [
-        // 1. Project Header Banner
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: colors.panel,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: colors.divider),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1180),
+        child: ListView(
+          padding: const EdgeInsets.all(28),
+          children: [
+            // 1. Project Header Banner
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: colors.panel,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: colors.divider),
+              ),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: colors.accent.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      Icons.sports_esports,
-                      color: colors.accent,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          projectName,
-                          style: Theme.of(context).textTheme.headlineSmall
-                              ?.copyWith(fontWeight: FontWeight.bold),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: colors.accent.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        const SizedBox(height: 4),
-                        Wrap(
-                          spacing: 12,
-                          runSpacing: 4,
+                        child: Icon(
+                          Icons.sports_esports,
+                          color: colors.accent,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _headerBadge(
-                              genre,
-                              Icons.category_outlined,
-                              colors,
+                            Text(
+                              projectName,
+                              style: Theme.of(context).textTheme.headlineSmall
+                                  ?.copyWith(fontWeight: FontWeight.bold),
                             ),
-                            _headerBadge(
-                              platform,
-                              Icons.devices_outlined,
-                              colors,
+                            const SizedBox(height: 4),
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 4,
+                              children: [
+                                _headerBadge(
+                                  genre,
+                                  Icons.category_outlined,
+                                  colors,
+                                ),
+                                _headerBadge(
+                                  platform,
+                                  Icons.devices_outlined,
+                                  colors,
+                                ),
+                                _headerBadge(
+                                  engine,
+                                  Icons.build_outlined,
+                                  colors,
+                                ),
+                                if (playtests.isNotEmpty)
+                                  _headerBadge(
+                                    '${playtests.length} Playtests',
+                                    Icons.videogame_asset_outlined,
+                                    colors,
+                                  ),
+                              ],
                             ),
-                            _headerBadge(engine, Icons.build_outlined, colors),
-                            if (playtests.isNotEmpty)
-                              _headerBadge(
-                                '${playtests.length} Playtests',
-                                Icons.videogame_asset_outlined,
-                                colors,
-                              ),
                           ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  if (gddNote != null)
-                    OutlinedButton.icon(
-                      onPressed: () => controller.openObject(gddNote!.id),
-                      icon: const Icon(Icons.description_outlined, size: 16),
-                      label: const Text('Open GDD'),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // Action Buttons Row
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  FilledButton.icon(
-                    onPressed: () => _quickCreateTask(context, isBug: false),
-                    icon: const Icon(Icons.add_task, size: 16),
-                    label: const Text('New Task'),
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: () => _quickCreateTask(context, isBug: true),
-                    icon: const Icon(Icons.bug_report_outlined, size: 16),
-                    label: const Text('New Bug'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      final targetFolder =
-                          folderFilter ?? 'Games/$projectName/Design';
-                      controller.createFeatureSpec(
-                        folder: targetFolder,
-                        project: projectName,
-                      );
-                    },
-                    icon: const Icon(Icons.article_outlined, size: 16),
-                    label: const Text('+ Spec'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      final targetFolder =
-                          folderFilter ?? 'Games/$projectName/Playtests';
-                      controller.createPlaytestSession(
-                        folder: targetFolder,
-                        project: projectName,
-                      );
-                    },
-                    icon: const Icon(Icons.videogame_asset_outlined, size: 16),
-                    label: const Text('+ Playtest Log'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      final targetFolder =
-                          folderFilter ?? 'Games/$projectName/Production';
-                      controller.createDevLog(
-                        folder: targetFolder,
-                        project: projectName,
-                      );
-                    },
-                    icon: const Icon(Icons.history_edu_outlined, size: 16),
-                    label: const Text('+ Dev Log'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 20),
-
-        // 2. Production Metrics Cards Row
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final cardWidth = (constraints.maxWidth - 48) / 4;
-            return Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              children: [
-                _metricCard(
-                  title: 'Task Progress',
-                  value: '$completedTasks / $totalTasks',
-                  sub: '$taskProgressPercent% complete',
-                  icon: Icons.check_circle_outline,
-                  color: Colors.teal,
-                  progress: totalTasks > 0 ? completedTasks / totalTasks : 0,
-                  width: cardWidth > 200 ? cardWidth : double.infinity,
-                  colors: colors,
-                ),
-                _metricCard(
-                  title: 'Estimate Points',
-                  value: '$completedPoints / $totalPoints',
-                  sub: totalPoints > 0
-                      ? '${((completedPoints * 100) ~/ totalPoints)}% delivered'
-                      : 'No points planned',
-                  icon: Icons.speed,
-                  color: Colors.blueAccent,
-                  progress: totalPoints > 0 ? completedPoints / totalPoints : 0,
-                  width: cardWidth > 200 ? cardWidth : double.infinity,
-                  colors: colors,
-                ),
-                _metricCard(
-                  title: 'Blocked Watchdog',
-                  value: '${blockedTasks.length}',
-                  sub: blockedTasks.isEmpty
-                      ? 'All paths clear'
-                      : 'Require attention',
-                  icon: Icons.lock_outline,
-                  color: blockedTasks.isEmpty
-                      ? Colors.grey
-                      : Colors.amber.shade700,
-                  width: cardWidth > 200 ? cardWidth : double.infinity,
-                  colors: colors,
-                ),
-                _metricCard(
-                  title: 'Open Bugs',
-                  value: '${openBugs.length}',
-                  sub: blockerBugs.isNotEmpty
-                      ? '${blockerBugs.length} blockers!'
-                      : (criticalBugs.isNotEmpty
-                            ? '${criticalBugs.length} critical'
-                            : 'No critical bugs'),
-                  icon: Icons.bug_report,
-                  color: blockerBugs.isNotEmpty || criticalBugs.isNotEmpty
-                      ? Colors.redAccent
-                      : (openBugs.isEmpty ? Colors.teal : Colors.orangeAccent),
-                  width: cardWidth > 200 ? cardWidth : double.infinity,
-                  colors: colors,
-                ),
-              ],
-            );
-          },
-        ),
-        const SizedBox(height: 24),
-
-        // 3. Disciplines Progress Breakdown & Blocked Tasks Watchdog
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Left: Discipline Progress Breakdown
-            Expanded(
-              flex: 5,
-              child: Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: colors.panel,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: colors.divider),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.category_outlined,
+                  const SizedBox(height: 16),
+                  // Action Buttons Row
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () => showSourceBrowser(context),
+                        icon: const Icon(Icons.code),
+                        label: const Text('Browse source files'),
+                      ),
+                      if (gddNote != null)
+                        OutlinedButton.icon(
+                          onPressed: () => controller.openObject(gddNote!.id),
+                          icon: const Icon(
+                            Icons.description_outlined,
+                            size: 16,
+                          ),
+                          label: const Text('Open GDD'),
+                        ),
+                      OutlinedButton.icon(
+                        onPressed: () => showGameplayWorkbench(
+                          context,
+                          controller,
+                          project: projectName,
+                          folder: folderFilter ?? 'Games/$projectName',
+                        ),
+                        icon: const Icon(Icons.sports_esports_outlined),
+                        label: const Text('Gameplay workbench'),
+                      ),
+                      FilledButton.icon(
+                        onPressed: () =>
+                            _quickCreateTask(context, isBug: false),
+                        icon: const Icon(Icons.add_task, size: 16),
+                        label: const Text('New Task'),
+                      ),
+                      FilledButton.tonalIcon(
+                        onPressed: () => _quickCreateTask(context, isBug: true),
+                        icon: const Icon(Icons.bug_report_outlined, size: 16),
+                        label: const Text('New Bug'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          final targetFolder =
+                              folderFilter ?? 'Games/$projectName/Design';
+                          controller.createFeatureSpec(
+                            folder: targetFolder,
+                            project: projectName,
+                          );
+                        },
+                        icon: const Icon(Icons.article_outlined, size: 16),
+                        label: const Text('+ Spec'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          final targetFolder =
+                              folderFilter ?? 'Games/$projectName/Playtests';
+                          controller.createPlaytestSession(
+                            folder: targetFolder,
+                            project: projectName,
+                          );
+                        },
+                        icon: const Icon(
+                          Icons.videogame_asset_outlined,
                           size: 16,
-                          color: colors.accent,
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Discipline Breakdown',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: colors.text,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    if (sortedDisciplines.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: Center(
-                          child: Text(
-                            'No disciplines assigned yet. Add tasks to see breakdown.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: colors.subtle,
-                            ),
-                          ),
-                        ),
-                      )
-                    else
-                      for (final disc in sortedDisciplines) ...[
-                        _buildDisciplineRow(
-                          disc,
-                          disciplineMap[disc]!.total,
-                          disciplineMap[disc]!.done,
-                          disciplineMap[disc]!.points,
-                          colors,
-                        ),
-                        const SizedBox(height: 10),
-                      ],
-                  ],
-                ),
+                        label: const Text('+ Playtest Log'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          final targetFolder =
+                              folderFilter ?? 'Games/$projectName/Production';
+                          controller.createDevLog(
+                            folder: targetFolder,
+                            project: projectName,
+                          );
+                        },
+                        icon: const Icon(Icons.history_edu_outlined, size: 16),
+                        label: const Text('+ Dev Log'),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(height: 20),
 
-            // Right: Blocked Tasks & Bug Severities
-            Expanded(
-              flex: 4,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Blocked Tasks Watchdog
-                  Container(
+            // 2. Production Metrics Cards Row
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final columns =
+                    (constraints.maxWidth /
+                            (240 *
+                                MediaQuery.textScalerOf(context).scale(14) /
+                                14))
+                        .floor()
+                        .clamp(1, 4);
+                final cardWidth =
+                    (constraints.maxWidth - 16 * (columns - 1)) / columns;
+                return Wrap(
+                  spacing: 16,
+                  runSpacing: 16,
+                  children: [
+                    _metricCard(
+                      title: 'Task Progress',
+                      value: '$completedTasks / $totalTasks',
+                      sub: '$taskProgressPercent% complete',
+                      icon: Icons.check_circle_outline,
+                      color: Colors.teal,
+                      progress: totalTasks > 0
+                          ? completedTasks / totalTasks
+                          : 0,
+                      width: cardWidth,
+                      colors: colors,
+                    ),
+                    _metricCard(
+                      title: 'Estimate Points',
+                      value: '$completedPoints / $totalPoints',
+                      sub: totalPoints > 0
+                          ? '${((completedPoints * 100) ~/ totalPoints)}% delivered'
+                          : 'No points planned',
+                      icon: Icons.speed,
+                      color: Colors.blueAccent,
+                      progress: totalPoints > 0
+                          ? completedPoints / totalPoints
+                          : 0,
+                      width: cardWidth > 200 ? cardWidth : double.infinity,
+                      colors: colors,
+                    ),
+                    _metricCard(
+                      title: 'Blocked tasks',
+                      value: '${blockedTasks.length}',
+                      sub: blockedTasks.isEmpty
+                          ? 'No blocked tasks'
+                          : 'Require attention',
+                      icon: Icons.lock_outline,
+                      color: blockedTasks.isEmpty
+                          ? Colors.grey
+                          : Colors.amber.shade700,
+                      width: cardWidth > 200 ? cardWidth : double.infinity,
+                      colors: colors,
+                    ),
+                    _metricCard(
+                      title: 'Open Bugs',
+                      value: '${openBugs.length}',
+                      sub: blockerBugs.isNotEmpty
+                          ? '${blockerBugs.length} blockers!'
+                          : (criticalBugs.isNotEmpty
+                                ? '${criticalBugs.length} critical'
+                                : 'No critical bugs'),
+                      icon: Icons.bug_report,
+                      color: blockerBugs.isNotEmpty || criticalBugs.isNotEmpty
+                          ? Colors.redAccent
+                          : (openBugs.isEmpty
+                                ? Colors.teal
+                                : Colors.orangeAccent),
+                      width: cardWidth > 200 ? cardWidth : double.infinity,
+                      colors: colors,
+                    ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 24),
+
+            // 3. Disciplines Progress Breakdown & Blocked Tasks Watchdog
+            DashboardColumns(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Left: Discipline Progress Breakdown
+                Expanded(
+                  flex: 5,
+                  child: Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
                       color: colors.panel,
@@ -597,13 +588,13 @@ class GameDashboardView extends StatelessWidget {
                         Row(
                           children: [
                             Icon(
-                              Icons.lock_outline,
+                              Icons.category_outlined,
                               size: 16,
-                              color: Colors.amber.shade700,
+                              color: colors.accent,
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              'Blocked Tasks (${blockedTasks.length})',
+                              'Discipline Breakdown',
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
@@ -612,59 +603,199 @@ class GameDashboardView extends StatelessWidget {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 10),
-                        if (blockedTasks.isEmpty)
-                          Text(
-                            'No tasks currently blocked by unfinished dependencies.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: colors.subtle,
-                            ),
-                          )
-                        else
-                          for (final bt in blockedTasks.take(5))
-                            InkWell(
-                              borderRadius: BorderRadius.circular(4),
-                              onTap: () => controller.openObject(bt.id),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 4,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.lock,
-                                      size: 12,
-                                      color: Colors.amber.shade700,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      child: Text(
-                                        bt.title,
-                                        style: const TextStyle(fontSize: 12.5),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    if (bt.properties['discipline'] != null)
-                                      Text(
-                                        bt.properties['discipline'].toString(),
-                                        style: TextStyle(
-                                          fontSize: 10.5,
-                                          color: colors.subtle,
-                                        ),
-                                      ),
-                                  ],
+                        const SizedBox(height: 14),
+                        if (sortedDisciplines.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Center(
+                              child: Text(
+                                'No disciplines assigned yet. Add tasks to see breakdown.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: colors.subtle,
                                 ),
                               ),
                             ),
+                          )
+                        else
+                          for (final disc in sortedDisciplines) ...[
+                            _buildDisciplineRow(
+                              disc,
+                              disciplineMap[disc]!.total,
+                              disciplineMap[disc]!.done,
+                              disciplineMap[disc]!.points,
+                              colors,
+                            ),
+                            const SizedBox(height: 10),
+                          ],
                       ],
                     ),
                   ),
-                  const SizedBox(height: 14),
+                ),
+                const SizedBox(width: 16),
 
-                  // Bug Severity Breakdown
-                  Container(
+                // Right: Blocked Tasks & Bug Severities
+                Expanded(
+                  flex: 4,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Blocked Tasks Watchdog
+                      Container(
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: colors.panel,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: colors.divider),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.lock_outline,
+                                  size: 16,
+                                  color: Colors.amber.shade700,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Blocked Tasks (${blockedTasks.length})',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: colors.text,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            if (blockedTasks.isEmpty)
+                              Text(
+                                'No tasks currently blocked by unfinished dependencies.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: colors.subtle,
+                                ),
+                              )
+                            else
+                              for (final bt in blockedTasks.take(5))
+                                InkWell(
+                                  borderRadius: BorderRadius.circular(4),
+                                  onTap: () => controller.openObject(bt.id),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 4,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.lock,
+                                          size: 12,
+                                          color: Colors.amber.shade700,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            bt.title,
+                                            style: const TextStyle(
+                                              fontSize: 12.5,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        if (bt.properties['discipline'] != null)
+                                          Text(
+                                            bt.properties['discipline']
+                                                .toString(),
+                                            style: TextStyle(
+                                              fontSize: 10.5,
+                                              color: colors.subtle,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Bug Severity Breakdown
+                      Container(
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: colors.panel,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: colors.divider),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.bug_report_outlined,
+                                  size: 16,
+                                  color: Colors.redAccent,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Open Bug Severity',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: colors.text,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children: [
+                                _severityBadge(
+                                  'Blocker',
+                                  blockerBugs.length,
+                                  Colors.red.shade900,
+                                ),
+                                _severityBadge(
+                                  'Critical',
+                                  criticalBugs.length,
+                                  Colors.red.shade600,
+                                ),
+                                _severityBadge(
+                                  'Major',
+                                  majorBugs.length,
+                                  Colors.orange.shade800,
+                                ),
+                                _severityBadge(
+                                  'Minor',
+                                  minorBugs.length,
+                                  Colors.blue.shade600,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+
+            // 4. Open Tasks List & Playtest Log Summary
+            DashboardColumns(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Left: Open Tasks List
+                Expanded(
+                  flex: 5,
+                  child: Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
                       color: colors.panel,
@@ -677,13 +808,137 @@ class GameDashboardView extends StatelessWidget {
                         Row(
                           children: [
                             Icon(
-                              Icons.bug_report_outlined,
+                              Icons.checklist,
                               size: 16,
-                              color: Colors.redAccent,
+                              color: colors.accent,
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              'Open Bug Severity',
+                              'Open Tasks (${openTasks.length})',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: colors.text,
+                              ),
+                            ),
+                            const Spacer(),
+                            TextButton(
+                              onPressed: () => onSelectViewType?.call('tasks'),
+                              child: const Text(
+                                'View all',
+                                style: TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        if (openTasks.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 20),
+                            child: Center(
+                              child: Text(
+                                'All tasks completed! Great sprint.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: colors.subtle,
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          for (final task in openTasks.take(8)) ...[
+                            Row(
+                              children: [
+                                Checkbox(
+                                  value: task.isCompleted,
+                                  activeColor: colors.accent,
+                                  onChanged: (val) {
+                                    controller.edit(
+                                      task.id,
+                                      properties: {
+                                        ...task.properties,
+                                        'completed': val,
+                                      },
+                                    );
+                                  },
+                                ),
+                                Expanded(
+                                  child: InkWell(
+                                    onTap: () => controller.openObject(task.id),
+                                    child: Text(
+                                      task.title.isEmpty
+                                          ? 'Untitled'
+                                          : task.title,
+                                      style: const TextStyle(fontSize: 12.5),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ),
+                                if (task.properties['discipline'] != null)
+                                  Container(
+                                    margin: const EdgeInsets.only(left: 6),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 5,
+                                      vertical: 1.5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: colors.raised,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      task.properties['discipline'].toString(),
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: colors.subtle,
+                                      ),
+                                    ),
+                                  ),
+                                if (task.properties['estimate'] != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 6),
+                                    child: Text(
+                                      '${task.properties['estimate']}pt',
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w500,
+                                        color: colors.subtle,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const Divider(height: 1),
+                          ],
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+
+                // Right: Recent Game Materials (Canvases, Notes, GDD)
+                Expanded(
+                  flex: 4,
+                  child: Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: colors.panel,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: colors.divider),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.folder_open_outlined,
+                              size: 16,
+                              color: colors.accent,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Game Materials & Canvases',
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
@@ -693,248 +948,64 @@ class GameDashboardView extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 12),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: [
-                            _severityBadge(
-                              'Blocker',
-                              blockerBugs.length,
-                              Colors.red.shade900,
-                            ),
-                            _severityBadge(
-                              'Critical',
-                              criticalBugs.length,
-                              Colors.red.shade600,
-                            ),
-                            _severityBadge(
-                              'Major',
-                              majorBugs.length,
-                              Colors.orange.shade800,
-                            ),
-                            _severityBadge(
-                              'Minor',
-                              minorBugs.length,
-                              Colors.blue.shade600,
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
-
-        // 4. Open Tasks List & Playtest Log Summary
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Left: Open Tasks List
-            Expanded(
-              flex: 5,
-              child: Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: colors.panel,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: colors.divider),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.checklist, size: 16, color: colors.accent),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Open Tasks (${openTasks.length})',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: colors.text,
-                          ),
-                        ),
-                        const Spacer(),
-                        TextButton(
-                          onPressed: () => onSelectViewType?.call('tasks'),
-                          child: const Text(
-                            'View all',
-                            style: TextStyle(fontSize: 12),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    if (openTasks.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 20),
-                        child: Center(
-                          child: Text(
-                            'All tasks completed! Great sprint.',
+                        if (materials.isEmpty)
+                          Text(
+                            'No design notes or canvases yet.',
                             style: TextStyle(
                               fontSize: 12,
                               color: colors.subtle,
                             ),
-                          ),
-                        ),
-                      )
-                    else
-                      for (final task in openTasks.take(8)) ...[
-                        Row(
-                          children: [
-                            Checkbox(
-                              value: task.isCompleted,
-                              activeColor: colors.accent,
-                              onChanged: (val) {
-                                controller.edit(
-                                  task.id,
-                                  properties: {
-                                    ...task.properties,
-                                    'completed': val,
-                                  },
-                                );
-                              },
-                            ),
-                            Expanded(
-                              child: InkWell(
-                                onTap: () => controller.openObject(task.id),
-                                child: Text(
-                                  task.title.isEmpty ? 'Untitled' : task.title,
-                                  style: const TextStyle(fontSize: 12.5),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ),
-                            if (task.properties['discipline'] != null)
-                              Container(
-                                margin: const EdgeInsets.only(left: 6),
+                          )
+                        else
+                          for (final m in materials.take(6))
+                            InkWell(
+                              borderRadius: BorderRadius.circular(6),
+                              onTap: () => controller.openObject(m.id),
+                              child: Padding(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 5,
-                                  vertical: 1.5,
+                                  vertical: 6,
+                                  horizontal: 4,
                                 ),
-                                decoration: BoxDecoration(
-                                  color: colors.raised,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  task.properties['discipline'].toString(),
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: colors.subtle,
-                                  ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      m.typeId == 'orbit.canvas'
+                                          ? Icons.brush_outlined
+                                          : Icons.description_outlined,
+                                      size: 15,
+                                      color: colors.subtle,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        m.title.isEmpty ? 'Untitled' : m.title,
+                                        style: const TextStyle(fontSize: 12.5),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    Text(
+                                      m.typeId == 'orbit.canvas'
+                                          ? 'Canvas'
+                                          : 'Note',
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        color: colors.subtle,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            if (task.properties['estimate'] != null)
-                              Padding(
-                                padding: const EdgeInsets.only(left: 6),
-                                child: Text(
-                                  '${task.properties['estimate']}pt',
-                                  style: TextStyle(
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w500,
-                                    color: colors.subtle,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                        const Divider(height: 1),
-                      ],
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 16),
-
-            // Right: Recent Game Materials (Canvases, Notes, GDD)
-            Expanded(
-              flex: 4,
-              child: Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: colors.panel,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: colors.divider),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.folder_open_outlined,
-                          size: 16,
-                          color: colors.accent,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Game Materials & Canvases',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: colors.text,
-                          ),
-                        ),
+                            ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    if (materials.isEmpty)
-                      Text(
-                        'No design notes or canvases yet.',
-                        style: TextStyle(fontSize: 12, color: colors.subtle),
-                      )
-                    else
-                      for (final m in materials.take(6))
-                        InkWell(
-                          borderRadius: BorderRadius.circular(6),
-                          onTap: () => controller.openObject(m.id),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 6,
-                              horizontal: 4,
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  m.typeId == 'orbit.canvas'
-                                      ? Icons.brush_outlined
-                                      : Icons.description_outlined,
-                                  size: 15,
-                                  color: colors.subtle,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    m.title.isEmpty ? 'Untitled' : m.title,
-                                    style: const TextStyle(fontSize: 12.5),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                Text(
-                                  m.typeId == 'orbit.canvas'
-                                      ? 'Canvas'
-                                      : 'Note',
-                                  style: TextStyle(
-                                    fontSize: 10.5,
-                                    color: colors.subtle,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
           ],
         ),
-      ],
+      ),
     );
   }
 
@@ -969,11 +1040,7 @@ class GameDashboardView extends StatelessWidget {
     return Container(
       width: width,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colors.panel,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colors.divider),
-      ),
+
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -981,12 +1048,14 @@ class GameDashboardView extends StatelessWidget {
             children: [
               Icon(icon, size: 16, color: color),
               const SizedBox(width: 6),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: colors.subtle,
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: colors.subtle,
+                  ),
                 ),
               ),
             ],
@@ -995,13 +1064,13 @@ class GameDashboardView extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              fontSize: 20,
+              fontSize: 24,
               fontWeight: FontWeight.bold,
               color: colors.text,
             ),
           ),
           const SizedBox(height: 4),
-          Text(sub, style: TextStyle(fontSize: 11, color: colors.subtle)),
+          Text(sub, style: TextStyle(fontSize: 13, color: colors.subtle)),
           if (progress != null) ...[
             const SizedBox(height: 8),
             ClipRRect(

@@ -1,5 +1,14 @@
 # Optional sync and future collaboration
 
+2026-10-11 authorized preview: self-hosted whole-Vault snapshot sharing with live
+editing of existing notes/Canvas boards, server-enforced capability roles,
+ephemeral named pointers, known-base merges and explicit conflict recovery.
+Manual Drive backup/restore is a separate provider workflow, pending OAuth activation.
+Limits and actual delivery evidence: [setup](../development/shared-vault-setup.md),
+[ADR 0027](../adr/0027-shared-vault-preview-and-drive-backups.md), and current task.
+Presence is not a text selection/caret sync guarantee, a durable save, verified
+Google identity or a CRDT. Existing future clauses below still apply.
+
 2026-09-12 owner update: Google Drive is now the primary M6 provider, WebDAV the
 second. This supersedes the Supabase-first preference and deferred Drive/WebDAV
 ordering in SYNC-11 below, without changing the local-first requirements. See

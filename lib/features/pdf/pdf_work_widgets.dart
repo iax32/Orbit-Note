@@ -73,6 +73,14 @@ class _PdfFormLayerState extends State<PdfFormLayer> {
           ),
         );
       }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Field draft could not be saved. Please retry.'),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }

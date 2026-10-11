@@ -163,56 +163,72 @@ class _MilestoneViewState extends State<MilestoneView> {
         .where((m) => m.isNotEmpty)
         .toSet();
 
-    final allMilestones = <String>[...defaultMilestones];
+    final configured = widget.viewObject.properties['milestoneStages'];
+    final custom = configured is List
+        ? configured
+              .whereType<String>()
+              .where((s) => s.trim().isNotEmpty)
+              .take(40)
+              .toSet()
+              .toList()
+        : <String>[];
+    final allMilestones = <String>[
+      ...custom.isEmpty ? defaultMilestones : custom,
+    ];
     for (final tm in taskMilestones) {
       if (!allMilestones.any((m) => m.toLowerCase() == tm.toLowerCase())) {
         allMilestones.add(tm);
       }
     }
 
-    return ListView(
-      padding: const EdgeInsets.all(28),
-      children: [
-        // Header
-        Row(
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1080),
+        child: ListView(
+          padding: const EdgeInsets.all(28),
           children: [
-            Icon(Icons.flag_outlined, size: 22, color: colors.accent),
-            const SizedBox(width: 10),
-            Text(
-              'Production Milestones',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+            // Header
+            Row(
+              children: [
+                Icon(Icons.flag_outlined, size: 22, color: colors.accent),
+                const SizedBox(width: 10),
+                Text(
+                  'Production Milestones',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '${scopedTasks.length} scoped tasks',
+                  style: TextStyle(fontSize: 12, color: colors.subtle),
+                ),
+              ],
             ),
-            const Spacer(),
+            const SizedBox(height: 6),
             Text(
-              '${scopedTasks.length} scoped tasks',
-              style: TextStyle(fontSize: 12, color: colors.subtle),
+              'Track release goals, target delivery phases, and discipline progress across milestones.',
+              style: TextStyle(fontSize: 13, color: colors.subtle),
             ),
+            const SizedBox(height: 20),
+
+            // Milestones List
+            for (final ms in allMilestones) ...[
+              _buildMilestoneCard(
+                ms,
+                scopedTasks.where((t) {
+                  final taskMs = t.properties['milestone']
+                      ?.toString()
+                      .toLowerCase();
+                  return taskMs == ms.toLowerCase();
+                }).toList(),
+                colors,
+              ),
+              const SizedBox(height: 14),
+            ],
           ],
         ),
-        const SizedBox(height: 6),
-        Text(
-          'Track release goals, target delivery phases, and discipline progress across milestones.',
-          style: TextStyle(fontSize: 13, color: colors.subtle),
-        ),
-        const SizedBox(height: 20),
-
-        // Milestones List
-        for (final ms in allMilestones) ...[
-          _buildMilestoneCard(
-            ms,
-            scopedTasks.where((t) {
-              final taskMs = t.properties['milestone']
-                  ?.toString()
-                  .toLowerCase();
-              return taskMs == ms.toLowerCase();
-            }).toList(),
-            colors,
-          ),
-          const SizedBox(height: 14),
-        ],
-      ],
+      ),
     );
   }
 
@@ -303,7 +319,7 @@ class _MilestoneViewState extends State<MilestoneView> {
                         ),
                         child: Text(
                           '$done/$total ($percent%)',
-                          style: TextStyle(fontSize: 11, color: colors.subtle),
+                          style: TextStyle(fontSize: 13, color: colors.subtle),
                         ),
                       ),
                       if (totalPts > 0) ...[
@@ -352,7 +368,7 @@ class _MilestoneViewState extends State<MilestoneView> {
                             child: Text(
                               '${entry.key}: ${entry.value.done}/${entry.value.total}',
                               style: TextStyle(
-                                fontSize: 10.5,
+                                fontSize: 12,
                                 color: entry.value.done == entry.value.total
                                     ? Colors.teal
                                     : colors.subtle,

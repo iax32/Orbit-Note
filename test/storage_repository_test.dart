@@ -144,6 +144,305 @@ void main() {
   );
 
   test(
+    'external attachment changes are reported separately from objects',
+    () async {
+      final path = 'Attachments/external/replaced.png';
+      final event = repository.externalAttachmentChanges.firstWhere(
+        (changed) => changed == path,
+      );
+      final file = File(p.join(folder.path, path));
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes([9, 8, 7], flush: true);
+      expect(await event.timeout(const Duration(seconds: 3)), path);
+    },
+  );
+
+  test(
+    'relinking preserves file identity and retains the previous source',
+    () async {
+      final first = await repository.importAttachment(
+        name: 'old.png',
+        bytes: Uint8List.fromList([1, 2, 3]),
+      );
+      final oldPath = first.properties['contentRef'] as String;
+      final updated = await repository.relinkAttachment(
+        first,
+        name: 'new.png',
+        bytes: Uint8List.fromList([4, 5, 6]),
+      );
+      expect(updated.id, first.id);
+      expect(updated.properties['contentRef'], isNot(oldPath));
+      final history = updated.properties['attachmentSourceHistory'] as List;
+      expect(history.single['contentRef'], oldPath);
+      final restored = await repository.restoreAttachmentSource(
+        updated,
+        oldPath,
+      );
+      expect(restored.properties['contentRef'], oldPath);
+      expect(restored.properties['checksum'], first.properties['checksum']);
+      expect(
+        await repository.readAttachment(oldPath),
+        Uint8List.fromList([1, 2, 3]),
+      );
+    },
+  );
+
+  test(
+    'forgetting a retained source removes history and only its immutable bytes',
+    () async {
+      final first = await repository.importAttachment(
+        name: 'old.png',
+        bytes: Uint8List.fromList([1, 2, 3]),
+      );
+      final oldPath = first.properties['contentRef'] as String;
+      final updated = await repository.relinkAttachment(
+        first,
+        name: 'new.png',
+        bytes: Uint8List.fromList([4, 5, 6]),
+      );
+      final phases = <String>[];
+      final cleaned = await repository.forgetAttachmentSourceVersion(
+        updated,
+        oldPath,
+        onProgress: (_, _, phase) => phases.add(phase),
+      );
+
+      expect(cleaned.id, first.id);
+      expect(cleaned.properties['attachmentSourceHistory'], isEmpty);
+      expect(await repository.readAttachment(oldPath), isNull);
+      expect(
+        await repository.readAttachment(
+          cleaned.properties['contentRef'] as String,
+        ),
+        Uint8List.fromList([4, 5, 6]),
+      );
+      expect(phases, contains('Verifying retained source…'));
+    },
+  );
+
+  test(
+    'retained source cleanup preserves history when bytes changed externally',
+    () async {
+      final first = await repository.importAttachment(
+        name: 'old.png',
+        bytes: Uint8List.fromList([1, 2, 3]),
+      );
+      final oldPath = first.properties['contentRef'] as String;
+      final updated = await repository.relinkAttachment(
+        first,
+        name: 'new.png',
+        bytes: Uint8List.fromList([4, 5, 6]),
+      );
+      await File(p.join(folder.path, oldPath)).writeAsBytes([9, 9, 9]);
+
+      await expectLater(
+        repository.forgetAttachmentSourceVersion(updated, oldPath),
+        throwsA(isA<WorkspaceConflict>()),
+      );
+      final current = repository.objects.singleWhere(
+        (object) => object.id == first.id,
+      );
+      expect(current.properties['attachmentSourceHistory'], isNotEmpty);
+      expect(await File(p.join(folder.path, oldPath)).readAsBytes(), [9, 9, 9]);
+    },
+  );
+
+  test(
+    'retained source cleanup refuses paths used by another file object',
+    () async {
+      final first = await repository.importAttachment(
+        name: 'old.png',
+        bytes: Uint8List.fromList([1, 2, 3]),
+      );
+      final oldPath = first.properties['contentRef'] as String;
+      final updated = await repository.relinkAttachment(
+        first,
+        name: 'new.png',
+        bytes: Uint8List.fromList([4, 5, 6]),
+      );
+      final other = await repository.create(
+        typeId: 'orbit.file',
+        title: 'Shared source',
+        properties: {'contentRef': oldPath},
+      );
+
+      await expectLater(
+        repository.forgetAttachmentSourceVersion(updated, oldPath),
+        throwsA(isA<WorkspaceConflict>()),
+      );
+      expect(await repository.readAttachment(oldPath), isNotNull);
+      await repository.trash(other.id);
+    },
+  );
+
+  test('missing attachment recovery requires the recorded checksum', () async {
+    final attachment = await repository.importAttachment(
+      name: 'missing.png',
+      bytes: Uint8List.fromList([7, 8, 9]),
+    );
+    final path = attachment.properties['contentRef'] as String;
+    final file = File(p.join(folder.path, path));
+    await file.delete();
+    await expectLater(
+      repository.recoverMissingAttachment(
+        path,
+        Uint8List.fromList([0]),
+        expectedChecksum: attachment.properties['checksum'] as String,
+      ),
+      throwsA(isA<WorkspaceFailure>()),
+    );
+    await repository.recoverMissingAttachment(
+      path,
+      Uint8List.fromList([7, 8, 9]),
+      expectedChecksum: attachment.properties['checksum'] as String,
+    );
+    expect(
+      await repository.readAttachment(path),
+      Uint8List.fromList([7, 8, 9]),
+    );
+  });
+
+  test(
+    'streamed missing attachment recovery reports progress and verifies bytes',
+    () async {
+      final attachment = await repository.importAttachment(
+        name: 'streamed.png',
+        bytes: Uint8List.fromList([7, 8, 9, 10]),
+      );
+      final path = attachment.properties['contentRef'] as String;
+      await File(p.join(folder.path, path)).delete();
+      final progress = <int>[];
+
+      await repository.recoverMissingAttachmentStream(
+        path,
+        Stream<List<int>>.fromIterable([
+          [7, 8],
+          [9, 10],
+        ]),
+        expectedChecksum: attachment.properties['checksum'] as String,
+        onProgress: progress.add,
+      );
+
+      expect(progress, isNotEmpty);
+      expect(progress.last, 4);
+      expect(await repository.readAttachment(path), [7, 8, 9, 10]);
+    },
+  );
+
+  test(
+    'streamed relinking verifies and persists the source without buffering the UI',
+    () async {
+      final first = await repository.importAttachment(
+        name: 'old.png',
+        bytes: Uint8List.fromList([1, 2, 3]),
+      );
+      final next = Uint8List.fromList([4, 5, 6, 7]);
+      final checksum = sha256.convert(next).toString();
+      final progress = <int>[];
+
+      final updated = await repository.relinkAttachmentStream(
+        first,
+        name: 'new.png',
+        expectedChecksum: checksum,
+        bytes: Stream<List<int>>.fromIterable([
+          [4, 5],
+          [6, 7],
+        ]),
+        onProgress: progress.add,
+      );
+
+      expect(updated.properties['checksum'], checksum);
+      expect(updated.properties['byteLength'], next.length);
+      expect(progress.last, next.length);
+      expect(
+        await repository.readAttachment(
+          updated.properties['contentRef'] as String,
+        ),
+        next,
+      );
+    },
+  );
+
+  test(
+    'interrupted streamed recovery is listed and can resume from its saved offset',
+    () async {
+      final payload = Uint8List.fromList([11, 12, 13, 14]);
+      final attachment = await repository.importAttachment(
+        name: 'resume.bin',
+        bytes: payload,
+      );
+      final path = attachment.properties['contentRef'] as String;
+      await File(p.join(folder.path, path)).delete();
+      Stream<List<int>> interrupted() async* {
+        yield [11, 12];
+        throw const WorkspaceFailure('simulated interruption');
+      }
+
+      await expectLater(
+        repository.recoverMissingAttachmentStream(
+          path,
+          interrupted(),
+          expectedChecksum: attachment.properties['checksum'] as String,
+        ),
+        throwsA(isA<WorkspaceFailure>()),
+      );
+      final stages = await repository.attachmentRecoveryStages(target: path);
+      expect(stages, hasLength(1));
+      expect(stages.single.length, 2);
+
+      await repository.recoverMissingAttachmentStream(
+        path,
+        Stream.value([13, 14]),
+        expectedChecksum: stages.single.expectedHash,
+        resumableStageId: stages.single.id,
+      );
+      expect(await repository.readAttachment(path), payload);
+      expect(await repository.attachmentRecoveryStages(target: path), isEmpty);
+    },
+  );
+
+  test(
+    'cancelling streamed recovery preserves a resumable native stage',
+    () async {
+      final payload = Uint8List.fromList([21, 22, 23, 24]);
+      final attachment = await repository.importAttachment(
+        name: 'cancel.bin',
+        bytes: payload,
+      );
+      final path = attachment.properties['contentRef'] as String;
+      await File(p.join(folder.path, path)).delete();
+      var cancelled = false;
+
+      await expectLater(
+        repository.recoverMissingAttachmentStream(
+          path,
+          Stream<List<int>>.fromIterable([
+            [21, 22],
+            [23, 24],
+          ]),
+          expectedChecksum: attachment.properties['checksum'] as String,
+          onProgress: (_) => cancelled = true,
+          isCancelled: () => cancelled,
+        ),
+        throwsA(isA<WorkspaceFailure>()),
+      );
+
+      final stages = await repository.attachmentRecoveryStages(target: path);
+      expect(stages, hasLength(1));
+      expect(stages.single.length, 2);
+      expect(await repository.readAttachment(path), isNull);
+
+      await repository.recoverMissingAttachmentStream(
+        path,
+        Stream.value([23, 24]),
+        expectedChecksum: stages.single.expectedHash,
+        resumableStageId: stages.single.id,
+      );
+      expect(await repository.readAttachment(path), payload);
+    },
+  );
+
+  test(
     'portable export retains canonical files and excludes device history',
     () async {
       await repository.create(

@@ -38,6 +38,104 @@ void main() {
     container.dispose();
   });
   test(
+    'named PDF bookmarks preserve legacy pages and survive reopen and failed saves',
+    () async {
+      final bytes = researchPdf();
+      final file = await repo.importAttachment(name: 'Book.pdf', bytes: bytes);
+      await controller.refresh();
+      controller.edit(
+        file.id,
+        properties: {
+          ...file.properties,
+          'pdfBookmarks': [1, 2],
+          'pdfBookmarkNames': {
+            'future': {'keep': true},
+          },
+          'custom': 42,
+        },
+      );
+      await controller.flush(file.id);
+      final checksum = file.properties['checksum'] as String?;
+      expect(
+        await controller.renamePdfBookmark(
+          file.id,
+          2,
+          '  Equations  ',
+          expectedChecksum: checksum,
+        ),
+        isTrue,
+      );
+      await controller.initialize();
+      var saved = controller.find(file.id)!;
+      expect(saved.properties['pdfBookmarks'], [1, 2]);
+      expect(saved.properties['pdfBookmarkNames'], {
+        'future': {'keep': true},
+        '2': 'Equations',
+      });
+      expect(saved.properties['custom'], 42);
+      expect(
+        await controller.renamePdfBookmark(
+          file.id,
+          2,
+          'Wrong source',
+          expectedChecksum: 'stale',
+        ),
+        isFalse,
+      );
+      expect(
+        await controller.renamePdfBookmark(
+          file.id,
+          3,
+          'Missing page bookmark',
+          expectedChecksum: checksum,
+        ),
+        isFalse,
+      );
+      store.failWrites = true;
+      expect(
+        await controller.renamePdfBookmark(
+          file.id,
+          2,
+          'Retry me',
+          expectedChecksum: checksum,
+        ),
+        isFalse,
+      );
+      expect(controller.dirty, contains(file.id));
+      store.failWrites = false;
+      expect(
+        await controller.renamePdfBookmark(
+          file.id,
+          2,
+          'Retry me',
+          expectedChecksum: checksum,
+        ),
+        isTrue,
+      );
+      await controller.initialize();
+      saved = controller.find(file.id)!;
+      expect((saved.properties['pdfBookmarkNames'] as Map)['2'], 'Retry me');
+      expect(
+        await controller.renamePdfBookmark(
+          file.id,
+          2,
+          '',
+          expectedChecksum: checksum,
+        ),
+        isTrue,
+      );
+      await controller.initialize();
+      expect(controller.find(file.id)!.properties['pdfBookmarkNames'], {
+        'future': {'keep': true},
+      });
+      expect(
+        await repo.readAttachment(file.properties['contentRef'] as String),
+        bytes,
+      );
+    },
+  );
+
+  test(
     'PDF documentation starters persist with provenance and safe failures',
     () async {
       final bytes = researchPdf();
@@ -265,6 +363,166 @@ void main() {
       expect(PdfAnnotation.isAnnotation(controller.find(note.id)!), isTrue);
     },
   );
+  test(
+    'PDF page reviews persist, keep identity and export linked summaries',
+    () async {
+      final bytes = researchPdf();
+      final file = await repo.importAttachment(
+        name: 'source.pdf',
+        bytes: bytes,
+      );
+      await controller.refresh();
+      final checksum = file.properties['checksum'] as String;
+      final note = (await controller.createPdfPageComment(
+        file.id,
+        checksum,
+        2,
+        'Review this diagram',
+      ))!;
+      final initial = PdfAnnotation(note);
+      expect(initial.isPageComment, isTrue);
+      expect(initial.page, 2);
+      expect(initial.resolved, isFalse);
+      controller.edit(
+        note.id,
+        properties: {
+          ...note.properties,
+          'futureProperty': {'keep': true},
+          'pdfSource': {...initial.source, 'futureSource': 7},
+        },
+      );
+      await controller.flushAll();
+      final expected = PdfAnnotation(controller.find(note.id)!);
+      expect(
+        await controller.updatePdfReview(
+          expected,
+          body: 'Checked the diagram',
+          color: 0xff22c55e,
+          style: 'highlight',
+          resolved: true,
+        ),
+        isTrue,
+      );
+      await controller.initialize();
+      final restored = PdfAnnotation(controller.find(note.id)!);
+      expect(restored.resolved, isTrue);
+      expect(restored.color, 0xff22c55e);
+      expect(restored.object.body, 'Checked the diagram');
+      expect(restored.source['futureSource'], 7);
+      expect(restored.object.properties['futureProperty'], {'keep': true});
+      controller.edit(file.id, title: 'Renamed source');
+      await controller.flushAll();
+      final summary = (await controller.createPdfReviewSummary(file.id, [
+        note.id,
+      ]))!;
+      expect(summary.body, contains('[[${file.id}#page=2|Renamed source'));
+      expect(summary.body, contains('[[${note.id}|'));
+      expect(summary.body, contains('Resolved'));
+      await controller.initialize();
+      expect(controller.find(summary.id)!.body, summary.body);
+      expect(
+        await repo.readAttachment(file.properties['contentRef'] as String),
+        bytes,
+      );
+      await controller.trash(note.id);
+      expect(
+        await controller.createPdfReviewSummary(file.id, [note.id]),
+        isNull,
+      );
+      await controller.restore(note.id);
+      expect(PdfAnnotation(controller.find(note.id)!).resolved, isTrue);
+    },
+  );
+
+  test(
+    'PDF reviews reject stale dialogs and versions and retain failed drafts',
+    () async {
+      final file = await repo.importAttachment(
+        name: 'source.pdf',
+        bytes: researchPdf(),
+      );
+      await controller.refresh();
+      final checksum = file.properties['checksum'] as String;
+      final note = (await controller.createPdfPageComment(
+        file.id,
+        checksum,
+        1,
+        'Initial',
+      ))!;
+      final old = PdfAnnotation(note);
+      controller.edit(note.id, body: 'Newer edit from the other pane');
+      expect(
+        await controller.updatePdfReview(
+          old,
+          body: 'Stale dialog',
+          color: 0xffeab308,
+          style: 'highlight',
+          resolved: true,
+        ),
+        isFalse,
+      );
+      expect(controller.find(note.id)!.body, 'Newer edit from the other pane');
+      await controller.flushAll();
+      store.failWrites = true;
+      expect(
+        await controller.updatePdfReview(
+          PdfAnnotation(controller.find(note.id)!),
+          body: 'Retained review draft',
+          color: 0xffeab308,
+          style: 'highlight',
+          resolved: true,
+        ),
+        isFalse,
+      );
+      expect(controller.dirty, contains(note.id));
+      expect(controller.find(note.id)!.body, 'Retained review draft');
+      final count = controller.objects.length;
+      expect(
+        await controller.createPdfReviewSummary(file.id, [note.id]),
+        isNull,
+      );
+      expect(controller.objects.length, count);
+      store.failWrites = false;
+      await controller.retry(note.id);
+      await controller.initialize();
+      expect(controller.find(note.id)!.body, 'Retained review draft');
+      expect(
+        await controller.createPdfPageComment(
+          file.id,
+          'old-version',
+          1,
+          'Stale',
+        ),
+        isNull,
+      );
+      expect(
+        await controller.createPdfPageComment(file.id, checksum, 0, 'Invalid'),
+        isNull,
+      );
+      expect(
+        await controller.createPdfPageComment(file.id, checksum, 1, '  '),
+        isNull,
+      );
+      controller.edit(
+        file.id,
+        properties: {
+          ...controller.find(file.id)!.properties,
+          'checksum': 'new-version',
+        },
+      );
+      expect(
+        await controller.updatePdfReview(
+          PdfAnnotation(controller.find(note.id)!),
+          body: 'Wrong version',
+          color: 0xffeab308,
+          style: 'highlight',
+          resolved: false,
+        ),
+        isFalse,
+      );
+    },
+  );
+
   test('editing while a save is pending commits the newest draft', () async {
     final object = (await controller.create('orbit.note'))!;
     final gate = Completer<void>();
@@ -459,6 +717,52 @@ void main() {
       expect(controller.session.splitRatio, .35);
       expect(controller.session.positions['secondary:${note.id}'], 900);
       expect(controller.session.destination, OrbitDestination.home);
+    },
+  );
+  test(
+    'deletePermanently purges session bookmarks, recent, and nav history',
+    () async {
+      final note = (await controller.create('orbit.note'))!;
+      controller.bookmarkTab(note.id);
+      controller.openObject(note.id);
+      controller.updateSession((s) {
+        s.positions = {'primary:${note.id}': 50};
+      });
+      expect(controller.session.bookmarkedTabs, contains(note.id));
+      expect(controller.session.recent, contains(note.id));
+
+      await controller.deletePermanently(note.id);
+
+      expect(controller.session.bookmarkedTabs, isNot(contains(note.id)));
+      expect(controller.session.recent, isNot(contains(note.id)));
+      expect(controller.session.closedTabs, isNot(contains(note.id)));
+      expect(
+        controller.session.positions.containsKey('primary:${note.id}'),
+        isFalse,
+      );
+      expect(controller.backHistory.any((o) => o.id == note.id), isFalse);
+    },
+  );
+  test(
+    'emptyTrash purges session references for all trashed objects',
+    () async {
+      final note1 = (await controller.create('orbit.note'))!;
+      final note2 = (await controller.create('orbit.note'))!;
+      controller.bookmarkTab(note1.id);
+      controller.bookmarkTab(note2.id);
+      controller.openObject(note1.id);
+      controller.openObject(note2.id);
+
+      await controller.trash(note1.id);
+      await controller.trash(note2.id);
+      await controller.emptyTrash();
+
+      expect(controller.session.bookmarkedTabs, isNot(contains(note1.id)));
+      expect(controller.session.bookmarkedTabs, isNot(contains(note2.id)));
+      expect(controller.session.recent, isNot(contains(note1.id)));
+      expect(controller.session.recent, isNot(contains(note2.id)));
+      expect(controller.session.closedTabs, isNot(contains(note1.id)));
+      expect(controller.session.closedTabs, isNot(contains(note2.id)));
     },
   );
 }

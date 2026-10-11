@@ -4,8 +4,12 @@ import 'package:flutter/material.dart';
 import '../../app/orbit_theme.dart';
 import '../../app/workspace_controller.dart';
 import '../../domain/calendar_event.dart';
+import '../../domain/event_recurrence.dart';
 import '../../domain/universal_object.dart';
 import 'workspace_views.dart';
+import 'task_planning_panel.dart';
+import 'calendar_planning_workspace.dart';
+import 'event_occurrence_dialog.dart';
 
 const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const _months = [
@@ -43,8 +47,17 @@ class CalendarView extends StatefulWidget {
 class _CalendarViewState extends State<CalendarView> {
   late DateTime _visibleMonth;
   late DateTime _selectedDay;
+  bool _weekView = false;
+  List<UniversalObject> _calendarObjects = [];
 
   List<UniversalObject> get _scopedObjects {
+    if (widget.viewObject?.properties['smartQuery'] != null) {
+      try {
+        return widget.controller.queryViewObjects(widget.viewObject!);
+      } on Object {
+        return [];
+      }
+    }
     final effectiveScope =
         widget.scope ??
         (widget.viewObject?.properties['scope'] as String?)?.trim();
@@ -52,30 +65,35 @@ class _CalendarViewState extends State<CalendarView> {
         widget.folderFilter ??
         (widget.viewObject?.properties['folder'] as String?)?.trim();
 
-    return widget.controller.objects.where((o) {
-      if (effectiveFolder != null && effectiveFolder.isNotEmpty) {
-        final f = o.properties['folder'];
-        if (f is String && f == effectiveFolder) return true;
-        final p = widget.controller.repository.objectPath(o.id);
-        if (p != null && p.startsWith('$effectiveFolder/')) return true;
-      }
-      if (effectiveScope != null && effectiveScope.isNotEmpty) {
-        final course = o.properties['course']?.toString().toLowerCase();
-        final project = o.properties['project']?.toString().toLowerCase();
-        final contextVal = o.properties['context']?.toString().toLowerCase();
-        final lowerScope = effectiveScope.toLowerCase();
-        if (course == lowerScope ||
-            project == lowerScope ||
-            contextVal == lowerScope) {
-          return true;
-        }
-      }
-      if ((effectiveFolder == null || effectiveFolder.isEmpty) &&
-          (effectiveScope == null || effectiveScope.isEmpty)) {
-        return true;
-      }
-      return false;
-    }).toList();
+    return widget.controller.objects
+        .where(widget.controller.inActiveSpace)
+        .where((o) {
+          if (effectiveFolder != null && effectiveFolder.isNotEmpty) {
+            final f = o.properties['folder'];
+            if (f is String && f == effectiveFolder) return true;
+            final p = widget.controller.repository.objectPath(o.id);
+            if (p != null && p.startsWith('$effectiveFolder/')) return true;
+          }
+          if (effectiveScope != null && effectiveScope.isNotEmpty) {
+            final course = o.properties['course']?.toString().toLowerCase();
+            final project = o.properties['project']?.toString().toLowerCase();
+            final contextVal = o.properties['context']
+                ?.toString()
+                .toLowerCase();
+            final lowerScope = effectiveScope.toLowerCase();
+            if (course == lowerScope ||
+                project == lowerScope ||
+                contextVal == lowerScope) {
+              return true;
+            }
+          }
+          if ((effectiveFolder == null || effectiveFolder.isEmpty) &&
+              (effectiveScope == null || effectiveScope.isEmpty)) {
+            return true;
+          }
+          return false;
+        })
+        .toList();
   }
 
   @override
@@ -88,6 +106,15 @@ class _CalendarViewState extends State<CalendarView> {
 
   void _previousMonth() {
     setState(() {
+      if (_weekView) {
+        _selectedDay = DateTime(
+          _selectedDay.year,
+          _selectedDay.month,
+          _selectedDay.day - 7,
+        );
+        _visibleMonth = DateTime(_selectedDay.year, _selectedDay.month);
+        return;
+      }
       _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month - 1);
       _selectedDay = DateTime(
         _visibleMonth.year,
@@ -102,6 +129,15 @@ class _CalendarViewState extends State<CalendarView> {
 
   void _nextMonth() {
     setState(() {
+      if (_weekView) {
+        _selectedDay = DateTime(
+          _selectedDay.year,
+          _selectedDay.month,
+          _selectedDay.day + 7,
+        );
+        _visibleMonth = DateTime(_selectedDay.year, _selectedDay.month);
+        return;
+      }
       _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month + 1);
       _selectedDay = DateTime(
         _visibleMonth.year,
@@ -128,7 +164,13 @@ class _CalendarViewState extends State<CalendarView> {
   Widget build(BuildContext context) {
     final colors = OrbitColors.of(context);
     final days = _daysForGrid();
-    final dayEntries = entriesOn(_scopedObjects, _selectedDay);
+    final projection = projectEventRange(
+      _scopedObjects,
+      days.first,
+      DateTime(days.last.year, days.last.month, days.last.day + 1),
+    );
+    _calendarObjects = projection.objects;
+    final dayEntries = entriesOn(_calendarObjects, _selectedDay);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -137,8 +179,30 @@ class _CalendarViewState extends State<CalendarView> {
         final calendarPane = Column(
           children: [
             _buildHeader(context, colors),
-            _buildWeekdayRow(colors),
-            Expanded(child: _buildGrid(days, colors)),
+            if (projection.issues.isNotEmpty)
+              Tooltip(
+                message: projection.issues.join('\n'),
+                child: Text(
+                  'Some repeats need review: ${projection.issues.join(' · ')}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            if (widget.controller.canUndoPlanning)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: widget.controller.undoPlanning,
+                  icon: const Icon(Icons.undo, size: 16),
+                  label: const Text('Undo reschedule'),
+                ),
+              ),
+            if (_weekView)
+              Expanded(child: _buildWeekGrid(colors))
+            else ...[
+              _buildWeekdayRow(colors),
+              Expanded(child: _buildGrid(days, colors)),
+            ],
           ],
         );
 
@@ -172,59 +236,268 @@ class _CalendarViewState extends State<CalendarView> {
 
   Widget _buildHeader(BuildContext context, OrbitColors colors) {
     final monthName = _months[_visibleMonth.month - 1];
-    final title = '$monthName ${_visibleMonth.year}';
+    final title = _weekView
+        ? 'Week of ${_months[_selectedDay.month - 1]} ${_selectedDay.day}'
+        : '$monthName ${_visibleMonth.year}';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: OrbitMotionScope.duration(context, OrbitMotion.panel),
-              child: Text(
-                title,
-                key: ValueKey(title),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+      child: LayoutBuilder(
+        builder: (context, constraints) => Wrap(
+          spacing: 4,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            SizedBox(
+              width: constraints.maxWidth > 720 ? 190 : 150,
+              child: AnimatedSwitcher(
+                duration: OrbitMotionScope.duration(context, OrbitMotion.panel),
+                child: Text(
+                  title,
+                  key: ValueKey(title),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton(
-            onPressed: _goToToday,
-            style: OutlinedButton.styleFrom(
+            const SizedBox(width: 4),
+            Container(
+              height: 32,
+              decoration: BoxDecoration(
+                color: colors.panel,
+                border: Border.all(color: colors.border),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _viewChoice(colors, 'Month', selected: !_weekView),
+                  _viewChoice(colors, 'Week', selected: _weekView),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              onPressed: _goToToday,
+              style: OutlinedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+              ),
+              child: const Text('Today'),
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+              tooltip: _weekView ? 'Previous week' : 'Previous month',
+              icon: const Icon(Icons.chevron_left, size: 20),
+              onPressed: _previousMonth,
               visualDensity: VisualDensity.compact,
             ),
-            child: const Text('Today'),
-          ),
-          const SizedBox(width: 4),
-          IconButton(
-            tooltip: 'Previous month',
-            icon: const Icon(Icons.chevron_left, size: 20),
-            onPressed: _previousMonth,
-            visualDensity: VisualDensity.compact,
-          ),
-          IconButton(
-            tooltip: 'Next month',
-            icon: const Icon(Icons.chevron_right, size: 20),
-            onPressed: _nextMonth,
-            visualDensity: VisualDensity.compact,
-          ),
-          const SizedBox(width: 4),
-          FilledButton.icon(
-            onPressed: () => showEventDialog(
-              context,
-              widget.controller,
-              initialDate: _selectedDay,
+            IconButton(
+              tooltip: _weekView ? 'Next week' : 'Next month',
+              icon: const Icon(Icons.chevron_right, size: 20),
+              onPressed: _nextMonth,
+              visualDensity: VisualDensity.compact,
             ),
-            icon: const Icon(Icons.add, size: 16),
-            label: const Text('New event'),
-            style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+            const SizedBox(width: 4),
+            OutlinedButton.icon(
+              onPressed: () => showCalendarPlanning(
+                context,
+                widget.controller,
+                scope: () => _scopedObjects,
+              ),
+              icon: const Icon(Icons.calendar_view_week_outlined, size: 16),
+              label: const Text('Planning workspace'),
+            ),
+            FilledButton.icon(
+              onPressed: () => showEventDialog(
+                context,
+                widget.controller,
+                initialDate: _selectedDay,
+              ),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('New event'),
+              style: FilledButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _viewChoice(
+    OrbitColors colors,
+    String label, {
+    required bool selected,
+  }) {
+    return InkWell(
+      onTap: () => setState(() => _weekView = label == 'Week'),
+      borderRadius: BorderRadius.circular(7),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? colors.selected : Colors.transparent,
+          borderRadius: BorderRadius.circular(7),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: selected ? colors.accentHover : colors.subtle,
           ),
+        ),
+      ),
+    );
+  }
+
+  List<DateTime> _daysForWeek() {
+    final start = DateTime(
+      _selectedDay.year,
+      _selectedDay.month,
+      _selectedDay.day - _selectedDay.weekday + DateTime.monday,
+    );
+    return List.generate(
+      7,
+      (index) => DateTime(start.year, start.month, start.day + index),
+    );
+  }
+
+  Widget _buildWeekGrid(OrbitColors colors) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final days = _daysForWeek();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final day in days)
+            Expanded(
+              child: DragTarget<CalendarDragData>(
+                onWillAcceptWithDetails: (data) =>
+                    !widget.controller.repository.readOnly &&
+                    !data.data.object.isReadOnly,
+                onAcceptWithDetails: (data) => previewCalendarMove(
+                  context,
+                  widget.controller,
+                  data.data,
+                  day,
+                ),
+                builder: (ctx, candidates, rejected) => InkWell(
+                  onTap: () => setState(() => _selectedDay = day),
+                  onDoubleTap: () => showEventDialog(
+                    context,
+                    widget.controller,
+                    initialDate: day,
+                  ),
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 4),
+                    decoration: BoxDecoration(
+                      color: candidates.isNotEmpty || day == _selectedDay
+                          ? colors.accent.withAlpha(14)
+                          : Colors.transparent,
+                      border: Border(
+                        top: BorderSide(
+                          color: day == _selectedDay
+                              ? colors.accent
+                              : colors.border,
+                          width: day == _selectedDay ? 2 : 1,
+                        ),
+                        left: BorderSide(color: colors.border),
+                        right: BorderSide(color: colors.border),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Column(
+                            children: [
+                              Text(
+                                _weekdays[day.weekday - 1].toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: colors.subtle,
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                '${day.day}',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: day == today
+                                      ? colors.accent
+                                      : colors.text,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Divider(height: 1, color: colors.border),
+                        Expanded(
+                          child: ListView(
+                            padding: const EdgeInsets.all(6),
+                            children: [
+                              for (final entry in entriesOn(
+                                _calendarObjects,
+                                day,
+                              ))
+                                CalendarPlanningActions(
+                                  controller: widget.controller,
+                                  entry: entry,
+                                  child: InkWell(
+                                    onTap: () => widget.controller.openObject(
+                                      entry.object.id,
+                                    ),
+                                    child: _buildWeekEntry(colors, entry),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildWeekEntry(OrbitColors colors, CalendarEntry entry) {
+    final isTask = entry.object.typeId == 'orbit.task';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.all(7),
+      decoration: BoxDecoration(
+        color: isTask ? colors.raised : colors.accent.withAlpha(18),
+        border: Border(
+          left: BorderSide(
+            color: isTask ? Colors.orange.shade400 : colors.accent,
+            width: 2,
+          ),
+        ),
+      ),
+      child: Text(
+        entry.object.title,
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 11,
+          height: 1.25,
+          color: colors.text,
+          fontWeight: FontWeight.w500,
+        ),
       ),
     );
   }
@@ -277,7 +550,7 @@ class _CalendarViewState extends State<CalendarView> {
               day.month == _selectedDay.month &&
               day.day == _selectedDay.day;
 
-          final entries = entriesOn(_scopedObjects, day);
+          final entries = entriesOn(_calendarObjects, day);
           final eventCount = entries
               .where((e) => e.object.typeId == 'orbit.event')
               .length;
@@ -285,102 +558,111 @@ class _CalendarViewState extends State<CalendarView> {
               .where((e) => e.object.typeId == 'orbit.task')
               .length;
 
-          return InkWell(
-            onTap: () {
-              setState(() {
-                _selectedDay = day;
-                if (day.month != _visibleMonth.month) {
-                  _visibleMonth = DateTime(day.year, day.month);
-                }
-              });
-            },
-            onDoubleTap: () =>
-                showEventDialog(context, widget.controller, initialDate: day),
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? colors.raised
-                    : (isToday
-                          ? colors.accent.withAlpha(20)
-                          : Colors.transparent),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
+          return DragTarget<CalendarDragData>(
+            onWillAcceptWithDetails: (d) =>
+                !widget.controller.repository.readOnly &&
+                !d.data.object.isReadOnly,
+            onAcceptWithDetails: (d) =>
+                previewCalendarMove(context, widget.controller, d.data, day),
+            builder: (_, candidates, rejected) => InkWell(
+              onTap: () {
+                setState(() {
+                  _selectedDay = day;
+                  if (day.month != _visibleMonth.month) {
+                    _visibleMonth = DateTime(day.year, day.month);
+                  }
+                });
+              },
+              onDoubleTap: () =>
+                  showEventDialog(context, widget.controller, initialDate: day),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                decoration: BoxDecoration(
                   color: isSelected
-                      ? colors.accent
-                      : (isToday ? colors.accent.withAlpha(80) : colors.border),
-                  width: isSelected ? 1.5 : 1,
-                ),
-              ),
-              padding: const EdgeInsets.all(4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isToday ? colors.accent : Colors.transparent,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          '${day.day}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: isToday || isSelected
-                                ? FontWeight.bold
-                                : FontWeight.normal,
-                            color: isToday
-                                ? Colors.white
-                                : (isCurrentMonth
-                                      ? colors.text
-                                      : colors.subtle.withAlpha(120)),
-                          ),
-                        ),
-                      ),
-                      if (entries.isNotEmpty)
-                        Text(
-                          '${entries.length}',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: colors.subtle,
-                          ),
-                        ),
-                    ],
+                      ? colors.raised
+                      : (isToday
+                            ? colors.accent.withAlpha(20)
+                            : Colors.transparent),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isSelected
+                        ? colors.accent
+                        : (isToday
+                              ? colors.accent.withAlpha(80)
+                              : colors.border),
+                    width: isSelected ? 1.5 : 1,
                   ),
-                  const Spacer(),
-                  if (entries.isNotEmpty)
+                ),
+                padding: const EdgeInsets.all(4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        if (eventCount > 0)
-                          Container(
-                            width: 6,
-                            height: 6,
-                            margin: const EdgeInsets.only(right: 3),
-                            decoration: BoxDecoration(
-                              color: colors.accent,
-                              shape: BoxShape.circle,
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isToday ? colors.accent : Colors.transparent,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '${day.day}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: isToday || isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              color: isToday
+                                  ? Colors.white
+                                  : (isCurrentMonth
+                                        ? colors.text
+                                        : colors.subtle.withAlpha(120)),
                             ),
                           ),
-                        if (taskCount > 0)
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              color: Colors.orange.shade400,
-                              shape: BoxShape.circle,
+                        ),
+                        if (entries.isNotEmpty)
+                          Text(
+                            '${entries.length}',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: colors.subtle,
                             ),
                           ),
                       ],
                     ),
-                ],
+                    const Spacer(),
+                    if (entries.isNotEmpty)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          if (eventCount > 0)
+                            Container(
+                              width: 6,
+                              height: 6,
+                              margin: const EdgeInsets.only(right: 3),
+                              decoration: BoxDecoration(
+                                color: colors.accent,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          if (taskCount > 0)
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: Colors.orange.shade400,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                        ],
+                      ),
+                  ],
+                ),
               ),
             ),
           );
@@ -413,12 +695,11 @@ class _CalendarViewState extends State<CalendarView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'DAY AGENDA',
+                        'Day agenda',
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
-                          letterSpacing: 1.2,
-                          color: colors.accent,
+                          color: colors.subtle,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -448,7 +729,7 @@ class _CalendarViewState extends State<CalendarView> {
           Divider(height: 1, color: colors.border),
           Expanded(
             child: entries.isEmpty
-                ? Center(
+                ? SingleChildScrollView(
                     child: Padding(
                       padding: const EdgeInsets.all(24),
                       child: Column(
@@ -456,7 +737,7 @@ class _CalendarViewState extends State<CalendarView> {
                         children: [
                           Icon(
                             Icons.event_available,
-                            size: 36,
+                            size: OrbitSize.iconLarge,
                             color: colors.subtle.withAlpha(120),
                           ),
                           const SizedBox(height: 12),
@@ -489,9 +770,17 @@ class _CalendarViewState extends State<CalendarView> {
                     itemBuilder: (context, index) {
                       final entry = entries[index];
                       if (entry.object.typeId == 'orbit.task') {
-                        return _buildTaskCard(context, colors, entry);
+                        return CalendarPlanningActions(
+                          controller: widget.controller,
+                          entry: entry,
+                          child: _buildTaskCard(context, colors, entry),
+                        );
                       }
-                      return _buildEventCard(context, colors, entry);
+                      return CalendarPlanningActions(
+                        controller: widget.controller,
+                        entry: entry,
+                        child: _buildEventCard(context, colors, entry),
+                      );
                     },
                   ),
           ),
@@ -547,10 +836,13 @@ class _CalendarViewState extends State<CalendarView> {
                 ),
               ),
               IconButton(
-                tooltip: 'Edit event',
+                tooltip: o is EventOccurrence
+                    ? 'Change this occurrence'
+                    : 'Edit event',
                 icon: const Icon(Icons.edit_outlined, size: 15),
-                onPressed: () =>
-                    showEventDialog(context, widget.controller, event: o),
+                onPressed: () => o is EventOccurrence
+                    ? showEventOccurrenceDialog(context, widget.controller, o)
+                    : showEventDialog(context, widget.controller, event: o),
                 visualDensity: VisualDensity.compact,
               ),
             ],

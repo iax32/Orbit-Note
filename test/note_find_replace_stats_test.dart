@@ -274,6 +274,8 @@ void main() {
 
         // Click Replace all in selection
         await tester.tap(find.text('Replace all in selection'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.textContaining('Apply '));
         await tester.pump();
 
         // The 3 apples inside [ ... ] are replaced with orange; outer apples remain untouched!

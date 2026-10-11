@@ -12,7 +12,9 @@ String canvasToSvg(
   CanvasBounds? bounds,
   bool transparent = false,
   int? backgroundColor,
+  String? backgroundStyle,
   Iterable<String>? elementIds,
+  double scale = 1.0,
 }) {
   final targetIds = elementIds?.toSet();
 
@@ -40,7 +42,13 @@ String canvasToSvg(
   final minX = exportBounds.left;
   final minY = exportBounds.top;
 
-  final bgHex = backgroundColor != null
+  final isBlueprint =
+      backgroundStyle == 'blueprint' || backgroundStyle == 'blueprint_classic';
+  final bgHex = isBlueprint
+      ? backgroundStyle == 'blueprint_classic'
+            ? '#123b70'
+            : '#173f69'
+      : backgroundColor != null
       ? _toHexColor(backgroundColor)
       : '#121218';
 
@@ -50,7 +58,7 @@ String canvasToSvg(
     '<svg xmlns="http://www.w3.org/2000/svg" '
     'xmlns:xlink="http://www.w3.org/1999/xlink" '
     'viewBox="${_formatNum(minX)} ${_formatNum(minY)} ${_formatNum(width)} ${_formatNum(height)}" '
-    'width="${_formatNum(width)}" height="${_formatNum(height)}">',
+    'width="${_formatNum(width * scale)}" height="${_formatNum(height * scale)}">',
   );
 
   // Embedded styles and defs
@@ -67,6 +75,23 @@ String canvasToSvg(
     '      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.18"/>',
   );
   buffer.writeln('    </filter>');
+  if (!transparent && isBlueprint) {
+    buffer.writeln(
+      '    <pattern id="orbit-blueprint-grid" width="60" height="60" '
+      'patternUnits="userSpaceOnUse">',
+    );
+    buffer.writeln(
+      '      <path d="M 0 0 L 60 0 M 0 0 L 0 60" '
+      'stroke="#f4f8ff" stroke-opacity="0.18" stroke-width="1"/>',
+    );
+    buffer.writeln(
+      '      <path d="M 12 0 L 12 60 M 24 0 L 24 60 M 36 0 L 36 60 '
+      'M 48 0 L 48 60 M 0 12 L 60 12 M 0 24 L 60 24 M 0 36 L 60 36 '
+      'M 0 48 L 60 48" stroke="#f4f8ff" stroke-opacity="0.075" '
+      'stroke-width="0.6"/>',
+    );
+    buffer.writeln('    </pattern>');
+  }
   buffer.writeln('  </defs>');
 
   // Background rect
@@ -75,6 +100,13 @@ String canvasToSvg(
       '  <rect x="${_formatNum(minX)}" y="${_formatNum(minY)}" '
       'width="${_formatNum(width)}" height="${_formatNum(height)}" fill="$bgHex" />',
     );
+    if (isBlueprint) {
+      buffer.writeln(
+        '  <rect x="${_formatNum(minX)}" y="${_formatNum(minY)}" '
+        'width="${_formatNum(width)}" height="${_formatNum(height)}" '
+        'fill="url(#orbit-blueprint-grid)" stroke="#f4f8ff" stroke-opacity="0.28" />',
+      );
+    }
   }
 
   // Render elements in z-stacking order
@@ -238,14 +270,30 @@ void _renderElementSvg(
       }
 
     case 'section':
+      final rawText = element.text.trim();
+      String title = rawText.isEmpty ? 'SECTION' : rawText;
+      if (title.startsWith('### ')) {
+        title = title.substring(4);
+      } else if (title.startsWith('## ')) {
+        title = title.substring(3);
+      } else if (title.startsWith('# ')) {
+        title = title.substring(2);
+      }
+      title = title.toUpperCase();
+
+      final fontSize = element.sectionFontSize;
+      final strokeW = element.sectionStrokeWidth;
+      final textY = element.y + fontSize * 1.1;
+      final lineGap = (fontSize * 0.35 + 1.0).clamp(3.0, 14.0);
+      final lineY = element.y + fontSize * 1.5 + lineGap;
       buf.writeln(
-        '  <text x="${_formatNum(element.x)}" y="${_formatNum(element.y + 14)}" '
-        'font-size="13" font-weight="700" letter-spacing="1.2" fill="$accent">${_escapeXml(element.text.toUpperCase())}</text>',
+        '  <text x="${_formatNum(element.x)}" y="${_formatNum(textY)}" '
+        'font-size="${_formatNum(fontSize)}" font-weight="700" letter-spacing="1.2" fill="$accent">${_escapeXml(title)}</text>',
       );
       buf.writeln(
-        '  <line x1="${_formatNum(element.x)}" y1="${_formatNum(element.y + 22)}" '
-        'x2="${_formatNum(element.x + element.width)}" y2="${_formatNum(element.y + 22)}" '
-        'stroke="$accent" stroke-width="1.5" stroke-opacity="0.5" />',
+        '  <line x1="${_formatNum(element.x)}" y1="${_formatNum(lineY)}" '
+        'x2="${_formatNum(element.x + element.width)}" y2="${_formatNum(lineY)}" '
+        'stroke="$accent" stroke-width="${_formatNum(strokeW)}" stroke-opacity="0.5" stroke-linecap="round" />',
       );
 
     case 'swatch':
@@ -329,9 +377,36 @@ void _renderElementSvg(
     case 'ink':
       final points = element.points;
       if (points.isEmpty) return;
-      final isHighlighter = element.data['isHighlighter'] == true;
-      final inkWidth = isHighlighter ? math.max(18.0, strokeW) : strokeW;
-      final inkOpacity = isHighlighter ? '0.38' : '1.0';
+      final penStyle =
+          element.data['penStyle'] as String? ??
+          (element.data['isHighlighter'] == true ? 'highlighter' : 'ballpoint');
+      final isHighlighter = penStyle == 'highlighter';
+      final isMarker = penStyle == 'marker';
+      final isPencil = penStyle == 'pencil';
+      final isCalligraphy = penStyle == 'calligraphy';
+      final isBrush = penStyle == 'brush';
+
+      var inkWidth = strokeW;
+      var inkOpacity = '1.0';
+      var extraAttrs = '';
+
+      if (isHighlighter) {
+        inkWidth = math.max(18.0, strokeW);
+        inkOpacity = '0.38';
+      } else if (isMarker) {
+        inkWidth = strokeW * 1.35;
+        inkOpacity = '0.60';
+      } else if (isPencil) {
+        inkWidth = math.max(1.0, strokeW * 0.85);
+        inkOpacity = '0.68';
+        extraAttrs = ' stroke-dasharray="0.8,1.2"';
+      } else if (isBrush) {
+        inkWidth = strokeW * 1.2;
+        inkOpacity = '0.92';
+      } else if (isCalligraphy) {
+        inkWidth = strokeW;
+        inkOpacity = '0.95';
+      }
 
       if (points.length == 1) {
         final p = points.first;
@@ -351,9 +426,28 @@ void _renderElementSvg(
           ' L ${_formatNum(element.x + p.x)} ${_formatNum(element.y + p.y)}',
         );
       }
+
+      if (isCalligraphy) {
+        // Dual-pass offset along 45° chisel angle for authentic calligraphy ribbon look
+        final offset = math.max(1.2, strokeW * 0.4);
+        final dOffset = StringBuffer();
+        dOffset.write(
+          'M ${_formatNum(element.x + points.first.x + offset)} ${_formatNum(element.y + points.first.y + offset)}',
+        );
+        for (final p in points.skip(1)) {
+          dOffset.write(
+            ' L ${_formatNum(element.x + p.x + offset)} ${_formatNum(element.y + p.y + offset)}',
+          );
+        }
+        buf.writeln(
+          '  <path d="$dOffset" fill="none" stroke="$accent" stroke-width="${_formatNum(inkWidth * 0.8)}" '
+          'stroke-linecap="round" stroke-linejoin="round" opacity="0.60" />',
+        );
+      }
+
       buf.writeln(
         '  <path d="$d" fill="none" stroke="$accent" stroke-width="${_formatNum(inkWidth)}" '
-        'stroke-linecap="round" stroke-linejoin="round" opacity="$inkOpacity" />',
+        'stroke-linecap="round" stroke-linejoin="round" opacity="$inkOpacity"$extraAttrs />',
       );
 
     case 'connector':

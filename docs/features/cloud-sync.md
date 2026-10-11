@@ -1,5 +1,13 @@
 # Cloud sync — delivery status
 
+2026-10-11: Manual immutable Drive backup/restore is implemented, with resumable
+chunks, cancellation, account binding, server MD5 and downloaded SHA-256 checks,
+review and import into a separate folder. OAuth activation/live account acceptance
+is pending. This does not satisfy the automatic personal SyncProvider milestone.
+An independent self-hosted shared-note/Canvas preview is documented in
+[setup](../development/shared-vault-setup.md) and [ADR 0027](../adr/0027-shared-vault-preview-and-drive-backups.md).
+The historical status below predates these workflows; its personal sync gates remain.
+
 2026-09-13 update: account/secure storage/quota/root/discovery UI is now implemented.
 The historical foundation table below predates this account slice; current details
 and remaining transfer gates are in the

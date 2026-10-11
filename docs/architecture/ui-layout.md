@@ -62,3 +62,67 @@ Later [visual design](../design/visual-design.md) and [motion](../design/motion.
 define the branded direction. M0's explicit system theme and tiny shell remain
 unchanged. [Resume Context](../features/home-and-work-sessions.md) needs versioned
 view descriptors and personal state separation before arbitrary restoration.
+
+## Enlarged text and dialog layout
+
+Shared Orbit dialogs scroll their headings with content and retain a separate
+action footer. Settings controls move below labels when text size or available
+width makes a two-column row impractical. Dropdowns and theme controls wrap or
+stack without clamping text scaling. Theme gallery/generator secondary tools
+belong to scrolling content, keeping Close/Cancel/Apply reachable in short windows.
+
+PDF connected notes/review and Canvas inspectors follow the same rule: headings,
+filters, item labels, and action groups wrap or stack at narrow widths and enlarged
+text sizes. Long source warnings remain readable. Canvas layers use lazy slivers
+in the heading's scroll surface, with recovery/close actions in the fixed footer.
+Card inspectors fit the actual board viewport and scroll title, source warnings,
+details, and footer actions together below wrapping inspector controls. Text
+scaling is never clamped to make a panel fit.
+
+PDF navigation dialogs use wrapping, variable-height lazy rows in a shared scroll
+surface for headings, filters, and results. Keyboard selection reveals measured
+row geometry; rows taller than the viewport reveal their beginning. Bookmark
+previews precede the list, while Close/Open page stay in the footer. Rename help,
+failure messages, and zoom validation wrap without truncating authored input.
+Canvas search is bounded by the board viewport: search/navigation/close controls
+remain above scrolling categories and lazy results. Labels and snippets wrap,
+and navigating active results reveals them without changing board geometry.
+
+Object inspectors stack property labels and removal controls above typed values
+when width or text size requires it. Property values, tags, reference titles,
+precise destination badges, and mention snippets wrap completely. Relation tabs
+wrap and expose their selected state; local graph controls wrap within the panel.
+Property forms share the Orbit dialog's single scrolling content surface and
+separate action footer. Validation messages wrap without a fixed line limit;
+authored values remain editable after failure and unchanged on cancellation.
+
+Workspace search keeps the query field above a shared scroll surface for filters,
+status messages, and variable-height lazy results. Titles/context/excerpts and
+long filter values wrap; keyboard navigation reveals measured row geometry.
+Preview headings/content scroll together while Open remains reachable. Saved
+search dialogs use scrolling content, wrapping validation, and separate actions.
+The command palette retains search and Close above scrolling type filters,
+grouped entries, and shortcut help; tall selected entries reveal their beginning.
+
+Quick Switcher keeps search, Clear, and Close above scrolling lazy results and
+shortcut hints. Full titles, create-note labels, and context wrap; status badges
+move beneath text at narrow widths or enlarged sizes. Keyboard selection uses
+measured row bounds and cancels obsolete reveals on query changes/disposal.
+Selected rows expose button/selected semantics, retain focus across selection
+changes, and support Tab plus Space/Enter activation. Text scaling is preserved.
+
+The note link picker uses Orbit's scrolling heading/search/status and lazy results,
+with Cancel in the separate footer. Titles, stable IDs, and aliases wrap fully;
+keyboard selection reveals measured row bounds, including tall-row beginnings.
+Result semantics merge label, selected state, and activation into one accessible
+button. Query/clear resets scrolling and selection, and the Clear control returns
+focus to search. Text scaling is preserved without a fixed dialog content height.
+
+Smart View filters, Space management, dashboard customization and task planning
+reuse OrbitDialog's scrolling content and separate action footer. Controls wrap;
+expanded dropdowns retain enlarged text at narrow widths. Smart View tables use
+lazy variable-height rows with horizontal column scrolling; boards/list/gallery
+also create visible items lazily. Dashboard widths use responsive one-to-three
+column spans. Spaces serialize existing pane/view descriptors, not another docking
+engine. Reset in Settings/Spaces restores navigation without deleting knowledge.
+Calendar moves preview before applying and offer a date-picker alternative to drag.

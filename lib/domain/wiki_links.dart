@@ -133,7 +133,7 @@ WikiLinkResolution resolveWikiLink(
   if (byId.length == 1) {
     return WikiLinkResolution(WikiLinkStatus.resolved, byId);
   }
-  final boundId = bindings[link.target];
+  final boundId = bindings[link.target] ?? bindings[reference.id];
   if (boundId != null) {
     final bound = available.where((t) => t.id == boundId).toList();
     return WikiLinkResolution(
@@ -141,7 +141,7 @@ WikiLinkResolution resolveWikiLink(
       bound,
     );
   }
-  final query = link.target.toLowerCase();
+  final query = reference.id.toLowerCase();
   final matches = available
       .where(
         (target) =>
@@ -168,7 +168,7 @@ String stabilizeWikiLinks(String source, Iterable<NoteLinkTarget> targets) {
       result = result.replaceRange(
         link.start,
         link.end,
-        '[[${target.id}|${link.label}]]',
+        '[[${ObjectReference.parse(link.target).withId(target.id).target}|${link.label}]]',
       );
     }
   }
@@ -197,7 +197,7 @@ String wikiLinksToMarkdown(
         final reference = ObjectReference.parse(link.target);
         destination =
             'orbit-object:${Uri.encodeComponent(resolution.target!.id)}'
-            '${reference.id == resolution.target!.id && reference.page != null ? '#page=${reference.page}' : ''}';
+            '${reference.isPrecise ? '#${reference.fragment}' : ''}';
         suffix = '';
       case WikiLinkStatus.unresolved:
         destination = 'orbit-missing:${Uri.encodeComponent(link.target)}';

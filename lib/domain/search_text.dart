@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
 import 'universal_object.dart';
+import 'object_discovery.dart';
 
 class SearchSnippet {
   final String text;
@@ -103,6 +104,8 @@ SearchSnippet? extractSearchSnippet(
   // 4. Search in object properties
   if (object.properties.isNotEmpty) {
     for (final entry in object.properties.entries) {
+      // OCR is searchable only through verified source/page projection.
+      if (entry.key == 'ocr') continue;
       if (entry.value == null) continue;
       final propVal = entry.value.toString();
       final idx = propVal.toLowerCase().indexOf(q);
@@ -144,7 +147,10 @@ SearchSnippet _window(
 String searchableText(UniversalObject object) => [
   object.title,
   object.body,
-  jsonEncode(object.properties),
+  jsonEncode({
+    for (final entry in object.properties.entries)
+      if (entry.key != 'ocr') entry.key: entry.value,
+  }),
   if (object.data['elements'] is List)
     for (final element in object.data['elements'] as List)
       if (element is Map && element['text'] is String)
@@ -158,9 +164,5 @@ int searchRank(UniversalObject object, String query) {
   final rva = object.properties['rva']?.toString().toLowerCase();
   if (addr != null && (addr == term || addr == '0x$term')) return 0;
   if (rva != null && (rva == term || rva == '0x$term')) return 0;
-  return title.startsWith(term)
-      ? 1
-      : title.contains(term)
-      ? 2
-      : 3;
+  return quickOpenRank(object, term) ?? 6;
 }

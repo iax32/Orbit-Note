@@ -182,15 +182,26 @@ void main() {
         await tester.pumpAndSettle();
 
         // Check Continue Writing card exists
-        expect(find.text('CONTINUE WRITING'), findsOneWidget);
+        expect(find.text('Continue writing'), findsOneWidget);
         expect(find.text('Sprint Retrospective'), findsWidgets);
         expect(find.text('Resume writing'), findsOneWidget);
 
         // Check Where was I trail exists
-        expect(find.text('Where was I:'), findsOneWidget);
+        await tester.scrollUntilVisible(
+          find.text('Recent:'),
+          180,
+          scrollable: find
+              .descendant(
+                of: find.byType(HomeView),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        expect(find.text('Recent:'), findsOneWidget);
         expect(find.text('Architecture Decisions'), findsWidgets);
 
         // Tap Resume writing -> should open note2
+        await tester.ensureVisible(find.text('Resume writing'));
         await tester.tap(find.text('Resume writing'));
         await tester.pumpAndSettle();
 
@@ -221,6 +232,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(find.text('Continue writing: Research Findings'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), '   ');
+      await tester.pumpAndSettle();
+      expect(find.text('Continue writing: Research Findings'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), '  Continue writing  ');
+      await tester.pumpAndSettle();
       expect(find.text('Continue writing: Research Findings'), findsOneWidget);
 
       // Tap Continue writing

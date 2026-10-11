@@ -58,6 +58,17 @@ authorization for such capabilities; local reversible edits remain the default.
 
 ## Delivery
 
+### Current dialog accessibility
+
+Revision history stacks its list and comparison view in narrow windows or with
+enlarged text. Snapshot labels, titles, and controls wrap; revision and document
+viewports remain bounded and scrollable. Dialog headings scroll with content
+while Close and confirmation actions stay outside that scroll surface. Snapshot
+label entry supports keyboard insets without reducing system text scaling.
+Recovery-file review keeps full paths accessible and exports immutable copies.
+Backup import review exposes all validation notices before asking for a parent
+folder, preserving the separate-workspace import and retained-journal policy.
+
 Start with single-object save/recovery and meaningful local undo. Add durable
 grouped history when multi-object mutations require it. Full workspace time travel,
 historical board rendering, selective reversal and branches need separate design

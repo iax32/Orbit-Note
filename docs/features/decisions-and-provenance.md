@@ -1,6 +1,7 @@
 # Decisions, assumptions and provenance
 
-Status: planned M5+; automatic assumption/contradiction analysis exploratory M8+.
+Status: delivered local subset below; broader M5+ behavior and automatic
+assumption/contradiction analysis remain planned/exploratory.
 Sources: S04, S06, S07 in the [source map](../product/conversation-extraction.md).
 Architecture: [universal objects](../architecture/universal-object-model.md),
 [AI](../architecture/ai.md).
@@ -12,6 +13,38 @@ which alternatives were rejected and what assumptions remain uncertain. A user
 saves a source while researching sync, records “Use an optional self-hostable
 backend” as a decision, and links it to the assumption that offline work must
 remain available. Months later that context is still inspectable.
+
+## Delivered local records — 2026-10-10
+
+Research workspace > New decision/New assumption creates an ordinary Markdown note
+with optional research metadata. Statement, Markdown reasoning/alternatives,
+recorded creation time, state, explicit confidence/importance, supporting evidence,
+assumption dependencies and superseded-record UUIDs are editable through validated
+controller commands. An assumption dependency must reference an assumption; a
+superseded record must have the same kind. Self links and newly missing sources
+are rejected; existing missing links remain removable and inspectable. Unknown
+metadata is retained and unsupported record versions cannot be upgraded by editing.
+
+Decision review compares stored source revision/time/checksum/content fingerprints against
+current canonical sources. Missing or changed evidence and changed, missing,
+disproved or superseded assumptions have concrete review reasons. Mark reviewed
+acknowledges current saved versions. Disproved/superseded assumptions and missing
+links continue to need attention; no reasoning, state or confidence is inferred or
+rewritten. Editing a record keeps acknowledged evidence versions until explicit
+review. Conflicted/unsaved sources cannot be acknowledged as durable evidence.
+
+Project records show current state and dates plus a bounded timeline of before-edit
+and before-review checkpoints. These use the existing 30-entry note revision list
+and additionally retain researchFields. Revision History compares/restores note
+title/body using its existing behavior; it does not restore research state fields.
+Backlinks label Supported by, Depends on assumption and Supersedes relations; the
+graph includes the connections subject to its existing type filters. Superseding
+is an explicit relation, not an automatic mutation of another record's state.
+
+This delivers manual PROV-03/04/05 and deterministic PROV-06 with available-history
+PROV-07. It does not infer contradictions, reconstruct historical boards, monitor
+web sources, provide a complete workspace evolution timeline or migrate existing
+freeform decision-log notes into structured records.
 
 ## Requirements
 

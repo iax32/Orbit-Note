@@ -3,6 +3,8 @@ import '../../app/orbit_theme.dart';
 import '../../app/workspace_controller.dart';
 import '../../domain/calendar_event.dart';
 import '../../domain/universal_object.dart';
+import 'study_workspace.dart';
+import 'calendar_planning_workspace.dart';
 
 class CourseDashboardView extends StatelessWidget {
   const CourseDashboardView({
@@ -260,6 +262,24 @@ class CourseDashboardView extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Course Header Banner Card
+          OutlinedButton.icon(
+            onPressed: () => showCalendarPlanning(
+              context,
+              controller,
+              course: scope ?? overviewNote?.properties['course']?.toString(),
+            ),
+            icon: const Icon(Icons.calendar_month_outlined),
+            label: const Text('Assignments & exams'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => showStudyWorkspace(
+              context,
+              controller,
+              course: scope ?? overviewNote?.properties['course']?.toString(),
+            ),
+            icon: const Icon(Icons.school_outlined),
+            label: const Text('Study & Review'),
+          ),
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -584,7 +604,7 @@ class CourseDashboardView extends StatelessWidget {
                       const SizedBox(height: 8),
                       Text(
                         '${completedTasks.length} tasks completed',
-                        style: TextStyle(fontSize: 11, color: colors.subtle),
+                        style: TextStyle(fontSize: 13, color: colors.subtle),
                       ),
                     ],
                   ),
@@ -883,9 +903,8 @@ class _DashboardCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: colors.panel,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: colors.border),
+        color: Colors.transparent,
+        borderRadius: BorderRadius.zero,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

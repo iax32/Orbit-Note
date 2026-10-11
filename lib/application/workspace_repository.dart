@@ -7,11 +7,19 @@ import 'package:uuid/uuid.dart';
 import 'package:path/path.dart' as p;
 
 import '../domain/calendar_event.dart';
+import '../domain/calendar_planning.dart';
+import '../domain/event_recurrence.dart';
+import '../domain/smart_view_query.dart';
+import '../domain/task_planning.dart';
 import '../domain/object_tombstone.dart';
 import '../domain/universal_object.dart';
 import '../domain/wiki_links.dart';
 import '../domain/note_path_links.dart';
 import '../domain/search_text.dart';
+import '../domain/pdf_search.dart';
+import '../domain/ocr_document.dart';
+import '../domain/study_card.dart';
+import 'search_execution.dart';
 import '../domain/workspace_failure.dart';
 import '../infrastructure/storage/index_factory.dart';
 import '../infrastructure/storage/object_codec.dart';
@@ -21,6 +29,7 @@ import '../infrastructure/storage/store_factory.dart';
 import '../infrastructure/storage/workspace_store.dart';
 import '../infrastructure/storage/workspace_sync_state_store.dart';
 import 'workspace_deletions.dart';
+import 'workspace_recovery.dart';
 import 'sync/sync_inventory.dart';
 import 'sync/sync_policy.dart';
 import 'sync/sync_provider.dart';
@@ -53,9 +62,131 @@ class WorkspaceRepository {
   String _name = '';
   String? _manifestHash;
   List<String> _folders = const ['Notes'];
+  static const maxAttachmentRecoveryBytes = 100 * 1024 * 1024;
   List<String> get folders => List.unmodifiable(_folders);
   bool get supportsFolders => _store is WorkspaceFolderStore;
   String? objectPath(String id) => _paths[id];
+
+  Future<PdfTextDocument?> readPdfTextCache(String id) async {
+    if (_index is! PdfTextCache || !_indexReady) return null;
+    try {
+      return PdfTextDocument.parse(
+        await (_index as PdfTextCache).readPdfText(id),
+      );
+    } on Object {
+      return null;
+    }
+  }
+
+  Future<void> writePdfTextCache(String id, PdfTextDocument document) async {
+    if (_index is PdfTextCache && _indexReady) {
+      await (_index as PdfTextCache).writePdfText(id, document.toJson());
+    } else {
+      throw const WorkspaceFailure('PDF cache is unavailable.');
+    }
+  }
+
+  Future<void> removePdfTextCache(String id) async {
+    if (_index is PdfTextCache && _indexReady) {
+      await (_index as PdfTextCache).removePdfText(id);
+    }
+  }
+
+  Future<String?> pdfSourceChecksum(String path) async {
+    validateRelativePath(path);
+    if (!path.startsWith('Attachments/')) {
+      throw const WorkspaceFailure('Invalid PDF attachment path.');
+    }
+    final store = _store;
+    if (store is WorkspaceFileSizeStore) {
+      final int size;
+      try {
+        size = await (store as WorkspaceFileSizeStore).fileSize(path);
+      } on Object {
+        return null;
+      }
+      if (size > maxAttachmentRecoveryBytes) {
+        throw const WorkspaceFailure(
+          'PDF exceeds the 100 MB attachment limit.',
+        );
+      }
+    }
+    var read = 0;
+    return (await _inspectStoredAttachment(
+      path,
+      onProgress: (n, _, _) => read = n,
+      isCancelled: () => read > maxAttachmentRecoveryBytes,
+    ))?.checksum;
+  }
+
+  Future<Uint8List> readPdfSearchSource(String path) async {
+    validateRelativePath(path);
+    if (!path.startsWith('Attachments/')) {
+      throw const WorkspaceFailure('Invalid PDF attachment path.');
+    }
+    final store = _store;
+    if (store is WorkspaceFileSizeStore &&
+        await (store as WorkspaceFileSizeStore).fileSize(path) >
+            maxAttachmentRecoveryBytes) {
+      throw const WorkspaceFailure('PDF exceeds the 100 MB attachment limit.');
+    }
+    final bytes = await readAttachment(path);
+    if (bytes == null) {
+      throw const WorkspaceFailure('PDF attachment is missing.');
+    }
+    if (bytes.length > maxAttachmentRecoveryBytes) {
+      throw const WorkspaceFailure('PDF exceeds the 100 MB attachment limit.');
+    }
+    return bytes;
+  }
+
+  /// Verifies an attachment without materializing large retained sources.
+  /// Native stores stream from disk; small/portable stores use their existing
+  /// bounded read implementation.
+  Future<({int length, String checksum})?> _inspectStoredAttachment(
+    String path, {
+    void Function(int bytesRead, int totalBytes, String phase)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    final store = _store;
+    if (store is WorkspaceStreamingStore && store is WorkspaceFileSizeStore) {
+      late final int total;
+      try {
+        total = await (store as WorkspaceFileSizeStore).fileSize(path);
+      } on Object {
+        return null;
+      }
+      var length = 0;
+      try {
+        final digest = await sha256
+            .bind(
+              (store as WorkspaceStreamingStore).openRead(path).map((chunk) {
+                if (isCancelled?.call() == true) {
+                  throw const WorkspaceFailure(
+                    'Attachment recovery was cancelled.',
+                  );
+                }
+                length += chunk.length;
+                onProgress?.call(length, total, 'Verifying retained source…');
+                return chunk;
+              }),
+            )
+            .first;
+        if (length != total) return null;
+        onProgress?.call(length, total, 'Verification complete');
+        return (length: length, checksum: digest.toString());
+      } on Object {
+        return null;
+      }
+    }
+    final bytes = await store.read(path);
+    if (bytes == null) return null;
+    if (isCancelled?.call() == true) {
+      throw const WorkspaceFailure('Attachment recovery was cancelled.');
+    }
+    onProgress?.call(bytes.length, bytes.length, 'Verification complete');
+    return (length: bytes.length, checksum: sha256.convert(bytes).toString());
+  }
 
   Future<void> createFolder(String path) => _serial(() async {
     _requireWritable();
@@ -106,6 +237,74 @@ class WorkspaceRepository {
     return SyncFootprint(count, bytes, largest);
   });
   List<String> get issues => List.unmodifiable(_issues);
+
+  /// Metadata only on native stores. Safe to use while a Vault is read-only.
+  Future<List<WorkspaceRecoveryFile>> recoveryFiles() => _serial(() async {
+    _requireOpen();
+    final paths =
+        (await _store.listFiles())
+            .where(WorkspaceRecoveryFile.acceptsPath)
+            .toList()
+          ..sort();
+    final files = <WorkspaceRecoveryFile>[];
+    for (final path in paths) {
+      validateRelativePath(path);
+      final store = _store;
+      final length = store is WorkspaceFileSizeStore
+          ? await (store as WorkspaceFileSizeStore).fileSize(path)
+          : (await store.read(path))?.length ?? 0;
+      files.add(WorkspaceRecoveryFile(path: path, length: length));
+    }
+    return List.unmodifiable(files);
+  });
+
+  /// Read a bounded immutable copy. Recovery never executes imported journals.
+  Future<WorkspaceRecoverySnapshot> readRecoveryFile(
+    String path,
+  ) => _serial(() async {
+    _requireOpen();
+    validateRelativePath(path);
+    if (!WorkspaceRecoveryFile.acceptsPath(path)) {
+      throw const WorkspaceFailure('Choose a retained recovery file.');
+    }
+    const maxBytes = 16 * 1024 * 1024;
+    final store = _store;
+    if (store is WorkspaceFileSizeStore &&
+        await (store as WorkspaceFileSizeStore).fileSize(path) > maxBytes) {
+      throw const WorkspaceFailure(
+        'Recovery file exceeds the 16 MiB review limit. Copy it from the Vault folder or export a full backup.',
+      );
+    }
+    Uint8List? bytes;
+    if (store is WorkspaceStreamingStore) {
+      final builder = BytesBuilder(copy: false);
+      await for (final chunk in (store as WorkspaceStreamingStore).openRead(
+        path,
+      )) {
+        if (builder.length + chunk.length > maxBytes) {
+          throw const WorkspaceFailure(
+            'Recovery file exceeds the 16 MiB review limit.',
+          );
+        }
+        builder.add(chunk);
+      }
+      bytes = builder.takeBytes();
+    } else {
+      bytes = await store.read(path);
+    }
+    if (bytes == null) {
+      throw const WorkspaceFailure(
+        'This recovery file is no longer available. Refresh the list.',
+      );
+    }
+    if (bytes.length > maxBytes) {
+      throw const WorkspaceFailure(
+        'Recovery file exceeds the 16 MiB review limit.',
+      );
+    }
+    return WorkspaceRecoverySnapshot(path: path, bytes: bytes);
+  });
+
   String get workspaceId => _workspaceId;
   String get name => _name;
   String get location => _store.location;
@@ -113,6 +312,10 @@ class WorkspaceRepository {
   bool get isBrowser => _store.isBrowser;
   Stream<String> get externalFileChanges => _store is WorkspaceChangeSource
       ? (_store as WorkspaceChangeSource).changes
+      : const Stream.empty();
+  Stream<String> get externalAttachmentChanges =>
+      _store is WorkspaceAttachmentChangeSource
+      ? (_store as WorkspaceAttachmentChangeSource).attachmentChanges
       : const Stream.empty();
   Future<List<String>> recentLocations() => _store is WorkspaceSelectionStore
       ? (_store as WorkspaceSelectionStore).recentLocations()
@@ -434,6 +637,41 @@ class WorkspaceRepository {
     await _verifyManifest();
     _validate(object);
     final existing = _objects[object.id];
+    validateEventRecurrence(object, previous: existing);
+    if (object.properties['calendarPlan'] != null &&
+        jsonEncode(object.properties['calendarPlan']) !=
+            jsonEncode(existing?.properties['calendarPlan'])) {
+      validateCalendarPlan(object.properties['calendarPlan'], object.typeId);
+    }
+    if (object.properties['studyCard'] != null &&
+        jsonEncode(object.properties['studyCard']) !=
+            jsonEncode(existing?.properties['studyCard'])) {
+      if (object.typeId != 'orbit.note') {
+        throw const FormatException('Study cards must be Markdown notes.');
+      }
+      StudyCard.validate(object.properties['studyCard']);
+    }
+    if (object.properties['studyUnderstanding'] !=
+            existing?.properties['studyUnderstanding'] &&
+        object.properties['studyUnderstanding'] != null &&
+        !studyUnderstandingStates.contains(
+          object.properties['studyUnderstanding'],
+        )) {
+      throw const FormatException('Invalid understanding state.');
+    }
+    if (object.properties['ocr'] != null &&
+        jsonEncode(object.properties['ocr']) !=
+            jsonEncode(existing?.properties['ocr'])) {
+      OcrDocument.validate(object.properties['ocr']);
+      final recognition = OcrDocument.parse(object.properties['ocr'])!;
+      if (object.typeId != 'orbit.file' ||
+          recognition.path != object.properties['contentRef'] ||
+          await pdfSourceChecksum(recognition.path) != recognition.checksum) {
+        throw const WorkspaceConflict(
+          'The attachment changed. Recognition was not saved.',
+        );
+      }
+    }
     if (existing != null &&
         (existing.revision != object.revision ||
             existing.typeId != object.typeId ||
@@ -580,13 +818,17 @@ class WorkspaceRepository {
         _indexReady = false;
       }
     }
-    final lower = query.toLowerCase();
-    return objects
-        .where(
-          (o) =>
-              !o.isDeleted && searchableText(o).toLowerCase().contains(lower),
-        )
-        .toList();
+    final lower = query.trim().toLowerCase();
+    final snapshot = objects;
+    return runSearchWork(
+      () => snapshot
+          .where(
+            (o) =>
+                !o.isDeleted && searchableText(o).toLowerCase().contains(lower),
+          )
+          .toList(),
+      size: snapshot.fold<int>(0, (size, o) => size + o.body.length + 256),
+    );
   }
 
   Future<Map<String, dynamic>> readDeviceSettings() async {
@@ -701,6 +943,432 @@ class WorkspaceRepository {
     return _store.read(relativePath);
   }
 
+  Future<Uint8List> _bufferAttachmentStream(
+    Stream<List<int>> bytes, {
+    required String expectedChecksum,
+    required void Function(int bytesRead)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    final builder = BytesBuilder(copy: false);
+    var length = 0;
+    await for (final chunk in bytes) {
+      if (isCancelled?.call() == true) {
+        throw const WorkspaceFailure('Attachment recovery was cancelled.');
+      }
+      length += chunk.length;
+      if (length > maxAttachmentRecoveryBytes) {
+        throw const WorkspaceFailure('Choose a file no larger than 100 MB.');
+      }
+      builder.add(chunk);
+      onProgress?.call(length);
+    }
+    final value = builder.takeBytes();
+    if (sha256.convert(value).toString() != expectedChecksum) {
+      throw const WorkspaceFailure(
+        'The selected bytes do not match the expected checksum.',
+      );
+    }
+    return value;
+  }
+
+  /// Restore missing original bytes only after checking their recorded hash.
+  /// Never replaces an existing file or rewrites authored references.
+  Future<void> recoverMissingAttachment(
+    String reference,
+    Uint8List bytes, {
+    required String expectedChecksum,
+  }) => _serial(() async {
+    _requireWritable();
+    await _verifyManifest();
+    validateRelativePath(reference);
+    if (!reference.startsWith('Attachments/') ||
+        bytes.length > 100 * 1024 * 1024 ||
+        sha256.convert(bytes).toString() != expectedChecksum) {
+      throw const WorkspaceFailure(
+        'Choose the original file matching the recorded checksum. Different bytes must be attached as a new source.',
+      );
+    }
+    await _store.write(reference, bytes, expectedHash: null);
+  });
+
+  /// Streams a verified source into the missing original path. Native stores
+  /// stage directly to disk; browser stores use a bounded compatibility buffer.
+  Future<void> recoverMissingAttachmentStream(
+    String reference,
+    Stream<List<int>> bytes, {
+    required String expectedChecksum,
+    void Function(int bytesRead)? onProgress,
+    String? resumableStageId,
+    bool Function()? isCancelled,
+  }) => _serial(() async {
+    _requireWritable();
+    await _verifyManifest();
+    validateRelativePath(reference);
+    if (!reference.startsWith('Attachments/')) {
+      throw const WorkspaceFailure(
+        'Attachment paths must stay in Attachments/.',
+      );
+    }
+    final store = _store;
+    if (store is WorkspaceAttachmentStagingStore ||
+        store is WorkspaceStagingStore) {
+      final stage = store is WorkspaceAttachmentStagingStore
+          ? resumableStageId == null
+                ? await (store as WorkspaceAttachmentStagingStore)
+                      .stageAttachment(
+                        bytes,
+                        info: WorkspaceAttachmentStageInfo(
+                          id: const Uuid().v4(),
+                          operation: 'restore',
+                          target: reference,
+                          expectedHash: expectedChecksum,
+                          maxBytes: maxAttachmentRecoveryBytes,
+                          length: 0,
+                        ),
+                        onProgress: onProgress,
+                        isCancelled: isCancelled,
+                      )
+                : await (store as WorkspaceAttachmentStagingStore)
+                      .resumeAttachmentStage(
+                        resumableStageId,
+                        bytes,
+                        onProgress: onProgress,
+                        isCancelled: isCancelled,
+                      )
+          : await (store as WorkspaceStagingStore).stage(
+              bytes,
+              expectedHash: expectedChecksum,
+              maxBytes: maxAttachmentRecoveryBytes,
+              onProgress: onProgress,
+              isCancelled: isCancelled,
+            );
+      try {
+        if (isCancelled?.call() == true) {
+          throw const WorkspaceFailure('Attachment recovery was cancelled.');
+        }
+        await _verifyManifest();
+        if (stage.hash != expectedChecksum) {
+          throw const WorkspaceConflict(
+            'The interrupted transfer checksum no longer matches this source.',
+          );
+        }
+        await stage.commit(reference, expectedHash: null, checkCurrent: () {});
+      } finally {
+        await stage.close();
+      }
+      return;
+    }
+    final value = await _bufferAttachmentStream(
+      bytes,
+      expectedChecksum: expectedChecksum,
+      onProgress: onProgress,
+      isCancelled: isCancelled,
+    );
+    await _store.write(reference, value, expectedHash: null);
+  });
+
+  /// Commits a new immutable source before changing the existing file identity.
+  /// Older bytes remain ordinary files and raw Markdown paths remain literal.
+  Future<UniversalObject> relinkAttachment(
+    UniversalObject expected, {
+    required String name,
+    required Uint8List bytes,
+  }) => _serial(() async {
+    _requireAttachmentSnapshot(expected);
+    await _verifyManifest();
+    if (bytes.length > 100 * 1024 * 1024) {
+      throw const WorkspaceFailure('Choose a file no larger than 100 MB.');
+    }
+    final checksum = sha256.convert(bytes).toString();
+    final path = 'Attachments/$checksum/${_safeName(name)}';
+    final old = await _store.read(path);
+    if (old == null) {
+      await _store.write(path, bytes, expectedHash: null);
+    } else if (sha256.convert(old).toString() != checksum) {
+      throw const WorkspaceConflict(
+        'The new source path contains different bytes.',
+      );
+    }
+    return _changeAttachmentSource(expected, {
+      'contentRef': path,
+      'originalName': name,
+      'mimeType': _mime(_safeName(name)),
+      'byteLength': bytes.length,
+      'checksum': checksum,
+    });
+  });
+
+  /// Streams a verified new source before updating the stable file object.
+  Future<UniversalObject> relinkAttachmentStream(
+    UniversalObject expected, {
+    required String name,
+    required String expectedChecksum,
+    required Stream<List<int>> bytes,
+    void Function(int bytesRead)? onProgress,
+    String? resumableStageId,
+    bool Function()? isCancelled,
+  }) => _serial(() async {
+    _requireAttachmentSnapshot(expected);
+    await _verifyManifest();
+    final checksum = expectedChecksum;
+    final path = 'Attachments/$checksum/${_safeName(name)}';
+    final store = _store;
+    var byteLength = 0;
+    if (store is WorkspaceAttachmentStagingStore ||
+        store is WorkspaceStagingStore) {
+      final stage = store is WorkspaceAttachmentStagingStore
+          ? resumableStageId == null
+                ? await (store as WorkspaceAttachmentStagingStore)
+                      .stageAttachment(
+                        bytes,
+                        info: WorkspaceAttachmentStageInfo(
+                          id: const Uuid().v4(),
+                          operation: 'relink',
+                          target: path,
+                          expectedHash: checksum,
+                          maxBytes: maxAttachmentRecoveryBytes,
+                          length: 0,
+                          sourceName: name,
+                        ),
+                        onProgress: onProgress,
+                        isCancelled: isCancelled,
+                      )
+                : await (store as WorkspaceAttachmentStagingStore)
+                      .resumeAttachmentStage(
+                        resumableStageId,
+                        bytes,
+                        onProgress: onProgress,
+                        isCancelled: isCancelled,
+                      )
+          : await (store as WorkspaceStagingStore).stage(
+              bytes,
+              expectedHash: checksum,
+              maxBytes: maxAttachmentRecoveryBytes,
+              onProgress: onProgress,
+              isCancelled: isCancelled,
+            );
+      byteLength = stage.length;
+      try {
+        if (stage.hash != checksum) {
+          throw const WorkspaceConflict(
+            'The interrupted transfer checksum no longer matches this source.',
+          );
+        }
+        final old = await _store.read(path);
+        if (old == null) {
+          await stage.commit(path, expectedHash: null, checkCurrent: () {});
+        } else if (sha256.convert(old).toString() != checksum) {
+          throw const WorkspaceConflict(
+            'The new source path contains different bytes.',
+          );
+        }
+      } finally {
+        await stage.close();
+      }
+    } else {
+      final value = await _bufferAttachmentStream(
+        bytes,
+        expectedChecksum: checksum,
+        onProgress: onProgress,
+        isCancelled: isCancelled,
+      );
+      byteLength = value.length;
+      final old = await _store.read(path);
+      if (old == null) {
+        await _store.write(path, value, expectedHash: null);
+      } else if (sha256.convert(old).toString() != checksum) {
+        throw const WorkspaceConflict(
+          'The new source path contains different bytes.',
+        );
+      }
+    }
+    return _changeAttachmentSource(expected, {
+      'contentRef': path,
+      'originalName': name,
+      'mimeType': _mime(_safeName(name)),
+      'byteLength': byteLength,
+      'checksum': checksum,
+    });
+  });
+
+  /// Lists native attachment stages left by an interrupted transfer. Browser
+  /// stores use the bounded compatibility path and therefore return none.
+  Future<List<WorkspaceAttachmentStageInfo>> attachmentRecoveryStages({
+    String? target,
+  }) => _serial(() async {
+    final store = _store;
+    if (store is! WorkspaceAttachmentStagingStore) return const [];
+    await _verifyManifest();
+    final stages = await (store as WorkspaceAttachmentStagingStore)
+        .listAttachmentStages();
+    return target == null
+        ? stages
+        : stages.where((stage) => stage.target == target).toList();
+  });
+
+  Future<void> discardAttachmentRecoveryStage(String id) => _serial(() async {
+    final store = _store;
+    if (store is! WorkspaceAttachmentStagingStore) return;
+    await _verifyManifest();
+    await (store as WorkspaceAttachmentStagingStore).discardAttachmentStage(id);
+  });
+
+  Future<UniversalObject> restoreAttachmentSource(
+    UniversalObject expected,
+    String reference, {
+    void Function(int bytesRead, int totalBytes, String phase)? onProgress,
+    bool Function()? isCancelled,
+  }) => _serial(() async {
+    _requireAttachmentSnapshot(expected);
+    await _verifyManifest();
+    final raw = expected.properties['attachmentSourceHistory'];
+    final entries = raw is List
+        ? raw
+              .whereType<Map>()
+              .where((e) => e['contentRef'] == reference)
+              .toList()
+        : <Map>[];
+    if (entries.length != 1) {
+      throw const WorkspaceFailure('Choose one retained source version.');
+    }
+    final source = entries.single;
+    validateRelativePath(reference);
+    if (!reference.startsWith('Attachments/')) {
+      throw const WorkspaceFailure(
+        'Source versions must stay inside Attachments/.',
+      );
+    }
+    final inspected = await _inspectStoredAttachment(
+      reference,
+      onProgress: onProgress,
+      isCancelled: isCancelled,
+    );
+    if (inspected == null || inspected.checksum != source['checksum']) {
+      throw const WorkspaceConflict(
+        'The retained source is missing or changed. Restore its original bytes first.',
+      );
+    }
+    return _changeAttachmentSource(expected, {
+      for (final key in _attachmentSourceKeys) key: source[key],
+    });
+  });
+
+  /// Removes one retained source record and deletes its bytes only when no
+  /// other file object still references that immutable path.
+  Future<UniversalObject> forgetAttachmentSourceVersion(
+    UniversalObject expected,
+    String reference, {
+    void Function(int bytesRead, int totalBytes, String phase)? onProgress,
+    bool Function()? isCancelled,
+  }) => _serial(() async {
+    _requireAttachmentSnapshot(expected);
+    await _verifyManifest();
+    if (expected.properties['contentRef'] == reference) {
+      throw const WorkspaceFailure(
+        'The active source cannot be removed from history.',
+      );
+    }
+    final raw = expected.properties['attachmentSourceHistory'];
+    final history = raw is List ? raw.whereType<Map>().toList() : <Map>[];
+    final removed = history
+        .where((entry) => entry['contentRef'] == reference)
+        .toList();
+    if (removed.length != 1) {
+      throw const WorkspaceFailure('Choose one retained source version.');
+    }
+    final referencedElsewhere = _objects.values.any(
+      (object) =>
+          object.id != expected.id &&
+          object.typeId == 'orbit.file' &&
+          object.properties['contentRef'] == reference &&
+          !object.isDeleted,
+    );
+    if (referencedElsewhere) {
+      throw const WorkspaceConflict(
+        'This source is still used by another file object and cannot be cleaned up.',
+      );
+    }
+    final inspected = await _inspectStoredAttachment(
+      reference,
+      onProgress: onProgress,
+      isCancelled: isCancelled,
+    );
+    if (inspected == null || inspected.checksum != removed.single['checksum']) {
+      throw const WorkspaceConflict(
+        'The retained source is missing or changed; its history was preserved.',
+      );
+    }
+    final nextHistory = history
+        .where((entry) => entry['contentRef'] != reference)
+        .toList();
+    final saved = await _save(
+      expected.copyWith(
+        properties: {
+          ...expected.properties,
+          'attachmentSourceHistory': nextHistory,
+        },
+      ),
+    );
+    await _store.deleteFile(reference, expectedHash: inspected.checksum);
+    return saved;
+  });
+
+  static const _attachmentSourceKeys = {
+    'contentRef',
+    'originalName',
+    'mimeType',
+    'byteLength',
+    'checksum',
+  };
+
+  void _requireAttachmentSnapshot(UniversalObject expected) {
+    _requireWritable();
+    final current = _requireObject(expected.id);
+    if (current.typeId != 'orbit.file' ||
+        current.isDeleted ||
+        current.revision != expected.revision ||
+        jsonEncode(current.toJson()) != jsonEncode(expected.toJson())) {
+      throw const WorkspaceConflict(
+        'The attachment changed while recovery was open. Reopen it before continuing.',
+      );
+    }
+    final history = current.properties['attachmentSourceHistory'];
+    if (history != null &&
+        (history is! List || history.any((e) => e is! Map))) {
+      throw const WorkspaceReadOnly(
+        'Unrecognized source history is preserved.',
+      );
+    }
+  }
+
+  Future<UniversalObject> _changeAttachmentSource(
+    UniversalObject expected,
+    Map<String, dynamic> source,
+  ) {
+    final history = [
+      ...?(expected.properties['attachmentSourceHistory'] as List?),
+    ];
+    final previous = {
+      for (final key in _attachmentSourceKeys) key: expected.properties[key],
+      'recordedAt': DateTime.now().toUtc().toIso8601String(),
+    };
+    // One entry per immutable path; no retained or unknown history is discarded.
+    if (!history.whereType<Map>().any(
+      (e) => e['contentRef'] == previous['contentRef'],
+    )) {
+      history.add(previous);
+    }
+    return _save(
+      expected.copyWith(
+        properties: {
+          ...expected.properties,
+          ...source,
+          'attachmentSourceHistory': history,
+        },
+      ),
+    );
+  }
+
   /// Portable documented JSON envelope containing original authoritative bytes.
   /// Device state, credentials and rebuildable SQLite/cache files are excluded.
   Future<String> exportBundle() => _serial(() async {
@@ -797,6 +1465,11 @@ class WorkspaceRepository {
       throw const WorkspaceFailure('Give this object a title.');
     }
     if (object.typeId == 'orbit.task') {
+      validateTaskPlanning(
+        object,
+        _objects.values,
+        previous: _objects[object.id],
+      );
       final completed = object.properties['completed'];
       final priority = object.properties['priority'];
       if (completed != null && completed is! bool) {
@@ -823,6 +1496,14 @@ class WorkspaceRepository {
     }
     if (object.typeId == 'orbit.event') {
       EventSchedule.fromProperties(object.properties);
+    }
+    if (object.typeId == 'orbit.view' &&
+        object.properties['smartQuery'] != null) {
+      final raw = object.properties['smartQuery'];
+      if (raw is! Map) {
+        throw const FormatException('Unreadable Smart View query.');
+      }
+      SmartViewQuery(Map<String, dynamic>.from(raw));
     }
     // JSON rejects non-finite geometry and unsupported runtime objects.
     jsonEncode({'object': object.toJson(), 'data': object.data});

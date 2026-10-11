@@ -127,11 +127,23 @@ double finiteNumber(Object? value, double fallback) =>
 
 /// Bounded grid membership prevents a giant element allocating millions of cells.
 class CanvasSpatialIndex {
-  CanvasSpatialIndex({this.cellSize = 512});
+  CanvasSpatialIndex({this.cellSize = 512}) {
+    if (!cellSize.isFinite || cellSize <= 0) {
+      throw ArgumentError.value(
+        cellSize,
+        'cellSize',
+        'Must be finite and positive',
+      );
+    }
+  }
   final double cellSize;
   final Map<String, CanvasBounds> _bounds = {};
   final Map<(int, int), Set<String>> _cells = {};
   final Set<String> _large = {};
+  int _lastCandidateCount = 0;
+
+  /// Diagnostic count before exact intersection filtering; never serialized.
+  int get lastCandidateCount => _lastCandidateCount;
 
   Iterable<(int, int)> _keys(CanvasBounds bounds) sync* {
     for (
@@ -149,14 +161,27 @@ class CanvasSpatialIndex {
     }
   }
 
-  bool _isLarge(CanvasBounds bounds) =>
-      ((bounds.right / cellSize).floor() -
-              (bounds.left / cellSize).floor() +
-              1) *
-          ((bounds.bottom / cellSize).floor() -
-              (bounds.top / cellSize).floor() +
-              1) >
-      256;
+  bool _isLarge(CanvasBounds bounds) {
+    if (![
+      bounds.left,
+      bounds.top,
+      bounds.right,
+      bounds.bottom,
+    ].every((v) => v.isFinite)) {
+      return true;
+    }
+    final columns =
+        (bounds.right / cellSize).floor() -
+        (bounds.left / cellSize).floor() +
+        1;
+    final rows =
+        (bounds.bottom / cellSize).floor() -
+        (bounds.top / cellSize).floor() +
+        1;
+    // Test each dimension before multiplication: huge world extents must not
+    // overflow an integer and accidentally enter an unbounded cell loop.
+    return columns > 256 || rows > 256 || columns * rows > 256;
+  }
 
   void put(String id, CanvasBounds bounds) {
     remove(id);
@@ -189,6 +214,7 @@ class CanvasSpatialIndex {
         candidates.addAll(_cells[key] ?? const <String>{});
       }
     }
+    _lastCandidateCount = candidates.length;
     return candidates.where((id) => _bounds[id]!.intersects(bounds)).toSet();
   }
 }
@@ -203,4 +229,19 @@ double distanceToSegment(CanvasPoint p, CanvasPoint a, CanvasPoint b) {
       .clamp(0, 1)
       .toDouble();
   return (p - (a + ab * t)).length;
+}
+
+/// Tests if a [point] lies within a closed polygon using Jordan curve ray casting.
+bool isPointInPolygon(CanvasPoint point, List<CanvasPoint> polygon) {
+  if (polygon.length < 3) return false;
+  var inside = false;
+  for (int i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    final pi = polygon[i];
+    final pj = polygon[j];
+    if (((pi.y > point.y) != (pj.y > point.y)) &&
+        (point.x < (pj.x - pi.x) * (point.y - pi.y) / (pj.y - pi.y) + pi.x)) {
+      inside = !inside;
+    }
+  }
+  return inside;
 }

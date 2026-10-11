@@ -49,3 +49,33 @@ Off uses zero-duration custom transitions. Graph fit/focus stops after a finite
 ease-out, and direct manipulation interrupts it. Existing nodes keep positions
 across filters. Graph entry, Calendar headings, Task text, tabs and Copy Code use
 bounded feedback. See observatory-pass-2026-09-11.md for unimplemented transitions.
+
+## Quiet interaction motion — 2026-09-27
+
+Delivered another MOT-01/MOT-02/MOT-04 subset using existing Flutter animations:
+
+- Workspace destinations and document tabs use a 220ms arrival: opacity .88–1
+  and four logical pixels of vertical travel. Only the current content is mounted;
+  no outgoing editor or duplicate focus tree remains. Navigation and input are
+  immediate, and successive changes restart from the actual latest destination.
+- Inspector opening uses the existing brief opacity entrance.
+- Explorer calendar expansion/collapse uses 180ms size easing. Its chevron rotates
+  in 140ms; month changes use the same small content arrival. Day selection eases
+  its background rather than flashing. Collapsed dates are removed immediately.
+- PDF review and connected-note disclosures resize in 180ms while preserving their
+  existing state. Hidden controls are excluded from keyboard focus.
+- Shared controls ease their selection underline and a small icon-size change;
+  explorer rows ease selected backgrounds. Completed task rows gain a quiet tint.
+- Explorer drop feedback, task hover and outline hover now use preference-aware
+  timing instead of fixed local durations.
+
+Reduced (including the OS cap) has no travel, rotation, scaling or size animation;
+state/opacity feedback lasts 110ms. Off uses zero-duration custom transitions.
+Changing the preference settles an active content arrival immediately. These
+transitions do not animate canvas cameras, ink, PDF page rendering, text input,
+or persistence. No repeating decoration, spring overshoot, or staggered input delay.
+
+Validation covers all three modes, OS reduction during a transition, repeated
+navigation, focus and typing during arrival, and disclosure state/focus recovery.
+This does not claim completion of all planned MOT requirements or a large-canvas
+frame-time benchmark.

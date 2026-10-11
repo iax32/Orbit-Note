@@ -1,8 +1,11 @@
+import '../../app/orbit_density.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../app/orbit_theme.dart';
 import '../../app/workspace_controller.dart';
 import '../../domain/universal_object.dart';
+import '../../domain/reverse_engineering.dart';
+import 'research_record_dialog.dart';
 import 'workspace_views.dart';
 
 class FunctionTableView extends StatefulWidget {
@@ -24,6 +27,13 @@ class FunctionTableView extends StatefulWidget {
 }
 
 class _FunctionTableViewState extends State<FunctionTableView> {
+  final _horizontalScroll = ScrollController();
+  @override
+  void dispose() {
+    _horizontalScroll.dispose();
+    super.dispose();
+  }
+
   String _searchQuery = '';
   String? _statusFilter;
   String? _confidenceFilter;
@@ -62,290 +72,196 @@ class _FunctionTableViewState extends State<FunctionTableView> {
   bool _isFunction(UniversalObject o) {
     if (o.isDeleted) return false;
     if (!_matchesScope(o)) return false;
-    return o.properties['category'] == 'Function' ||
-        o.properties.containsKey('address') ||
-        o.properties.containsKey('rva');
+    return o.properties['category'] == 'Function';
   }
 
   Future<void> _createNewFunction() async {
-    final nameCtrl = TextEditingController();
-    final addrCtrl = TextEditingController(text: '0x1400');
-    final modCtrl = TextEditingController(text: 'target.exe');
-    final purposeCtrl = TextEditingController();
-    String selectedConfidence = 'Medium';
-    String selectedStatus = 'Investigating';
-
-    final targetFolder = widget.folderFilter != null
-        ? (widget.folderFilter!.contains('Functions')
-              ? widget.folderFilter!
-              : '${widget.folderFilter}/Functions')
-        : 'Reverse Engineering/${widget.scope ?? "Target"}/Functions';
-
-    final targetName =
-        widget.scope ??
-        widget.viewObject.properties['target']?.toString() ??
-        '';
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Add Function'),
-          content: SizedBox(
-            width: 440,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameCtrl,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Function Name / Symbol *',
-                      hintText: 'e.g. DecryptPacket or sub_140024B20',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: addrCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Address / RVA',
-                            hintText: '0x140024B20',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: modCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Module',
-                            hintText: 'target.exe',
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: purposeCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Purpose / Description',
-                      hintText: 'Decrypts incoming network buffer',
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          initialValue: selectedStatus,
-                          decoration: const InputDecoration(
-                            labelText: 'Status',
-                          ),
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'Unknown',
-                              child: Text('Unknown'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Interesting',
-                              child: Text('Interesting'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Investigating',
-                              child: Text('Investigating'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Partially Understood',
-                              child: Text('Partially Understood'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Confirmed',
-                              child: Text('Confirmed'),
-                            ),
-                          ],
-                          onChanged: (val) {
-                            if (val != null) {
-                              setDialogState(() => selectedStatus = val);
-                            }
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          initialValue: selectedConfidence,
-                          decoration: const InputDecoration(
-                            labelText: 'Confidence',
-                          ),
-                          items: const [
-                            DropdownMenuItem(value: 'Low', child: Text('Low')),
-                            DropdownMenuItem(
-                              value: 'Medium',
-                              child: Text('Medium'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'High',
-                              child: Text('High'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Verified',
-                              child: Text('Verified'),
-                            ),
-                          ],
-                          onChanged: (val) {
-                            if (val != null) {
-                              setDialogState(() => selectedConfidence = val);
-                            }
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (nameCtrl.text.trim().isNotEmpty) {
-                  Navigator.pop(ctx, true);
-                }
-              },
-              child: const Text('Create Function'),
-            ),
-          ],
-        ),
-      ),
+    await showResearchRecordDialog(
+      context,
+      widget.controller,
+      folder:
+          widget.folderFilter ??
+          'Reverse Engineering/${widget.scope ?? "Target"}/Functions',
+      initialCategory: 'Function',
     );
-
-    if (result == true) {
-      await widget.controller.createFunctionDoc(
-        folder: targetFolder,
-        name: nameCtrl.text.trim(),
-        address: addrCtrl.text.trim(),
-        module: modCtrl.text.trim(),
-        purpose: purposeCtrl.text.trim(),
-        status: selectedStatus,
-        confidence: selectedConfidence,
-        target: targetName,
-      );
-      if (mounted) setState(() {});
-    }
   }
 
   Future<void> _showImportDialog() async {
     final textCtrl = TextEditingController();
-    String format = 'csv';
-
-    final targetFolder = widget.folderFilter != null
-        ? (widget.folderFilter!.contains('Functions')
-              ? widget.folderFilter!
-              : '${widget.folderFilter}/Functions')
-        : 'Reverse Engineering/${widget.scope ?? "Target"}/Functions';
-
-    final targetName =
+    var format = 'csv';
+    FunctionImportPlan? plan;
+    String? error;
+    var saving = false;
+    var partialFailure = false;
+    final folder = widget.folderFilter == null
+        ? 'Reverse Engineering/${widget.scope ?? "Target"}/Functions'
+        : widget.folderFilter!.endsWith('/Functions')
+        ? widget.folderFilter!
+        : '${widget.folderFilter}/Functions';
+    final target =
         widget.scope ??
         widget.viewObject.properties['target']?.toString() ??
         '';
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Import Functions (CSV or JSON)'),
-          content: SizedBox(
-            width: 520,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    ChoiceChip(
-                      label: const Text('CSV Format'),
-                      selected: format == 'csv',
-                      onSelected: (val) {
-                        if (val) setDialogState(() => format = 'csv');
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    ChoiceChip(
-                      label: const Text('JSON Array'),
-                      selected: format == 'json',
-                      onSelected: (val) {
-                        if (val) setDialogState(() => format = 'json');
-                      },
-                    ),
-                  ],
+    try {
+      final route = DialogRoute<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, refresh) => PopScope(
+            canPop: !saving,
+            child: AlertDialog(
+              title: const Text('Import functions'),
+              content: SizedBox(
+                width: 560,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          for (final value in ['csv', 'json'])
+                            ChoiceChip(
+                              label: Text(value.toUpperCase()),
+                              selected: format == value,
+                              onSelected: saving
+                                  ? null
+                                  : (_) => refresh(() {
+                                      format = value;
+                                      plan = null;
+                                      error = null;
+                                    }),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        format == 'csv'
+                            ? 'Name, Address or RVA, Module, Purpose. Optional context: BinaryId, BinaryVersion, ModuleId, ModuleBase, AddressSpace. Quoted comments and multiline fields are supported.'
+                            : 'Array of functions, or {"version":1,"tool":"Ghidra","source":"export.json","context":{…},"functions":[…]}. Build and address context are preserved.',
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: textCtrl,
+                        enabled: !saving,
+                        maxLines: 8,
+                        onChanged: (_) => refresh(() {
+                          plan = null;
+                          error = null;
+                        }),
+                        decoration: const InputDecoration(
+                          labelText: 'Export content',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      if (error != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Text(
+                            error!,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                          ),
+                        ),
+                      if (plan != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          '${plan!.functions.length} functions ready to import',
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                        for (final function in plan!.functions.take(8))
+                          Text(
+                            '${function.name} · ${function.location.address.isEmpty ? function.location.rva : function.location.address} · ${function.location.module}',
+                          ),
+                        if (plan!.functions.any(
+                          (f) => f.location.identity == null,
+                        ))
+                          const Padding(
+                            padding: EdgeInsets.only(top: 8),
+                            child: Text(
+                              'Some records lack binary, build or module identity. They will remain separate records; addresses will not be merged.',
+                            ),
+                          ),
+                      ],
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  format == 'csv'
-                      ? 'Expected CSV columns: Name, Address, Module, Purpose, Status, Confidence'
-                      : 'Expected JSON: [{"name":"Sub_01", "address":"0x1400", "module":"app.exe", "purpose":"init"}]',
-                  style: const TextStyle(fontSize: 11.5, color: Colors.grey),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: saving ? null : () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
                 ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: textCtrl,
-                  maxLines: 8,
-                  decoration: const InputDecoration(
-                    hintText: 'Paste CSV or JSON content here...',
-                    border: OutlineInputBorder(),
+                FilledButton(
+                  onPressed: saving || partialFailure
+                      ? null
+                      : () async {
+                          if (plan == null) {
+                            try {
+                              final parsed = format == 'csv'
+                                  ? FunctionImportPlan.csv(textCtrl.text)
+                                  : FunctionImportPlan.json(textCtrl.text);
+                              if (parsed.functions.isEmpty) {
+                                throw const FormatException(
+                                  'No functions found.',
+                                );
+                              }
+                              refresh(() {
+                                plan = parsed;
+                                error = null;
+                              });
+                            } catch (e) {
+                              refresh(() => error = '$e');
+                            }
+                            return;
+                          }
+                          refresh(() => saving = true);
+                          final count = await widget.controller
+                              .importFunctionPlan(
+                                plan!,
+                                folder: folder,
+                                target: target,
+                              );
+                          if (!dialogContext.mounted) return;
+                          if (count != plan!.functions.length) {
+                            refresh(() {
+                              saving = false;
+                              partialFailure = true;
+                              error =
+                                  'Saved $count of ${plan!.functions.length}. ${widget.controller.error ?? "Save failed."} Close this dialog before retrying to avoid duplicating saved records.';
+                            });
+                            plan = null;
+                            return;
+                          }
+                          Navigator.pop(dialogContext);
+                          if (mounted) {
+                            setState(() {});
+                            ScaffoldMessenger.of(this.context).showSnackBar(
+                              SnackBar(
+                                content: Text('Imported $count functions.'),
+                              ),
+                            );
+                          }
+                        },
+                  child: Text(
+                    saving
+                        ? 'Importing…'
+                        : plan == null
+                        ? 'Validate and preview'
+                        : 'Import ${plan!.functions.length} functions',
                   ),
                 ),
               ],
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (textCtrl.text.trim().isNotEmpty) {
-                  Navigator.pop(ctx, true);
-                }
-              },
-              child: const Text('Import Functions'),
-            ),
-          ],
         ),
-      ),
-    );
-
-    if (result == true) {
-      int count = 0;
-      if (format == 'csv') {
-        count = await widget.controller.importFunctionsFromCsv(
-          textCtrl.text,
-          folder: targetFolder,
-          target: targetName,
-        );
-      } else {
-        count = await widget.controller.importFunctionsFromJson(
-          textCtrl.text,
-          folder: targetFolder,
-          target: targetName,
-        );
-      }
-      if (mounted) {
-        setState(() {});
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Imported $count functions.')));
-      }
+      );
+      await Navigator.of(context, rootNavigator: true).push(route);
+      await route.completed;
+    } finally {
+      textCtrl.dispose();
     }
   }
 
@@ -371,19 +287,24 @@ class _FunctionTableViewState extends State<FunctionTableView> {
         final addr = f.properties['address']?.toString().toLowerCase() ?? '';
         final mod = f.properties['module']?.toString().toLowerCase() ?? '';
         final purp = f.properties['purpose']?.toString().toLowerCase() ?? '';
+        final context =
+            ['rva', 'binaryVersion', 'binaryId', 'moduleId', 'addressSpace']
+                .map((key) => f.properties[key]?.toString().toLowerCase() ?? '')
+                .join(' ');
         if (!name.contains(q) &&
             !addr.contains(q) &&
             !mod.contains(q) &&
-            !purp.contains(q)) {
+            !purp.contains(q) &&
+            !context.contains(q)) {
           return false;
         }
       }
       if (_statusFilter != null && _statusFilter!.isNotEmpty) {
-        final s = (f.properties['status'] as String?)?.toLowerCase();
+        final s = f.properties['status']?.toString().toLowerCase();
         if (s != _statusFilter!.toLowerCase()) return false;
       }
       if (_confidenceFilter != null && _confidenceFilter!.isNotEmpty) {
-        final c = (f.properties['confidence'] as String?)?.toLowerCase();
+        final c = f.properties['confidence']?.toString().toLowerCase();
         if (c != _confidenceFilter!.toLowerCase()) return false;
       }
       if (_moduleFilter != null && _moduleFilter!.isNotEmpty) {
@@ -402,7 +323,10 @@ class _FunctionTableViewState extends State<FunctionTableView> {
             color: colors.panel,
             border: Border(bottom: BorderSide(color: colors.divider)),
           ),
-          child: Row(
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               // Search input
               SizedBox(
@@ -429,71 +353,56 @@ class _FunctionTableViewState extends State<FunctionTableView> {
               ),
               const SizedBox(width: 12),
 
-              // Status Filter Pills
-              _StatusPill(
-                label: 'All',
-                selected: _statusFilter == null,
-                onTap: () => setState(() => _statusFilter = null),
-                colors: colors,
-              ),
-              const SizedBox(width: 4),
-              _StatusPill(
-                label: 'Unknown',
-                selected: _statusFilter == 'Unknown',
-                onTap: () => setState(
-                  () => _statusFilter = _statusFilter == 'Unknown'
-                      ? null
-                      : 'Unknown',
+              for (final field in ['status', 'confidence', 'module'])
+                SizedBox(
+                  width: 180,
+                  child: DropdownButtonFormField<String>(
+                    initialValue: field == 'status'
+                        ? _statusFilter
+                        : field == 'confidence'
+                        ? _confidenceFilter
+                        : _moduleFilter,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: field == 'status'
+                          ? 'Status'
+                          : field == 'confidence'
+                          ? 'Confidence'
+                          : 'Module',
+                      isDense: true,
+                    ),
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: null,
+                        child: Text('All'),
+                      ),
+                      for (final value
+                          in (allFunctions
+                              .map((f) => f.properties[field]?.toString() ?? '')
+                              .where((v) => v.isNotEmpty)
+                              .toSet()
+                              .toList()
+                            ..sort()))
+                        DropdownMenuItem(
+                          value: value,
+                          child: Text(value, overflow: TextOverflow.ellipsis),
+                        ),
+                    ],
+                    onChanged: (value) => setState(() {
+                      if (field == 'status') {
+                        _statusFilter = value;
+                      } else if (field == 'confidence') {
+                        _confidenceFilter = value;
+                      } else {
+                        _moduleFilter = value;
+                      }
+                    }),
+                  ),
                 ),
-                colors: colors,
+              Text(
+                '${filtered.length} of ${allFunctions.length} functions',
+                style: TextStyle(color: colors.subtle),
               ),
-              const SizedBox(width: 4),
-              _StatusPill(
-                label: 'Interesting',
-                selected: _statusFilter == 'Interesting',
-                onTap: () => setState(
-                  () => _statusFilter = _statusFilter == 'Interesting'
-                      ? null
-                      : 'Interesting',
-                ),
-                colors: colors,
-              ),
-              const SizedBox(width: 4),
-              _StatusPill(
-                label: 'Investigating',
-                selected: _statusFilter == 'Investigating',
-                onTap: () => setState(
-                  () => _statusFilter = _statusFilter == 'Investigating'
-                      ? null
-                      : 'Investigating',
-                ),
-                colors: colors,
-              ),
-              const SizedBox(width: 4),
-              _StatusPill(
-                label: 'Partially Understood',
-                selected: _statusFilter == 'Partially Understood',
-                onTap: () => setState(
-                  () => _statusFilter = _statusFilter == 'Partially Understood'
-                      ? null
-                      : 'Partially Understood',
-                ),
-                colors: colors,
-              ),
-              const SizedBox(width: 4),
-              _StatusPill(
-                label: 'Confirmed',
-                selected: _statusFilter == 'Confirmed',
-                onTap: () => setState(
-                  () => _statusFilter = _statusFilter == 'Confirmed'
-                      ? null
-                      : 'Confirmed',
-                ),
-                colors: colors,
-              ),
-
-              const Spacer(),
-
               // Import button
               OutlinedButton.icon(
                 onPressed: _showImportDialog,
@@ -512,334 +421,412 @@ class _FunctionTableViewState extends State<FunctionTableView> {
           ),
         ),
 
-        // Table Header
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-          decoration: BoxDecoration(
-            color: colors.raised,
-            border: Border(bottom: BorderSide(color: colors.divider)),
-          ),
-          child: const Row(
-            children: [
-              Expanded(
-                flex: 3,
-                child: Text(
-                  'FUNCTION / SYMBOL',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text(
-                  'ADDRESS / RVA',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text(
-                  'MODULE',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                ),
-              ),
-              Expanded(
-                flex: 3,
-                child: Text(
-                  'PURPOSE',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text(
-                  'CONFIDENCE',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text(
-                  'STATUS',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                ),
-              ),
-              SizedBox(
-                width: 120,
-                child: Text(
-                  'ACTIONS',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // Function Rows List
         Expanded(
-          child: filtered.isEmpty
-              ? Center(
-                  child: Text(
-                    allFunctions.isEmpty
-                        ? 'No functions recorded. Click "New Function" or "Import CSV/JSON" to document binary functions.'
-                        : 'No functions match current filters.',
-                    style: TextStyle(color: colors.subtle),
-                  ),
-                )
-              : ListView.builder(
-                  itemCount: filtered.length,
-                  itemBuilder: (context, idx) {
-                    final f = filtered[idx];
-                    final addr =
-                        f.properties['address']?.toString() ??
-                        f.properties['rva']?.toString() ??
-                        '0x0';
-                    final mod =
-                        f.properties['module']?.toString() ?? 'target.exe';
-                    final purpose = f.properties['purpose']?.toString() ?? '';
-                    final conf =
-                        f.properties['confidence']?.toString() ?? 'Medium';
-                    final status =
-                        f.properties['status']?.toString() ?? 'Investigating';
-
-                    return InkWell(
-                      onTap: () => widget.controller.openObject(f.id),
-                      child: Container(
+          child: LayoutBuilder(
+            builder: (context, constraints) => Scrollbar(
+              controller: _horizontalScroll,
+              thumbVisibility: true,
+              notificationPredicate: (notification) => notification.depth == 0,
+              child: SingleChildScrollView(
+                controller: _horizontalScroll,
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width:
+                      constraints.maxWidth <
+                          1080 * MediaQuery.textScalerOf(context).scale(14) / 14
+                      ? 1080 * MediaQuery.textScalerOf(context).scale(14) / 14
+                      : constraints.maxWidth,
+                  height: constraints.maxHeight,
+                  child: Column(
+                    children: [
+                      // Table Header
+                      Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 24,
-                          vertical: 8,
+                          vertical: 10,
                         ),
                         decoration: BoxDecoration(
-                          color: idx.isEven
-                              ? Colors.transparent
-                              : colors.panel.withValues(alpha: 0.3),
+                          color: colors.raised,
                           border: Border(
-                            bottom: BorderSide(
-                              color: colors.divider.withValues(alpha: 0.5),
-                            ),
+                            bottom: BorderSide(color: colors.divider),
                           ),
                         ),
                         child: Row(
                           children: [
-                            // Function Name
-                            Expanded(
-                              flex: 3,
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.code,
-                                    size: 15,
-                                    color: colors.accent,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      f.title.isEmpty ? 'sub_$addr' : f.title,
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            // Address
-                            Expanded(
-                              flex: 2,
-                              child: Text(
-                                formatAddress(addr),
-                                style: TextStyle(
-                                  fontFamily: 'monospace',
-                                  fontSize: 12.5,
-                                  color: colors.accent,
-                                ),
-                              ),
-                            ),
-                            // Module
-                            Expanded(
-                              flex: 2,
-                              child: Text(
-                                mod,
-                                style: const TextStyle(fontSize: 12.5),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            // Purpose
                             Expanded(
                               flex: 3,
                               child: Text(
-                                purpose,
+                                'FUNCTION / SYMBOL',
                                 style: TextStyle(
-                                  fontSize: 12,
-                                  color: colors.subtle,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            // Confidence
                             Expanded(
                               flex: 2,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
-                                ),
-                                child: Text(
-                                  conf,
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w500,
-                                    color: conf == 'Verified'
-                                        ? Colors.green.shade400
-                                        : colors.text,
-                                  ),
+                              child: Text(
+                                'ADDRESS / RVA',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ),
-                            // Status
                             Expanded(
                               flex: 2,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: status.toLowerCase() == 'confirmed'
-                                      ? Colors.green.shade400.withValues(
-                                          alpha: 0.15,
-                                        )
-                                      : colors.raised,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  status,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: status.toLowerCase() == 'confirmed'
-                                        ? Colors.green.shade400
-                                        : colors.subtle,
-                                  ),
+                              child: Text(
+                                'MODULE',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ),
-                            // Actions
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                'PURPOSE',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                'CONFIDENCE',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                'STATUS',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
                             SizedBox(
-                              width: 120,
-                              child: Row(
-                                children: [
-                                  IconButton(
-                                    tooltip:
-                                        'Copy Address (${formatAddress(addr)})',
-                                    icon: const Icon(Icons.tag, size: 16),
-                                    onPressed: () {
-                                      Clipboard.setData(
-                                        ClipboardData(
-                                          text: formatAddress(addr),
-                                        ),
-                                      );
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            'Copied ${formatAddress(addr)} to clipboard',
-                                          ),
-                                          duration: const Duration(seconds: 1),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                  IconButton(
-                                    tooltip:
-                                        'Copy Module+Offset (${formatModuleOffset(mod, addr)})',
-                                    icon: const Icon(Icons.copy, size: 15),
-                                    onPressed: () {
-                                      Clipboard.setData(
-                                        ClipboardData(
-                                          text: formatModuleOffset(mod, addr),
-                                        ),
-                                      );
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            'Copied ${formatModuleOffset(mod, addr)} to clipboard',
-                                          ),
-                                          duration: const Duration(seconds: 1),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                  IconButton(
-                                    tooltip: 'Open Note',
-                                    icon: const Icon(
-                                      Icons.open_in_new,
-                                      size: 15,
-                                    ),
-                                    onPressed: () =>
-                                        widget.controller.openObject(f.id),
-                                  ),
-                                ],
+                              width:
+                                  3 *
+                                  (OrbitDensity.of(context).smallControl < 48
+                                      ? 48
+                                      : OrbitDensity.of(context).smallControl),
+                              child: Text(
+                                'ACTIONS',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                           ],
                         ),
                       ),
-                    );
-                  },
+
+                      // Function Rows List
+                      Expanded(
+                        child: filtered.isEmpty
+                            ? Center(
+                                child: Text(
+                                  allFunctions.isEmpty
+                                      ? 'No functions recorded. Click "New Function" or "Import CSV/JSON" to document binary functions.'
+                                      : 'No functions match current filters.',
+                                  style: TextStyle(color: colors.subtle),
+                                ),
+                              )
+                            : ListView.builder(
+                                itemCount: filtered.length,
+                                itemBuilder: (context, idx) {
+                                  final f = filtered[idx];
+                                  final addr =
+                                      f.properties['address']?.toString() ??
+                                      f.properties['rva']?.toString() ??
+                                      '';
+                                  final mod =
+                                      f.properties['module']?.toString() ?? '';
+                                  final relative =
+                                      f.properties['rva']?.toString() ??
+                                      (f.properties['addressSpace'] == 'rva'
+                                          ? addr
+                                          : '');
+                                  final moduleOffset =
+                                      relative.isEmpty || mod.isEmpty
+                                      ? null
+                                      : formatModuleOffset(mod, relative);
+                                  final purpose =
+                                      f.properties['purpose']?.toString() ?? '';
+                                  final conf =
+                                      f.properties['confidence']?.toString() ??
+                                      'Medium';
+                                  final status =
+                                      f.properties['status']?.toString() ??
+                                      'Investigating';
+
+                                  return InkWell(
+                                    onTap: () =>
+                                        widget.controller.openObject(f.id),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 24,
+                                        vertical: 8,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: idx.isEven
+                                            ? Colors.transparent
+                                            : colors.panel.withValues(
+                                                alpha: 0.3,
+                                              ),
+                                        border: Border(
+                                          bottom: BorderSide(
+                                            color: colors.divider.withValues(
+                                              alpha: 0.5,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          // Function Name
+                                          Expanded(
+                                            flex: 3,
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.code,
+                                                  size: 15,
+                                                  color: colors.accent,
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    f.title.isEmpty
+                                                        ? 'sub_$addr'
+                                                        : f.title,
+                                                    style: const TextStyle(
+                                                      fontSize: 13,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          // Address
+                                          Expanded(
+                                            flex: 2,
+                                            child: Text(
+                                              addr.isEmpty
+                                                  ? 'Not recorded'
+                                                  : formatAddress(addr),
+                                              style: TextStyle(
+                                                fontFamily: 'monospace',
+                                                fontSize: 12.5,
+                                                color: colors.accent,
+                                              ),
+                                            ),
+                                          ),
+                                          // Module
+                                          Expanded(
+                                            flex: 2,
+                                            child: Text(
+                                              mod.isEmpty ? '—' : mod,
+                                              style: const TextStyle(
+                                                fontSize: 12.5,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          // Purpose
+                                          Expanded(
+                                            flex: 3,
+                                            child: Text(
+                                              purpose,
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: colors.subtle,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          // Confidence
+                                          Expanded(
+                                            flex: 2,
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 2,
+                                                  ),
+                                              child: Text(
+                                                conf,
+                                                style: TextStyle(
+                                                  fontSize: 11.5,
+                                                  fontWeight: FontWeight.w500,
+                                                  color: conf == 'Verified'
+                                                      ? Colors.green.shade400
+                                                      : colors.text,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          // Status
+                                          Expanded(
+                                            flex: 2,
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 2,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color:
+                                                    status.toLowerCase() ==
+                                                        'confirmed'
+                                                    ? Colors.green.shade400
+                                                          .withValues(
+                                                            alpha: 0.15,
+                                                          )
+                                                    : colors.raised,
+                                                borderRadius:
+                                                    BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                status,
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                  color:
+                                                      status.toLowerCase() ==
+                                                          'confirmed'
+                                                      ? Colors.green.shade400
+                                                      : colors.subtle,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          // Actions
+                                          SizedBox(
+                                            width:
+                                                3 *
+                                                (OrbitDensity.of(
+                                                          context,
+                                                        ).smallControl <
+                                                        48
+                                                    ? 48
+                                                    : OrbitDensity.of(
+                                                        context,
+                                                      ).smallControl),
+                                            child: Row(
+                                              children: [
+                                                IconButton(
+                                                  tooltip: addr.isEmpty
+                                                      ? 'Address not recorded'
+                                                      : 'Copy Address (${formatAddress(addr)})',
+                                                  icon: const Icon(
+                                                    Icons.tag,
+                                                    size: 16,
+                                                  ),
+                                                  onPressed: addr.isEmpty
+                                                      ? null
+                                                      : () {
+                                                          Clipboard.setData(
+                                                            ClipboardData(
+                                                              text:
+                                                                  formatAddress(
+                                                                    addr,
+                                                                  ),
+                                                            ),
+                                                          );
+                                                          ScaffoldMessenger.of(
+                                                            context,
+                                                          ).showSnackBar(
+                                                            SnackBar(
+                                                              content: Text(
+                                                                'Copied ${formatAddress(addr)} to clipboard',
+                                                              ),
+                                                              duration:
+                                                                  const Duration(
+                                                                    seconds: 1,
+                                                                  ),
+                                                            ),
+                                                          );
+                                                        },
+                                                ),
+                                                IconButton(
+                                                  tooltip: moduleOffset == null
+                                                      ? 'RVA unavailable; add module/base context'
+                                                      : 'Copy Module+RVA ($moduleOffset)',
+                                                  icon: const Icon(
+                                                    Icons.copy,
+                                                    size: 15,
+                                                  ),
+                                                  onPressed:
+                                                      moduleOffset == null
+                                                      ? null
+                                                      : () {
+                                                          Clipboard.setData(
+                                                            ClipboardData(
+                                                              text:
+                                                                  moduleOffset,
+                                                            ),
+                                                          );
+                                                          ScaffoldMessenger.of(
+                                                            context,
+                                                          ).showSnackBar(
+                                                            SnackBar(
+                                                              content: Text(
+                                                                'Copied $moduleOffset to clipboard',
+                                                              ),
+                                                              duration:
+                                                                  const Duration(
+                                                                    seconds: 1,
+                                                                  ),
+                                                            ),
+                                                          );
+                                                        },
+                                                ),
+                                                IconButton(
+                                                  tooltip: 'Open Note',
+                                                  icon: const Icon(
+                                                    Icons.open_in_new,
+                                                    size: 15,
+                                                  ),
+                                                  onPressed: () => widget
+                                                      .controller
+                                                      .openObject(f.id),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
                 ),
+              ),
+            ),
+          ),
         ),
       ],
-    );
-  }
-}
-
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-    required this.colors,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  final OrbitColors colors;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(4),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: selected
-              ? colors.accent.withValues(alpha: 0.15)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(
-            color: selected ? colors.accent : colors.border,
-            width: 1,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 11.5,
-            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-            color: selected ? colors.accent : colors.text,
-          ),
-        ),
-      ),
     );
   }
 }

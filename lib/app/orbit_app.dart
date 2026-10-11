@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/workspace/workspace_shell.dart';
 import 'orbit_theme.dart';
+import 'app_zoom.dart';
 import 'orbit_components.dart';
 import 'workspace_controller.dart';
 
@@ -13,14 +14,39 @@ class OrbitNoteApp extends ConsumerWidget {
     ref.watch(
       workspaceProvider.select((_) {
         final c = ref.read(workspaceProvider.notifier);
-        return (c.session.compact, c.session.motion);
+        return (
+          c.session.compact,
+          c.session.uiZoom,
+          c.session.motion,
+          c.session.fontFamily,
+          c.session.documentFontFamily,
+          c.session.monoFontFamily,
+          c.session.themePreset,
+          c.session.cornerStyle,
+          c.session.accentColor,
+          c.session.colorOverrides,
+          c.session.customThemes,
+        );
       }),
     );
     final controller = ref.read(workspaceProvider.notifier);
     return MaterialApp(
       title: 'Orbit Note',
       debugShowCheckedModeBanner: false,
-      theme: orbitDarkTheme(compact: controller.session.compact),
+      theme: orbitTheme(
+        preset: controller.session.themePreset,
+        compact: controller.session.compact,
+        uiZoom: controller.session.uiZoom,
+        fontFamily: controller.session.fontFamily,
+        documentFontFamily: controller.session.documentFontFamily,
+        monoFontFamily: controller.session.monoFontFamily,
+        cornerStyle: controller.session.cornerStyle,
+        accentColor: OrbitColors.accentFromPreset(
+          controller.session.accentColor,
+        ),
+        colorOverrides: controller.session.colorOverrides,
+        customPacks: controller.session.customThemes,
+      ),
       themeAnimationDuration:
           controller.session.motion != 'normal' ||
               View.of(
@@ -37,7 +63,12 @@ class OrbitNoteApp extends ConsumerWidget {
           osReduced: media.disableAnimations,
           child: MediaQuery(
             data: media.copyWith(disableAnimations: reduced),
-            child: child!,
+            child: AppZoom(
+              zoom: controller.session.uiZoom,
+              onChanged: (value) =>
+                  controller.updateSession((s) => s.uiZoom = value),
+              child: child!,
+            ),
           ),
         );
       },

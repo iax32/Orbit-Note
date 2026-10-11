@@ -56,3 +56,30 @@ class MemoryStore implements WorkspaceStore {
     files.remove(relativePath);
   }
 }
+
+class FolderMemoryStore extends MemoryStore implements WorkspaceFolderStore {
+  final Set<String> folderList = {'Notes'};
+
+  @override
+  Future<List<String>> listFolders() async => folderList.toList()..sort();
+
+  @override
+  Future<void> createFolder(String path) async {
+    folderList.add(path);
+  }
+
+  @override
+  Future<void> deleteFolder(String path) async {
+    folderList.remove(path);
+  }
+
+  @override
+  Future<void> movePath(
+    String source,
+    String target,
+    Map<String, FileReplacement> replacements,
+  ) async {
+    folderList.remove(source);
+    folderList.add(target);
+  }
+}

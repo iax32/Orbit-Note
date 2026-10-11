@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:orbit_note/app/orbit_theme.dart';
@@ -471,7 +472,28 @@ void main() {
       final groupButtonFinder = find.byTooltip(
         'Group (Ctrl+G) / Ungroup (Ctrl+Shift+G)',
       );
+      expect(groupButtonFinder, findsNothing);
+      final surface = find.byWidgetPredicate(
+        (w) => w is CustomPaint && w.painter is OrbitCanvasPainter,
+      );
+      await tester.tapAt(tester.getTopLeft(surface) + const Offset(150, 140));
+      await tester.pumpAndSettle();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
       expect(groupButtonFinder, findsOneWidget);
+      final actions = find.byTooltip('Selection actions');
+      await tester.ensureVisible(actions);
+      await tester.tap(actions);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Duplicate'));
+      await tester.pumpAndSettle();
+      expect(doc['elements'], hasLength(4));
+      expect(
+        (doc['elements'] as List).where((e) => e['id'] == 'c1'),
+        hasLength(1),
+      );
     });
 
     testWidgets(

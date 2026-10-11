@@ -1,9 +1,155 @@
 # Attachments, media and research
 
-Status: planned. Stage: M2 basic files; M4 annotations; richer viewers later.
+## Reusable source libraries and BibTeX — 2026-10-11
+
+Create source library in the citation manager makes a named ordinary Vault note
+containing current metadata. Reuse library sources lets another note review and
+select records before copying a bibliographic snapshot. Open source library follows
+its canonical UUID; missing libraries keep local snapshots usable. Libraries use
+existing note edit/save/history, backup and deletion. Updates do not automatically
+propagate into citing documents.
+
+Import BibTeX accepts a bounded UTF-8 file or pasted text, previews sources/warnings
+and permits selection. Key and normalized-DOI conflicts offer keep existing, new
+incoming key or explicit replacement retaining existing citation keys. Duplicate
+and contradictory matches refuse ambiguous writes. Export BibTeX uses the platform
+save/download adapter, preserving unknown fields and unchanged raw TeX in imported
+records. Cancellation and stale-note/workspace changes leave authored data intact.
+Nested/quoted/braced fields, numeric values and literal concatenation are supported;
+unresolved macros and skipped directives are warned, never executed. Import limits,
+display mapping and export fidelity are documented in
+[formats](../architecture/implemented-formats.md). Native file-dialog/device
+acceptance is separate from automated parser/layout/storage validation.
+
+## Citation management and bibliographies — 2026-10-11
+
+FILE-10/14 has an offline document-local subset: Writing tools → Citations &
+bibliography adds/edits/searches manual source metadata (title, author, year,
+publisher/journal, DOI, ISBN, URL), inserts citations at the captured writing
+position with page/section locators, and generates compact author–year or
+first-use numbered References from cited sources only. Unused sources can be
+removed; cited source removal requires removing its citations first. Duplicate
+and missing identifiers show warnings. All mutations use existing note undo/save
+and reject stale/read-only edits. Rich/Read retain readable citations while hiding
+recognized metadata. PDF/HTML/Word publishing refreshes a source snapshot.
+
+Source metadata and generated text survive external Markdown editing/reopening;
+unknown fields and unsupported records are preserved. Code examples are literal,
+and insertion refuses code/metadata/generated regions. Narrow layouts and enlarged
+text use scrollable forms and wrapping actions. Styles are compact conventions,
+not full APA/MLA/CSL. This does not fetch metadata, turn citations into separate
+objects or integrate Zotero. Reusable library notes and reviewed BibTeX are delivered
+above. See
+[portable formats](../architecture/implemented-formats.md) and current task evidence.
+
+## Local 3D model previews — 2026-10-11
+
+Import OBJ or GLB files through the ordinary attachment workflow. The offline
+viewer provides drag/arrow-key orbit, Front/Side/Top orthographic views, zoom,
+Fit/Home and shaded or wireframe presentation. Original bytes are unchanged.
+Native parsing runs in an isolate; web parsing uses the same bounded parser.
+
+OBJ supports slash and relative face indices and fan triangulation; export
+concave polygons as triangles. GLB 2 supports embedded triangle geometry,
+indexed/nonindexed meshes, scene instances, matrix/TRS transforms and material
+base-colour tint. Textures, animation, skinning and OBJ material libraries are
+not rendered. Draco/Meshopt compression, sparse/quantized accessors, invalid
+bounds and missing geometry report useful preview errors with Retry and Open
+original. Limits are 32 MiB, 100,000 vertices and 50,000 triangles, with bounded
+scene traversal.
+
+Add to Canvas searches editable boards and creates a fresh ordinary placement
+referencing the canonical attachment. Existing drop and placement actions also
+apply. Removing a placement preserves the source asset. Canvas displays a linked
+model card that opens the viewer, rather than an interactive mesh in every card.
+
+Status: partially implemented; see dated delivery sections and current validation.
+Stage: M2 basic files; M4 annotations; richer viewers later.
 Sources: S01, S03, S04, S07, S08 in the [source map](../product/conversation-extraction.md).
 Architecture: [storage](../architecture/storage-formats.md),
 [annotation engine](../architecture/canvas-engine.md).
+
+## Extracted PDF text in workspace search — 2026-10-08
+
+### Local OCR and review — 2026-10-09
+
+FILE-08 now includes Windows-local recognition of scans/image attachments. Search
+scanner, PDF Document tools and image previews open review with bulk jobs,
+progress/pause/cancel, failures/retry, correction save/reset and selected-passage
+Markdown notes with UUID page links/checksum provenance. Profile language support
+is required; files never upload. Portable versioned metadata retains original
+recognition and corrections without modifying attachments.
+
+Verified OCR overlays blank pages/images; explicit corrections override embedded
+text. Matches mark original source lines; corrections return by page only. Changed
+sources invalidate search while retaining old evidence; explicit re-recognition
+stages complete replacement and preserves same-source corrections. Cancelled/
+failed files retain previous records. Other platforms search/edit saved evidence
+but do not yet recognize new sources. Printed text is primary; handwriting,
+equations/layout/rotation accuracy is not promised. No confidence score is invented.
+See [formats](../architecture/implemented-formats.md), [ADR 0023](../adr/0023-local-ocr-evidence.md)
+and [current evidence](../tasks/current.md). The extraction-only OCR exclusion
+below is historical and superseded by this Windows-local delivery.
+
+FILE-08 text extraction now contributes page excerpts to Global Search alongside
+notes, tasks and Canvas. Local background extraction is bound to actual bytes;
+complete caches survive native restart, while browser caches are session memory.
+Changed/relinked sources invalidate prior results; opening a match verifies bytes
+and highlights the exact page range. Clear match removes transient highlighting.
+Extraction never writes the original, object metadata, durable offsets or annotations.
+
+Search coverage exposes page progress, failed PDFs with retry, pause/resume,
+scanned/no-text pages and partial coverage. Corrupt/locked/copying-restricted files
+and size limits fail visibly without hiding the original file. Sources are bounded
+to 100 MiB and extracted text to 32 Mi characters per document. Cache failures
+retain session search with a warning. OCR and retained unlock passwords are not
+part of this delivery. See [search architecture](../architecture/search.md) and
+[current evidence](../tasks/current.md).
+
+## Bookshelf redesign — 2026-09-30
+
+The library prioritizes titles and reading: shelf/search controls, recent/title/
+progress sorting, card/list presentation and a compact resume for genuinely
+started books. Reading rooms are selected through a menu and passed to the reader.
+Favorites, bookmarks, linked PDF notes and export remain on the existing objects;
+saved pages navigate to the reader using session context. No fabricated cover or
+resume item is shown. Current session pages supplement library reading metadata;
+unknown page totals do not imply completed books. Narrow and large-text layouts
+and malformed bookmark values have regression coverage. See the
+[task report](../tasks/colors-bookshelf-2026-09-30.md) for validation.
+
+## Reading tools addition — 2026-09-22
+
+Saved pages now supports optional names, case-insensitive search by name/page,
+and a preview of the selected page (2026-09-24). Rename is disabled in read-only
+readers; blank names use the page number. Out-of-range bookmarks remain visible
+but cannot be opened. Existing page-number bookmarks stay compatible.
+
+Bookmark browsing supports page order in either direction and name A–Z/Z–A.
+Sorting retains the selected page. Up/Down while the filter is focused selects
+and reveals results; Enter opens the selection. Sort order is local to the dialog
+and does not change durable bookmark metadata.
+
+The PDF outline opens in a searchable dialog with parent-section context, page
+numbers, lazy results, arrow-key selection and Enter activation. All nesting
+levels are searchable; section jumps preserve full PDF destinations and integrate
+with previous/next visited pages. Missing and unreadable outlines have distinct
+messages; this feature does not generate headings for PDFs without an outline.
+
+At enlarged text sizes and narrow widths, outline/bookmark titles and parent/page
+context wrap in lazy variable-height rows (2026-10-08). Keyboard selection reveals
+the actual row bounds. Headings, filters, and lists share a scroll surface; Close
+and Open page remain in the footer. The selected bookmark preview precedes the
+list so it remains reachable in a large bookmark collection. Bookmark rename
+help/errors and custom zoom validation wrap completely, keeping failed input.
+
+The zoom menu supports a 400% preset and validated custom fractional percentages.
+Document tools offers first/last page, previous/next visited page and document
+information (page count, current page dimensions, encryption and copying permission).
+Page-jump history is local to the reader session, capped at 100 prior jumps and
+reset on source replacement. It tracks explicit page navigation/internal links,
+not ordinary scrolling or text-search results, and restores pages rather than
+exact scroll/zoom positions. Original PDF bytes and permissions stay unchanged.
 
 ## Purpose and workflow
 
@@ -41,6 +187,7 @@ in-app viewer or extraction tool is unavailable.
 | `.mp3`, `.wav`, `.m4a`, `.mp4`, `.webm` | Original attachment, platform-capable playback later | Voice notes, timestamps, transcription |
 | `.csv`, `.json`, `.yaml`, `.yml`, `.html` | Preserve original / safe text or import preview | Structured import and sanitized saved-page view |
 | `.docx`, `.xlsx`, `.pptx` | Original attachment/external open | Evaluated import or viewer; native editing is not promised |
+| `.obj`, `.glb` | Offline bounded static geometry preview and linked Canvas cards | Texture, rigging and animation support remains future |
 | Other files: archives, `.blend`, project assets, executables | Metadata/reference/external-open choice | Plugin-provided preview where supported |
 
 “First-class file object” does not mean every codec or proprietary format has an
@@ -69,9 +216,95 @@ Explorer are defined once in [desktop interactions](desktop-interactions.md).
 
 ## Delivery
 
+### Attachment relinking and source recovery — 2026-10-07
+
+Missing attachment previews open a recovery dialog with three explicit paths:
+restore checksum-matching bytes at the original path, relink a stable file
+object to a new immutable source, or restore a retained source version. A
+relink records the previous source in `attachmentSourceHistory` while keeping
+the Universal Object ID stable. Existing Markdown paths are never silently
+rewritten; failed or stale recovery commands preserve the current source and
+surface the reason. Retained source bytes are ordinary attachment files and can
+be opened before choosing a version.
+
 Start with durable attachment objects and explicit open/fallback. Add viewers one
 at a time, then annotations and extraction. Choose packages based on actual target
 platform support in the corresponding task, not a speculative all-format dependency list.
+
+### Recovery verification and retained-source cleanup — 2026-10-07
+
+The recovery chooser previews the selected filename, byte length, and SHA-256.
+Restoring a missing original requires the recorded checksum; a mismatch keeps
+the restore action disabled while still allowing an intentional relink as a new
+source. Recovery reads are capped at 100 MiB on this path and explain the limit
+when exceeded. Retained history entries can be forgotten after confirmation.
+Cleanup refuses the active source and refuses a path still used by another live
+file object, then removes the history record and deletes only bytes whose hash
+was verified through a streamed read. The recovery dialog reports verification
+progress for large retained sources. If bytes are missing or changed, cleanup
+fails before changing history. Existing Markdown references and the active
+source remain untouched.
+
+The recovery dialog paginates retained source history in groups of eight and
+offers a visible cancellation action while any source is being verified or
+staged. Cancellation is checked between streamed chunks. Retained-source
+cancellation leaves the history and immutable bytes untouched, while native
+attachment transfers retain their durable partial stage so the user can resume
+later. The active reference is not changed until the complete checksum-guarded
+commit succeeds.
+
+The recovery dialog is keyboard and screen-reader friendly: source history and
+progress are live semantic regions, each source is announced with its path and
+size, and focus follows a stable traversal order. Escape cancels an active
+operation or closes the idle dialog; Ctrl+Page Up/Down changes history pages.
+Cancellation announces that references and retained bytes remain preserved and
+prevents duplicate cancellation requests.
+
+High-contrast palettes receive a visible dialog outline, outlined source
+records, larger action targets, and a thicker progress bar. Reduced-motion
+settings stop progress animation ticking while retaining deterministic progress
+values and live status text.
+
+Recovery also hardens the dialog's effective color scheme before rendering:
+custom surface palettes with unreadable text, outline, or progress tokens use
+deterministic high-contrast fallbacks while preserving the chosen surface. The
+same rule applies to light and dark themes, so recovery choices remain legible
+without requiring users to reset their palette.
+
+Recovery and source-cleanup confirmations scroll their titles with the content,
+keeping footer actions reachable in compact windows and with large text. History
+page labels wrap between fixed navigation buttons. Filenames, paths, checksums,
+and status messages remain fully available without capping accessibility text
+scaling. Keyboard insets and runtime text-size changes do not restart verification
+or remove its cancellation action.
+
+### Streamed recovery hashing and progress — 2026-10-08
+
+Recovery reads the selected XFile twice from independent streams: the first pass
+verifies byte length and SHA-256 for the confirmation surface, and the second
+pass commits only after the user accepts. Native Vaults use disk-backed staging
+with incremental hashing and progress callbacks, avoiding a second full byte
+buffer for large files. Browser stores use the existing bounded fallback. A
+changed stream, checksum mismatch, or 100 MiB limit failure leaves the active
+source and authored references untouched.
+
+### Resumable recovery after interrupted staging — 2026-10-08
+
+Native restore and relink stages retain a device-local manifest beside their
+partial bytes. The manifest records the operation, target, expected SHA-256,
+source name, and byte offset. On the next Vault open, recovery lists matching
+stages and lets the user choose the same source to continue from that offset
+or discard the stage. Resume appends only the remaining source stream and
+verifies the complete checksum before the guarded commit. A failed resume
+keeps the stage available for another attempt; discard removes only the
+device-local stage. Browser storage remains bounded and non-resumable.
+
+Native Vault startup cleanup applies the same recovery policy to abandoned
+stages: a well-formed stage whose durable `updatedAt` is older than 30 days is
+removed with its `.part` bytes and temporary manifest. Recent stages remain
+available to resume, malformed manifests are left for explicit inspection, and
+unsupported newer workspace formats are not modified. Users can still discard
+any listed stage immediately from the recovery dialog.
 
 ## Delivered reader subset — 2026-09-11
 
@@ -160,3 +393,86 @@ the focused reader: Ctrl+0 whole page, Ctrl+1 100%, Ctrl+2 page width, Alt+Left/
 page navigation, F3/Shift+F3 search matches. Narrow-screen controls scroll horizontally.
 Physical phone/high-DPI gesture validation and advanced Acrobat tools remain future
 acceptance work. Dense multi-column pages can still require pinch zoom and panning.
+
+### PDF review workspace — 2026-09-14
+
+Builds on the existing color highlights, underlines/strikeouts, continuous/single/
+two-page layouts and source-region return. Add page comment works without text
+selection, including scans and diagrams. It creates an ordinary linked Markdown
+note with a versioned marker on the current page; the original PDF is unchanged.
+Comments can be opened beside the PDF, linked from Notes/Canvas/graph, or recovered
+through ordinary note Trash/restore.
+
+The review panel filters by words, open/resolved status, markup type and current
+page, and sorts by source page or creation date. Editing a review item changes its
+existing Markdown note, color/type and resolved status, without creating another
+object. A stale dialog cannot replace a newer note or apply styling to a changed
+PDF version. Failed saves keep local drafts and show a retry/reopen explanation.
+Copy reference provides a UUID note link. Hide review markup affects only this view.
+
+Copy/export the filtered items as Markdown, or save a review summary as a new note
+beside the PDF. Both annotation and page links retain UUIDs with readable labels;
+renaming a file does not break them. Existing quote bodies are not duplicated in
+summaries, and obsolete source versions carry a warning. Summaries are snapshots,
+not automatically maintained copies of annotations. The plain Markdown export
+uses the existing native Save As/browser download adapter and is bounded to avoid
+building unbounded strings. Cancellation/failure leaves the Vault unchanged.
+
+No Acrobat account, remote processing, new PDF writer, or storage migration is
+introduced. Remaining: interoperable PDF annotation import/export, free-positioned
+page comments, shared ink, OCR, true redaction, signatures and page/content editing.
+Current page comments use automatic markers; they do not imply an exact user-picked
+region. Ordinary notes remain the durable authoring format. See current task for
+validation and device limits. Product reference: Adobe's
+[comment management](https://helpx.adobe.com/acrobat/desktop/share-and-review-documents/manage-reviews/view-comments.html).
+
+### Annotated PDF copies — 2026-09-15
+
+The review panel's **Save filtered review as annotated PDF** saves a separate PDF
+attachment in the Vault on native platforms. It exports exactly the filtered notes
+as standard Highlight, Underline, StrikeOut or Text annotations. Each source region
+gets one annotation with its note UUID reference, title, Unicode Markdown body and
+color. Open/resolved appears in comment text; native threaded review state is not
+exported. Existing PDF content and filled field values remain; Orbit form drafts
+require the separate Save filled copy workflow. Original bytes and notes are never
+overwritten. Repeated unchanged copies may reuse the attachment importer's existing
+checksum deduplication. Use Open original on the new attachment for an external reader.
+
+Stale checksums, changed note/source snapshots, unsupported metadata, invalid page
+regions, protected/signed/XFA documents and excessive input are rejected. Failed
+saves retain review notes for retry; concurrent export clicks are disabled. Native
+PDFium converts normalized display geometry including rotation/crop offsets. Web
+keeps the existing Markdown export. Annotation import, shared ink, redaction,
+signatures and PDF content editing remain deferred. See current task for checks
+and post-reset Windows build validation.
+
+### Reader reliability and connected notes — 2026-09-16
+
+Connected notes lists existing source-linked notes and Markdown backlinks to the
+PDF, with title/body filtering and a current-page note action. Opening a result
+opens the original note beside its source. Returning from a highlight note focuses
+its saved region; changed source versions show a warning and do not reuse stale
+geometry. Repeated source navigation works even when the PDF is already open.
+
+Layout changes preserve page and zoom. Closing or opening a note flushes the last
+reading position. Retry reloads attachment bytes and replacing a source version
+reloads the renderer. Page input normalizes to valid bounds. Text highlights no
+longer use broad hit-test overlays that obstruct selection; passage taps use the
+actual regions. Failed passage-comment saves retain the draft for retry. Quote
+and filled-copy saves check that their source has not changed while processing.
+Clipboard and form-save exceptions show recoverable feedback.
+
+These are verified fixes for the tested workflows, not a guarantee for every PDF.
+OCR, arbitrary embedded annotation editing and native annotation import remain
+outside this pass. Original attachment bytes remain unchanged.
+
+## Creative reference capture — 2026-10-09
+
+Local multi-file Canvas capture reuses validated attachment import and saves,
+preserving original bytes, filename/type/checksum metadata and canonical identity.
+Project/folder attribution comes from the target board; each placement keeps its
+own commentary and review details. PDF/image/general file previews use existing
+loaders and opening/recovery boundaries. No file execution, web fetching or media
+transformation occurs. Failed files are reported without discarding successful
+ones. If metadata enrichment or placement fails, already imported sources remain
+discoverable. Sources stay available after placement removal or insertion undo.

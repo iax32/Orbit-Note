@@ -113,6 +113,7 @@ void main() {
           'AKMath',
           semester: 'WS 2026/27',
           ects: 6,
+          courseCode: 'CS-301',
           lecturer: 'Prof. Dr. Hilbert',
         );
 
@@ -121,8 +122,10 @@ void main() {
         expect(course.properties['course'], 'AKMath');
         expect(course.properties['semester'], 'WS 2026/27');
         expect(course.properties['ects'], 6);
+        expect(course.properties['courseCode'], 'CS-301');
         expect(course.properties['lecturer'], 'Prof. Dr. Hilbert');
         expect(course.properties['isCourseOverview'], true);
+        expect(course.body, contains('CS-301'));
 
         // Verify folder structure
         expect(store.folders, contains('University/AKMath'));

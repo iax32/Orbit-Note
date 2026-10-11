@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:orbit_note/features/notes/note_editor.dart';
 import 'package:orbit_note/features/notes/rich/equation_editor.dart';
 import 'package:orbit_note/features/notes/rich/rich_math_block.dart';
+import 'package:orbit_note/features/notes/rich/rich_markdown_editor.dart';
 import 'package:orbit_note/features/notes/rich/visual_math_model.dart';
 
 void main() {
@@ -155,6 +156,160 @@ void main() {
         await tester.pumpAndSettle();
         expect(body, contains(r'\frac{a}{b}'));
         expect(tester.widget<TextField>(denomInput).controller!.text, 'b');
+      },
+    );
+
+    testWidgets(
+      'new inline and block equations focus an editable placeholder without Studio',
+      (tester) async {
+        for (final name in ['Inline equation', 'Block equation']) {
+          await tester.pumpWidget(const SizedBox());
+          await openEditor(tester, '');
+          await tester
+              .state<RichMarkdownEditorState>(find.byType(RichMarkdownEditor))
+              .command(name);
+          await tester.pumpAndSettle();
+          expect(find.byType(EquationEditor), findsNothing);
+          final focused = find.byWidgetPredicate(
+            (w) => w is TextField && w.focusNode?.hasFocus == true,
+          );
+          expect(focused, findsOneWidget);
+          expect(tester.widget<TextField>(focused).controller!.text, '□');
+          tester.testTextInput.updateEditingValue(
+            const TextEditingValue(
+              text: 'x+1',
+              selection: TextSelection.collapsed(offset: 3),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(body, contains('x+1'));
+          expect(body, isNot(contains(r'\square')));
+        }
+      },
+    );
+
+    testWidgets(
+      'math edits and Source edits share undo across Rich Source Split and Read',
+      (tester) async {
+        const original =
+            'Before **kept**\r\n\r\n\$\$\r\n\\dfrac  {a}{b}\r\n\$\$\r\n\r\n{{untouched}}\r\n';
+        await openEditor(tester, original);
+        final denominator = find.byKey(const ValueKey('frac-den-0'));
+        await tester.enterText(denominator, '42');
+        await tester.pumpAndSettle();
+        final edited = original.replaceFirst('{b}', '{42}');
+        expect(body, edited);
+        await tester.tap(find.text('Source'));
+        await tester.pumpAndSettle();
+        final sourceField = find.byKey(const ValueKey('note-body'));
+        expect(tester.widget<TextField>(sourceField).controller!.text, edited);
+        await tester.enterText(
+          sourceField,
+          edited.replaceFirst('{42}', '{99}'),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Rich'));
+        await tester.pumpAndSettle();
+        await tester.tap(denominator);
+        Future<void> history(LogicalKeyboardKey key) async {
+          await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+          await tester.sendKeyEvent(key);
+          await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+          await tester.pumpAndSettle();
+        }
+
+        await history(LogicalKeyboardKey.keyZ);
+        expect(body, edited);
+        await history(LogicalKeyboardKey.keyZ);
+        expect(body, original);
+        await history(LogicalKeyboardKey.keyY);
+        expect(body, edited);
+        for (final mode in ['Split', 'Read', 'Rich']) {
+          await tester.tap(find.text(mode));
+          await tester.pumpAndSettle();
+          expect(body, edited);
+        }
+        // Recreate the editor from the durable Markdown callback, as on reopen.
+        await tester.pumpWidget(const SizedBox());
+        await openEditor(tester, edited);
+        expect(tester.widget<TextField>(denominator).controller!.text, '42');
+        expect(body, edited);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'inline symbol insertion and clearing keep the equation directly editable',
+      (tester) async {
+        const initial = r'Before $x$ after **kept**.';
+        await openEditor(tester, initial);
+        Finder value(String text) => find.byWidgetPredicate(
+          (w) => w is TextField && w.controller?.text == text,
+        );
+        await tester.tap(value('x'));
+        tester.widget<TextField>(value('x')).controller!.selection =
+            const TextSelection(baseOffset: 0, extentOffset: 1);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Symbols & templates'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey('latex-search')),
+          'alpha',
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey(r'latex-entry-\alpha')));
+        await tester.pumpAndSettle();
+        expect(body, r'Before $\alpha$ after **kept**.');
+        expect(value('α'), findsOneWidget);
+        await tester.enterText(value('α'), '');
+        await tester.pumpAndSettle();
+        expect(body, r'Before $\square$ after **kept**.');
+        expect(
+          tester.widget<TextField>(value('□')).focusNode!.hasFocus,
+          isTrue,
+        );
+        await tester.enterText(value('□'), '42');
+        await tester.pumpAndSettle();
+        expect(body, r'Before $42$ after **kept**.');
+      },
+    );
+
+    testWidgets(
+      'undo and redo a typed fraction retain keyboard focus in the equation',
+      (tester) async {
+        await openEditor(tester, '\$\$\nx\n\$\$\n');
+        final x = find.byWidgetPredicate(
+          (w) => w is TextField && w.controller?.text == 'x',
+        );
+        await tester.tap(x);
+        tester.widget<TextField>(x).controller!.selection =
+            const TextSelection.collapsed(offset: 1);
+        tester.testTextInput.updateEditingValue(
+          const TextEditingValue(
+            text: 'x/',
+            selection: TextSelection.collapsed(offset: 2),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final fraction = body;
+        expect(fraction, contains(r'\frac{x}{\square}'));
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+        expect(body, '\$\$\nx\n\$\$\n');
+        expect(tester.widget<TextField>(x).focusNode!.hasFocus, isTrue);
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyY);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+        expect(body, fraction);
+        expect(
+          find.byWidgetPredicate(
+            (w) => w is TextField && w.focusNode?.hasFocus == true,
+          ),
+          findsOneWidget,
+        );
       },
     );
 

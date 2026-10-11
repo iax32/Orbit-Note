@@ -7,6 +7,13 @@ import '../../app/orbit_components.dart';
 import '../../app/orbit_theme.dart';
 import '../../app/workspace_controller.dart';
 import '../../application/sync/sync_inventory.dart';
+import '../../application/backup_bundle.dart';
+import '../../infrastructure/sync/google_drive_api.dart';
+import '../../platform/import_backup.dart';
+import 'package:file_selector/file_selector.dart';
+import 'backup_import_dialog.dart';
+import '../../app/collaboration_controller.dart';
+import 'collaboration_settings.dart';
 
 String googleStorageLabel(BigInt? bytes) {
   if (bytes == null) return 'Unavailable';
@@ -107,15 +114,16 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
                 style: TextStyle(fontSize: 11, letterSpacing: 1.8),
               ),
               const SizedBox(height: 12),
-              Row(
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   const Icon(Icons.cloud_outlined),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Google Drive',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
+                  Text(
+                    'Google Drive',
+                    style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const Text('Local only', style: TextStyle(fontSize: 12)),
                 ],
@@ -125,6 +133,14 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
                 'Your Vault stays on this device. Signing in does not upload your files.',
               ),
               const SizedBox(height: 18),
+              OutlinedButton.icon(
+                onPressed: () => showCollaborationSettings(
+                  context,
+                  ref.read(collaborationProvider),
+                ),
+                icon: const Icon(Icons.people_outline),
+                label: const Text('Shared Vault · self-hosted'),
+              ),
               if (account != null) ...[
                 Row(
                   children: [
@@ -180,7 +196,12 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
                 const SizedBox(height: 16),
               ],
               if (cloud.busy) ...[
-                const LinearProgressIndicator(),
+                LinearProgressIndicator(value: cloud.transferProgress),
+                if (cloud.transferProgress != null)
+                  TextButton(
+                    onPressed: cloud.cancelTransfer,
+                    child: const Text('Cancel transfer'),
+                  ),
                 if (cloud.signingIn)
                   TextButton(
                     onPressed: cloud.cancel,
@@ -368,13 +389,109 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
                   const Text('No Orbit cloud Vaults found for this account.'),
                 const SizedBox(height: 8),
                 const Text(
-                  'Vault upload, download and automatic sync are not enabled in this build. Account connection alone does not synchronize your files.',
+                  'Drive backups',
+                  style: TextStyle(fontWeight: FontWeight.w600),
                 ),
+                const Text(
+                  'Save an independent Vault backup to your own Drive. Restoring creates a separate local folder. Automatic sync is not enabled.',
+                ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.cloud_upload_outlined),
+                      label: const Text('Back up this Vault'),
+                      onPressed: cloud.busy
+                          ? null
+                          : () async {
+                              if (!await _confirm(
+                                'Back up this Vault to Google Drive?',
+                                'Upload this Vault’s documents and attachments to the connected Google account. This is an independent backup, not automatic sync.',
+                              )) {
+                                return;
+                              }
+                              final workspaceId =
+                                  widget.workspace.repository.workspaceId;
+                              await cloud.uploadBackup(() async {
+                                if (!await widget.workspace.flushAll() ||
+                                    widget.workspace.repository.workspaceId !=
+                                        workspaceId) {
+                                  throw StateError(
+                                    'Vault changed or could not be saved.',
+                                  );
+                                }
+                                return widget.workspace.repository
+                                    .exportBundle();
+                              });
+                            },
+                    ),
+                    TextButton(
+                      onPressed: cloud.busy ? null : cloud.refreshBackups,
+                      child: const Text('Refresh backups'),
+                    ),
+                  ],
+                ),
+                for (final backup in cloud.backups)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(backup.name),
+                    subtitle: Text(
+                      googleStorageLabel(BigInt.from(backup.size)),
+                    ),
+                    trailing: TextButton(
+                      onPressed: cloud.busy
+                          ? null
+                          : () => _restoreDriveBackup(cloud, backup),
+                      child: const Text('Restore'),
+                    ),
+                  ),
               ],
             ],
           ),
         );
       },
     );
+  }
+
+  Future<void> _restoreDriveBackup(
+    GoogleCloudController cloud,
+    GoogleDriveBackup backup,
+  ) async {
+    if (widget.workspace.repository.isBrowser) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Restore into a new folder is available on desktop.'),
+        ),
+      );
+      return;
+    }
+    final source = await cloud.downloadBackup(backup);
+    if (source == null || !mounted) return;
+    try {
+      final bundle = BackupBundle.parse(source);
+      if (await showDialog<bool>(
+                context: context,
+                builder: (_) => BackupImportDialog(bundle: bundle),
+              ) !=
+              true ||
+          !mounted) {
+        return;
+      }
+      final parent = await getDirectoryPath(confirmButtonText: 'Restore here');
+      if (parent == null || !mounted || !await widget.workspace.flushAll()) {
+        return;
+      }
+      final path = await importBackup(bundle, parent);
+      await widget.workspace.initialize(path: path);
+    } on Object {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Restore failed. Existing Vaults are unchanged.'),
+          ),
+        );
+      }
+    }
   }
 }

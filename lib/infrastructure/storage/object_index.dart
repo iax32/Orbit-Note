@@ -7,3 +7,10 @@ abstract interface class ObjectIndex {
   Future<List<String>> search(String query);
   Future<void> close();
 }
+
+/// Optional disposable PDF cache. Older/test indexes retain their API.
+abstract interface class PdfTextCache {
+  Future<Map<String, dynamic>?> readPdfText(String id);
+  Future<void> writePdfText(String id, Map<String, dynamic> document);
+  Future<void> removePdfText(String id);
+}

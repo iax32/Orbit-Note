@@ -10,6 +10,7 @@ import 'package:orbit_note/features/notes/rich/markdown_document.dart';
 import 'package:orbit_note/features/workspace/workspace_views.dart';
 import 'package:orbit_note/features/canvas/canvas_editor.dart';
 import 'package:orbit_note/app/workspace_controller.dart';
+import 'package:orbit_note/app/session_state.dart';
 import 'package:orbit_note/application/workspace_repository.dart';
 import 'package:orbit_note/infrastructure/storage/memory_object_index.dart';
 import 'support/memory_store.dart';
@@ -215,14 +216,13 @@ Outside folded section.
         // Verify clicking Help icon opens the shortcuts/help dialog
         await tester.tap(find.byIcon(Icons.help_outline));
         await tester.pumpAndSettle();
-        expect(find.text('Orbit Note Help & Shortcuts'), findsOneWidget);
-        expect(find.text('KEYBOARD SHORTCUTS'), findsOneWidget);
-        expect(find.text('Ctrl + P'), findsOneWidget);
+        expect(find.text('Keyboard Shortcuts'), findsOneWidget);
+        expect(find.text('Search shortcuts…'), findsOneWidget);
 
         // Close dialog
-        await tester.tap(find.text('Close'));
+        await tester.tap(find.byTooltip('Close'));
         await tester.pumpAndSettle();
-        expect(find.text('Orbit Note Help & Shortcuts'), findsNothing);
+        expect(find.text('Keyboard Shortcuts'), findsNothing);
 
         // Verify clicking Vault Switcher opens the Your Vaults dialog
         await tester.tap(find.byIcon(Icons.unfold_more));
@@ -486,6 +486,12 @@ Outside folded section.
           find.text('2 words · 11 characters · 1 min read'),
           findsOneWidget,
         );
+        c.navigate(OrbitDestination.home);
+        await tester.pumpAndSettle();
+        expect(statsFinder, findsNothing);
+        c.openObject(note.id);
+        await tester.pumpAndSettle();
+        expect(statsFinder, findsOneWidget);
       },
     );
   });

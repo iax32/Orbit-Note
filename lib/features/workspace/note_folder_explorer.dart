@@ -6,19 +6,26 @@ import 'package:path/path.dart' as p;
 import '../../app/workspace_controller.dart';
 import '../../domain/universal_object.dart';
 import '../../domain/object_reference.dart';
+import '../../domain/reverse_engineering.dart';
 import '../../app/orbit_components.dart';
 import '../../app/orbit_theme.dart';
 import '../../platform/open_attachment.dart';
 import '../../domain/object_sort.dart';
 import 'orbit_explorer_row.dart';
+import 'research_record_dialog.dart';
+import 'folder_color_dialog.dart';
 import '../../application/workspace_repository.dart';
 import '../../infrastructure/storage/path_safety.dart';
+import '../notes/creative_brief_dialog.dart';
+import '../notes/note_templates.dart';
 
 /// Real on-disk Notes folders. Objects keep their identity when their owner moves.
 IconData viewTypeIcon(String? viewType) => switch (viewType) {
   'board' => Icons.view_kanban_outlined,
   'calendar' => Icons.calendar_month_outlined,
   'timeline' => Icons.timeline_outlined,
+  'gantt' => Icons.view_timeline_outlined,
+  'research' => Icons.collections_bookmark_outlined,
   'exercises' => Icons.table_chart_outlined,
   'overview' => Icons.dashboard_outlined,
   'game_dashboard' => Icons.sports_esports_outlined,
@@ -39,6 +46,250 @@ class NoteFolderExplorer extends StatefulWidget {
 
   @override
   State<NoteFolderExplorer> createState() => _NoteFolderExplorerState();
+}
+
+/// Metadata collected before scaffolding a project template. Keeping this in
+/// the explorer makes templates useful on first launch while leaving the
+/// controller as the durable storage boundary.
+class _ProjectTemplateDetails {
+  const _ProjectTemplateDetails({required this.name, this.values = const {}});
+
+  final String name;
+  final Map<String, dynamic> values;
+}
+
+Future<_ProjectTemplateDetails?> _showProjectTemplateDialog(
+  BuildContext context, {
+  required String kind,
+  required String title,
+  required String initialName,
+}) async {
+  final name = TextEditingController(text: initialName);
+  final courseCode = TextEditingController();
+  final semester = TextEditingController(text: 'WS 2026');
+  final ects = TextEditingController(text: '5');
+  final lecturer = TextEditingController();
+  final genre = TextEditingController(text: 'Action RPG');
+  final platform = TextEditingController(
+    text: kind == 'reverse' ? 'Windows' : 'PC / Steam',
+  );
+  final engine = TextEditingController(text: 'Godot / Unity / Custom');
+  final architecture = TextEditingController(text: 'x86-64');
+  final format = TextEditingController(text: 'PE');
+  final version = TextEditingController(text: '1.0.0');
+  final form = GlobalKey<FormState>();
+  final result = await showDialog<_ProjectTemplateDetails>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setState) {
+        final isCourse = kind == 'course';
+        final isGame = kind == 'game';
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                isCourse
+                    ? Icons.school_outlined
+                    : isGame
+                    ? Icons.sports_esports_outlined
+                    : Icons.manage_search_outlined,
+              ),
+              const SizedBox(width: 10),
+              Text(title),
+            ],
+          ),
+          content: SizedBox(
+            width: 460,
+            child: Form(
+              key: form,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      isCourse
+                          ? 'Set the course identity once. Orbit Note will use it across lectures, exercises, deadlines, and the dashboard.'
+                          : isGame
+                          ? 'Describe the project so the generated GDD, boards, and tasks start with useful context.'
+                          : 'Capture the target fingerprint so notes, functions, hypotheses, and evidence stay connected.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: OrbitColors.of(context).subtle,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: name,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        labelText: isCourse
+                            ? 'Course name'
+                            : isGame
+                            ? 'Project name'
+                            : 'Target name',
+                        hintText: isCourse ? 'e.g. Algorithms II' : null,
+                      ),
+                      validator: (value) =>
+                          (value ?? '').trim().isEmpty ? 'Enter a name.' : null,
+                    ),
+                    if (isCourse) ...[
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: courseCode,
+                        decoration: const InputDecoration(
+                          labelText: 'Course code (optional)',
+                          hintText: 'e.g. CS-301',
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: semester,
+                              decoration: const InputDecoration(
+                                labelText: 'Semester',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 110,
+                            child: TextFormField(
+                              controller: ects,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'ECTS',
+                              ),
+                              validator: (value) =>
+                                  int.tryParse((value ?? '').trim()) == null
+                                  ? 'Number'
+                                  : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: lecturer,
+                        decoration: const InputDecoration(
+                          labelText: 'Lecturer (optional)',
+                        ),
+                      ),
+                    ],
+                    if (isGame) ...[
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: genre,
+                        decoration: const InputDecoration(labelText: 'Genre'),
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: platform,
+                        decoration: const InputDecoration(
+                          labelText: 'Target platform',
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: engine,
+                        decoration: const InputDecoration(labelText: 'Engine'),
+                      ),
+                    ],
+                    if (!isCourse && !isGame) ...[
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: architecture,
+                        decoration: const InputDecoration(
+                          labelText: 'Architecture',
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: format,
+                              decoration: const InputDecoration(
+                                labelText: 'File format',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextFormField(
+                              controller: version,
+                              decoration: const InputDecoration(
+                                labelText: 'Version',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: () {
+                if (!form.currentState!.validate()) return;
+                Navigator.pop(
+                  dialogContext,
+                  _ProjectTemplateDetails(
+                    name: name.text.trim(),
+                    values: {
+                      if (isCourse) ...{
+                        'courseCode': courseCode.text.trim(),
+                        'semester': semester.text.trim(),
+                        'ects': int.tryParse(ects.text.trim()) ?? 5,
+                        'lecturer': lecturer.text.trim(),
+                      },
+                      if (isGame) ...{
+                        'genre': genre.text.trim(),
+                        'platform': platform.text.trim(),
+                        'engine': engine.text.trim(),
+                      },
+                      if (!isCourse && !isGame) ...{
+                        'architecture': architecture.text.trim(),
+                        'format': format.text.trim(),
+                        'platform': platform.text.trim(),
+                        'version': version.text.trim(),
+                      },
+                    },
+                  ),
+                );
+              },
+              icon: const Icon(Icons.auto_awesome, size: 16),
+              label: const Text('Create workspace'),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+  for (final controller in [
+    name,
+    courseCode,
+    semester,
+    ects,
+    lecturer,
+    genre,
+    platform,
+    engine,
+    architecture,
+    format,
+    version,
+  ]) {
+    controller.dispose();
+  }
+  return result;
 }
 
 class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
@@ -185,6 +436,13 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
     String folder,
     String action,
   ) async {
+    if (action.startsWith('new') || action == 'new') {
+      widget.controller.updateSession(
+        (s) => s.collapsedFolders = s.collapsedFolders
+            .where((f) => f != folder)
+            .toList(),
+      );
+    }
     if (action == 'new_note') {
       await widget.controller.create(
         'orbit.note',
@@ -194,6 +452,19 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
       await widget.controller.create(
         'orbit.canvas',
         properties: {'folder': folder},
+      );
+    } else if (action == 'new_research') {
+      final project = widget.controller.activeObjects
+          .where(
+            (o) =>
+                o.properties['folder'] == folder &&
+                o.properties['creativeProject'] == true,
+          )
+          .firstOrNull;
+      await widget.controller.createResearchCollection(
+        title: '${p.posix.basename(folder)} Research',
+        folder: folder,
+        project: project?.properties['project']?.toString(),
       );
     } else if (action == 'new_task_list') {
       final base = p.posix.basename(folder);
@@ -227,11 +498,42 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         title: '$base Timeline',
         properties: {'folder': folder, 'viewType': 'timeline'},
       );
+    } else if (action == 'new_gantt') {
+      await widget.controller.create(
+        'orbit.view',
+        title: '${p.posix.basename(folder)} Gantt',
+        properties: {
+          'folder': folder,
+          'viewType': 'gantt',
+          'ganttVersion': 1,
+          'ganttDays': 28,
+        },
+      );
+    } else if (action == 'new_creative_project') {
+      final brief = await showDialog<NoteTemplate>(
+        context: context,
+        builder: (_) => const CreativeBriefDialog(projectWorkspace: true),
+      );
+      if (brief != null) {
+        await widget.controller.createCreativeProject(
+          brief.defaultTitle,
+          briefBody: brief.body,
+          targetParentFolder: folder,
+        );
+      }
     } else if (action == 'new_game_project') {
-      final name = await _name(context, 'New Game Project', initial: 'MyGame');
-      if (name != null && name.trim().isNotEmpty) {
+      final details = await _showProjectTemplateDialog(
+        context,
+        kind: 'game',
+        title: 'New Game Project',
+        initialName: 'MyGame',
+      );
+      if (details != null) {
         await widget.controller.createGameProject(
-          name.trim(),
+          details.name,
+          genre: details.values['genre'] as String,
+          targetPlatform: details.values['platform'] as String,
+          targetEngine: details.values['engine'] as String,
           targetParentFolder: folder,
         );
       }
@@ -365,14 +667,19 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         );
       }
     } else if (action == 'new_course') {
-      final name = await _name(
+      final details = await _showProjectTemplateDialog(
         context,
-        'New University Course',
-        initial: 'AKMath',
+        kind: 'course',
+        title: 'New University Course',
+        initialName: 'AKMath',
       );
-      if (name != null && name.trim().isNotEmpty) {
+      if (details != null) {
         await widget.controller.createUniversityCourse(
-          name.trim(),
+          details.name,
+          semester: details.values['semester'] as String,
+          ects: details.values['ects'] as int,
+          courseCode: details.values['courseCode'] as String,
+          lecturer: details.values['lecturer'] as String,
           targetParentFolder: folder,
         );
       }
@@ -387,14 +694,19 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
       );
       await widget.controller.createExerciseCanvas(folder: folder, title: name);
     } else if (action == 'new_re_project') {
-      final name = await _name(
+      final details = await _showProjectTemplateDialog(
         context,
-        'New Reverse Engineering Project',
-        initial: 'Target',
+        kind: 'reverse',
+        title: 'New Reverse Engineering Project',
+        initialName: 'Target',
       );
-      if (name != null && name.trim().isNotEmpty) {
+      if (details != null) {
         await widget.controller.createReverseEngineeringProject(
-          name.trim(),
+          details.name,
+          architecture: details.values['architecture'] as String,
+          format: details.values['format'] as String,
+          targetPlatform: details.values['platform'] as String,
+          targetVersion: details.values['version'] as String,
           targetParentFolder: folder,
         );
       }
@@ -420,6 +732,47 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         await widget.controller.createMalwareAnalysisProject(
           name.trim(),
           targetParentFolder: folder,
+        );
+      }
+    } else if (action == 'new_research_record') {
+      if (context.mounted) {
+        await showResearchRecordDialog(
+          context,
+          widget.controller,
+          folder: folder,
+        );
+      }
+    } else if (action == 'new_research_map') {
+      final ids = widget.controller.activeObjects
+          .where((o) {
+            final owner = o.properties['folder']?.toString() ?? '';
+            return (owner == folder || owner.startsWith('$folder/')) &&
+                researchRecordCategories.contains(o.properties['category']);
+          })
+          .map((o) => o.id)
+          .toList();
+      if (ids.isEmpty || ids.length > 500) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Choose a folder containing 1–500 research records.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      final name = await _name(
+        context,
+        'New Research Map',
+        initial: 'Evidence map',
+      );
+      if (name != null) {
+        await widget.controller.createResearchMap(
+          folder: folder,
+          title: name,
+          objectIds: ids,
         );
       }
     } else if (action == 'new_function_doc') {
@@ -542,6 +895,19 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
           '$parent/${p.posix.basename(folder)}',
         );
       }
+    } else if (action == 'set_folder_color') {
+      final currentVal = widget.controller.folderColorValue(folder);
+      final currentColor = currentVal != null ? Color(currentVal) : null;
+      await showFolderColorDialog(
+        context,
+        folderName: p.posix.basename(folder),
+        currentColor: currentColor,
+        onColorSelected: (color) {
+          widget.controller.setFolderColor(folder, color?.toARGB32());
+        },
+      );
+    } else if (action == 'clear_folder_color') {
+      widget.controller.setFolderColor(folder, null);
     }
   }
 
@@ -746,10 +1112,51 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
       collect(root);
     }
 
+    Color? resolveAccent(dynamic raw) {
+      if (raw == null) return null;
+      if (raw is int) return Color(raw);
+      if (raw is Color) return raw;
+      if (raw is String) {
+        if (OrbitColors.accentPresets.containsKey(raw)) {
+          return OrbitColors.accentPresets[raw];
+        }
+        final hex = raw.replaceAll('#', '');
+        if (hex.length == 6) {
+          final val = int.tryParse('FF$hex', radix: 16);
+          if (val != null) return Color(val);
+        } else if (hex.length == 8) {
+          final val = int.tryParse(hex, radix: 16);
+          if (val != null) return Color(val);
+        }
+      }
+      return null;
+    }
+
+    Color? getFolderAccent(String folderPath) {
+      String? current = folderPath;
+      while (current != null && current.isNotEmpty) {
+        final raw =
+            widget.controller.session.folderColors[current] ??
+            (widget.controller.session.extra['folderColors'] as Map?)?[current];
+        final acc = resolveAccent(raw);
+        if (acc != null) return acc;
+        final parent = p.posix.dirname(current);
+        if (parent == current || parent == '.' || parent.isEmpty) break;
+        current = parent;
+      }
+      return null;
+    }
+
     void visit(String folder, int depth) {
       final collapsed =
           !widget.filtering &&
           widget.controller.session.collapsedFolders.contains(folder);
+      final folderAccent = getFolderAccent(folder);
+      final hasExplicitFolderColor =
+          widget.controller.session.folderColors.containsKey(folder) ||
+          ((widget.controller.session.extra['folderColors'] as Map?)
+                  ?.containsKey(folder) ??
+              false);
       rows.add(
         Padding(
           padding: EdgeInsets.only(left: depth * 12.0),
@@ -760,6 +1167,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
               null,
               OrbitExplorerRow(
                 key: ValueKey('folder:$folder'),
+                accentColor: folderAccent,
                 leading: Icon(
                   collapsed ? Icons.chevron_right : Icons.expand_more,
                   size: 16,
@@ -779,7 +1187,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                   p.posix.basename(folder),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12),
+                  style: const TextStyle(fontSize: 13.5),
                 ),
                 onTap: () => widget.controller.updateSession(
                   (s) => s.collapsedFolders = collapsed
@@ -851,8 +1259,23 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                         value: 'new_timeline',
                         child: const Text('New Timeline'),
                       ),
+                      PopupMenuItem(
+                        enabled: !repo.readOnly,
+                        value: 'new_gantt',
+                        child: const Text('New Gantt Timeline'),
+                      ),
                       const PopupMenuDivider(),
+                      PopupMenuItem(
+                        enabled: !repo.readOnly,
+                        value: 'new_research',
+                        child: const Text('New Research Workspace'),
+                      ),
                       if (folder == 'Notes' || isGameFolder) ...[
+                        PopupMenuItem(
+                          enabled: !repo.readOnly,
+                          value: 'new_creative_project',
+                          child: const Text('New Creative Project…'),
+                        ),
                         PopupMenuItem(
                           enabled: !repo.readOnly,
                           value: 'new_game_project',
@@ -984,6 +1407,16 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                         if (isReFolder) ...[
                           PopupMenuItem(
                             enabled: !repo.readOnly,
+                            value: 'new_research_record',
+                            child: const Text('New Research Record…'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
+                            value: 'new_research_map',
+                            child: const Text('Map Research Records…'),
+                          ),
+                          PopupMenuItem(
+                            enabled: !repo.readOnly,
                             value: 'new_function_doc',
                             child: const Text('New Function Note'),
                           ),
@@ -1015,6 +1448,19 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                         ],
                       ],
                       const PopupMenuDivider(),
+                      PopupMenuItem(
+                        value: 'set_folder_color',
+                        child: Text(
+                          hasExplicitFolderColor
+                              ? 'Change folder color…'
+                              : 'Set folder color…',
+                        ),
+                      ),
+                      if (hasExplicitFolderColor)
+                        const PopupMenuItem(
+                          value: 'clear_folder_color',
+                          child: Text('Reset folder color'),
+                        ),
                       if (folder != 'Notes') ...[
                         PopupMenuItem(
                           enabled: !repo.readOnly,
@@ -1075,9 +1521,21 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
       for (final note in folderObjects) {
         final isMulti = _selectedNoteIds.contains(note.id);
         final hasBatch = _selectedNoteIds.length > 1 && isMulti;
+        final mime = (note.properties['mimeType'] as String? ?? '')
+            .toLowerCase();
+        final lowerTitle = note.title.toLowerCase();
         final isPdf =
             note.typeId == 'orbit.file' &&
-            note.properties['mimeType'] == 'application/pdf';
+            (mime == 'application/pdf' || lowerTitle.endsWith('.pdf'));
+        final isImage =
+            note.typeId == 'orbit.file' &&
+            (mime.startsWith('image/') ||
+                lowerTitle.endsWith('.png') ||
+                lowerTitle.endsWith('.jpg') ||
+                lowerTitle.endsWith('.jpeg') ||
+                lowerTitle.endsWith('.webp') ||
+                lowerTitle.endsWith('.gif') ||
+                lowerTitle.endsWith('.svg'));
         final leadingWidget =
             note.properties['icon'] != null &&
                 note.properties['icon'].toString().isNotEmpty
@@ -1096,11 +1554,22 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
             ? Icon(
                 isPdf
                     ? Icons.picture_as_pdf_outlined
+                    : isImage
+                    ? Icons.image_outlined
                     : Icons.insert_drive_file_outlined,
                 size: 16,
-                color: isPdf ? Theme.of(context).colorScheme.error : null,
+                color: isPdf
+                    ? Theme.of(context).colorScheme.error
+                    : isImage
+                    ? Theme.of(context).colorScheme.tertiary
+                    : null,
               )
             : const Icon(Icons.description_outlined, size: 16);
+
+        final noteExplicitColor = resolveAccent(
+          note.properties['accent'] ?? note.properties['color'],
+        );
+        final noteAccent = noteExplicitColor ?? folderAccent;
 
         rows.add(
           Padding(
@@ -1116,6 +1585,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                 ),
                 selected: widget.controller.session.activeId == note.id,
                 multiSelected: isMulti,
+                accentColor: noteAccent,
                 leading: leadingWidget,
                 title: Text(
                   note.title.isEmpty ? 'Untitled' : note.title,
@@ -1155,9 +1625,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                     } else if (action == 'split') {
                       widget.controller.openObject(note.id, secondary: true);
                     } else if (action == 'duplicate') {
-                      if (note.typeId == 'orbit.view') {
-                        await widget.controller.duplicateView(note.id);
-                      }
+                      await widget.controller.duplicateObject(note.id);
                     } else if (action == 'reveal') {
                       final relPath = repo.objectPath(note.id);
                       if (relPath != null) {
@@ -1178,10 +1646,46 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                           target,
                         );
                       }
+                    } else if (action == 'set_note_color') {
+                      await showFolderColorDialog(
+                        context,
+                        folderName: note.title.isEmpty
+                            ? 'Untitled'
+                            : note.title,
+                        isNote: true,
+                        currentColor: noteExplicitColor,
+                        onColorSelected: (color) {
+                          if (color != null) {
+                            widget.controller.edit(
+                              note.id,
+                              properties: {
+                                ...note.properties,
+                                'color': color.toARGB32(),
+                              },
+                            );
+                          } else {
+                            final props = Map<String, dynamic>.from(
+                              note.properties,
+                            );
+                            props.remove('color');
+                            props.remove('accent');
+                            widget.controller.edit(note.id, properties: props);
+                          }
+                        },
+                      );
+                    } else if (action == 'clear_note_color') {
+                      final props = Map<String, dynamic>.from(note.properties);
+                      props.remove('color');
+                      props.remove('accent');
+                      widget.controller.edit(note.id, properties: props);
                     } else if (action == 'batch_move') {
                       await _batchMoveToFolder();
                     } else if (action == 'batch_copy') {
                       await _batchCopyReferences();
+                    } else if (action == 'batch_duplicate') {
+                      await widget.controller.duplicateObjects(
+                        _selectedNoteIds,
+                      );
                     } else if (action == 'batch_trash') {
                       await _batchMoveToTrash();
                     }
@@ -1201,6 +1705,12 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                         ),
                       ),
                       PopupMenuItem(
+                        value: 'batch_duplicate',
+                        child: Text(
+                          'Duplicate ${_selectedNoteIds.length} items',
+                        ),
+                      ),
+                      PopupMenuItem(
                         value: 'batch_trash',
                         child: Text('Move ${_selectedNoteIds.length} to Trash'),
                       ),
@@ -1213,11 +1723,21 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                         note.typeId == 'orbit.note' ? 'Rename note' : 'Rename',
                       ),
                     ),
-                    if (note.typeId == 'orbit.view')
-                      const PopupMenuItem(
-                        value: 'duplicate',
-                        child: Text('Duplicate View'),
+                    PopupMenuItem(
+                      enabled: !repo.readOnly && !note.isReadOnly,
+                      value: 'duplicate',
+                      child: Text(
+                        note.typeId == 'orbit.note'
+                            ? 'Duplicate note'
+                            : note.typeId == 'orbit.canvas'
+                            ? 'Duplicate canvas'
+                            : note.typeId == 'orbit.task'
+                            ? 'Duplicate task'
+                            : note.typeId == 'orbit.view'
+                            ? 'Duplicate view'
+                            : 'Duplicate',
                       ),
+                    ),
                     const PopupMenuItem(
                       value: 'split',
                       child: Text('Open beside'),
@@ -1235,6 +1755,20 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                       value: 'move',
                       child: const Text('Move to folder…'),
                     ),
+                    PopupMenuItem(
+                      enabled: !repo.readOnly && !note.isReadOnly,
+                      value: 'set_note_color',
+                      child: Text(
+                        noteExplicitColor != null
+                            ? 'Change accent color…'
+                            : 'Set accent color…',
+                      ),
+                    ),
+                    if (noteExplicitColor != null)
+                      const PopupMenuItem(
+                        value: 'clear_note_color',
+                        child: Text('Reset color'),
+                      ),
                     if (repo.objectPath(note.id) != null && !kIsWeb)
                       const PopupMenuItem(
                         value: 'reveal',
@@ -1274,7 +1808,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
           title: Text(
             'Archived (${archivedFolders.length})',
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 13.5,
               fontWeight: FontWeight.w500,
               color: Theme.of(context).colorScheme.outline,
             ),
@@ -1506,6 +2040,29 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
               return KeyEventResult.handled;
             }
           }
+        }
+
+        if (isCtrl && event.logicalKey == LogicalKeyboardKey.keyD) {
+          if (_selectedNoteIds.isNotEmpty) {
+            widget.controller.duplicateObjects(_selectedNoteIds.toList());
+            return KeyEventResult.handled;
+          } else if (_focusedIndex >= 0 &&
+              _focusedIndex < visibleEntries.length) {
+            final item = visibleEntries[_focusedIndex];
+            if (!item.isFolder) {
+              widget.controller.duplicateObject(item.id);
+              return KeyEventResult.handled;
+            }
+          }
+        }
+
+        if (isCtrl && isShift && event.logicalKey == LogicalKeyboardKey.keyE) {
+          if (widget.controller.areAllFoldersCollapsed) {
+            widget.controller.expandAllFolders();
+          } else {
+            widget.controller.collapseAllFolders();
+          }
+          return KeyEventResult.handled;
         }
 
         return KeyEventResult.ignored;

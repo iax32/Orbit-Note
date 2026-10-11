@@ -234,7 +234,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Verify idle session section exists
-        expect(find.text('FOCUS & WORK SESSIONS'), findsOneWidget);
+        expect(find.text('Start Focus Session'), findsOneWidget);
         expect(find.text('Start Focus Session'), findsOneWidget);
 
         // Start focus session
@@ -249,6 +249,8 @@ void main() {
         expect(find.text('End session'), findsOneWidget);
 
         // Tap Pause
+        await tester.ensureVisible(find.text('Pause'));
+        await tester.pumpAndSettle();
         await tester.tap(find.text('Pause'));
         await tester.pumpAndSettle();
 
@@ -256,6 +258,8 @@ void main() {
         expect(find.text('Resume'), findsOneWidget);
 
         // Tap Resume
+        await tester.ensureVisible(find.text('Resume'));
+        await tester.pumpAndSettle();
         await tester.tap(find.text('Resume'));
         await tester.pumpAndSettle();
 
@@ -267,7 +271,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('FOCUS & WORK SESSIONS'), findsOneWidget);
+        expect(find.text('Start Focus Session'), findsOneWidget);
         expect(
           find.textContaining('Finished dynamic programming chapter.'),
           findsOneWidget,
@@ -297,6 +301,7 @@ void main() {
         expect(find.text('Start focus session'), findsOneWidget);
 
         // Tap start focus session
+        await tester.ensureVisible(find.text('Start focus session'));
         await tester.tap(find.text('Start focus session'));
         await tester.pumpAndSettle();
 

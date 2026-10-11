@@ -71,7 +71,10 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.byTooltip('Pen (P)'));
+    await tester.tap(find.byTooltip('Draw and erase'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Pen (P)'));
+    await tester.pumpAndSettle();
     final touch = await tester.startGesture(
       const Offset(250, 220),
       kind: PointerDeviceKind.touch,
@@ -115,7 +118,10 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.byTooltip('Sticky note (S)'));
+    await tester.tap(find.byTooltip('Text and notes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sticky note (S)'));
+    await tester.pumpAndSettle();
     await tester.tapAt(const Offset(250, 220));
     await tester.pumpAndSettle();
     await tester.enterText(
@@ -129,7 +135,9 @@ void main() {
     );
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Insert image'));
+    await tester.tap(find.byTooltip('Insert object or image'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Insert image'));
     await tester.pumpAndSettle();
     final images = (latest['elements'] as List).where(
       (e) => e['type'] == 'image',

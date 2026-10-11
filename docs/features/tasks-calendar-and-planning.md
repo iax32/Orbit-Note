@@ -72,4 +72,38 @@ Recurring schedules, reminders and advanced dependencies are separate later work
 
 ## Implemented incremental subset
 
-Task list date/search filters and quick due-date editing reuse Universal Tasks; Calendar still projects those same deadlines. Recurrence, named zones, reminders and task dependencies remain future work. See [CURRENT](../planning/implementation-status.md).
+Task list date/search filters and quick due-date editing reuse Universal Tasks.
+Implemented 2026-10-08: daily/weekly/monthly/yearly date-only recurrence records
+completed occurrences on the same task and advances one civil due date. Month-end
+anchors/leap years are explicit; missed occurrences remain overdue. History stays
+available when editing the series. Planning exposes multiple dependency IDs,
+parent tasks and canonical subtasks; new cycles/invalid targets are rejected,
+while old unresolved edges survive unrelated edits. Completion is an explicit
+choice, not enforced dependency scheduling. Calendar and timeline moves preview
+affected fields, preserve separate deadlines/schedules and have guarded undo.
+Repository recovery history persists; the quick undo is session-local and refuses
+later edits. Named-zone recurrence/RRULE, reminders, automatic rollups, dependency
+propagation remain separate. Implemented 2026-10-10: saved Gantt work ranges use
+scheduledDate plus optional inclusive scheduledEndDate; explicit ganttMilestone
+requires one day. Deadline dates remain independent. Calendar/timeline scheduled
+moves preserve the work range duration; deadline moves leave work ranges unchanged.
+Gantt provides dependency warnings, visible-row connectors and reviewed single-task
+after-blocker suggestions, with the existing guarded undo. Missing/malformed ranges
+stay visible, and new scheduling commands reject invalid ranges.
+
+Working-day scheduling (2026-10-10) adds reusable calendars with weekday presets,
+named holidays and extra working dates. Gantt Calendars sets a view default; each
+reviewed task schedule can bind another calendar or explicitly use calendar days.
+Working effort survives calendar-aware Gantt and calendar/timeline moves. Schedule
+forms calculate a finish, plan backward from a deadline, and snap after-blocker
+suggestions to a working date. Deadlines and recurrence history remain independent.
+Changing calendars never silently reflows tasks: the paginated schedule audit shows
+unplanned work, dependency issues, non-working endpoints and saved-effort mismatches
+with individual review controls. Missing/future definitions stay visible, and stale
+calendar or task saves fail without discarding drafts. Automatic propagation,
+critical paths, resource leveling and hour-level calendars remain separate.
+
+See the
+[Gantt subset](collections-and-views.md#delivered-task-gantt--2026-10-10),
+[CURRENT](../planning/implementation-status.md)
+and [ADR 0022](../adr/0022-smart-views-spaces-and-task-planning.md).

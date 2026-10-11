@@ -6,6 +6,25 @@ Architecture: [layout model](../architecture/ui-layout.md).
 
 ## Purpose and workflow
 
+Implemented 2026-10-08: named device-local Spaces/layouts can be saved, switched,
+updated, renamed, duplicated and removed. Spaces restore tabs/panes/view state,
+scope, dashboard and optional appearance; layouts restore pane arrangement.
+All-Vault restores the prior context. Home supports adding/removing/reordering
+tasks/recent/projects/inbox/views/shared-view widgets with responsive column spans,
+apply/cancel and default reset. Unknown versions/widgets and missing objects retain
+recovery paths. Settings/Home/rail expose controls; Ctrl+Shift+Space opens Spaces.
+No files move or clone. Arbitrary docking, multi-window, portable import/export,
+keymap editing and startup safe-mode expansion remain separate requirements.
+See [ADR 0022](../adr/0022-smart-views-spaces-and-task-planning.md).
+
+Implemented 2026-10-03: device-local whole-app zoom (75–200%) from Settings or
+Ctrl +/=, Ctrl minus, Ctrl 0. Reset works with a dialog/editor focused. Layout,
+icons and shared controls enlarge through semantic density tokens; text zoom
+composes with OS accessibility scaling. The actual viewport, device pixel ratio
+and keyboard insets stay unchanged; the root is not painted through a scale
+transform. Stored document font sizes remain unchanged. Local wheel/pinch camera/PDF gestures
+remain. Advanced layout/keymap/Spaces requirements are separately scoped.
+
 The interface should adapt to the user. Someone can keep a quiet writing layout;
 another can combine a board, graph, tasks and references across monitors. The same
 workspace should allow both through progressive controls, saved layouts and

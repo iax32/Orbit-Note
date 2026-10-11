@@ -5,6 +5,7 @@ import '../../app/orbit_theme.dart';
 import '../../app/workspace_controller.dart';
 import '../../domain/universal_object.dart';
 import '../../domain/wiki_links.dart';
+import '../../domain/research_workspace.dart';
 
 class GraphNode {
   GraphNode({
@@ -94,6 +95,9 @@ class GraphData {
     }
 
     for (final o in activeObjects) {
+      for (final link in researchRelations(o)) {
+        addEdge(o.id, link.id);
+      }
       // 1. WikiLinks in notes
       if (o.typeId == 'orbit.note' && o.body.isNotEmpty) {
         final links = parseWikiLinks(o.body);

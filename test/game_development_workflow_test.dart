@@ -518,7 +518,9 @@ void main() {
         final updatedPlaytest = controller.find(playtest.id);
         expect(
           updatedPlaytest?.body,
-          contains('[[Boss phase 2 laser attack has no telegraph animation]]'),
+          contains(
+            '[[${findingTask.id}|Boss phase 2 laser attack has no telegraph animation]]',
+          ),
         );
         expect(updatedPlaytest?.body, contains('CRITICAL'));
       },

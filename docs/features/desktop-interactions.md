@@ -8,7 +8,7 @@ not permission to implement all of them in M0. See the [backlog](../planning/fea
 
 | ID | Observable behavior |
 |---|---|
-| DES-01 | Ctrl+C/X/V works in the focused editor, object list and Canvas. Offer plain-text fallback for unsupported rich clipboard data; preserve supported links, lists and images without executing pasted HTML. |
+| DES-01 | Ctrl+C/X/V works in the focused editor, object list and Canvas. Offer plain-text fallback for unsupported rich clipboard data; table copy publishes HTML plus plain text where the host supports it; preserve supported links, lists and images without executing pasted HTML. |
 | DES-02 | Paste screenshots from Windows Snipping Tool and images from browsers/apps; import owned attachment bytes and insert a document embed or Canvas placement according to focus. |
 | DES-03 | File Explorer/browser drops distinguish files, images, URLs and text. Show the insertion target and copy/link semantics before completion; cancelled or failed imports leave no broken embed. |
 | DES-04 | Image handles resize with aspect ratio preserved by default. Replace, open original and Show in Explorer are available where supported. Removing an embed never silently deletes the shared attachment. |
@@ -40,3 +40,27 @@ does not establish desktop interoperability. Related contracts:
 ## Incremental desktop acceptance
 
 The current batch adds pane-aware tab cycling/closing and middle-click tab close, plus Notes-tree drag/drop via existing safe move commands. Native window geometry persistence remains unimplemented. See [batch evidence](../planning/audit-polish-batch.md).
+
+## Note / Canvas clipboard transfers — 2026-10-10
+
+Clicking a rich-note image selects its block immediately for Ctrl+C/X/V and
+Delete; Open original remains available in the toolbar/menu. Its menu includes Copy image, Cut image
+and Remove embed. Rich block/cross-document and Markdown Source selections resolve
+complete image-block paths against the owning note before copying, so Canvas and
+other notes can reuse the same Vault attachment. Successful cuts use normal note
+history; failed writes or intervening source/selection edits retain the source.
+
+Canvas recognizes complete image blocks, image-and-text sections (separate image
+and prose placements), and standalone universal object links. Other Markdown stays
+literal text, including image examples inside code fences. Paste creates fresh
+placement IDs, retaining matching attachment/object identity. Canvas clipboard
+images, object links and text become Markdown when pasted into Rich or Source;
+unrepresentable drawings retain their literal payload. Canvas-to-Canvas paste
+remaps group/column/endpoint identities and shifts ink/connector coordinates.
+Cut removes placements only, with clipboard-failure and changed-selection guards.
+Transfers share the owning surface's undo; no shared attachment is deleted.
+
+This subset covers same-Vault references. Cross-Vault attachment byte transfer,
+inline image extraction and arbitrary drawing-to-Markdown conversion are not
+claimed. Automated regression evidence is in the current task; native external-app
+clipboard acceptance remains separate from simulated keyboard/clipboard tests.

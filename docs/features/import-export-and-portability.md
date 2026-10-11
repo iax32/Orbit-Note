@@ -1,5 +1,63 @@
 # Import, export and portability
 
+## Reviewed BibTeX interchange — 2026-10-11
+
+Citation tools import pasted/UTF-8 `.bib` data with source selection and explicit
+identifier/DOI conflict policies. Bounded nested/quoted/braced fields, numeric values
+and literal concatenation are supported; unresolved macros skip their entry with
+warnings. Extra fields and original TeX survive metadata storage and unchanged
+export. Edits update mapped fields; source IDs become export keys, with import
+normalization warnings. Export uses existing native save/web download adapters.
+Cancel, malformed input and stale source reject mutations; a reviewed import is
+one normal recoverable note edit. This is not full BibLaTeX, CSL or TeX execution.
+See the [implemented format](../architecture/implemented-formats.md).
+
+## Document publishing workspace — 2026-10-11
+
+PORT-05/06/08/09: Publish document in the Markdown toolbar/Writing tools opens
+an immutable presentation snapshot. A4/Letter, 24–90 pt margins, 9–18 pt body
+text, bundled Lato/Crimson Text typography, heading numbering, author, title page,
+Report/Academic/Design brief style presets and Reset style,
+running header, contents and page-number controls regenerate an actual PDF
+preview. Page break inserts `<!-- orbit:pagebreak -->` through ordinary editor
+history; publishing itself does not save or rewrite the source. Settings are
+local to the open dialog. Narrow layouts use Pages/Document style tabs.
+
+Offline citation addition: recognized note-owned source records and citation
+locators generate a refreshed compact author–year or numbered References section
+in the export snapshot. Recognized metadata comments are removed from presentation,
+while the source note remains unchanged. Missing/duplicate source warnings remain
+visible. Unknown versions stay literal; ambiguous generated bibliography regions
+refuse refresh instead of overwriting authored content. Full CSL/APA/MLA and
+external metadata lookup are not included.
+
+Export PDF, standalone HTML and editable OOXML Word (.docx) through existing
+platform save adapters. Common Markdown prose, formatting, headings, lists,
+tables, local image/caption content, equations and linked-section snapshots are
+supported. Contents link to headings; Word also has a refreshable contents field,
+native footnotes and page fields. PDF/HTML use linked endnotes. Word prose and
+tables are editable; equations are rendered PNGs with TeX alternative text.
+HTML browser print controls govern running headers/page numbering. Word/HTML
+font substitution and pagination can differ from the PDF preview.
+
+Local images are normalized to bounded PNG previews (1600 px maximum dimension),
+retaining aspect ratio; animated images use their first frame. Original bytes
+remain untouched. No network image/font fetch occurs during publishing. Broken,
+external or unsupported images retain labelled fallbacks; invalid equations retain
+TeX. Live section references resolve at snapshot creation, with missing/circular
+sources retaining their existing fallback. Image-and-text sections use stacked
+print layout. Raw HTML/unknown widgets remain literal text without execution.
+Frontmatter and supported review metadata are omitted from presentations.
+
+The dialog reports fidelity details before exporting, including missing/duplicate
+footnotes, unavailable resources and missing PDF font glyphs. Limits: 2 million
+source characters, 100 image/equation resources, 20 MiB input per image, 64 MiB
+embedded image data, 100 million source pixels, 4,000 characters per rendered
+equation and 500 PDF pages. PDF failure leaves HTML/Word export available when
+their generation succeeds. Cancelled/failed saves never modify notes or originals.
+This is a presentation export, not a complete workspace backup. No new owning
+format, migration, printer driver, account or cloud service was introduced.
+
 Status: planned. Stage: complete export for each implemented content type;
 importers grow incrementally from M1/M2.
 Sources: S01, S02, S04, S07 in the [source map](../product/conversation-extraction.md).

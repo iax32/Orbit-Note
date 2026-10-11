@@ -162,6 +162,7 @@ void main() {
           properties: {
             'pdfHighlightVersion': 1,
             'pdfSource': {
+              'objectId': 'stable-pdf',
               'page': 7,
               'quote':
                   'Decentralized state synchronization ensures offline resilience.',
@@ -179,9 +180,7 @@ void main() {
       );
       expect(
         markdown,
-        contains(
-          '— *[[Architecture Guide.pdf#page=7|Architecture Guide.pdf, p. 7]]*',
-        ),
+        contains('[[stable-pdf#page=7|Architecture Guide.pdf · p. 7]]'),
       );
       expect(markdown, contains('Remember to verify this in section 4.'));
     });
@@ -202,7 +201,7 @@ void main() {
 
       final markdown = annotation.summaryMarkdown('Paper.pdf');
       expect(markdown, contains('> Direct quote without additional notes.'));
-      expect(markdown, contains('— *[[Paper.pdf#page=12|Paper.pdf, p. 12]]*'));
+      expect(markdown, contains('[[Paper.pdf#page=12|Paper.pdf · p. 12]]'));
       expect(markdown.split(text).length, 2);
     });
   });

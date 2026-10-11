@@ -1,5 +1,9 @@
 # Documentation map
 
+2026-10-11: [self-hosted shared Vault preview](development/shared-vault-setup.md),
+[Google Drive activation and backup/restore](development/google-drive-activation.md).
+Personal automatic sync remains unfinished; these are distinct bounded workflows.
+
 Cloud milestone: [implemented sync foundation](architecture/sync.md),
 [delivery/remaining work](features/cloud-sync.md),
 [local safety ADR](adr/0017-sync-foundation-safety.md).
@@ -35,6 +39,8 @@ Use **Orbit Note**, **universal object**, **canvas**, and **Space** consistently
 | Working on objects, properties, relations, identity | [Universal objects](architecture/universal-object-model.md) |
 | Reading/writing user files or migrations | [Storage and formats](architecture/storage-formats.md) |
 | Working on spatial content or ink | [Canvas engine](architecture/canvas-engine.md) |
+| Search candidates/ranking and deep results | [Search](architecture/search.md) |
+| Precise targets and live source placements | [References](architecture/references.md) |
 | Working on offline behavior or future replication | [Local-first and sync](architecture/local-first-sync.md) |
 | Working on shell, panes, navigation, themes | [UI and layouts](architecture/ui-layout.md) |
 | Designing extension capabilities | [Plugins](architecture/plugins.md) |

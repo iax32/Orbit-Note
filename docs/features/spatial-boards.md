@@ -1,5 +1,12 @@
 # Spatial boards
 
+## Linked model assets — 2026-10-11
+
+OBJ/GLB attachments can be placed as ordinary object cards with their canonical
+object identity and an independent placement UUID. Model cards identify their
+source type and open the offline viewer. Placement removal preserves the asset;
+the existing scene/history/save engine handles edits without a new scene format.
+
 Status: planned M3; advanced views M5+; portals/conversion exploratory.
 Sources: S01, S03, S08, S09 in the [source map](../product/conversation-extraction.md).
 Architecture: [shared canvas engine](../architecture/canvas-engine.md).
@@ -117,3 +124,45 @@ Website cards now support Edit selected link in Add / organize board content.
 Editing validates HTTP/HTTPS, retains geometry/identity/unknown fields and uses
 the existing undo history. Locked or changed cards are not overwritten by a stale
 dialog. Creation, editing and persisted geometry are covered by widget tests.
+
+## Creative-project boards and removal — 2026-10-09
+
+Selected items expose a Remove from canvas toolbar button. Right-click inside a
+column/frame includes removal alongside insertion actions. Removing a placement
+never deletes its source; removing a column detaches children. Undo restores the
+scene, and locked/read-only items retain their existing protection.
+
+In the Notes folder context menu, New Creative Project collects an optional brief
+and builds a references board (Inspiration, Research & sources, Chosen direction)
+and a production board (Explore, Decide, Produce, Review). Cards reference actual
+brief/decision notes, task objects and a milestone view. Moving cards changes
+placement only; it does not automatically change task status or milestone.
+
+## Reference capture and curation — 2026-10-09
+
+Creative-board file drops capture original attachments as canonical file objects
+with project/folder context and preview cards. Any Canvas also offers Import
+reference files from its toolbar or Add / organize menu. Batches are bounded to
+100 files, using existing incoming-file size checks. Files are processed locally;
+unsupported media retains its file card and original-open fallback. Creative drops
+capture SVG/Mermaid as source files; existing diagram import remains available.
+
+Drops use the actual Canvas surface and a frozen world position. Unlocked columns
+receive spaced cards after existing members and expand without moving those
+members; free-space batches use three-column grids. Placement is one Canvas undo
+command. Read-only/future scenes reject placement, and unavailable targets retain
+saved sources in the Vault. Import undo removes placements, not owned source files.
+
+Reference details are optional placement metadata: caption, HTTP/HTTPS source URL,
+comma-separated tags and Inbox/Review/Chosen/Archived state. Edit through the card
+context menu or Add / organize. Bulk state changes affect unlocked selected cards;
+Archived is a label, not deletion. Details never alter shared source content.
+Changed cards reject stale dialog saves; unknown scene/placement fields survive.
+Card footers reserve preview space for captions and state/tags. Canvas search
+matches those details and source URLs. Explicit Open reference source launches a
+validated URL; no previews or remote metadata are fetched.
+
+Create linked reference summary produces an ordinary Markdown snapshot of selected
+references, or all references when nothing is selected. It includes canonical
+source/board UUID links, captions, source URLs, states and tags. Creative-project
+summaries retain project/folder context. Later caption edits do not rewrite snapshots.

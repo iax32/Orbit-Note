@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../app/orbit_theme.dart';
 import '../../app/workspace_controller.dart';
 import '../../domain/universal_object.dart';
+import 'research_record_dialog.dart';
+import 'dashboard_columns.dart';
 
 class AnalysisDashboardView extends StatelessWidget {
   const AnalysisDashboardView({
@@ -68,283 +70,26 @@ class AnalysisDashboardView extends StatelessWidget {
     return false;
   }
 
-  Future<void> _quickCreateFunction(BuildContext context) async {
-    final nameCtrl = TextEditingController();
-    final addrCtrl = TextEditingController(text: '0x1400');
-    final modCtrl = TextEditingController(text: 'target.exe');
-    final purposeCtrl = TextEditingController();
-    String selectedConfidence = 'Medium';
-    String selectedStatus = 'Investigating';
-
-    final targetFolder = folderFilter != null
-        ? (folderFilter!.contains('Functions')
+  Future<void> _createRecord(
+    BuildContext context,
+    String category,
+    String section,
+  ) => showResearchRecordDialog(
+    context,
+    controller,
+    folder: folderFilter != null
+        ? (folderFilter!.endsWith('/$section')
               ? folderFilter!
-              : '$folderFilter/Functions')
-        : 'Reverse Engineering/${scope ?? "Target"}/Functions';
-
-    final targetName =
-        scope ?? viewObject.properties['target']?.toString() ?? '';
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Add Function Note'),
-          content: SizedBox(
-            width: 440,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameCtrl,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Function Name / Symbol *',
-                      hintText: 'e.g. ProcessPacket or sub_140012340',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: addrCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Address / RVA',
-                            hintText: '0x140012340',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: modCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Module',
-                            hintText: 'target.exe',
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: purposeCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Initial Purpose / Description',
-                      hintText: 'Handles incoming packet dispatch',
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          initialValue: selectedStatus,
-                          decoration: const InputDecoration(
-                            labelText: 'Status',
-                          ),
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'Unknown',
-                              child: Text('Unknown'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Interesting',
-                              child: Text('Interesting'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Investigating',
-                              child: Text('Investigating'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Partially Understood',
-                              child: Text('Partially Understood'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Confirmed',
-                              child: Text('Confirmed'),
-                            ),
-                          ],
-                          onChanged: (val) {
-                            if (val != null) {
-                              setDialogState(() => selectedStatus = val);
-                            }
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          initialValue: selectedConfidence,
-                          decoration: const InputDecoration(
-                            labelText: 'Confidence',
-                          ),
-                          items: const [
-                            DropdownMenuItem(value: 'Low', child: Text('Low')),
-                            DropdownMenuItem(
-                              value: 'Medium',
-                              child: Text('Medium'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'High',
-                              child: Text('High'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Verified',
-                              child: Text('Verified'),
-                            ),
-                          ],
-                          onChanged: (val) {
-                            if (val != null) {
-                              setDialogState(() => selectedConfidence = val);
-                            }
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (nameCtrl.text.trim().isNotEmpty) {
-                  Navigator.pop(ctx, true);
-                }
-              },
-              child: const Text('Create Function'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (result == true) {
-      await controller.createFunctionDoc(
-        folder: targetFolder,
-        name: nameCtrl.text.trim(),
-        address: addrCtrl.text.trim(),
-        module: modCtrl.text.trim(),
-        purpose: purposeCtrl.text.trim(),
-        status: selectedStatus,
-        confidence: selectedConfidence,
-        target: targetName,
-      );
-    }
-  }
-
-  Future<void> _quickCreateFinding(BuildContext context) async {
-    final titleCtrl = TextEditingController();
-    final targetFolder = folderFilter != null
-        ? (folderFilter!.contains('Findings')
-              ? folderFilter!
-              : '$folderFilter/Findings')
-        : 'Reverse Engineering/${scope ?? "Target"}/Findings';
-
-    final targetName =
-        scope ?? viewObject.properties['target']?.toString() ?? '';
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add Finding Note'),
-        content: SizedBox(
-          width: 400,
-          child: TextField(
-            controller: titleCtrl,
-            autofocus: true,
-            decoration: const InputDecoration(
-              labelText: 'Finding Title *',
-              hintText: 'e.g. Encryption Key Hardcoded in .rdata',
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (titleCtrl.text.trim().isNotEmpty) {
-                Navigator.pop(ctx, true);
-              }
-            },
-            child: const Text('Create Finding'),
-          ),
-        ],
-      ),
-    );
-
-    if (result == true) {
-      await controller.createFindingDoc(
-        folder: targetFolder,
-        title: titleCtrl.text.trim(),
-        target: targetName,
-      );
-    }
-  }
-
-  Future<void> _quickCreateHypothesis(BuildContext context) async {
-    final titleCtrl = TextEditingController();
-    final targetFolder = folderFilter != null
-        ? (folderFilter!.contains('Hypotheses')
-              ? folderFilter!
-              : '$folderFilter/Hypotheses')
-        : 'Reverse Engineering/${scope ?? "Target"}/Hypotheses';
-
-    final targetName =
-        scope ?? viewObject.properties['target']?.toString() ?? '';
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add Hypothesis Note'),
-        content: SizedBox(
-          width: 420,
-          child: TextField(
-            controller: titleCtrl,
-            autofocus: true,
-            decoration: const InputDecoration(
-              labelText: 'Hypothesis Statement *',
-              hintText:
-                  'e.g. Function at 0x140024B20 validates packet checksum',
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (titleCtrl.text.trim().isNotEmpty) {
-                Navigator.pop(ctx, true);
-              }
-            },
-            child: const Text('Create Hypothesis'),
-          ),
-        ],
-      ),
-    );
-
-    if (result == true) {
-      await controller.createHypothesisDoc(
-        folder: targetFolder,
-        title: titleCtrl.text.trim(),
-        target: targetName,
-      );
-    }
-  }
+              : '$folderFilter/$section')
+        : 'Reverse Engineering/${scope ?? 'Target'}/$section',
+    initialCategory: category,
+  );
+  Future<void> _quickCreateFunction(BuildContext context) =>
+      _createRecord(context, 'Function', 'Functions');
+  Future<void> _quickCreateFinding(BuildContext context) =>
+      _createRecord(context, 'Finding', 'Findings');
+  Future<void> _quickCreateHypothesis(BuildContext context) =>
+      _createRecord(context, 'Hypothesis', 'Hypotheses');
 
   @override
   Widget build(BuildContext context) {
@@ -368,14 +113,16 @@ class AnalysisDashboardView extends StatelessWidget {
     final arch =
         overviewNote?.properties['architecture']?.toString() ??
         viewObject.properties['architecture']?.toString() ??
-        'x86-64';
+        'Architecture not recorded';
     final format =
         overviewNote?.properties['format']?.toString() ??
         viewObject.properties['format']?.toString() ??
-        'PE';
+        'Format not recorded';
     final platform =
-        overviewNote?.properties['platform']?.toString() ?? 'Windows';
-    final version = overviewNote?.properties['version']?.toString() ?? '1.0.0';
+        overviewNote?.properties['platform']?.toString() ??
+        'Platform not recorded';
+    final version =
+        overviewNote?.properties['version']?.toString() ?? 'Not recorded';
 
     final allScoped = controller.activeObjects
         .where((o) => !o.isDeleted && _matchesScope(o))
@@ -383,11 +130,7 @@ class AnalysisDashboardView extends StatelessWidget {
 
     // Functions
     final functions = allScoped
-        .where(
-          (o) =>
-              o.properties['category'] == 'Function' ||
-              o.properties.containsKey('address'),
-        )
+        .where((o) => o.properties['category'] == 'Function')
         .toList();
 
     // Findings
@@ -413,7 +156,8 @@ class AnalysisDashboardView extends StatelessWidget {
       'Rejected': 0,
     };
     for (final h in hypotheses) {
-      final s = h.properties['status'] as String? ?? 'Open';
+      final rawStatus = h.properties['status']?.toString().trim() ?? '';
+      final s = rawStatus.isEmpty ? 'Open' : rawStatus;
       final cleanS = s[0].toUpperCase() + s.substring(1).toLowerCase();
       if (hypothesesByStatus.containsKey(cleanS)) {
         hypothesesByStatus[cleanS] = hypothesesByStatus[cleanS]! + 1;
@@ -462,18 +206,17 @@ class AnalysisDashboardView extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [colors.raised, colors.panel],
-                ),
-                border: Border.all(color: colors.border),
-                borderRadius: BorderRadius.circular(OrbitRadius.card),
+                color: colors.panel,
+                border: Border(bottom: BorderSide(color: colors.border)),
+                borderRadius: BorderRadius.zero,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       Icon(
                         Icons.biotech_outlined,
@@ -482,15 +225,14 @@ class AnalysisDashboardView extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'BINARY ANALYSIS & RESEARCH DASHBOARD',
+                        'Research workspace',
                         style: TextStyle(
                           color: colors.accent,
                           fontSize: 11,
-                          letterSpacing: 1.5,
+                          letterSpacing: 0,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const Spacer(),
                       _TagBadge(label: format, color: colors.accent),
                       const SizedBox(width: 6),
                       _TagBadge(label: arch, color: colors.accent),
@@ -499,7 +241,10 @@ class AnalysisDashboardView extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Row(
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       Text(
                         targetName,
@@ -535,7 +280,8 @@ class AnalysisDashboardView extends StatelessWidget {
             const SizedBox(height: 20),
 
             // Metrics Row
-            Row(
+            DashboardColumns(
+              minColumnWidth: 200,
               children: [
                 Expanded(
                   child: _MetricCard(
@@ -606,7 +352,9 @@ class AnalysisDashboardView extends StatelessWidget {
             const SizedBox(height: 24),
 
             // Quick Actions & Navigation Row
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 FilledButton.icon(
                   onPressed: () => _quickCreateFunction(context),
@@ -672,7 +420,10 @@ class AnalysisDashboardView extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       Icon(
                         Icons.lightbulb_outline,
@@ -688,7 +439,6 @@ class AnalysisDashboardView extends StatelessWidget {
                           color: colors.text,
                         ),
                       ),
-                      const Spacer(),
                       TextButton.icon(
                         onPressed: () => onSelectViewType?.call('board'),
                         icon: const Icon(Icons.view_kanban_outlined, size: 14),
@@ -697,7 +447,9 @@ class AnalysisDashboardView extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Row(
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
                       _HypothesisStatusPill(
                         label: 'Open',
@@ -815,7 +567,7 @@ class AnalysisDashboardView extends StatelessWidget {
             ],
 
             // Two-column layout: Left (Recent Findings & Sessions) / Right (Canvases & Structures)
-            Row(
+            DashboardColumns(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Left Column: Key Findings & Sessions
@@ -976,9 +728,8 @@ class _MetricCard extends StatelessWidget {
     final content = Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: colors.panel,
-        borderRadius: BorderRadius.circular(OrbitRadius.card),
-        border: Border.all(color: colors.border),
+        color: Colors.transparent,
+        borderRadius: BorderRadius.zero,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -991,7 +742,7 @@ class _MetricCard extends StatelessWidget {
                 child: Text(
                   label,
                   style: TextStyle(
-                    fontSize: 11.5,
+                    fontSize: 13,
                     color: colors.subtle,
                     fontWeight: FontWeight.w500,
                   ),
@@ -1036,16 +787,12 @@ class _TagBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(4),
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
       child: Text(
         label,
         style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
           color: color,
         ),
       ),
@@ -1068,7 +815,8 @@ class _HypothesisStatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
+    return SizedBox(
+      width: 180,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
@@ -1127,7 +875,10 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         Text(
           title,
@@ -1142,10 +893,10 @@ class _SectionHeader extends StatelessWidget {
           ),
           child: Text(
             '$count',
-            style: TextStyle(fontSize: 10.5, color: colors.subtle),
+            style: TextStyle(fontSize: 12, color: colors.subtle),
           ),
         ),
-        const Spacer(),
+
         if (actionLabel != null && onAction != null)
           TextButton(
             onPressed: onAction,
@@ -1180,9 +931,8 @@ class _ObjectCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: colors.panel,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colors.border),
+        color: Colors.transparent,
+        borderRadius: BorderRadius.zero,
       ),
       child: ListTile(
         onTap: () => controller.openObject(object.id),

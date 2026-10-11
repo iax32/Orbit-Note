@@ -9,6 +9,9 @@ import '../../canvas/geometry.dart';
 import '../../canvas/scene.dart';
 import '../../canvas/connectors.dart';
 import '../../canvas/groups.dart';
+import '../../domain/object_reference.dart';
+import '../../domain/document_anchors.dart';
+import '../../domain/model_asset.dart';
 import 'canvas_rich_text.dart';
 
 class CanvasObjectReference {
@@ -18,25 +21,128 @@ class CanvasObjectReference {
     required this.typeId,
     this.body = '',
     this.properties = const {},
+    this.viewMemberIds,
+    this.viewQueryIssue,
   });
   final String id;
   final String title;
   final String typeId;
   final String body;
   final Map<String, dynamic> properties;
+  final List<String>? viewMemberIds;
+  final String? viewQueryIssue;
+
+  bool get isCompleted =>
+      properties['completed'] == true || properties['status'] == 'done';
+  String? get project => properties['project'] as String?;
+  String? get folder => properties['folder'] as String?;
+  String? get contentRef =>
+      (properties['contentRef'] ??
+              properties['attachmentRef'] ??
+              properties['fileRef'] ??
+              properties['filePath'])
+          as String?;
+  String? get mimeType => properties['mimeType'] as String?;
+  bool get isPdf =>
+      typeId == 'orbit.file' &&
+      ((mimeType == 'application/pdf') || title.toLowerCase().endsWith('.pdf'));
+  bool get isImage =>
+      typeId == 'orbit.file' &&
+      ((mimeType?.startsWith('image/') ?? false) ||
+          const [
+            'png',
+            'jpg',
+            'jpeg',
+            'webp',
+            'gif',
+            'svg',
+          ].any(title.toLowerCase().endsWith));
+  Map<String, dynamic>? get pdfSource => properties['pdfSource'] is Map
+      ? Map<String, dynamic>.from(properties['pdfSource'] as Map)
+      : null;
+  List<String> get tags => properties['tags'] is List
+      ? (properties['tags'] as List).whereType<String>().toList()
+      : const [];
+  String? get priority => properties['priority'] as String?;
+  String? get dueDate => properties['dueDate'] as String?;
+
   @override
   bool operator ==(Object other) =>
       other is CanvasObjectReference &&
       other.id == id &&
       other.title == title &&
       other.typeId == typeId &&
-      other.body == body;
+      other.body == body &&
+      mapEquals(other.properties, properties) &&
+      listEquals(other.viewMemberIds, viewMemberIds) &&
+      other.viewQueryIssue == viewQueryIssue;
   @override
-  int get hashCode => Object.hash(id, title, typeId, body);
+  int get hashCode => Object.hash(
+    id,
+    title,
+    typeId,
+    body,
+    properties.length,
+    Object.hashAll(viewMemberIds ?? const <String>[]),
+    viewQueryIssue,
+  );
+}
+
+/// One retained vector display list; replacement/disposal releases its native
+/// resources. Replaying keeps the original geometry, antialiasing and detail.
+class CanvasPictureCache {
+  Object? _key;
+  ui.Picture? _picture;
+
+  void draw(Canvas canvas, Object key, void Function(Canvas) paint) {
+    if (_picture == null || _key != key) {
+      final recorder = ui.PictureRecorder();
+      paint(Canvas(recorder));
+      final next = recorder.endRecording();
+      _picture?.dispose();
+      _picture = next;
+      _key = key;
+    }
+    canvas.drawPicture(_picture!);
+  }
+
+  void dispose() {
+    _picture?.dispose();
+    _picture = null;
+    _key = null;
+  }
 }
 
 class CanvasTextCache {
   final LinkedHashMap<Object, TextPainter> _entries = LinkedHashMap();
+  final LinkedHashMap<String, List<CanvasRichLine>> _richEntries =
+      LinkedHashMap();
+  int _richCharacters = 0;
+
+  /// Content-keyed parsing shared by painting and checkbox hit testing. Camera,
+  /// theme and font changes do not change the parse; edited text has a new key.
+  List<CanvasRichLine> richLines(String text) {
+    final cached = _richEntries.remove(text);
+    if (cached != null) {
+      _richEntries[text] = cached;
+      return cached;
+    }
+    final lines = List<CanvasRichLine>.unmodifiable(
+      CanvasRichText.parseLines(text),
+    );
+    const characterBudget = 262144;
+    if (text.length <= characterBudget) {
+      _richEntries[text] = lines;
+      _richCharacters += text.length;
+      while (_richEntries.length > 256 || _richCharacters > characterBudget) {
+        final oldest = _richEntries.keys.first;
+        _richCharacters -= oldest.length;
+        _richEntries.remove(oldest);
+      }
+    }
+    return lines;
+  }
+
   TextPainter layout(
     String text,
     TextStyle style,
@@ -67,6 +173,8 @@ class CanvasTextCache {
       painter.dispose();
     }
     _entries.clear();
+    _richEntries.clear();
+    _richCharacters = 0;
   }
 }
 
@@ -78,6 +186,7 @@ class OrbitCanvasPainter extends CustomPainter {
     required this.objects,
     required this.colors,
     this.region,
+    this.lassoPoints,
     this.preview,
     this.editingId,
     this.guides = const [],
@@ -88,6 +197,9 @@ class OrbitCanvasPainter extends CustomPainter {
     required this.textCache,
     this.exportElementIds,
     this.transparentBackground = false,
+    this.fontFamily = 'Segoe UI',
+    this.searchMatchIds = const {},
+    this.activeSearchMatchId,
   }) : sceneRevision = scene.revision;
   final CanvasTextCache textCache;
   final int sceneRevision;
@@ -97,6 +209,7 @@ class OrbitCanvasPainter extends CustomPainter {
   final Map<String, CanvasObjectReference> objects;
   final ColorScheme colors;
   final CanvasBounds? region;
+  final List<CanvasPoint>? lassoPoints;
   final CanvasElement? preview;
   final String? editingId;
   final List<CanvasGuideLine> guides;
@@ -106,6 +219,9 @@ class OrbitCanvasPainter extends CustomPainter {
   final String? connectingStartElementId;
   final Set<String>? exportElementIds;
   final bool transparentBackground;
+  final String fontFamily;
+  final Set<String> searchMatchIds;
+  final String? activeSearchMatchId;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -129,6 +245,46 @@ class OrbitCanvasPainter extends CustomPainter {
     }
     if (preview != null) _element(canvas, preview!);
     if (exportElementIds == null) {
+      if (searchMatchIds.isNotEmpty) {
+        final matchBorderPaint = Paint()
+          ..color = const Color(0xFFF59E0B).withValues(alpha: 0.8)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.0 / camera.zoom;
+        final matchFillPaint = Paint()
+          ..color = const Color(0xFFF59E0B).withValues(alpha: 0.14)
+          ..style = PaintingStyle.fill;
+        final activeMatchBorderPaint = Paint()
+          ..color = const Color(0xFFEAB308)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3.5 / camera.zoom;
+        final activeMatchGlowPaint = Paint()
+          ..color = const Color(0xFFEAB308).withValues(alpha: 0.24)
+          ..style = PaintingStyle.fill;
+
+        for (final id in searchMatchIds) {
+          final element = scene[id];
+          if (element == null || element.hidden) continue;
+          final isActive = id == activeSearchMatchId;
+          final bounds = _rect(
+            element.bounds.inflate(
+              isActive ? 6 / camera.zoom : 4 / camera.zoom,
+            ),
+          );
+          final rrect = RRect.fromRectAndRadius(
+            bounds,
+            Radius.circular(8 / camera.zoom),
+          );
+          canvas.drawRRect(
+            rrect,
+            isActive ? activeMatchGlowPaint : matchFillPaint,
+          );
+          canvas.drawRRect(
+            rrect,
+            isActive ? activeMatchBorderPaint : matchBorderPaint,
+          );
+        }
+      }
+
       final selectionPaint = Paint()
         ..color = colors.primary
         ..style = PaintingStyle.stroke
@@ -235,6 +391,33 @@ class OrbitCanvasPainter extends CustomPainter {
           Paint()..color = colors.primary.withValues(alpha: .08),
         );
         canvas.drawRect(_rect(region!), selectionPaint);
+      }
+      if (lassoPoints != null && lassoPoints!.length >= 2) {
+        final path = Path();
+        path.moveTo(lassoPoints!.first.x, lassoPoints!.first.y);
+        for (var i = 1; i < lassoPoints!.length; i++) {
+          path.lineTo(lassoPoints![i].x, lassoPoints![i].y);
+        }
+        final lassoFill = Paint()
+          ..color = colors.primary.withValues(alpha: .09)
+          ..style = PaintingStyle.fill;
+        canvas.drawPath(path, lassoFill);
+
+        final lassoStroke = Paint()
+          ..color = colors.primary
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5 / camera.zoom
+          ..strokeCap = StrokeCap.round;
+        for (var i = 0; i < lassoPoints!.length - 1; i++) {
+          _drawDashedLine(
+            canvas,
+            Offset(lassoPoints![i].x, lassoPoints![i].y),
+            Offset(lassoPoints![i + 1].x, lassoPoints![i + 1].y),
+            lassoStroke,
+            dashLength: 5.0 / camera.zoom,
+            gapLength: 3.0 / camera.zoom,
+          );
+        }
       }
       if (guides.isNotEmpty) {
         final guidePaint = Paint()
@@ -485,12 +668,333 @@ class OrbitCanvasPainter extends CustomPainter {
           );
         }
       }
-    } else if (backgroundStyle == 'lines') {
+    } else if (backgroundStyle == 'lines' || backgroundStyle == 'ruled') {
       final linePaint = Paint()
         ..color = colors.onSurface.withValues(alpha: .09)
         ..strokeWidth = 1.0;
       for (var y = origin.y % step; y < size.height; y += step) {
         canvas.drawLine(Offset(0, y), Offset(size.width, y), linePaint);
+      }
+      if (backgroundStyle == 'ruled') {
+        final marginScreenX = camera.toScreen(const CanvasPoint(72, 0)).x;
+        if (marginScreenX >= 0 && marginScreenX <= size.width) {
+          final marginPaint = Paint()
+            ..color = const Color(0xffef4444).withValues(alpha: .38)
+            ..strokeWidth = 1.5;
+          canvas.drawLine(
+            Offset(marginScreenX, 0),
+            Offset(marginScreenX, size.height),
+            marginPaint,
+          );
+        }
+      }
+    } else if (backgroundStyle == 'isometric') {
+      final isoPaint = Paint()
+        ..color = colors.onSurface.withValues(alpha: .07)
+        ..strokeWidth = 0.8;
+      final isoStepX = step * 1.5;
+      final isoStepY = isoStepX * 0.57735;
+      for (var x = origin.x % isoStepX; x < size.width; x += isoStepX) {
+        canvas.drawLine(Offset(x, 0), Offset(x, size.height), isoPaint);
+      }
+      final diagCount =
+          ((size.height + size.width * 0.57735) / isoStepY).ceil() + 2;
+      final startK = -((size.width * 0.57735) / isoStepY).ceil() - 1;
+      for (var i = startK; i < diagCount; i++) {
+        final startY = origin.y % isoStepY + i * isoStepY;
+        canvas.drawLine(
+          Offset(0, startY),
+          Offset(size.width, startY + size.width * 0.57735),
+          isoPaint,
+        );
+        canvas.drawLine(
+          Offset(0, startY),
+          Offset(size.width, startY - size.width * 0.57735),
+          isoPaint,
+        );
+      }
+    } else if (backgroundStyle == 'cross') {
+      final crossPaint = Paint()
+        ..color = colors.onSurface.withValues(alpha: .15)
+        ..strokeWidth = 1.0;
+      final arm = math.min(step * 0.18, 4.0 * camera.zoom).clamp(1.5, 6.0);
+      for (var x = origin.x % step; x < size.width; x += step) {
+        for (var y = origin.y % step; y < size.height; y += step) {
+          canvas.drawLine(Offset(x - arm, y), Offset(x + arm, y), crossPaint);
+          canvas.drawLine(Offset(x, y - arm), Offset(x, y + arm), crossPaint);
+        }
+      }
+    } else if (backgroundStyle == 'hex') {
+      var r = 28.0 * camera.zoom;
+      while (r < 14.0) {
+        r *= 2.0;
+      }
+      final w = 1.7320508 * r;
+      final vertDist = 1.5 * r;
+      final hexPaint = Paint()
+        ..color = colors.onSurface.withValues(alpha: .08)
+        ..strokeWidth = 0.9;
+
+      final startRow = ((-origin.y - 2 * r) / vertDist).floor();
+      final endRow = ((size.height - origin.y + 2 * r) / vertDist).ceil();
+      final startCol = ((-origin.x - 2 * w) / w).floor();
+      final endCol = ((size.width - origin.x + 2 * w) / w).ceil();
+
+      for (var row = startRow; row <= endRow; row++) {
+        final rowOffset = row.isOdd ? w * 0.5 : 0.0;
+        final cy = origin.y + row * vertDist;
+        for (var col = startCol; col <= endCol; col++) {
+          final cx = origin.x + col * w + rowOffset;
+          final v0 = Offset(cx + w * 0.5, cy + r * 0.5);
+          final v1 = Offset(cx, cy + r);
+          final v2 = Offset(cx - w * 0.5, cy + r * 0.5);
+          final v3 = Offset(cx - w * 0.5, cy - r * 0.5);
+          canvas.drawLine(v0, v1, hexPaint);
+          canvas.drawLine(v1, v2, hexPaint);
+          canvas.drawLine(v2, v3, hexPaint);
+        }
+      }
+    } else if (backgroundStyle == 'blueprint' ||
+        backgroundStyle == 'blueprint_classic') {
+      // Blueprint paper is intentionally independent from the active app theme.
+      // A real drafting sheet needs enough contrast for fine white ink while
+      // remaining quiet behind filled cards and diagrams.
+      final sheet = Rect.fromLTWH(0, 0, size.width, size.height);
+      if (backgroundStyle == 'blueprint_classic') {
+        canvas.drawRect(sheet, Paint()..color = const Color(0xff123b70));
+      } else {
+        final paper = Paint()
+          ..shader = const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xff173f69), Color(0xff24557f)],
+          ).createShader(sheet);
+        canvas.drawRect(sheet, paper);
+      }
+
+      final frame = sheet.deflate(
+        math.min(18.0, math.min(size.width, size.height) / 2),
+      );
+      final framePaint = Paint()
+        ..color = const Color(0xfff4f8ff).withValues(alpha: .28)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0;
+      canvas.drawRect(frame, framePaint);
+
+      // Registration marks and a restrained title-block hint give the canvas
+      // the visual language of a drafting sheet without covering the work.
+      final markPaint = Paint()
+        ..color = const Color(0xfff4f8ff).withValues(alpha: .38)
+        ..strokeWidth = 1.0;
+      const markLength = 9.0;
+      for (final corner in [
+        Offset(frame.left, frame.top),
+        Offset(frame.right, frame.top),
+        Offset(frame.left, frame.bottom),
+        Offset(frame.right, frame.bottom),
+      ]) {
+        final xDirection = corner.dx == frame.left ? 1.0 : -1.0;
+        final yDirection = corner.dy == frame.top ? 1.0 : -1.0;
+        canvas.drawLine(
+          corner,
+          corner.translate(xDirection * markLength, 0),
+          markPaint,
+        );
+        canvas.drawLine(
+          corner,
+          corner.translate(0, yDirection * markLength),
+          markPaint,
+        );
+      }
+
+      var minorStep = 12.0 * camera.zoom;
+      while (minorStep < 6.0) {
+        minorStep *= 4.0;
+      }
+      final majorStep = minorStep * 5.0;
+
+      final minorPaint = Paint()
+        ..color = const Color(0xfff4f8ff).withValues(alpha: .075)
+        ..strokeWidth = 0.6;
+      final majorPaint = Paint()
+        ..color = const Color(0xfff4f8ff).withValues(alpha: .17)
+        ..strokeWidth = 1.2;
+
+      for (var x = origin.x % minorStep; x < size.width; x += minorStep) {
+        canvas.drawLine(Offset(x, 0), Offset(x, size.height), minorPaint);
+      }
+      for (var y = origin.y % minorStep; y < size.height; y += minorStep) {
+        canvas.drawLine(Offset(0, y), Offset(size.width, y), minorPaint);
+      }
+      for (var x = origin.x % majorStep; x < size.width; x += majorStep) {
+        canvas.drawLine(Offset(x, 0), Offset(x, size.height), majorPaint);
+      }
+      for (var y = origin.y % majorStep; y < size.height; y += majorStep) {
+        canvas.drawLine(Offset(0, y), Offset(size.width, y), majorPaint);
+      }
+
+      // A centre line is a familiar architectural drafting cue. Keep it
+      // dashed and low contrast so it reads as guidance rather than content.
+      final centrePaint = Paint()
+        ..color = const Color(0xfff4f8ff).withValues(alpha: .22)
+        ..strokeWidth = .8;
+      final centreX = size.width / 2;
+      final centreY = size.height / 2;
+      for (var x = frame.left; x < frame.right; x += 12) {
+        canvas.drawLine(
+          Offset(x, centreY),
+          Offset(math.min(x + 6, frame.right), centreY),
+          centrePaint,
+        );
+      }
+      for (var y = frame.top; y < frame.bottom; y += 12) {
+        canvas.drawLine(
+          Offset(centreX, y),
+          Offset(centreX, math.min(y + 6, frame.bottom)),
+          centrePaint,
+        );
+      }
+    } else if (backgroundStyle == 'music') {
+      var lineGap = 7.0 * camera.zoom;
+      while (lineGap < 3.5) {
+        lineGap *= 2.0;
+      }
+      final staffHeight = lineGap * 4.0;
+      final staffGap = lineGap * 6.0;
+      final staffPeriod = staffHeight + staffGap;
+
+      final staffPaint = Paint()
+        ..color = colors.onSurface.withValues(alpha: .15)
+        ..strokeWidth = 0.9;
+      final barPaint = Paint()
+        ..color = colors.onSurface.withValues(alpha: .12)
+        ..strokeWidth = 1.0;
+
+      final barStep = 180.0 * camera.zoom;
+      final startY = origin.y % staffPeriod - staffPeriod;
+
+      for (var sy = startY; sy < size.height + staffHeight; sy += staffPeriod) {
+        for (var k = 0; k < 5; k++) {
+          final y = sy + k * lineGap;
+          if (y >= 0 && y <= size.height) {
+            canvas.drawLine(Offset(0, y), Offset(size.width, y), staffPaint);
+          }
+        }
+        for (var bx = origin.x % barStep; bx < size.width; bx += barStep) {
+          canvas.drawLine(
+            Offset(bx, sy),
+            Offset(bx, sy + staffHeight),
+            barPaint,
+          );
+        }
+      }
+    } else if (backgroundStyle == 'ledger') {
+      final rulePaint = Paint()
+        ..color = colors.onSurface.withValues(alpha: .09)
+        ..strokeWidth = 0.9;
+      for (var y = origin.y % step; y < size.height; y += step) {
+        canvas.drawLine(Offset(0, y), Offset(size.width, y), rulePaint);
+      }
+
+      final colWidths = [
+        90.0 * camera.zoom,
+        360.0 * camera.zoom,
+        80.0 * camera.zoom,
+        100.0 * camera.zoom,
+        100.0 * camera.zoom,
+        110.0 * camera.zoom,
+      ];
+      final colTotal = colWidths.fold<double>(0, (a, b) => a + b);
+      final colNames = [
+        'DATE',
+        'DESCRIPTION',
+        'REF',
+        'DEBIT',
+        'CREDIT',
+        'BALANCE',
+      ];
+
+      final pageX = origin.x % colTotal - colTotal;
+      for (var px = pageX; px < size.width + colTotal; px += colTotal) {
+        var cx = px;
+        for (var c = 0; c < colWidths.length; c++) {
+          final w = colWidths[c];
+          if (c == 3) {
+            canvas.drawRect(
+              Rect.fromLTWH(cx, 0, w, size.height),
+              Paint()..color = const Color(0xffef4444).withValues(alpha: .02),
+            );
+          } else if (c == 4) {
+            canvas.drawRect(
+              Rect.fromLTWH(cx, 0, w, size.height),
+              Paint()..color = const Color(0xff10b981).withValues(alpha: .02),
+            );
+          }
+
+          final divPaint = Paint()
+            ..color = (c == 0 || c == 3 || c == 4)
+                ? colors.primary.withValues(alpha: .30)
+                : colors.onSurface.withValues(alpha: .10)
+            ..strokeWidth = (c == 0 || c == 3 || c == 4) ? 1.4 : 0.8;
+          if (cx >= 0 && cx <= size.width) {
+            canvas.drawLine(Offset(cx, 0), Offset(cx, size.height), divPaint);
+          }
+
+          if (camera.zoom > 0.45 && origin.y >= -30 && origin.y < size.height) {
+            _text(
+              canvas,
+              colNames[c],
+              Rect.fromLTWH(cx + 6, origin.y + 6, w - 12, 16),
+              color: colors.primary.withValues(alpha: .65),
+              size: 9,
+              weight: FontWeight.w700,
+            );
+          }
+          cx += w;
+        }
+        if (cx >= 0 && cx <= size.width) {
+          canvas.drawLine(
+            Offset(cx, 0),
+            Offset(cx, size.height),
+            Paint()
+              ..color = colors.primary.withValues(alpha: .40)
+              ..strokeWidth = 1.6,
+          );
+        }
+      }
+    } else if (backgroundStyle == 'triangular') {
+      final triPaint = Paint()
+        ..color = colors.onSurface.withValues(alpha: .08)
+        ..strokeWidth = 0.8;
+      var triStep = 32.0 * camera.zoom;
+      while (triStep < 16.0) {
+        triStep *= 2.0;
+      }
+      final triH = triStep * 0.8660254;
+
+      for (var y = origin.y % triH; y < size.height; y += triH) {
+        canvas.drawLine(Offset(0, y), Offset(size.width, y), triPaint);
+      }
+
+      const slope = 1.7320508;
+      final extraY = size.width * slope;
+      final startX =
+          (origin.x % triStep) - (extraY / slope).ceilToDouble() - triStep;
+      final endX = size.width + (extraY / slope).ceilToDouble() + triStep;
+
+      for (var x = startX; x < endX; x += triStep) {
+        final yAt0 = (origin.y % triH) - x * slope;
+        canvas.drawLine(
+          Offset(0, yAt0),
+          Offset(size.width, yAt0 + size.width * slope),
+          triPaint,
+        );
+        final yAt0Opp = (origin.y % triH) + x * slope;
+        canvas.drawLine(
+          Offset(0, yAt0Opp),
+          Offset(size.width, yAt0Opp - size.width * slope),
+          triPaint,
+        );
       }
     } else {
       // 'dots' (default)
@@ -626,18 +1130,22 @@ class OrbitCanvasPainter extends CustomPainter {
         }
       case 'ink':
         final isHighlighter = element.data['isHighlighter'] == true;
+        final penStyle =
+            element.data['penStyle'] as String? ??
+            (isHighlighter ? 'highlighter' : 'ballpoint');
+        final isFountain = penStyle == 'fountain';
+        final isMarker = penStyle == 'marker';
+        final isPencil = penStyle == 'pencil';
+        final isCalligraphy = penStyle == 'calligraphy';
+        final isBrush = penStyle == 'brush';
         final inkWidth = isHighlighter
             ? math.max(16.0, element.strokeWidth)
             : element.strokeWidth;
         final inkColor = isHighlighter
             ? accent.withValues(alpha: 0.38)
-            : accent;
-        final inkStroke = Paint()
-          ..color = inkColor
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = inkWidth
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round;
+            : (isMarker
+                  ? accent.withValues(alpha: 0.90)
+                  : (isPencil ? accent.withValues(alpha: 0.72) : accent));
         final points = element.points;
         if (points.isEmpty) return;
         if (points.length == 1) {
@@ -648,12 +1156,197 @@ class OrbitCanvasPainter extends CustomPainter {
           );
           return;
         }
-        final path = Path()
-          ..moveTo(element.x + points.first.x, element.y + points.first.y);
-        for (final point in points.skip(1)) {
-          path.lineTo(element.x + point.x, element.y + point.y);
+
+        final rawPoints = element.data['points'] is List
+            ? element.data['points'] as List
+            : null;
+        final hasPressure =
+            isFountain ||
+            isBrush ||
+            isPencil ||
+            (rawPoints != null &&
+                rawPoints.any(
+                  (p) =>
+                      p is Map &&
+                      p['pressure'] != null &&
+                      (p['pressure'] as num) < 0.95,
+                ));
+
+        if (isCalligraphy) {
+          // Chisel nib held at a constant 45-degree angle (pi / 4).
+          const nibAngle = math.pi / 4;
+          for (var i = 0; i < points.length - 1; i++) {
+            final p1 = points[i];
+            final p2 = points[i + 1];
+            final dx = p2.x - p1.x;
+            final dy = p2.y - p1.y;
+            final strokeAngle = math.atan2(dy, dx);
+            final angleDiff = strokeAngle - nibAngle;
+            final chiselFactor = (0.24 + 0.82 * math.sin(angleDiff).abs())
+                .clamp(0.2, 1.0);
+            var pressureMultiplier = 1.0;
+            if (rawPoints != null && i < rawPoints.length) {
+              final raw = rawPoints[i];
+              if (raw is Map && raw['pressure'] is num) {
+                pressureMultiplier = 0.6 + (raw['pressure'] as num) * 0.5;
+              }
+            }
+            final segWidth = math.max(
+              1.0,
+              inkWidth * chiselFactor * pressureMultiplier,
+            );
+            final segPaint = Paint()
+              ..color = inkColor
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = segWidth
+              ..strokeCap = StrokeCap.round
+              ..strokeJoin = StrokeJoin.round;
+            canvas.drawLine(
+              Offset(element.x + p1.x, element.y + p1.y),
+              Offset(element.x + p2.x, element.y + p2.y),
+              segPaint,
+            );
+          }
+        } else if (isPencil) {
+          // Pencil: graphite texture with subtle jitter & paper tooth shading
+          for (var i = 0; i < points.length - 1; i++) {
+            final p1 = points[i];
+            final p2 = points[i + 1];
+            var pressure = 0.7;
+            if (rawPoints != null && i < rawPoints.length) {
+              final raw = rawPoints[i];
+              if (raw is Map && raw['pressure'] is num) {
+                pressure = (raw['pressure'] as num).toDouble();
+              }
+            }
+            final segWidth = math.max(
+              0.6,
+              inkWidth * (0.65 + pressure.clamp(0.1, 1.0) * 0.45),
+            );
+            final pencilAlpha = (0.48 + pressure.clamp(0.1, 1.0) * 0.42).clamp(
+              0.2,
+              0.9,
+            );
+            final pPaint = Paint()
+              ..color = accent.withValues(alpha: pencilAlpha)
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = segWidth
+              ..strokeCap = StrokeCap.round
+              ..strokeJoin = StrokeJoin.round;
+            canvas.drawLine(
+              Offset(element.x + p1.x, element.y + p1.y),
+              Offset(element.x + p2.x, element.y + p2.y),
+              pPaint,
+            );
+            // Subtle grain offset pass for graphite feel
+            if (segWidth > 1.2) {
+              final grainPaint = Paint()
+                ..color = accent.withValues(alpha: pencilAlpha * 0.3)
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = segWidth * 0.6
+                ..strokeCap = StrokeCap.round;
+              canvas.drawLine(
+                Offset(element.x + p1.x + 0.35, element.y + p1.y + 0.35),
+                Offset(element.x + p2.x + 0.35, element.y + p2.y + 0.35),
+                grainPaint,
+              );
+            }
+          }
+        } else if (isBrush) {
+          // Brush: wide dynamic pressure range and entry/exit tapering
+          for (var i = 0; i < points.length - 1; i++) {
+            final p1 = points[i];
+            final p2 = points[i + 1];
+            var pressure1 = 0.7;
+            var pressure2 = 0.7;
+            if (rawPoints != null && rawPoints.length == points.length) {
+              if (rawPoints[i] is Map && rawPoints[i]['pressure'] is num) {
+                pressure1 = (rawPoints[i]['pressure'] as num).toDouble();
+              }
+              if (rawPoints[i + 1] is Map &&
+                  rawPoints[i + 1]['pressure'] is num) {
+                pressure2 = (rawPoints[i + 1]['pressure'] as num).toDouble();
+              }
+            }
+            final avgPressure = ((pressure1 + pressure2) / 2).clamp(0.1, 1.0);
+            var taper = 1.0;
+            if (i == 0) taper = 0.55;
+            if (i == points.length - 2) taper = 0.55;
+            final segWidth = math.max(
+              0.8,
+              inkWidth * (0.25 + avgPressure * avgPressure * 1.8) * taper,
+            );
+            final segPaint = Paint()
+              ..color = inkColor
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = segWidth
+              ..strokeCap = StrokeCap.round
+              ..strokeJoin = StrokeJoin.round;
+            canvas.drawLine(
+              Offset(element.x + p1.x, element.y + p1.y),
+              Offset(element.x + p2.x, element.y + p2.y),
+              segPaint,
+            );
+          }
+        } else if (hasPressure &&
+            rawPoints != null &&
+            rawPoints.length == points.length) {
+          for (var i = 0; i < points.length - 1; i++) {
+            final p1 = points[i];
+            final p2 = points[i + 1];
+            final pressure1 =
+                (rawPoints[i] is Map && rawPoints[i]['pressure'] is num)
+                ? (rawPoints[i]['pressure'] as num).toDouble()
+                : 0.7;
+            final pressure2 =
+                (rawPoints[i + 1] is Map && rawPoints[i + 1]['pressure'] is num)
+                ? (rawPoints[i + 1]['pressure'] as num).toDouble()
+                : 0.7;
+            final avgPressure = ((pressure1 + pressure2) / 2).clamp(0.1, 1.0);
+            final segWidth = math.max(
+              0.8,
+              inkWidth * (0.35 + avgPressure * 0.9),
+            );
+            final segPaint = Paint()
+              ..color = inkColor
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = segWidth
+              ..strokeCap = StrokeCap.round
+              ..strokeJoin = StrokeJoin.round;
+            canvas.drawLine(
+              Offset(element.x + p1.x, element.y + p1.y),
+              Offset(element.x + p2.x, element.y + p2.y),
+              segPaint,
+            );
+          }
+        } else {
+          final path = Path()
+            ..moveTo(element.x + points.first.x, element.y + points.first.y);
+          if (points.length == 2) {
+            path.lineTo(element.x + points[1].x, element.y + points[1].y);
+          } else {
+            for (var i = 1; i < points.length - 1; i++) {
+              final p1 = points[i];
+              final p2 = points[i + 1];
+              final midX = element.x + (p1.x + p2.x) / 2;
+              final midY = element.y + (p1.y + p2.y) / 2;
+              path.quadraticBezierTo(
+                element.x + p1.x,
+                element.y + p1.y,
+                midX,
+                midY,
+              );
+            }
+            path.lineTo(element.x + points.last.x, element.y + points.last.y);
+          }
+          final inkStroke = Paint()
+            ..color = inkColor
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = inkWidth
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round;
+          canvas.drawPath(path, inkStroke);
         }
-        canvas.drawPath(path, inkStroke);
       case 'connector':
       case 'arrow':
       case 'line':
@@ -896,6 +1589,8 @@ class OrbitCanvasPainter extends CustomPainter {
         }
       case 'text':
         if (camera.zoom < .2) return;
+        final textElemFont =
+            (element.data['fontFamily'] as String?) ?? fontFamily;
         if (CanvasRichText.hasRichFormatting(element.text)) {
           CanvasRichText.draw(
             canvas: canvas,
@@ -905,6 +1600,7 @@ class OrbitCanvasPainter extends CustomPainter {
             colors: colors,
             textCache: textCache,
             defaultFontSize: 17.0,
+            fontFamily: textElemFont,
           );
         } else {
           _text(
@@ -913,22 +1609,38 @@ class OrbitCanvasPainter extends CustomPainter {
             bounds.deflate(6),
             color: colors.onSurface,
             size: 18,
+            customFontFamily: textElemFont,
           );
         }
       case 'sticky':
+        final customColorVal = element.data['color'];
+        Color stickyAccent = accent;
+        if (customColorVal is int) {
+          stickyAccent = Color(customColorVal);
+        } else if (customColorVal is String &&
+            customColorVal.trim().isNotEmpty) {
+          final s = customColorVal.trim();
+          if (s.startsWith('#') && (s.length == 7 || s.length == 9)) {
+            final hex = s.length == 7 ? 'FF${s.substring(1)}' : s.substring(1);
+            final val = int.tryParse(hex, radix: 16);
+            if (val != null) stickyAccent = Color(val);
+          }
+        }
         canvas.drawRRect(
           RRect.fromRectAndRadius(bounds, const Radius.circular(5)),
           Paint()
             ..color = Color.alphaBlend(
-              accent.withValues(alpha: .23),
+              stickyAccent.withValues(alpha: .23),
               colors.surfaceContainerHigh,
             ),
         );
         canvas.drawRect(
           Rect.fromLTWH(bounds.left, bounds.top, bounds.width, 5),
-          Paint()..color = accent.withValues(alpha: .5),
+          Paint()..color = stickyAccent.withValues(alpha: .5),
         );
         if (camera.zoom > .25) {
+          final stickyElemFont =
+              (element.data['fontFamily'] as String?) ?? fontFamily;
           CanvasRichText.draw(
             canvas: canvas,
             text: element.text,
@@ -937,59 +1649,181 @@ class OrbitCanvasPainter extends CustomPainter {
             colors: colors,
             textCache: textCache,
             defaultFontSize: 16.0,
+            fontFamily: stickyElemFont,
           );
         }
       case 'card':
+        final referenceFooterHeight =
+            element.data['referenceStatus'] is String && bounds.height >= 160
+            ? ((element.data['referenceCaption'] is String &&
+                      (element.data['referenceCaption'] as String).isNotEmpty)
+                  ? 74.0
+                  : 36.0)
+            : 0.0;
         final hasObjectId =
             element.objectId != null && element.objectId!.isNotEmpty;
-        final object = hasObjectId ? objects[element.objectId] : null;
+        var object = hasObjectId ? objects[element.objectId] : null;
+        var missingFragment = false;
+        final target = element.data['referenceTarget'];
+        if (object != null && target is String) {
+          final reference = ObjectReference.parse(target);
+          final fragment = reference.id == object.id
+              ? resolveDocumentFragment(
+                  object.body,
+                  reference,
+                  latex: object.properties['documentFormat'] == 'latex',
+                )
+              : null;
+          missingFragment = fragment == null;
+          object = CanvasObjectReference(
+            id: object.id,
+            title: object.title,
+            typeId: object.typeId,
+            properties: object.properties,
+            body: fragment == null
+                ? 'Missing source block · Open source to repair'
+                : fragment.text.replaceFirst(
+                    RegExp(r'\s+\^[A-Za-z0-9][A-Za-z0-9_-]*\s*$'),
+                    '',
+                  ),
+          );
+        }
         final hasText = element.text.trim().isNotEmpty;
         final isStandalone = !hasObjectId;
-        final isUnresolved = hasObjectId && object == null && !hasText;
+        final isUnresolved =
+            missingFragment || (hasObjectId && object == null && !hasText);
+        final cardElemFont =
+            (element.data['fontFamily'] as String?) ?? fontFamily;
 
         final isCanvas = object?.typeId == 'orbit.canvas';
-        final pdfSource = object?.properties['pdfSource'] is Map
-            ? object!.properties['pdfSource'] as Map
+        final pdfSource = object?.pdfSource;
+        final nestedData = element.data['data'] is Map
+            ? (element.data['data'] as Map)
+            : const {};
+        final rawQuote = element.data['quote'] is String
+            ? element.data['quote'] as String
+            : (nestedData['quote'] is String
+                  ? nestedData['quote'] as String
+                  : null);
+        final rawPage =
+            (element.data['page'] as num?)?.toInt() ??
+            (nestedData['page'] as num?)?.toInt() ??
+            1;
+        final rawSourceTitle =
+            element.data['sourceTitle'] as String? ??
+            (nestedData['sourceTitle'] as String?) ??
+            object?.title ??
+            'PDF Document';
+        final rawSourceId =
+            element.data['sourceId'] as String? ??
+            (nestedData['sourceId'] as String?) ??
+            element.objectId;
+        final quoteData = (rawQuote != null && rawQuote.trim().isNotEmpty)
+            ? {
+                'quote': rawQuote.trim(),
+                'page': rawPage,
+                'sourceTitle': rawSourceTitle,
+                'sourceId': rawSourceId,
+                'color': element.color != 0 ? element.color : null,
+              }
             : null;
-        Color stripColor = isUnresolved ? colors.error : accent;
+        final effectivePdfSource = pdfSource ?? quoteData;
+        final isPdfQuote = effectivePdfSource != null;
+        final isPdf = (object?.isPdf ?? false) && !isPdfQuote;
+        final isImage = object?.isImage ?? (element.data['contentRef'] != null);
+        final isTask =
+            object?.typeId == 'orbit.task' || element.data['isTask'] == true;
+        final isDone = object?.isCompleted ?? (element.data['isDone'] == true);
+        final contentRef =
+            element.data['contentRef'] as String? ?? object?.contentRef;
+
+        final viewConfig = element.data['viewConfig'] is Map
+            ? Map<String, dynamic>.from(element.data['viewConfig'] as Map)
+            : (object?.typeId == 'orbit.view' &&
+                      object?.properties['viewConfig'] is Map
+                  ? Map<String, dynamic>.from(
+                      object!.properties['viewConfig'] as Map,
+                    )
+                  : null);
+        final savedSmartView = object?.properties['smartQuery'] != null
+            ? object
+            : objects[(viewConfig?['view'] ?? viewConfig?['viewId'])
+                  ?.toString()];
+        final isDynamicView =
+            viewConfig != null ||
+            savedSmartView?.viewMemberIds != null ||
+            savedSmartView?.viewQueryIssue != null;
+
+        Color stripColor = isUnresolved
+            ? colors.error
+            : (isDynamicView
+                  ? const Color(0xFF3B82F6)
+                  : (isDone
+                        ? const Color(0xFF10B981)
+                        : (effectivePdfSource != null
+                              ? (effectivePdfSource['color'] is int
+                                    ? Color(effectivePdfSource['color'] as int)
+                                    : const Color(0xFFEF4444))
+                              : (isPdf ? const Color(0xFFEF4444) : accent))));
 
         String typeLabel;
         String titleText;
         String bodyText;
 
-        if (object != null) {
-          if (pdfSource != null) {
-            final page = pdfSource['page'] is int
-                ? pdfSource['page'] as int
-                : 1;
-            final quote = pdfSource['quote'] is String
-                ? (pdfSource['quote'] as String).trim()
-                : '';
-            final highlightColor = pdfSource['color'] is int
-                ? Color(pdfSource['color'] as int)
-                : accent;
-            typeLabel = 'PDF HIGHLIGHT · P. $page';
-            stripColor = highlightColor;
-            titleText = object.title.isNotEmpty
-                ? object.title
-                : (quote.isNotEmpty ? quote : 'PDF Highlight');
-            final comment = object.body
-                .replaceAll(RegExp(r'[#*`\[\]]'), '')
-                .trim();
-            if (quote.isNotEmpty) {
-              bodyText = comment.isNotEmpty && comment != quote
-                  ? '“$quote”\n\n$comment'
-                  : '“$quote”';
-            } else {
-              bodyText = comment;
-            }
-          } else if (object.typeId == 'orbit.file') {
-            final isPdf = object.title.toLowerCase().endsWith('.pdf');
-            typeLabel = isPdf ? 'PDF DOCUMENT' : 'ATTACHMENT';
+        if (isDynamicView) {
+          final vt = (viewConfig?['type'] ?? 'SAVED VIEW')
+              .toString()
+              .toUpperCase();
+          typeLabel = 'SAVED VIEW · $vt';
+          titleText =
+              viewConfig?['title'] as String? ??
+              (object?.title.isNotEmpty == true ? object!.title : 'Saved View');
+          bodyText = '';
+        } else if (effectivePdfSource != null) {
+          final page = effectivePdfSource['page'] is int
+              ? effectivePdfSource['page'] as int
+              : 1;
+          final quote = effectivePdfSource['quote'] is String
+              ? (effectivePdfSource['quote'] as String).trim()
+              : '';
+          typeLabel = object?.pdfSource != null
+              ? 'PDF HIGHLIGHT · P. $page'
+              : 'PDF CITATION · P. $page';
+          titleText =
+              effectivePdfSource['sourceTitle'] as String? ??
+              (object != null && object.title.isNotEmpty
+                  ? object.title
+                  : (quote.isNotEmpty ? quote : 'PDF Citation'));
+          final comment = object != null && object.typeId != 'orbit.file'
+              ? object.body.replaceAll(RegExp(r'[#*`\[\]]'), '').trim()
+              : '';
+          bodyText = quote.isNotEmpty
+              ? (comment.isNotEmpty && comment != quote
+                    ? '“$quote”\n\n$comment'
+                    : '“$quote”')
+              : (comment.isNotEmpty ? comment : element.text.trim());
+        } else if (object != null) {
+          if (object.typeId == 'orbit.file') {
+            typeLabel = isPdf
+                ? 'PDF DOCUMENT'
+                : (isImage
+                      ? 'IMAGE ATTACHMENT'
+                      : isModelAsset(
+                          object.properties['originalName'] as String? ??
+                              object.title,
+                        )
+                      ? '3D MODEL ASSET'
+                      : 'ATTACHMENT');
             titleText = object.title.isEmpty ? 'Untitled File' : object.title;
             bodyText = object.body.replaceAll(RegExp(r'[#*`\[\]]'), '').trim();
+            if (isModelAsset(
+                  object.properties['originalName'] as String? ?? object.title,
+                ) &&
+                bodyText.isEmpty) {
+              bodyText =
+                  'Open to rotate, inspect and view wireframe.\nLinked original asset';
+            }
           } else if (object.typeId == 'orbit.task') {
-            final isDone = object.properties['status'] == 'done';
             typeLabel = isDone ? 'TASK (DONE)' : 'TASK';
             titleText = object.title.isEmpty ? 'Untitled Task' : object.title;
             bodyText = object.body.replaceAll(RegExp(r'[#*`\[\]]'), '').trim();
@@ -1015,6 +1849,10 @@ class OrbitCanvasPainter extends CustomPainter {
           bodyText = element.objectId ?? '';
         }
 
+        final presentation =
+            element.data['presentation'] as String? ??
+            (bounds.height <= 95 ? 'compact' : 'card');
+
         final card = RRect.fromRectAndRadius(bounds, const Radius.circular(12));
         canvas.drawRRect(card, Paint()..color = colors.surfaceContainerHigh);
         canvas.drawRRect(
@@ -1024,82 +1862,772 @@ class OrbitCanvasPainter extends CustomPainter {
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1,
         );
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(bounds.left + 16, bounds.top + 16, 5, 18),
-            const Radius.circular(2),
-          ),
-          Paint()..color = stripColor,
-        );
-        _text(
-          canvas,
-          typeLabel,
-          Rect.fromLTWH(
-            bounds.left + 30,
-            bounds.top + 18,
-            math.max(1, bounds.width - 46),
-            18,
-          ),
-          color: (isCanvas || pdfSource != null)
-              ? stripColor
-              : (isUnresolved ? colors.error : colors.onSurfaceVariant),
-          size: 10,
-          weight: FontWeight.w600,
-          maxLines: 1,
-        );
 
-        final isCompact = bounds.height <= 95;
-        if (isCompact) {
+        if (presentation == 'compact') {
+          // Compact single-line presentation
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(
+              Rect.fromLTWH(
+                bounds.left + 12,
+                bounds.top + (bounds.height - 18) / 2,
+                4,
+                18,
+              ),
+              const Radius.circular(2),
+            ),
+            Paint()..color = stripColor,
+          );
+          double contentLeft = bounds.left + 22;
+          if (isTask) {
+            final cbRect = Rect.fromLTWH(
+              contentLeft,
+              bounds.top + (bounds.height - 16) / 2,
+              16,
+              16,
+            );
+            _drawCheckbox(canvas, cbRect, isDone, stripColor, colors);
+            contentLeft += 22;
+          }
+          final rightBadgeWidth = isDone ? 54.0 : 64.0;
+          final titleWidth = math.max(
+            1.0,
+            bounds.right - contentLeft - rightBadgeWidth - 14,
+          );
+          _text(
+            canvas,
+            titleText,
+            Rect.fromLTWH(
+              contentLeft,
+              bounds.top + (bounds.height - 18) / 2,
+              titleWidth,
+              18,
+            ),
+            color: isDone ? colors.onSurfaceVariant : colors.onSurface,
+            size: 13,
+            weight: FontWeight.w600,
+            maxLines: 1,
+            strikeThrough: isDone,
+          );
+          _drawBadge(
+            canvas,
+            isDone
+                ? 'DONE'
+                : (isTask
+                      ? 'TASK'
+                      : (isPdfQuote
+                            ? 'CITATION'
+                            : (isPdf ? 'PDF' : typeLabel))),
+            Rect.fromLTWH(
+              bounds.right - rightBadgeWidth - 12,
+              bounds.top + (bounds.height - 18) / 2,
+              rightBadgeWidth,
+              18,
+            ),
+            textColor: isDone
+                ? const Color(0xFF047857)
+                : (isPdfQuote
+                      ? stripColor
+                      : (isPdf
+                            ? const Color(0xFFB91C1C)
+                            : colors.onSurfaceVariant)),
+            bgColor: isDone
+                ? const Color(0xFFD1FAE5)
+                : (isPdfQuote
+                      ? stripColor.withValues(alpha: 0.14)
+                      : (isPdf
+                            ? const Color(0xFFFEE2E2)
+                            : colors.surfaceContainerHighest)),
+          );
+        } else if (presentation == 'properties') {
+          // Selected-properties presentation
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(
+              Rect.fromLTWH(bounds.left + 16, bounds.top + 16, 5, 18),
+              const Radius.circular(2),
+            ),
+            Paint()..color = stripColor,
+          );
+          _text(
+            canvas,
+            typeLabel,
+            Rect.fromLTWH(
+              bounds.left + 30,
+              bounds.top + 18,
+              math.max(1, bounds.width - 46),
+              18,
+            ),
+            color: (isCanvas || effectivePdfSource != null)
+                ? stripColor
+                : (isUnresolved ? colors.error : colors.onSurfaceVariant),
+            size: 10,
+            weight: FontWeight.w600,
+            maxLines: 1,
+          );
           _text(
             canvas,
             titleText,
             Rect.fromLTWH(
               bounds.left + 16,
-              bounds.top + 38,
+              bounds.top + 42,
               math.max(1, bounds.width - 32),
-              20,
+              22,
             ),
             color: colors.onSurface,
             size: 14,
             weight: FontWeight.w600,
             maxLines: 1,
           );
-          if (bodyText.isNotEmpty && bounds.height >= 60) {
+          final dividerY = bounds.top + 68;
+          canvas.drawLine(
+            Offset(bounds.left + 16, dividerY),
+            Offset(bounds.right - 16, dividerY),
+            Paint()
+              ..color = colors.outlineVariant.withValues(alpha: 0.4)
+              ..strokeWidth = 1,
+          );
+          double currentY = dividerY + 10;
+          final propList = <(String, String)>[];
+          if (isTask) {
+            propList.add(('Status', isDone ? 'Completed' : 'Open'));
+          }
+          if (object?.priority != null) {
+            propList.add(('Priority', object!.priority!));
+          }
+          if (object?.project != null) {
+            propList.add(('Project', object!.project!));
+          }
+          if (object?.folder != null) {
+            propList.add(('Folder', object!.folder!));
+          }
+          if (object?.tags.isNotEmpty ?? false) {
+            propList.add(('Tags', object!.tags.map((t) => '#$t').join(' ')));
+          }
+          if (object?.dueDate != null) {
+            propList.add(('Due', object!.dueDate!));
+          }
+          if (effectivePdfSource != null) {
+            propList.add(('Page', '${effectivePdfSource['page'] ?? 1}'));
+          }
+          if (isPdf) {
+            propList.add(('Format', 'PDF Document'));
+          }
+          if (isImage) {
+            propList.add(('Type', 'Image File'));
+          }
+          if (propList.isEmpty) {
+            propList.add((
+              'Identity',
+              object?.id.substring(0, math.min(8, object.id.length)) ?? 'Local',
+            ));
+          }
+
+          for (final prop in propList.take(5)) {
+            if (currentY + 20 > bounds.bottom - 8) break;
             _text(
               canvas,
-              bodyText,
-              Rect.fromLTWH(
-                bounds.left + 16,
-                bounds.top + 58,
-                math.max(1, bounds.width - 32),
-                math.max(1, bounds.height - 62),
-              ),
+              '${prop.$1}:',
+              Rect.fromLTWH(bounds.left + 16, currentY, 64, 16),
               color: colors.onSurfaceVariant,
               size: 11,
+              weight: FontWeight.w500,
               maxLines: 1,
             );
+            _text(
+              canvas,
+              prop.$2,
+              Rect.fromLTWH(
+                bounds.left + 84,
+                currentY,
+                math.max(1, bounds.width - 100),
+                16,
+              ),
+              color: colors.onSurface,
+              size: 11,
+              weight: FontWeight.w600,
+              maxLines: 1,
+            );
+            currentY += 20;
           }
-        } else {
+        } else if (presentation == 'preview') {
+          // Expanded preview presentation
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(
+              Rect.fromLTWH(bounds.left + 16, bounds.top + 14, 5, 18),
+              const Radius.circular(2),
+            ),
+            Paint()..color = stripColor,
+          );
+          _text(
+            canvas,
+            typeLabel,
+            Rect.fromLTWH(
+              bounds.left + 30,
+              bounds.top + 16,
+              math.max(1, bounds.width - 46),
+              18,
+            ),
+            color: (isCanvas || effectivePdfSource != null)
+                ? stripColor
+                : (isUnresolved ? colors.error : colors.onSurfaceVariant),
+            size: 10,
+            weight: FontWeight.w600,
+            maxLines: 1,
+          );
+
+          double titleTop = bounds.top + 38;
+          double titleLeft = bounds.left + 16;
+          if (isTask) {
+            _drawCheckbox(
+              canvas,
+              Rect.fromLTWH(titleLeft, titleTop + 2, 20, 20),
+              isDone,
+              stripColor,
+              colors,
+            );
+            titleLeft += 26;
+          }
           _text(
             canvas,
             titleText,
             Rect.fromLTWH(
-              bounds.left + 16,
-              bounds.top + 46,
-              math.max(1, bounds.width - 32),
+              titleLeft,
+              titleTop,
+              math.max(1, bounds.right - titleLeft - 16),
+              24,
+            ),
+            color: isDone ? colors.onSurfaceVariant : colors.onSurface,
+            size: 15,
+            weight: FontWeight.w600,
+            maxLines: 1,
+            strikeThrough: isDone,
+          );
+
+          final previewArea = Rect.fromLTWH(
+            bounds.left + 16,
+            bounds.top + 68,
+            math.max(1, bounds.width - 32),
+            math.max(1, bounds.height - 78 - referenceFooterHeight),
+          );
+
+          if (isImage && contentRef != null && images.containsKey(contentRef)) {
+            final img = images[contentRef]!;
+            final imgRRect = RRect.fromRectAndRadius(
+              previewArea,
+              const Radius.circular(8),
+            );
+            canvas.save();
+            canvas.clipRRect(imgRRect);
+            paintImage(
+              canvas: canvas,
+              rect: previewArea,
+              image: img,
+              fit: BoxFit.cover,
+              filterQuality: FilterQuality.medium,
+            );
+            canvas.restore();
+            canvas.drawRRect(
+              imgRRect,
+              Paint()
+                ..color = colors.outlineVariant.withValues(alpha: 0.4)
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 1,
+            );
+          } else if (isImage) {
+            final phRRect = RRect.fromRectAndRadius(
+              previewArea,
+              const Radius.circular(8),
+            );
+            canvas.drawRRect(
+              phRRect,
+              Paint()
+                ..color = colors.surfaceContainerHighest.withValues(alpha: 0.5),
+            );
+            _text(
+              canvas,
+              'Image Preview',
+              Rect.fromLTWH(
+                previewArea.left + 12,
+                previewArea.top + (previewArea.height - 18) / 2,
+                previewArea.width - 24,
+                18,
+              ),
+              color: colors.onSurfaceVariant,
+              size: 12,
+              weight: FontWeight.w500,
+            );
+          } else if (effectivePdfSource != null) {
+            final quoteRRect = RRect.fromRectAndRadius(
+              previewArea,
+              const Radius.circular(6),
+            );
+            canvas.drawRRect(
+              quoteRRect,
+              Paint()..color = stripColor.withValues(alpha: 0.08),
+            );
+            canvas.drawLine(
+              Offset(previewArea.left, previewArea.top),
+              Offset(previewArea.left, previewArea.bottom),
+              Paint()
+                ..color = stripColor
+                ..strokeWidth = 3,
+            );
+            _drawBadge(
+              canvas,
+              'PAGE ${effectivePdfSource['page'] ?? 1}',
+              Rect.fromLTWH(previewArea.left + 10, previewArea.top + 8, 62, 16),
+              textColor: stripColor,
+              bgColor: stripColor.withValues(alpha: 0.16),
+            );
+            final quoteBodyRect = Rect.fromLTWH(
+              previewArea.left + 10,
+              previewArea.top + 28,
+              previewArea.width - 20,
+              math.max(1, previewArea.height - 34),
+            );
+            _text(
+              canvas,
+              bodyText,
+              quoteBodyRect,
+              color: colors.onSurface,
+              size: 11,
+              maxLines: 4,
+            );
+          } else if (isDynamicView) {
+            final vType = viewConfig?['type'] ?? 'tasks';
+            if (savedSmartView?.viewMemberIds != null ||
+                savedSmartView?.viewQueryIssue != null) {
+              final ids = savedSmartView?.viewMemberIds ?? const <String>[];
+              _text(
+                canvas,
+                savedSmartView?.viewQueryIssue ??
+                    '${ids.length} matching objects',
+                Rect.fromLTWH(
+                  previewArea.left,
+                  previewArea.top,
+                  previewArea.width,
+                  28,
+                ),
+                color: colors.onSurfaceVariant,
+                size: 10,
+                maxLines: 2,
+              );
+              var itemY = previewArea.top + 30;
+              for (final id in ids.take(4)) {
+                final row = objects[id];
+                if (row == null || itemY + 18 > previewArea.bottom) continue;
+                _text(
+                  canvas,
+                  row.title,
+                  Rect.fromLTWH(previewArea.left, itemY, previewArea.width, 18),
+                  color: colors.onSurface,
+                  size: 11,
+                  maxLines: 1,
+                );
+                itemY += 20;
+              }
+            } else if (vType == 'tasks') {
+              var tasks = objects.values
+                  .where((o) => o.typeId == 'orbit.task')
+                  .toList();
+              final statusFilter = viewConfig?['status'] as String? ?? 'all';
+              if (statusFilter == 'open') {
+                tasks = tasks.where((t) => !t.isCompleted).toList();
+              } else if (statusFilter == 'completed') {
+                tasks = tasks.where((t) => t.isCompleted).toList();
+              }
+              final totalTasks = objects.values
+                  .where((o) => o.typeId == 'orbit.task')
+                  .length;
+              final doneTasks = objects.values
+                  .where((o) => o.typeId == 'orbit.task' && o.isCompleted)
+                  .length;
+              final pct = totalTasks > 0 ? (doneTasks / totalTasks) : 0.0;
+
+              _text(
+                canvas,
+                '$doneTasks of $totalTasks completed (${(pct * 100).toInt()}%)',
+                Rect.fromLTWH(
+                  previewArea.left,
+                  previewArea.top,
+                  previewArea.width,
+                  16,
+                ),
+                color: colors.onSurfaceVariant,
+                size: 10,
+                weight: FontWeight.w600,
+              );
+              _drawProgressBar(
+                canvas,
+                Rect.fromLTWH(
+                  previewArea.left,
+                  previewArea.top + 18,
+                  previewArea.width,
+                  5,
+                ),
+                pct,
+                barColor: const Color(0xFF3B82F6),
+                bgColor: colors.outlineVariant.withValues(alpha: 0.3),
+              );
+              double itemY = previewArea.top + 28;
+              for (final task in tasks.take(3)) {
+                if (itemY + 18 > previewArea.bottom) break;
+                _drawCheckbox(
+                  canvas,
+                  Rect.fromLTWH(previewArea.left, itemY, 14, 14),
+                  task.isCompleted,
+                  const Color(0xFF3B82F6),
+                  colors,
+                );
+                _text(
+                  canvas,
+                  task.title.isEmpty ? 'Untitled task' : task.title,
+                  Rect.fromLTWH(
+                    previewArea.left + 20,
+                    itemY,
+                    math.max(1, previewArea.width - 24),
+                    16,
+                  ),
+                  color: task.isCompleted
+                      ? colors.onSurfaceVariant
+                      : colors.onSurface,
+                  size: 11,
+                  maxLines: 1,
+                  strikeThrough: task.isCompleted,
+                );
+                itemY += 20;
+              }
+            } else {
+              final notes = objects.values
+                  .where(
+                    (o) => o.typeId != 'orbit.file' && o.typeId != 'orbit.task',
+                  )
+                  .take(4);
+              double itemY = previewArea.top;
+              for (final note in notes) {
+                if (itemY + 18 > previewArea.bottom) break;
+                canvas.drawCircle(
+                  Offset(previewArea.left + 4, itemY + 8),
+                  3,
+                  Paint()..color = const Color(0xFF3B82F6),
+                );
+                _text(
+                  canvas,
+                  note.title.isEmpty ? 'Untitled note' : note.title,
+                  Rect.fromLTWH(
+                    previewArea.left + 14,
+                    itemY,
+                    math.max(1, previewArea.width - 16),
+                    16,
+                  ),
+                  color: colors.onSurface,
+                  size: 11,
+                  maxLines: 1,
+                );
+                itemY += 20;
+              }
+            }
+          } else {
+            double contentY = previewArea.top;
+            if (object?.tags.isNotEmpty ?? false) {
+              _drawBadge(
+                canvas,
+                '#${object!.tags.first}',
+                Rect.fromLTWH(previewArea.left, contentY, 60, 16),
+                textColor: accent,
+                bgColor: accent.withValues(alpha: 0.12),
+              );
+              contentY += 22;
+            }
+            if (bodyText.isNotEmpty) {
+              final textRect = Rect.fromLTWH(
+                previewArea.left,
+                contentY,
+                previewArea.width,
+                math.max(1, previewArea.bottom - contentY),
+              );
+              if (CanvasRichText.hasRichFormatting(bodyText)) {
+                CanvasRichText.draw(
+                  canvas: canvas,
+                  text: bodyText,
+                  bounds: textRect,
+                  accent: accent,
+                  colors: colors,
+                  textCache: textCache,
+                  defaultFontSize: 11.0,
+                  maxLines: 3,
+                  fontFamily: cardElemFont,
+                );
+              } else {
+                _text(
+                  canvas,
+                  bodyText,
+                  textRect,
+                  color: colors.onSurfaceVariant,
+                  size: 11,
+                  maxLines: 3,
+                  customFontFamily: cardElemFont,
+                );
+              }
+            }
+          }
+        } else if (presentation == 'transclusion') {
+          // Live Embedded Note Block Transclusion (CAN-02, NOTE-07)
+          final transBarColor = effectivePdfSource != null
+              ? stripColor
+              : const Color(0xFF8B5CF6);
+          // Top accent bar
+          canvas.drawRRect(
+            RRect.fromRectAndCorners(
+              Rect.fromLTWH(
+                bounds.left + 1,
+                bounds.top + 1,
+                bounds.width - 2,
+                4,
+              ),
+              topLeft: const Radius.circular(11),
+              topRight: const Radius.circular(11),
+            ),
+            Paint()..color = transBarColor,
+          );
+
+          // Header: Live Transclusion badge and note reference link
+          final badgeLabel = effectivePdfSource != null
+              ? 'PDF CITATION'
+              : 'LIVE TRANSCLUSION';
+          final badgeWidth = effectivePdfSource != null ? 104.0 : 120.0;
+          _drawBadge(
+            canvas,
+            badgeLabel,
+            Rect.fromLTWH(bounds.left + 14, bounds.top + 12, badgeWidth, 18),
+            textColor: transBarColor,
+            bgColor: transBarColor.withValues(alpha: 0.14),
+          );
+
+          final blockId =
+              element.data['blockId'] as String? ??
+              element.data['blockRef'] as String?;
+          final rawRef = element.data['referenceTarget'] is String
+              ? element.data['referenceTarget'] as String
+              : (nestedData['referenceTarget'] is String
+                    ? nestedData['referenceTarget'] as String
+                    : null);
+          final targetRef = rawRef != null
+              ? '[[$rawRef]]'
+              : effectivePdfSource != null
+              ? '[[$titleText · p. ${effectivePdfSource['page'] ?? 1}]]'
+              : blockId != null && blockId.isNotEmpty
+              ? '[[$titleText#^$blockId]]'
+              : '[[$titleText]]';
+          final refWidth = math.max(1.0, bounds.width - badgeWidth - 42);
+          _text(
+            canvas,
+            targetRef,
+            Rect.fromLTWH(
+              bounds.left + badgeWidth + 22,
+              bounds.top + 12,
+              refWidth,
+              18,
+            ),
+            color: colors.primary,
+            size: 11.5,
+            weight: FontWeight.w600,
+            maxLines: 1,
+          );
+
+          final dividerY = bounds.top + 36;
+          canvas.drawLine(
+            Offset(bounds.left + 14, dividerY),
+            Offset(bounds.right - 14, dividerY),
+            Paint()
+              ..color = colors.outlineVariant.withValues(alpha: 0.35)
+              ..strokeWidth = 1,
+          );
+
+          // Body text extraction
+          String rawContent = effectivePdfSource != null
+              ? bodyText
+              : (object?.body ?? (hasText ? element.text : ''));
+          if (effectivePdfSource == null &&
+              blockId != null &&
+              blockId.isNotEmpty &&
+              rawContent.isNotEmpty) {
+            final lines = rawContent.split('\n');
+            String? matched;
+            for (final line in lines) {
+              if (line.contains('^$blockId')) {
+                matched = line.replaceAll('^$blockId', '').trim();
+                break;
+              }
+            }
+            if (matched != null) {
+              rawContent = matched;
+            }
+          }
+
+          final contentTop = dividerY + 8;
+          final contentHeight = math.max(1.0, bounds.bottom - contentTop - 26);
+          final contentArea = Rect.fromLTWH(
+            bounds.left + 14,
+            contentTop,
+            math.max(1.0, bounds.width - 28),
+            contentHeight,
+          );
+          final maxLines = math.max(1, (contentHeight / 18).floor());
+
+          if (effectivePdfSource != null) {
+            final quoteBox = RRect.fromRectAndRadius(
+              contentArea,
+              const Radius.circular(6),
+            );
+            canvas.drawRRect(
+              quoteBox,
+              Paint()..color = stripColor.withValues(alpha: 0.07),
+            );
+            canvas.drawLine(
+              Offset(contentArea.left, contentArea.top),
+              Offset(contentArea.left, contentArea.bottom),
+              Paint()
+                ..color = stripColor
+                ..strokeWidth = 3,
+            );
+            final innerQuoteRect = Rect.fromLTWH(
+              contentArea.left + 10,
+              contentArea.top + 6,
+              math.max(1.0, contentArea.width - 16),
+              math.max(1.0, contentArea.height - 12),
+            );
+            _text(
+              canvas,
+              bodyText,
+              innerQuoteRect,
+              color: colors.onSurface,
+              size: 11.5,
+              maxLines: maxLines,
+              customFontFamily: cardElemFont,
+            );
+          } else if (isUnresolved) {
+            _text(
+              canvas,
+              'Missing referenced note (${element.objectId}).\nRemoving this placement card does not delete an object.',
+              contentArea,
+              color: colors.error,
+              size: 11,
+              maxLines: maxLines,
+            );
+          } else if (rawContent.trim().isEmpty) {
+            _text(
+              canvas,
+              '(Empty note content)',
+              contentArea,
+              color: colors.onSurfaceVariant.withValues(alpha: 0.6),
+              size: 11.5,
+              maxLines: 1,
+            );
+          } else if (CanvasRichText.hasRichFormatting(rawContent)) {
+            CanvasRichText.draw(
+              canvas: canvas,
+              text: rawContent,
+              bounds: contentArea,
+              accent: transBarColor,
+              colors: colors,
+              textCache: textCache,
+              defaultFontSize: 11.5,
+              maxLines: maxLines,
+              fontFamily: cardElemFont,
+            );
+          } else {
+            _text(
+              canvas,
+              rawContent,
+              contentArea,
+              color: colors.onSurface,
+              size: 11.5,
+              maxLines: maxLines,
+              customFontFamily: cardElemFont,
+            );
+          }
+
+          // Footer status line
+          final footerRect = Rect.fromLTWH(
+            bounds.left + 14,
+            bounds.bottom - 20,
+            bounds.width - 28,
+            14,
+          );
+          final footerText = isUnresolved
+              ? 'Unresolved Reference'
+              : (effectivePdfSource != null
+                    ? 'Cited from ${effectivePdfSource['sourceTitle'] ?? titleText} · Page ${effectivePdfSource['page'] ?? 1}'
+                    : 'Bidirectional sync · ${rawContent.length} chars${blockId != null ? ' · Block ^$blockId' : ''}');
+          _text(
+            canvas,
+            footerText,
+            footerRect,
+            color: colors.onSurfaceVariant.withValues(alpha: 0.7),
+            size: 9.5,
+            weight: FontWeight.w500,
+            maxLines: 1,
+          );
+        } else {
+          // Standard card presentation (default)
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(
+              Rect.fromLTWH(bounds.left + 16, bounds.top + 16, 5, 18),
+              const Radius.circular(2),
+            ),
+            Paint()..color = stripColor,
+          );
+          _text(
+            canvas,
+            typeLabel,
+            Rect.fromLTWH(
+              bounds.left + 30,
+              bounds.top + 18,
+              math.max(1, bounds.width - 46),
+              18,
+            ),
+            color: (isCanvas || effectivePdfSource != null)
+                ? stripColor
+                : (isUnresolved ? colors.error : colors.onSurfaceVariant),
+            size: 10,
+            weight: FontWeight.w600,
+            maxLines: 1,
+          );
+
+          double titleTop = bounds.top + 46;
+          double titleLeft = bounds.left + 16;
+          if (isTask) {
+            _drawCheckbox(
+              canvas,
+              Rect.fromLTWH(titleLeft, titleTop + 2, 20, 20),
+              isDone,
+              stripColor,
+              colors,
+            );
+            titleLeft += 28;
+          }
+          _text(
+            canvas,
+            titleText,
+            Rect.fromLTWH(
+              titleLeft,
+              titleTop,
+              math.max(1, bounds.right - titleLeft - 16),
               48,
             ),
-            color: colors.onSurface,
+            color: isDone ? colors.onSurfaceVariant : colors.onSurface,
             size: 16,
             weight: FontWeight.w600,
             maxLines: 2,
+            strikeThrough: isDone,
+            customFontFamily: cardElemFont,
           );
           if (camera.zoom > .5 && bounds.height > 105 && bodyText.isNotEmpty) {
             final cardBodyRect = Rect.fromLTWH(
               bounds.left + 16,
               bounds.top + 98,
               math.max(1, bounds.width - 32),
-              math.max(1, bounds.height - 110),
+              math.max(1, bounds.height - 110 - referenceFooterHeight),
             );
             if (CanvasRichText.hasRichFormatting(bodyText)) {
               CanvasRichText.draw(
@@ -1111,6 +2639,7 @@ class OrbitCanvasPainter extends CustomPainter {
                 textCache: textCache,
                 defaultFontSize: 12.0,
                 maxLines: 4,
+                fontFamily: cardElemFont,
               );
             } else {
               _text(
@@ -1120,31 +2649,99 @@ class OrbitCanvasPainter extends CustomPainter {
                 color: colors.onSurfaceVariant,
                 size: 12,
                 maxLines: 4,
+                customFontFamily: cardElemFont,
               );
             }
           }
         }
+        final referenceStatus = element.data['referenceStatus'];
+        if (referenceStatus is String &&
+            camera.zoom > .4 &&
+            bounds.height >= 160) {
+          final caption = element.data['referenceCaption'] is String
+              ? element.data['referenceCaption'] as String
+              : '';
+          final tags = element.data['referenceTags'] is List
+              ? (element.data['referenceTags'] as List)
+                    .whereType<String>()
+                    .take(3)
+                    .join(' · ')
+              : '';
+          final height = caption.isEmpty ? 28.0 : 66.0;
+          final panel = Rect.fromLTWH(
+            bounds.left + 10,
+            bounds.bottom - height - 8,
+            math.max(1, bounds.width - 20),
+            height,
+          );
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(panel, const Radius.circular(6)),
+            Paint()..color = colors.surfaceContainerHigh,
+          );
+          if (caption.isNotEmpty) {
+            _text(
+              canvas,
+              caption,
+              Rect.fromLTWH(
+                panel.left + 4,
+                panel.top + 4,
+                math.max(1, panel.width - 8),
+                36,
+              ),
+              color: colors.onSurface,
+              size: 11,
+              maxLines: 2,
+              customFontFamily: cardElemFont,
+            );
+          }
+          _text(
+            canvas,
+            '$referenceStatus${tags.isEmpty ? '' : ' · $tags'}',
+            Rect.fromLTWH(
+              panel.left + 4,
+              panel.bottom - 18,
+              math.max(1, panel.width - 8),
+              16,
+            ),
+            color: stripColor,
+            size: 10,
+            maxLines: 1,
+          );
+        }
       case 'section':
         if (camera.zoom > .2) {
-          final title = element.text.isEmpty
-              ? 'SECTION'
-              : element.text.toUpperCase();
+          final rawText = element.text.trim();
+          String title = rawText.isEmpty ? 'SECTION' : rawText;
+          if (title.startsWith('### ')) {
+            title = title.substring(4);
+          } else if (title.startsWith('## ')) {
+            title = title.substring(3);
+          } else if (title.startsWith('# ')) {
+            title = title.substring(2);
+          }
+          title = title.toUpperCase();
+
+          final fontSize = element.sectionFontSize;
+          final strokeWidth = element.sectionStrokeWidth;
+          final textHeight = fontSize * 1.5;
           _text(
             canvas,
             title,
-            Rect.fromLTWH(bounds.left, bounds.top, bounds.width, 22),
+            Rect.fromLTWH(bounds.left, bounds.top, bounds.width, textHeight),
             color: accent,
-            size: 13,
+            size: fontSize,
             weight: FontWeight.w700,
             maxLines: 1,
           );
-          final lineY = bounds.top + 25;
+          final lineGap = (fontSize * 0.35 + 1.0).clamp(3.0, 14.0);
+          final lineY = bounds.top + textHeight + lineGap;
           canvas.drawLine(
             Offset(bounds.left, lineY),
             Offset(bounds.right, lineY),
             Paint()
               ..color = accent.withValues(alpha: 0.45)
-              ..strokeWidth = 1.5,
+              ..strokeWidth = strokeWidth
+              ..strokeCap = StrokeCap.round,
           );
         }
       case 'swatch':
@@ -1203,6 +2800,138 @@ class OrbitCanvasPainter extends CustomPainter {
             );
           }
         }
+      case 'audio':
+        final audioCard = RRect.fromRectAndRadius(
+          bounds,
+          const Radius.circular(12),
+        );
+        canvas.drawRRect(
+          audioCard,
+          Paint()..color = colors.surfaceContainerHigh,
+        );
+        canvas.drawRRect(
+          audioCard,
+          Paint()
+            ..color = accent.withValues(alpha: 0.35)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1,
+        );
+
+        if (camera.zoom > 0.2) {
+          final playRadius = math.min(18.0, bounds.height * 0.22);
+          final playCenter = Offset(
+            bounds.left + playRadius + 14,
+            bounds.top + bounds.height * 0.45,
+          );
+          canvas.drawCircle(
+            playCenter,
+            playRadius,
+            Paint()..color = accent.withValues(alpha: 0.16),
+          );
+          canvas.drawCircle(
+            playCenter,
+            playRadius,
+            Paint()
+              ..color = accent.withValues(alpha: 0.45)
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.2,
+          );
+
+          final playPath = Path()
+            ..moveTo(
+              playCenter.dx - playRadius * 0.3,
+              playCenter.dy - playRadius * 0.45,
+            )
+            ..lineTo(playCenter.dx + playRadius * 0.45, playCenter.dy)
+            ..lineTo(
+              playCenter.dx - playRadius * 0.3,
+              playCenter.dy + playRadius * 0.45,
+            )
+            ..close();
+          canvas.drawPath(playPath, Paint()..color = accent);
+
+          final contentLeft = playCenter.dx + playRadius + 14;
+          final contentWidth = math.max(1.0, bounds.right - contentLeft - 14);
+
+          _text(
+            canvas,
+            element.text.isNotEmpty ? element.text : 'Voice Memo',
+            Rect.fromLTWH(contentLeft, bounds.top + 10, contentWidth, 18),
+            color: colors.onSurface,
+            size: 13,
+            weight: FontWeight.w600,
+            maxLines: 1,
+          );
+
+          final durationStr = element.data['duration']?.toString() ?? '1:45';
+          _text(
+            canvas,
+            'AUDIO • $durationStr',
+            Rect.fromLTWH(contentLeft, bounds.top + 28, contentWidth, 14),
+            color: accent,
+            size: 9.5,
+            weight: FontWeight.w600,
+            maxLines: 1,
+          );
+
+          final waveY = bounds.top + 46;
+          final waveHeight = math.max(12.0, bounds.bottom - waveY - 10);
+          final waveWidth = contentWidth;
+          const barCount = 24;
+          final barW = math.max(2.0, (waveWidth / barCount) - 2.5);
+          final barGap = (waveWidth - (barCount * barW)) / (barCount - 1);
+          final progress = finiteNumber(
+            element.data['progress'],
+            0.35,
+          ).clamp(0.0, 1.0);
+
+          const amplitudes = [
+            0.3,
+            0.5,
+            0.7,
+            0.4,
+            0.85,
+            1.0,
+            0.65,
+            0.5,
+            0.75,
+            0.9,
+            0.55,
+            0.35,
+            0.6,
+            0.8,
+            0.95,
+            0.45,
+            0.35,
+            0.6,
+            0.85,
+            0.7,
+            0.5,
+            0.75,
+            0.8,
+            0.4,
+          ];
+
+          for (int i = 0; i < barCount; i++) {
+            final bx = contentLeft + i * (barW + barGap);
+            final frac = (i + 1) / barCount;
+            final isPlayed = frac <= progress;
+            final amp = amplitudes[i % amplitudes.length];
+            final bH = math.max(3.0, waveHeight * amp);
+            final by = waveY + (waveHeight - bH) / 2;
+
+            canvas.drawRRect(
+              RRect.fromRectAndRadius(
+                Rect.fromLTWH(bx, by, barW, bH),
+                Radius.circular(barW / 2),
+              ),
+              Paint()
+                ..color = isPlayed
+                    ? accent
+                    : colors.outlineVariant.withValues(alpha: 0.4),
+            );
+          }
+        }
     }
   }
 
@@ -1214,16 +2943,19 @@ class OrbitCanvasPainter extends CustomPainter {
     required double size,
     int? maxLines,
     FontWeight? weight,
+    bool strikeThrough = false,
+    String? customFontFamily,
   }) {
     if (bounds.width <= 0 || bounds.height <= 0) return;
     final painter = textCache.layout(
       text,
       TextStyle(
-        fontFamily: 'Segoe UI',
+        fontFamily: customFontFamily ?? fontFamily,
         color: color,
         fontSize: size,
         height: 1.4,
         fontWeight: weight,
+        decoration: strikeThrough ? TextDecoration.lineThrough : null,
       ),
       bounds.width,
       maxLines,
@@ -1232,6 +2964,105 @@ class OrbitCanvasPainter extends CustomPainter {
     canvas.clipRect(bounds);
     painter.paint(canvas, bounds.topLeft);
     canvas.restore();
+  }
+
+  void _drawCheckbox(
+    Canvas canvas,
+    Rect rect,
+    bool checked,
+    Color accentColor,
+    ColorScheme colors,
+  ) {
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(4));
+    if (checked) {
+      canvas.drawRRect(rrect, Paint()..color = const Color(0xFF10B981));
+      final p1 = Offset(
+        rect.left + rect.width * 0.25,
+        rect.top + rect.height * 0.52,
+      );
+      final p2 = Offset(
+        rect.left + rect.width * 0.44,
+        rect.top + rect.height * 0.72,
+      );
+      final p3 = Offset(
+        rect.left + rect.width * 0.76,
+        rect.top + rect.height * 0.30,
+      );
+      final path = Path()
+        ..moveTo(p1.dx, p1.dy)
+        ..lineTo(p2.dx, p2.dy)
+        ..lineTo(p3.dx, p3.dy);
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.max(1.5, rect.width * 0.12)
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round,
+      );
+    } else {
+      canvas.drawRRect(
+        rrect,
+        Paint()
+          ..color = colors.surfaceContainerHighest.withValues(alpha: 0.5)
+          ..style = PaintingStyle.fill,
+      );
+      canvas.drawRRect(
+        rrect,
+        Paint()
+          ..color = colors.outline.withValues(alpha: 0.7)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2,
+      );
+    }
+  }
+
+  void _drawBadge(
+    Canvas canvas,
+    String text,
+    Rect rect, {
+    required Color textColor,
+    required Color bgColor,
+  }) {
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(4));
+    canvas.drawRRect(rrect, Paint()..color = bgColor);
+    _text(
+      canvas,
+      text,
+      Rect.fromLTWH(
+        rect.left + 4,
+        rect.top + (rect.height - 11) / 2,
+        math.max(1, rect.width - 8),
+        12,
+      ),
+      color: textColor,
+      size: 9,
+      weight: FontWeight.w700,
+      maxLines: 1,
+    );
+  }
+
+  void _drawProgressBar(
+    Canvas canvas,
+    Rect rect,
+    double progress, {
+    required Color barColor,
+    required Color bgColor,
+  }) {
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(3));
+    canvas.drawRRect(rrect, Paint()..color = bgColor);
+    if (progress > 0) {
+      final fillWidth = (rect.width * progress.clamp(0.0, 1.0)).clamp(
+        3.0,
+        rect.width,
+      );
+      final fillRRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(rect.left, rect.top, fillWidth, rect.height),
+        const Radius.circular(3),
+      );
+      canvas.drawRRect(fillRRect, Paint()..color = barColor);
+    }
   }
 
   Rect _rect(CanvasBounds bounds) =>
@@ -1243,11 +3074,13 @@ class OrbitCanvasPainter extends CustomPainter {
       camera.x != oldDelegate.camera.x ||
       camera.y != oldDelegate.camera.y ||
       camera.zoom != oldDelegate.camera.zoom ||
+      fontFamily != oldDelegate.fontFamily ||
       !setEquals(selection, oldDelegate.selection) ||
       !mapEquals(objects, oldDelegate.objects) ||
       !mapEquals(images, oldDelegate.images) ||
       colors != oldDelegate.colors ||
       region != oldDelegate.region ||
+      !listEquals(lassoPoints, oldDelegate.lassoPoints) ||
       preview != oldDelegate.preview ||
       editingId != oldDelegate.editingId ||
       backgroundStyle != oldDelegate.backgroundStyle ||
@@ -1255,6 +3088,8 @@ class OrbitCanvasPainter extends CustomPainter {
       connectingStartElementId != oldDelegate.connectingStartElementId ||
       transparentBackground != oldDelegate.transparentBackground ||
       !setEquals(exportElementIds, oldDelegate.exportElementIds) ||
+      !setEquals(searchMatchIds, oldDelegate.searchMatchIds) ||
+      activeSearchMatchId != oldDelegate.activeSearchMatchId ||
       !listEquals(guides, oldDelegate.guides);
 }
 
@@ -1269,6 +3104,7 @@ Future<Uint8List?> renderCanvasToPng({
   bool transparent = false,
   Map<String, ui.Image> images = const {},
   Map<String, CanvasObjectReference> objects = const {},
+  String fontFamily = 'Segoe UI',
 }) async {
   CanvasBounds exportBounds;
   if (elementIds != null && elementIds.isNotEmpty) {
@@ -1319,6 +3155,7 @@ Future<Uint8List?> renderCanvasToPng({
     textCache: textCache,
     exportElementIds: elementIds,
     transparentBackground: transparent,
+    fontFamily: fontFamily,
   );
 
   painter.paint(canvas, Size(width, height));

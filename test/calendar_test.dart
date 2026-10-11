@@ -314,12 +314,19 @@ void main() {
 
       expect(find.text('Today'), findsOneWidget);
       expect(find.text('New event'), findsOneWidget);
-      expect(find.text('DAY AGENDA'), findsOneWidget);
+      expect(find.text('Day agenda'), findsOneWidget);
       expect(find.byType(CalendarView), findsOneWidget);
 
-      await tester.runAsync(() async {
-        await controller.flushAll();
-      });
+      await tester.tap(find.text('Week'));
+      await tester.pumpAndSettle();
+      expect(find.text('Week'), findsOneWidget);
+      expect(find.text('MON'), findsOneWidget);
+      await tester.tap(find.text('Month'));
+      await tester.pumpAndSettle();
+
+      final flush = controller.flushAll();
+      await tester.pumpAndSettle();
+      expect(await flush, true);
       container.dispose();
     });
   });

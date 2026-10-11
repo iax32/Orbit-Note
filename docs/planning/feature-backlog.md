@@ -9,6 +9,10 @@ Status: canonical release classification. Requirements describe full target beha
 Working subsets are tracked in [implementation status](implementation-status.md). The
 [current task](../tasks/current.md) defines active scope. Do not duplicate requirements.
 
+The first public 1.0 artifact is frozen to the Windows x64 local-first core.
+Android, Web, sync, and other platform tracks remain separately validated and
+will not silently expand the Windows release gate.
+
 | Class | Meaning |
 |---|---|
 | F | Foundation / required prerequisite or quality gate, applied when its feature ships. Not all are M0 work. |

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
@@ -10,7 +11,36 @@ import 'object_index.dart';
 
 ObjectIndex createObjectIndex() => DriftObjectIndex();
 
-class DriftObjectIndex implements ObjectIndex {
+class DriftObjectIndex implements ObjectIndex, PdfTextCache {
+  @override
+  Future<Map<String, dynamic>?> readPdfText(String id) async {
+    final rows = await _database!
+        .customSelect(
+          'SELECT document FROM pdf_text WHERE id=?',
+          variables: [Variable.withString(id)],
+        )
+        .get();
+    if (rows.isEmpty) return null;
+    try {
+      return Map<String, dynamic>.from(
+        jsonDecode(rows.single.read<String>('document')) as Map,
+      );
+    } on Object {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> writePdfText(
+    String id,
+    Map<String, dynamic> document,
+  ) async => _database!.customStatement(
+    'INSERT INTO pdf_text(id,document) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET document=excluded.document',
+    [id, jsonEncode(document)],
+  );
+  @override
+  Future<void> removePdfText(String id) async =>
+      _database!.customStatement('DELETE FROM pdf_text WHERE id=?', [id]);
   _IndexDatabase? _database;
   @override
   Future<void> initialize(String location) async {
@@ -79,13 +109,13 @@ class DriftObjectIndex implements ObjectIndex {
         .replaceAll('%', '\\%')
         .replaceAll('_', '\\_');
     // Trigram FTS retains Orbit's literal substring semantics. Short queries
-    // cannot use trigrams and deliberately retain the bounded legacy path.
+    // cannot use trigrams and use escaped LIKE. Both return complete candidates.
     final useFts = query.runes.length >= 3;
     final rows = await _database!
         .customSelect(
           useFts
-              ? "SELECT objects.id FROM objects_fts JOIN objects ON objects.rowid=objects_fts.rowid WHERE objects_fts MATCH ? AND deleted=0 ORDER BY CASE WHEN lower(objects.title)=lower(?) THEN 0 WHEN objects.title LIKE ? ESCAPE '\\' THEN 1 WHEN objects.title LIKE ? ESCAPE '\\' THEN 2 ELSE 3 END, bm25(objects_fts, 5.0, 1.0), lower(objects.title), objects.id LIMIT 100"
-              : "SELECT id FROM objects WHERE deleted=0 AND search_text LIKE ? ESCAPE '\\' ORDER BY CASE WHEN lower(title)=lower(?) THEN 0 WHEN title LIKE ? ESCAPE '\\' THEN 1 WHEN title LIKE ? ESCAPE '\\' THEN 2 ELSE 3 END, lower(title), id LIMIT 100",
+              ? "SELECT objects.id FROM objects_fts JOIN objects ON objects.rowid=objects_fts.rowid WHERE objects_fts MATCH ? AND deleted=0 ORDER BY CASE WHEN lower(objects.title)=lower(?) THEN 0 WHEN objects.title LIKE ? ESCAPE '\\' THEN 1 WHEN objects.title LIKE ? ESCAPE '\\' THEN 2 ELSE 3 END, bm25(objects_fts, 5.0, 1.0), lower(objects.title), objects.id"
+              : "SELECT id FROM objects WHERE deleted=0 AND search_text LIKE ? ESCAPE '\\' ORDER BY CASE WHEN lower(title)=lower(?) THEN 0 WHEN title LIKE ? ESCAPE '\\' THEN 1 WHEN title LIKE ? ESCAPE '\\' THEN 2 ELSE 3 END, lower(title), id",
           variables: [
             Variable.withString(
               useFts ? '"${query.replaceAll('"', '""')}"' : '%$literal%',
@@ -111,7 +141,7 @@ class DriftObjectIndex implements ObjectIndex {
 class _IndexDatabase extends GeneratedDatabase {
   _IndexDatabase(super.executor);
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
   @override
   Iterable<TableInfo<Table, dynamic>> get allTables => const [];
   @override
@@ -127,6 +157,9 @@ class _IndexDatabase extends GeneratedDatabase {
         'CREATE INDEX objects_type ON objects(type_id, deleted)',
       );
       await _createFts();
+      await customStatement(
+        'CREATE TABLE pdf_text(id TEXT PRIMARY KEY NOT NULL, document TEXT NOT NULL)',
+      );
     },
     onUpgrade: (_, from, to) async {
       if (from < 2) {
@@ -135,6 +168,11 @@ class _IndexDatabase extends GeneratedDatabase {
         );
       }
       if (from < 3) await _createFts();
+      if (from < 4) {
+        await customStatement(
+          'CREATE TABLE pdf_text(id TEXT PRIMARY KEY NOT NULL, document TEXT NOT NULL)',
+        );
+      }
     },
   );
 

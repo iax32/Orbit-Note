@@ -196,13 +196,16 @@ void main() {
     });
 
     test(
-      'CanvasArrangement enum has user-facing labels for all 12 options',
+      'CanvasArrangement enum has user-facing labels for all 15 options',
       () {
-        expect(CanvasArrangement.values.length, 12);
+        expect(CanvasArrangement.values.length, 15);
         expect(CanvasArrangement.grid.label, 'Arrange in grid');
         expect(CanvasArrangement.stackH.label, 'Stack horizontally');
         expect(CanvasArrangement.stackV.label, 'Stack vertically');
         expect(CanvasArrangement.radial.label, 'Arrange in radial circle');
+        expect(CanvasArrangement.mindMap.label, 'Arrange in mind map');
+        expect(CanvasArrangement.timeline.label, 'Arrange in timeline');
+        expect(CanvasArrangement.treeV.label, 'Arrange in vertical tree');
       },
     );
   });

@@ -170,3 +170,19 @@ commands keep the Vault read-only until reopening can finish them. Changed or
 missing recovery inputs are preserved for review rather than overwritten. Browser
 storage has no safe multi-file command capability and rejects these commands;
 there is no delete-before-write fallback. Device session state is separate.
+
+## Local document review metadata — version 1, 2026-10-10
+
+The Note Markdown owner stores standalone `<!-- orbit:review {JSON} -->` lines.
+Required keys: version=1, id, kind (comment/suggestion), state, quote, message,
+offset (UTF-16), prefix and suffix. Optional blockId references the ordinary stable
+block anchor. Suggestions require replacement; createdAt/acceptedAt are UTC ISO
+timestamps. Comment states are open/resolved; suggestion states open/accepted/rejected.
+Unknown keys are retained by supported mutations. JSON escapes angle brackets so
+user content cannot prematurely close the HTML comment. Original passage Markdown
+is retained verbatim in quote; replacement is explicit authored Markdown.
+
+Only supported standalone records outside fenced examples are interpreted.
+Unknown versions/invalid records remain literal source. Rendering never rewrites
+the owner. Accepted wording plus receipt is one normal source/history mutation;
+no additional storage owner, index authority or workspace migration is introduced.

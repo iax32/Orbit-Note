@@ -1,5 +1,22 @@
 # Development setup and validation
 
+## Post-reset Windows toolchain — 2026-09-16
+
+The active Desktop checkout uses pinned Flutter 3.44.8 / Dart 3.12.2 restored to
+its ignored `.local/toolchain/flutter` directory. Dot-source the ignored
+`.local/flutter-env.ps1` to select the SDK's short path and project-local Pub cache;
+native hooks otherwise fail on the workspace path's spaces. Package versions were
+not upgraded. Project-local Windows plugin junctions are used as described below.
+
+With owner approval, Visual Studio Build Tools 2022 17.14.41 and Windows SDK
+10.0.26100.0 were installed using the C++ build tools workload and recommended
+components. Also install `Microsoft.VisualStudio.Component.VC.ATL`: the existing
+Windows secure-storage plugin requires `atlstr.h`, which the workload alone did
+not supply. The Windows release build and five-second responding startup check
+passed. Current evidence and remaining acceptance limits are in
+[the current task](../tasks/current.md). Android SDK/Chrome were not restored in
+this Windows build task.
+
 Bootstrap date: 2026-09-07. Baseline: Flutter **3.44.8 stable**, Dart **3.12.2**.
 The app contains only Flutter runtime, Flutter test SDK and `flutter_lints`.
 Riverpod is introduced by M0-01; Drift starts with actual persistence work.
@@ -52,6 +69,24 @@ setup. iOS must be compiled/tested on macOS with Xcode; Windows cannot validate 
 Commit `pubspec.lock`. Keep `.dart_tool`, build outputs, SDK/package caches,
 Android `local.properties`, signing files, credentials and personal workspaces out
 of Git. Do not regenerate runners over manual changes just to add a package.
+
+## Android release signing (post-1.0 track)
+
+Android is currently a validation target and is outside the Windows 1.0 release
+workflow. Local Android release builds may use the development debug key. Before
+publishing an Android artifact, restore a dedicated release job with these
+repository secrets: `ORBIT_ANDROID_KEYSTORE_BASE64`,
+`ORBIT_ANDROID_STORE_PASSWORD`, `ORBIT_ANDROID_KEY_ALIAS`, and
+`ORBIT_ANDROID_KEY_PASSWORD`. The decoded keystore must remain ephemeral and
+`android/key.properties` must never be committed.
+
+The separately dispatched `android-preview.yml` workflow builds a release-mode
+preview with a dedicated persistent preview key. It requires encrypted repository
+secrets `ORBIT_ANDROID_PREVIEW_KEYSTORE_BASE64` and
+`ORBIT_ANDROID_PREVIEW_STORE_PASSWORD`; no private signing material enters Git or
+artifacts. It verifies the APK signature and records package metadata/checksums.
+The owner authorized a new key after the reset; it cannot update earlier APKs
+signed with the lost key. Android device acceptance remains unperformed.
 
 ## Bootstrap evidence
 

@@ -66,6 +66,7 @@ void main() async {
               .onPressed !=
           null,
     );
+    await tester.ensureVisible(find.byTooltip('Fill PDF forms'));
     await tester.tap(find.byTooltip('Fill PDF forms'));
     await tester.pump();
     await waitFor(() => find.byTooltip('Approved').evaluate().isNotEmpty);

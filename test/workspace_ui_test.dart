@@ -71,6 +71,7 @@ void main() {
       });
     }
 
+    await snapshot('home-empty');
     final note = (await c.create('orbit.note', title: 'Canvas Architecture'))!;
     c.edit(
       note.id,
@@ -163,6 +164,14 @@ void main() {
     await c.flushAll();
     await tester.pumpAndSettle();
     await snapshot('canvas');
+    expect(tester.takeException(), isNull);
+    c.navigate(OrbitDestination.tasks);
+    await tester.pumpAndSettle();
+    await snapshot('tasks');
+    expect(tester.takeException(), isNull);
+    c.navigate(OrbitDestination.calendar);
+    await tester.pumpAndSettle();
+    await snapshot('calendar');
     expect(tester.takeException(), isNull);
     c.navigate(OrbitDestination.settings);
     await tester.pumpAndSettle();

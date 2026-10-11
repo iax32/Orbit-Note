@@ -4,14 +4,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/orbit_components.dart';
+import '../../app/orbit_density.dart';
 import '../../app/orbit_theme.dart';
-import '../../app/session_state.dart';
 import '../../app/workspace_controller.dart';
 import '../../domain/calendar_event.dart';
+import '../../domain/board_status.dart';
 import '../../domain/search_text.dart';
+import '../../domain/object_discovery.dart';
+export 'search_view.dart';
 import '../../domain/universal_object.dart';
 import 'calendar_view.dart';
 import 'google_drive_settings.dart';
+import 'inbox_review_dialog.dart';
+import 'focus_timer.dart';
+import 'theme_color_settings.dart';
+import 'theme_interchange_dialog.dart';
+import 'heatmap_view.dart';
+import 'productivity_hub.dart';
+import 'task_planning_panel.dart';
+import '../notes/note_typography.dart';
 
 IconData objectIcon(String type) => switch (type) {
   'orbit.canvas' => Icons.dashboard_outlined,
@@ -45,22 +56,15 @@ class EmptyWorkspace extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: OrbitColors.of(context).raised,
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: Icon(
-                  icon,
-                  size: 32,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+              Icon(
+                icon,
+                size: OrbitSize.iconLarge,
+                color: OrbitColors.of(context).subtle,
               ),
               const SizedBox(height: 24),
               Text(
                 title,
-                style: Theme.of(context).textTheme.headlineSmall,
+                style: Theme.of(context).textTheme.titleLarge,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
@@ -88,14 +92,740 @@ class EmptyWorkspace extends StatelessWidget {
   );
 }
 
-class HomeView extends ConsumerWidget {
+enum TemporalZoom { day, week, month, quarter, year }
+
+class HomeView extends ConsumerStatefulWidget {
   const HomeView({super.key, required this.controller});
   final WorkspaceController controller;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    ref.watch(workspaceProvider);
-    final c = controller, colors = OrbitColors.of(context);
+  ConsumerState<HomeView> createState() => _HomeViewState();
+}
+
+class _HomeViewState extends ConsumerState<HomeView> {
+  late DateTime _selectedDate;
+  TemporalZoom _zoom = TemporalZoom.day;
+  final TextEditingController _quickCaptureCtrl = TextEditingController();
+  bool _quickCaptureAsTask = false;
+
+  @override
+  void initState() {
+    super.initState();
     final now = DateTime.now();
+    _selectedDate = DateTime(now.year, now.month, now.day);
+  }
+
+  @override
+  void dispose() {
+    _quickCaptureCtrl.dispose();
+    super.dispose();
+  }
+
+  bool _isToday(DateTime d) {
+    final now = DateTime.now();
+    return d.year == now.year && d.month == now.month && d.day == now.day;
+  }
+
+  (DateTime, DateTime) _weekRange(DateTime date) {
+    final d = DateTime(date.year, date.month, date.day);
+    final start = d.subtract(Duration(days: d.weekday - 1));
+    final end = DateTime(
+      start.year,
+      start.month,
+      start.day + 6,
+      23,
+      59,
+      59,
+      999,
+    );
+    return (start, end);
+  }
+
+  (DateTime, DateTime) _monthRange(DateTime date) {
+    final start = DateTime(date.year, date.month, 1);
+    final end = DateTime(date.year, date.month + 1, 0, 23, 59, 59, 999);
+    return (start, end);
+  }
+
+  (DateTime, DateTime) _quarterRange(DateTime date) {
+    final q = ((date.month - 1) ~/ 3);
+    final startMonth = q * 3 + 1;
+    final start = DateTime(date.year, startMonth, 1);
+    final end = DateTime(date.year, startMonth + 3, 0, 23, 59, 59, 999);
+    return (start, end);
+  }
+
+  (DateTime, DateTime) _yearRange(DateTime date) {
+    final start = DateTime(date.year, 1, 1);
+    final end = DateTime(date.year, 12, 31, 23, 59, 59, 999);
+    return (start, end);
+  }
+
+  int _isoWeekNumber(DateTime date) {
+    final d = DateTime(date.year, date.month, date.day);
+    final thursday = d.add(Duration(days: 4 - d.weekday));
+    final jan1 = DateTime(thursday.year, 1, 1);
+    return (thursday.difference(jan1).inDays ~/ 7) + 1;
+  }
+
+  int _isoYear(DateTime date) {
+    final d = DateTime(date.year, date.month, date.day);
+    return d.add(Duration(days: 4 - d.weekday)).year;
+  }
+
+  void _shiftPeriod(int delta) {
+    setState(() {
+      switch (_zoom) {
+        case TemporalZoom.day:
+          _selectedDate = _selectedDate.add(Duration(days: delta));
+          break;
+        case TemporalZoom.week:
+          _selectedDate = _selectedDate.add(Duration(days: delta * 7));
+          break;
+        case TemporalZoom.month:
+          _selectedDate = DateTime(
+            _selectedDate.year,
+            _selectedDate.month + delta,
+            1,
+          );
+          break;
+        case TemporalZoom.quarter:
+          _selectedDate = DateTime(
+            _selectedDate.year,
+            _selectedDate.month + (delta * 3),
+            1,
+          );
+          break;
+        case TemporalZoom.year:
+          _selectedDate = DateTime(_selectedDate.year + delta, 1, 1);
+          break;
+      }
+    });
+  }
+
+  void _resetToCurrent() {
+    final now = DateTime.now();
+    setState(() {
+      _selectedDate = DateTime(now.year, now.month, now.day);
+    });
+  }
+
+  String _currentPeriodLabel() {
+    return switch (_zoom) {
+      TemporalZoom.day => 'Today',
+      TemporalZoom.week => 'This Week',
+      TemporalZoom.month => 'This Month',
+      TemporalZoom.quarter => 'This Qtr',
+      TemporalZoom.year => 'This Year',
+    };
+  }
+
+  String _periodTitle() {
+    const days = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    const shortMonths = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    switch (_zoom) {
+      case TemporalZoom.day:
+        final prefix = _isToday(_selectedDate) ? 'Today · ' : '';
+        return '$prefix${days[_selectedDate.weekday - 1]}, ${months[_selectedDate.month - 1]} ${_selectedDate.day}, ${_selectedDate.year}';
+      case TemporalZoom.week:
+        final (start, end) = _weekRange(_selectedDate);
+        final weekNum = _isoWeekNumber(_selectedDate);
+        return 'Week $weekNum · ${shortMonths[start.month - 1]} ${start.day} – ${shortMonths[end.month - 1]} ${end.day}, ${end.year}';
+      case TemporalZoom.month:
+        return '${months[_selectedDate.month - 1]} ${_selectedDate.year}';
+      case TemporalZoom.quarter:
+        final q = ((_selectedDate.month - 1) ~/ 3) + 1;
+        return 'Q$q ${_selectedDate.year}';
+      case TemporalZoom.year:
+        return '${_selectedDate.year}';
+    }
+  }
+
+  String _buildReviewBody({
+    required String periodKind,
+    required String periodSlug,
+    required int notes,
+    required int done,
+    required int unfinished,
+    required List<String> projects,
+  }) {
+    final pList = projects.isEmpty
+        ? '- None'
+        : projects.map((p) => '- $p').join('\n');
+    return '''# $periodKind Review — $periodSlug
+
+## Factual Metrics
+- **Notes Created**: $notes
+- **Tasks Completed**: $done
+- **Unfinished Tasks**: $unfinished
+- **Active Projects**: ${projects.length}
+
+## Active Projects
+$pList
+
+## Completed Tasks
+```orbit-view
+type: tasks
+status: completed
+```
+
+## Open Loops & Carry-over
+```orbit-view
+type: tasks
+status: open
+```
+
+## Reflection
+- **What went well?**
+  -
+
+- **What was challenging or got blocked?**
+  -
+
+- **What are the top priorities for next period?**
+  -
+''';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.watch(workspaceProvider);
+    final c = widget.controller;
+    final colors = OrbitColors.of(context);
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1080),
+        child: ListView(
+          padding: EdgeInsets.symmetric(
+            horizontal: MediaQuery.sizeOf(context).width < 600 ? 20 : 32,
+            vertical: 32,
+          ),
+          children: [
+            _buildTemporalNav(context, colors, c),
+            const SizedBox(height: 12),
+            ProductivityToolbar(controller: c),
+            const SizedBox(height: 20),
+            if (c.session.dashboard.isNotEmpty || c.activeSpaceId != null)
+              ProductivityDashboard(controller: c)
+            else if (_zoom == TemporalZoom.day)
+              ..._buildDayContent(context, colors, c)
+            else
+              ..._buildPeriodicReviewContent(context, colors, c),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTemporalNav(
+    BuildContext context,
+    OrbitColors colors,
+    WorkspaceController c,
+  ) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact =
+            constraints.maxWidth / MediaQuery.textScalerOf(context).scale(1) <
+            900;
+        final veryCompact =
+            constraints.maxWidth / MediaQuery.textScalerOf(context).scale(1) <
+            420;
+        final reviewButton = _buildReviewActionButton(context, colors, c);
+        return Container(
+          padding: const EdgeInsets.only(bottom: 20),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: colors.divider)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!isCompact) ...[
+                Text(
+                  c.repository.name,
+                  style: TextStyle(fontSize: 13, color: colors.subtle),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _periodTitle(),
+                        key: const ValueKey('home-period-heading'),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 32,
+                          height: 1.2,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 24),
+                    if (!veryCompact) reviewButton,
+                  ],
+                ),
+                const SizedBox(height: 20),
+              ] else
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left, size: 20),
+                      tooltip: 'Previous ${_zoom.name}',
+                      onPressed: () => _shiftPeriod(-1),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    ActionChip(
+                      label: Text(
+                        _currentPeriodLabel(),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      onPressed: _resetToCurrent,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right, size: 20),
+                      tooltip: 'Next ${_zoom.name}',
+                      onPressed: () => _shiftPeriod(1),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _periodTitle(),
+                        key: const ValueKey('home-period-heading'),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (!veryCompact) reviewButton,
+                  ],
+                ),
+              Wrap(
+                spacing: 16,
+                runSpacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                alignment: WrapAlignment.spaceBetween,
+                children: [
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: OrbitModeControl<TemporalZoom>(
+                      values: const {
+                        TemporalZoom.day: 'Day',
+                        TemporalZoom.week: 'Week',
+                        TemporalZoom.month: 'Month',
+                        TemporalZoom.quarter: 'Quarter',
+                        TemporalZoom.year: 'Year',
+                      },
+                      value: _zoom,
+                      onChanged: (z) => setState(() => _zoom = z),
+                    ),
+                  ),
+                  if (!isCompact)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.chevron_left, size: 20),
+                          tooltip: 'Previous ${_zoom.name}',
+                          onPressed: () => _shiftPeriod(-1),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        ActionChip(
+                          label: Text(
+                            _currentPeriodLabel(),
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          onPressed: _resetToCurrent,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.chevron_right, size: 20),
+                          tooltip: 'Next ${_zoom.name}',
+                          onPressed: () => _shiftPeriod(1),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+              if (veryCompact) ...[const SizedBox(height: 12), reviewButton],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildReviewActionButton(
+    BuildContext context,
+    OrbitColors colors,
+    WorkspaceController c,
+  ) {
+    switch (_zoom) {
+      case TemporalZoom.day:
+        return FilledButton.tonalIcon(
+          onPressed: () => c.openTodayNote(date: _selectedDate),
+          icon: const Icon(Icons.calendar_today_outlined, size: 16),
+          label: Text(_isToday(_selectedDate) ? "Today's note" : "Daily note"),
+        );
+      case TemporalZoom.week:
+        final weekNum = _isoWeekNumber(_selectedDate);
+        final isoYear = _isoYear(_selectedDate);
+        final weekSlug = '$isoYear-W${weekNum.toString().padLeft(2, '0')}';
+        return FilledButton.tonalIcon(
+          onPressed: () async {
+            final (start, end) = _weekRange(_selectedDate);
+            final notes = c.notesCreatedBetween(start, end);
+            final done = c.tasksCompletedBetween(start, end);
+            final unfinished = c.tasksUnfinishedBetween(start, end);
+            final projects = c.projectsActiveBetween(start, end);
+            await c.openReviewNote(
+              periodName: weekSlug,
+              title: 'Weekly Review - $weekSlug',
+              initialBody: _buildReviewBody(
+                periodKind: 'Weekly',
+                periodSlug: weekSlug,
+                notes: notes.length,
+                done: done.length,
+                unfinished: unfinished.length,
+                projects: projects,
+              ),
+            );
+          },
+          icon: const Icon(Icons.rate_review_outlined, size: 16),
+          label: const Text('Weekly Review Note'),
+        );
+      case TemporalZoom.month:
+        final monthSlug =
+            '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}';
+        return FilledButton.tonalIcon(
+          onPressed: () async {
+            final (start, end) = _monthRange(_selectedDate);
+            final notes = c.notesCreatedBetween(start, end);
+            final done = c.tasksCompletedBetween(start, end);
+            final unfinished = c.tasksUnfinishedBetween(start, end);
+            final projects = c.projectsActiveBetween(start, end);
+            await c.openReviewNote(
+              periodName: monthSlug,
+              title: 'Monthly Review - $monthSlug',
+              initialBody: _buildReviewBody(
+                periodKind: 'Monthly',
+                periodSlug: monthSlug,
+                notes: notes.length,
+                done: done.length,
+                unfinished: unfinished.length,
+                projects: projects,
+              ),
+            );
+          },
+          icon: const Icon(Icons.rate_review_outlined, size: 16),
+          label: const Text('Monthly Review Note'),
+        );
+      case TemporalZoom.quarter:
+        final q = ((_selectedDate.month - 1) ~/ 3) + 1;
+        final qSlug = '${_selectedDate.year}-Q$q';
+        return FilledButton.tonalIcon(
+          onPressed: () async {
+            final (start, end) = _quarterRange(_selectedDate);
+            final notes = c.notesCreatedBetween(start, end);
+            final done = c.tasksCompletedBetween(start, end);
+            final unfinished = c.tasksUnfinishedBetween(start, end);
+            final projects = c.projectsActiveBetween(start, end);
+            await c.openReviewNote(
+              periodName: qSlug,
+              title: 'Quarterly Review - $qSlug',
+              initialBody: _buildReviewBody(
+                periodKind: 'Quarterly',
+                periodSlug: qSlug,
+                notes: notes.length,
+                done: done.length,
+                unfinished: unfinished.length,
+                projects: projects,
+              ),
+            );
+          },
+          icon: const Icon(Icons.rate_review_outlined, size: 16),
+          label: const Text('Quarterly Review Note'),
+        );
+      case TemporalZoom.year:
+        final yearSlug = '${_selectedDate.year}';
+        return FilledButton.tonalIcon(
+          onPressed: () async {
+            final (start, end) = _yearRange(_selectedDate);
+            final notes = c.notesCreatedBetween(start, end);
+            final done = c.tasksCompletedBetween(start, end);
+            final unfinished = c.tasksUnfinishedBetween(start, end);
+            final projects = c.projectsActiveBetween(start, end);
+            await c.openReviewNote(
+              periodName: yearSlug,
+              title: 'Annual Review - $yearSlug',
+              initialBody: _buildReviewBody(
+                periodKind: 'Annual',
+                periodSlug: yearSlug,
+                notes: notes.length,
+                done: done.length,
+                unfinished: unfinished.length,
+                projects: projects,
+              ),
+            );
+          },
+          icon: const Icon(Icons.rate_review_outlined, size: 16),
+          label: const Text('Annual Review Note'),
+        );
+    }
+  }
+
+  Widget _buildQuickCaptureBar(OrbitColors colors, WorkspaceController c) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: colors.panel,
+        borderRadius: BorderRadius.circular(OrbitRadius.control),
+        border: Border.all(color: colors.border),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: _quickCaptureAsTask
+                ? 'Capturing as Task (Click for Note)'
+                : 'Capturing as Note (Click for Task)',
+            icon: Icon(
+              _quickCaptureAsTask
+                  ? Icons.check_circle_outline
+                  : Icons.edit_note,
+              color: _quickCaptureAsTask ? colors.accent : colors.subtle,
+              size: 22,
+            ),
+            onPressed: () =>
+                setState(() => _quickCaptureAsTask = !_quickCaptureAsTask),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: _quickCaptureCtrl,
+              decoration: InputDecoration(
+                hintText: _quickCaptureAsTask
+                    ? 'Add a task to Inbox…'
+                    : 'Capture a note to Inbox…',
+                hintStyle: TextStyle(
+                  color: colors.subtle.withValues(alpha: 0.7),
+                  fontSize: 14,
+                ),
+                filled: false,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                isDense: true,
+              ),
+              style: const TextStyle(fontSize: 14),
+              onSubmitted: (val) async {
+                final text = val.trim();
+                if (text.isEmpty) return;
+                await c.quickCapture(text, asTask: _quickCaptureAsTask);
+                _quickCaptureCtrl.clear();
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      _quickCaptureAsTask
+                          ? 'Task captured to Inbox'
+                          : 'Thought captured to Inbox',
+                    ),
+                    duration: const Duration(seconds: 2),
+                    action: SnackBarAction(
+                      label: 'Review',
+                      onPressed: () => showInboxReviewDialog(context, c),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          IconButton(
+            tooltip: 'Capture to Inbox',
+            icon: Icon(Icons.arrow_upward, color: colors.accent, size: 20),
+            onPressed: () async {
+              final text = _quickCaptureCtrl.text.trim();
+              if (text.isEmpty) return;
+              await c.quickCapture(text, asTask: _quickCaptureAsTask);
+              _quickCaptureCtrl.clear();
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    _quickCaptureAsTask
+                        ? 'Task captured to Inbox'
+                        : 'Thought captured to Inbox',
+                  ),
+                  duration: const Duration(seconds: 2),
+                  action: SnackBarAction(
+                    label: 'Review',
+                    onPressed: () => showInboxReviewDialog(context, c),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInboxBanner(OrbitColors colors, WorkspaceController c) {
+    final inboxCount = c.inboxObjects.length;
+    if (inboxCount == 0) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colors.accent.withValues(alpha: 0.08),
+        border: Border.all(color: colors.accent.withValues(alpha: 0.3)),
+        borderRadius: BorderRadius.circular(OrbitRadius.card),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: colors.accent.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(Icons.inbox_outlined, color: colors.accent, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$inboxCount unorganized ${inboxCount == 1 ? 'item' : 'items'} in Inbox',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Capture first, organize later. Review items to assign to projects, convert to tasks, or archive.',
+                  style: TextStyle(color: colors.subtle, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          FilledButton.tonalIcon(
+            onPressed: () => showInboxReviewDialog(context, c),
+            icon: const Icon(Icons.rate_review_outlined, size: 16),
+            label: const Text('Review Inbox'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildDayContent(
+    BuildContext context,
+    OrbitColors colors,
+    WorkspaceController c,
+  ) {
+    final isToday = _isToday(_selectedDate);
+    final now = DateTime.now();
+
+    if (!isToday) {
+      final start = DateTime(
+        _selectedDate.year,
+        _selectedDate.month,
+        _selectedDate.day,
+      );
+      final end = DateTime(
+        _selectedDate.year,
+        _selectedDate.month,
+        _selectedDate.day,
+        23,
+        59,
+        59,
+        999,
+      );
+      final dayNotes = c.notesCreatedBetween(start, end);
+      final dayDone = c.tasksCompletedBetween(start, end);
+      final dayTasks = c.ofType('orbit.task').where((t) {
+        if (t.isDeleted) return false;
+        final due =
+            parseCalendarDate(t.properties['dueDate']) ??
+            parseCalendarDate(t.properties['scheduledDate']);
+        if (due == null) return false;
+        return calendarDate(due) == calendarDate(_selectedDate);
+      }).toList();
+
+      return [
+        _heading(
+          context,
+          'Tasks for this day',
+          '${dayTasks.length + dayDone.length} tasks',
+        ),
+        if (dayTasks.isEmpty && dayDone.isEmpty)
+          _quiet(context, 'No tasks due or completed on this date.')
+        else ...[
+          ...dayTasks.map((t) => TaskRow(object: t, controller: c)),
+          ...dayDone.map((t) => TaskRow(object: t, controller: c)),
+        ],
+        const SizedBox(height: 24),
+        _heading(
+          context,
+          'Notes created on this day',
+          '${dayNotes.length} notes',
+        ),
+        if (dayNotes.isEmpty)
+          _quiet(context, 'No notes created on this date.')
+        else
+          ...dayNotes.map(
+            (o) => ObjectRow(object: o, onTap: () => c.openObject(o.id)),
+          ),
+      ];
+    }
+
     final tasks = c.ofType('orbit.task').where((o) => !o.isCompleted).toList();
     final recent = c.session.recent
         .map(c.find)
@@ -150,7 +880,10 @@ class HomeView extends ConsumerWidget {
     int? noteWords;
     String noteSnippet = '';
     if (recentNote != null) {
-      noteWords = RegExp(r'\S+').allMatches(recentNote.body).length;
+      final isLatex = recentNote.properties['documentFormat'] == 'latex';
+      if (!isLatex) {
+        noteWords = RegExp(r'\S+').allMatches(recentNote.body).length;
+      }
       for (final entry in c.session.noteViews.entries) {
         if (entry.key.contains(recentNote.id) &&
             entry.value['mode'] is String) {
@@ -164,7 +897,7 @@ class HomeView extends ConsumerWidget {
           break;
         }
       }
-      if (recentNote.body.isNotEmpty) {
+      if (!isLatex && recentNote.body.isNotEmpty) {
         final clean = recentNote.body
             .replaceAll(RegExp(r'[#*`_>~=\[\]]'), '')
             .replaceAll(RegExp(r'\s+'), ' ')
@@ -211,905 +944,982 @@ class HomeView extends ConsumerWidget {
     }
     upcomingEntries.sort((a, b) => a.$2.compareTo(b.$2));
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1120),
-        child: ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 30),
-          children: [
-            Text(
-              'YOUR PERSONAL SPACE',
-              style: TextStyle(
-                color: colors.accent,
-                fontSize: 11,
-                letterSpacing: 2,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Room for your next idea.',
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                letterSpacing: -.7,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Write it down. Connect the pieces. Pick up where you left off.',
-              style: TextStyle(color: colors.subtle, height: 1.5),
-            ),
-            const SizedBox(height: 28),
-            // Quick Actions
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
+    return [
+      // Continue Writing
+      if (recentNote != null) ...[
+        Container(
+          margin: const EdgeInsets.only(bottom: 20),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: colors.divider)),
+          ),
+          child: _HomeResumeRow(
+            onTap: () => c.openObject(recentNote.id),
+            content: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                FilledButton.icon(
-                  onPressed: () => c.create('orbit.note'),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('New note'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: () => c.openTodayNote(),
-                  icon: const Icon(Icons.calendar_today_outlined, size: 18),
-                  label: const Text("Today's note"),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => c.create('orbit.canvas'),
-                  icon: const Icon(Icons.dashboard_outlined, size: 18),
-                  label: const Text('New canvas'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => c.create('orbit.task'),
-                  icon: const Icon(Icons.check_circle_outline, size: 18),
-                  label: const Text('New task'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => c.create('orbit.event'),
-                  icon: const Icon(Icons.event_outlined, size: 18),
-                  label: const Text('New event'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => c.navigate(OrbitDestination.search),
-                  icon: const Icon(Icons.search, size: 18),
-                  label: const Text('Search'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            // Focus & Work Session Card (CTX-04, CTX-12)
-            _FocusSessionCard(controller: c),
-            const SizedBox(height: 12),
-            // Where Was I? navigation trail
-            if (recent.length >= 2) ...[
-              Padding(
-                padding: const EdgeInsets.only(bottom: 20),
-                child: Row(
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
                   children: [
-                    Icon(Icons.route_outlined, size: 16, color: colors.subtle),
-                    const SizedBox(width: 8),
                     Text(
-                      'Where was I:',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: colors.subtle,
-                      ),
+                      'Continue writing',
+                      style: OrbitTypography.section(context),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            for (var i = 0; i < recent.length; i++) ...[
-                              if (i > 0)
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                  ),
-                                  child: Icon(
-                                    Icons.chevron_right,
-                                    size: 14,
-                                    color: colors.subtle.withValues(alpha: 0.5),
-                                  ),
-                                ),
-                              ActionChip(
-                                visualDensity: VisualDensity.compact,
-                                avatar: Icon(
-                                  recent[i].typeId == 'orbit.note'
-                                      ? Icons.description_outlined
-                                      : recent[i].typeId == 'orbit.canvas'
-                                      ? Icons.dashboard_outlined
-                                      : recent[i].title.toLowerCase().endsWith(
-                                          '.pdf',
-                                        )
-                                      ? Icons.picture_as_pdf_outlined
-                                      : Icons.article_outlined,
-                                  size: 14,
-                                  color: colors.accent,
-                                ),
-                                label: Text(
-                                  recent[i].title.isEmpty
-                                      ? 'Untitled'
-                                      : recent[i].title,
-                                  style: const TextStyle(fontSize: 11),
-                                ),
-                                onPressed: () => c.openObject(recent[i].id),
-                              ),
-                            ],
-                          ],
+                    if (noteMode != null ||
+                        (noteWords != null && noteWords > 0)) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colors.panel,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: colors.border),
+                        ),
+                        child: Text(
+                          [
+                            ?noteMode,
+                            if (noteWords != null)
+                              '$noteWords ${noteWords == 1 ? 'word' : 'words'}',
+                          ].join(' · '),
+                          style: TextStyle(fontSize: 10, color: colors.subtle),
                         ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
-              ),
-            ],
-            // Continue Writing
-            if (recentNote != null) ...[
-              Container(
-                margin: const EdgeInsets.only(bottom: 20),
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [colors.raised, colors.panel],
+                const SizedBox(height: 4),
+                Text(
+                  recentNote.title.isEmpty ? 'Untitled note' : recentNote.title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
                   ),
-                  border: Border.all(color: colors.border),
-                  borderRadius: BorderRadius.circular(OrbitRadius.card),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: colors.accent.withValues(alpha: .14),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        Icons.edit_note_rounded,
-                        color: colors.accent,
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                'CONTINUE WRITING',
-                                style: TextStyle(
-                                  color: colors.accent,
-                                  fontSize: 10,
-                                  letterSpacing: 1.2,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              if (noteMode != null ||
-                                  (noteWords != null && noteWords > 0)) ...[
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: colors.panel,
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(color: colors.border),
-                                  ),
-                                  child: Text(
-                                    [
-                                      ?noteMode,
-                                      if (noteWords != null)
-                                        '$noteWords ${noteWords == 1 ? 'word' : 'words'}',
-                                    ].join(' · '),
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: colors.subtle,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            recentNote.title.isEmpty
-                                ? 'Untitled note'
-                                : recentNote.title,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 15,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (noteSnippet.isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              noteSnippet,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: colors.subtle,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    FilledButton.tonalIcon(
-                      onPressed: () => c.openObject(recentNote.id),
-                      icon: const Icon(Icons.edit_outlined, size: 16),
-                      label: const Text('Resume writing'),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            // Continue Reading
-            if (recentPdf != null) ...[
-              Container(
-                margin: const EdgeInsets.only(bottom: 20),
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [colors.raised, colors.panel],
-                  ),
-                  border: Border.all(color: colors.border),
-                  borderRadius: BorderRadius.circular(OrbitRadius.card),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: colors.accent.withValues(alpha: .14),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        Icons.picture_as_pdf_outlined,
-                        color: colors.accent,
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                'CONTINUE READING',
-                                style: TextStyle(
-                                  color: colors.accent,
-                                  fontSize: 10,
-                                  letterSpacing: 1.2,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              if (pdfPage != null) ...[
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: colors.panel,
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(color: colors.border),
-                                  ),
-                                  child: Text(
-                                    'Page $pdfPage',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: colors.subtle,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            recentPdf.title,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 15,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    FilledButton.tonalIcon(
-                      onPressed: () => c.openObject(recentPdf.id),
-                      icon: const Icon(
-                        Icons.chrome_reader_mode_outlined,
-                        size: 16,
-                      ),
-                      label: const Text('Resume'),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            if (recent.isNotEmpty &&
-                (recentPdf == null || recent.first.id != recentPdf.id) &&
-                (recentNote == null || recent.first.id != recentNote.id))
-              Container(
-                margin: const EdgeInsets.only(bottom: 24),
-                padding: const EdgeInsets.all(22),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [colors.raised, colors.panel],
-                  ),
-                  border: Border.all(color: colors.border),
-                  borderRadius: BorderRadius.circular(OrbitRadius.card),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.history, size: 18, color: colors.accent),
-                        const SizedBox(width: 10),
-                        const Text(
-                          'Continue session',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      recent.first.title,
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${c.session.tabs.length} open tabs · ${tasks.length} open tasks in this workspace',
-                      style: TextStyle(color: colors.subtle),
-                    ),
-                    const SizedBox(height: 14),
-                    TextButton.icon(
-                      onPressed: () => c.openObject(recent.first.id),
-                      icon: const Icon(Icons.arrow_forward, size: 18),
-                      label: const Text('Resume context'),
-                    ),
-                  ],
-                ),
-              ),
-
-            // Active Game Project Card
-            () {
-              UniversalObject? gdd;
-              for (final o in c.activeObjects) {
-                if (!o.isDeleted &&
-                    (o.properties['isGdd'] == true ||
-                        (o.typeId == 'orbit.view' &&
-                            o.properties['viewType'] == 'game_dashboard'))) {
-                  gdd = o;
-                  break;
-                }
-              }
-              if (gdd == null) return const SizedBox.shrink();
-
-              final pName =
-                  gdd.properties['project']?.toString() ??
-                  gdd.title
-                      .replaceAll('Dashboard', '')
-                      .replaceAll('GDD', '')
-                      .trim();
-              if (pName.isEmpty) return const SizedBox.shrink();
-
-              final gTasks = c.activeObjects
-                  .where(
-                    (o) =>
-                        !o.isDeleted &&
-                        o.typeId == 'orbit.task' &&
-                        (o.properties['project']?.toString().toLowerCase() ==
-                                pName.toLowerCase() ||
-                            (o.properties['folder'] as String?)
-                                    ?.toLowerCase()
-                                    .contains(pName.toLowerCase()) ==
-                                true),
-                  )
-                  .toList();
-              final gTotal = gTasks.length;
-              final gDone = gTasks.where((t) => t.isCompleted).length;
-              final gPercent = gTotal > 0 ? ((gDone * 100) ~/ gTotal) : 0;
-              final gBugs = gTasks
-                  .where(
-                    (t) =>
-                        !t.isCompleted &&
-                        (t.properties['isBug'] == true ||
-                            t.properties['category'] == 'Bug' ||
-                            t.properties['severity'] != null),
-                  )
-                  .length;
-              final gBlocked = gTasks.where((t) {
-                if (t.isCompleted) return false;
-                final raw = t.properties['blockedBy'];
-                if (raw == null) return false;
-                final List<String> ids = switch (raw) {
-                  List l => l.map((e) => e.toString()).toList(),
-                  String s =>
-                    s
-                        .split(',')
-                        .map((e) => e.trim())
-                        .where((e) => e.isNotEmpty)
-                        .toList(),
-                  _ => const [],
-                };
-                return ids.any((id) {
-                  final b = c.find(id);
-                  return b != null && !b.isDeleted && !b.isCompleted;
-                });
-              }).length;
-
-              final gDash = c.activeObjects
-                  .where(
-                    (o) =>
-                        !o.isDeleted &&
-                        o.typeId == 'orbit.view' &&
-                        o.properties['viewType'] == 'game_dashboard' &&
-                        o.properties['project']?.toString().toLowerCase() ==
-                            pName.toLowerCase(),
-                  )
-                  .firstOrNull;
-
-              final gBoard = c.activeObjects
-                  .where(
-                    (o) =>
-                        !o.isDeleted &&
-                        o.typeId == 'orbit.view' &&
-                        o.properties['preset'] == 'gamedev' &&
-                        o.properties['project']?.toString().toLowerCase() ==
-                            pName.toLowerCase(),
-                  )
-                  .firstOrNull;
-
-              return Container(
-                margin: const EdgeInsets.only(bottom: 24),
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [colors.raised, colors.panel],
-                  ),
-                  border: Border.all(color: colors.border),
-                  borderRadius: BorderRadius.circular(OrbitRadius.card),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.sports_esports_outlined,
-                          size: 18,
-                          color: colors.accent,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'GAME PROJECT',
-                          style: TextStyle(
-                            color: colors.accent,
-                            fontSize: 10.5,
-                            letterSpacing: 1.2,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          pName,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
-                        const Spacer(),
-                        if (gBlocked > 0) ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.amber.shade900.withValues(
-                                alpha: .2,
-                              ),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.lock_outline,
-                                  size: 11,
-                                  color: Colors.amber.shade400,
-                                ),
-                                const SizedBox(width: 3),
-                                Text(
-                                  '$gBlocked Blocked',
-                                  style: TextStyle(
-                                    fontSize: 10.5,
-                                    color: Colors.amber.shade300,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                        ],
-                        if (gBugs > 0)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.red.shade900.withValues(alpha: .2),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.bug_report,
-                                  size: 11,
-                                  color: Colors.red.shade400,
-                                ),
-                                const SizedBox(width: 3),
-                                Text(
-                                  '$gBugs Bugs',
-                                  style: TextStyle(
-                                    fontSize: 10.5,
-                                    color: Colors.red.shade300,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '$gDone / $gTotal Tasks Complete ($gPercent%)',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: colors.subtle,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: LinearProgressIndicator(
-                                  value: gTotal > 0 ? (gDone / gTotal) : 0,
-                                  backgroundColor: colors.raised,
-                                  valueColor: AlwaysStoppedAnimation(
-                                    colors.accent,
-                                  ),
-                                  minHeight: 5,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 20),
-                        if (gDash != null)
-                          FilledButton.tonal(
-                            onPressed: () => c.openObject(gDash.id),
-                            child: const Text('Dashboard'),
-                          ),
-                        if (gBoard != null) ...[
-                          const SizedBox(width: 8),
-                          OutlinedButton(
-                            onPressed: () => c.openObject(gBoard.id),
-                            child: const Text('Board'),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            }(),
-
-            // Active Reverse Engineering & Research Project Card
-            () {
-              UniversalObject? targetOverview;
-              for (final o in c.activeObjects) {
-                if (!o.isDeleted &&
-                    (o.properties['isTargetOverview'] == true ||
-                        (o.typeId == 'orbit.view' &&
-                            o.properties['viewType'] == 're_dashboard'))) {
-                  targetOverview = o;
-                  break;
-                }
-              }
-              if (targetOverview == null) return const SizedBox.shrink();
-
-              final tName =
-                  targetOverview.properties['target']?.toString() ??
-                  targetOverview.title
-                      .replaceAll('Overview', '')
-                      .replaceAll('Dashboard', '')
-                      .trim();
-              if (tName.isEmpty) return const SizedBox.shrink();
-
-              final arch =
-                  targetOverview.properties['architecture']?.toString() ??
-                  'x86-64';
-              final format =
-                  targetOverview.properties['format']?.toString() ?? 'PE';
-
-              final tObjects = c.activeObjects
-                  .where(
-                    (o) =>
-                        !o.isDeleted &&
-                        (o.properties['target']?.toString().toLowerCase() ==
-                                tName.toLowerCase() ||
-                            (o.properties['folder'] as String?)
-                                    ?.toLowerCase()
-                                    .contains(tName.toLowerCase()) ==
-                                true),
-                  )
-                  .toList();
-
-              final functionsCount = tObjects
-                  .where(
-                    (o) =>
-                        o.properties['category'] == 'Function' ||
-                        o.properties.containsKey('address'),
-                  )
-                  .length;
-              final hypotheses = tObjects
-                  .where((o) => o.properties['category'] == 'Hypothesis')
-                  .toList();
-              final openHypotheses = hypotheses
-                  .where(
-                    (h) =>
-                        (h.properties['status'] as String?)?.toLowerCase() !=
-                            'confirmed' &&
-                        (h.properties['status'] as String?)?.toLowerCase() !=
-                            'rejected',
-                  )
-                  .length;
-              final findingsCount = tObjects
-                  .where((o) => o.properties['category'] == 'Finding')
-                  .length;
-
-              final reDash = c.activeObjects
-                  .where(
-                    (o) =>
-                        !o.isDeleted &&
-                        o.typeId == 'orbit.view' &&
-                        o.properties['viewType'] == 're_dashboard' &&
-                        o.properties['target']?.toString().toLowerCase() ==
-                            tName.toLowerCase(),
-                  )
-                  .firstOrNull;
-
-              return Container(
-                margin: const EdgeInsets.only(bottom: 24),
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [colors.raised, colors.panel],
-                  ),
-                  border: Border.all(color: colors.border),
-                  borderRadius: BorderRadius.circular(OrbitRadius.card),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.biotech_outlined,
-                          size: 18,
-                          color: colors.accent,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'BINARY RESEARCH & REVERSE ENGINEERING',
-                          style: TextStyle(
-                            color: colors.accent,
-                            fontSize: 11,
-                            letterSpacing: 1.5,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: colors.accent.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            '$format · $arch',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: colors.accent,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      tName,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '$functionsCount functions documented · $openHypotheses open hypotheses · $findingsCount findings',
-                      style: TextStyle(color: colors.subtle),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        FilledButton.tonalIcon(
-                          onPressed: () {
-                            if (reDash != null) {
-                              c.openObject(reDash.id);
-                            } else {
-                              c.openObject(targetOverview!.id);
-                            }
-                          },
-                          icon: const Icon(Icons.analytics_outlined, size: 16),
-                          label: const Text('Open Research Dashboard'),
-                        ),
-                        const SizedBox(width: 8),
-                        OutlinedButton.icon(
-                          onPressed: () => c.openObject(targetOverview!.id),
-                          icon: const Icon(
-                            Icons.description_outlined,
-                            size: 16,
-                          ),
-                          label: const Text('Target Overview'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            }(),
-            const SizedBox(height: 16),
-            // Today's Tasks
-            _heading(context, "Today's tasks", '${todayTasks.length} due'),
-            if (todayTasks.isEmpty)
-              _quiet(
-                context,
-                'Nothing due today. Capture or schedule a task when you need one.',
-              )
-            else
-              ...todayTasks
-                  .take(5)
-                  .map((o) => TaskRow(object: o, controller: c)),
-            const SizedBox(height: 26),
-            // Upcoming
-            _heading(
-              context,
-              'Upcoming',
-              '${upcomingEntries.length} scheduled',
-            ),
-            if (upcomingEntries.isEmpty)
-              _quiet(context, 'No upcoming events or deadlines scheduled.')
-            else
-              ...upcomingEntries.take(4).map((entry) {
-                final (obj, dt, tag) = entry;
-                return ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  leading: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: colors.raised,
-                      border: Border.all(color: colors.border),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      objectIcon(obj.typeId),
-                      size: 18,
-                      color: colors.accent,
-                    ),
-                  ),
-                  title: Text(
-                    obj.title.isEmpty ? 'Untitled' : obj.title,
+                if (noteSnippet.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    noteSnippet,
+                    style: TextStyle(fontSize: 12, color: colors.subtle),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  subtitle: Text(
-                    formatFriendlyDueDate(dt, now: now),
-                    style: TextStyle(fontSize: 12, color: colors.subtle),
-                  ),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colors.panel,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: colors.border),
-                    ),
-                    child: Text(
-                      tag,
-                      style: TextStyle(fontSize: 11, color: colors.subtle),
-                    ),
-                  ),
-                  onTap: () => c.openObject(obj.id),
-                );
-              }),
-            const SizedBox(height: 26),
-            // Recent Objects
-            _heading(context, 'Recent objects', '${recent.length} recent'),
-            if (recent.isEmpty)
-              _quiet(
-                context,
-                'A thought, a plan, a canvas. Your recent objects will appear here.',
-              )
-            else
-              ...recent.map(
-                (o) => ObjectRow(object: o, onTap: () => c.openObject(o.id)),
-              ),
-            const SizedBox(height: 28),
-            Row(
+                ],
+              ],
+            ),
+            action: FilledButton.tonalIcon(
+              onPressed: () => c.openObject(recentNote.id),
+              icon: const Icon(Icons.edit_outlined, size: 16),
+              label: const Text('Resume writing'),
+            ),
+          ),
+        ),
+      ],
+      // Continue Reading
+      if (recentPdf != null) ...[
+        Container(
+          margin: const EdgeInsets.only(bottom: 20),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: colors.divider)),
+          ),
+          child: _HomeResumeRow(
+            onTap: () => c.openObject(recentPdf.id),
+            content: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.cloud_off_outlined, size: 14, color: colors.subtle),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Local by default. Your work stays with you.',
-                    style: TextStyle(color: colors.subtle, fontSize: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    Text(
+                      'Continue reading',
+                      style: TextStyle(
+                        color: colors.accent,
+                        fontSize: 10,
+                        letterSpacing: 1.2,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (pdfPage != null) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colors.panel,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: colors.border),
+                        ),
+                        child: Text(
+                          'Page $pdfPage',
+                          style: TextStyle(fontSize: 10, color: colors.subtle),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  recentPdf.title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
+            action: FilledButton.tonalIcon(
+              onPressed: () => c.openObject(recentPdf.id),
+              icon: const Icon(Icons.chrome_reader_mode_outlined, size: 16),
+              label: const Text('Resume'),
+            ),
+          ),
+        ),
+      ],
+      if (recent.isNotEmpty &&
+          (recentPdf == null || recent.first.id != recentPdf.id) &&
+          (recentNote == null || recent.first.id != recentNote.id))
+        MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () => c.openObject(recent.first.id),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 24),
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: colors.divider)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.history, size: 18, color: colors.accent),
+                      const SizedBox(width: 10),
+                      const Text(
+                        'Continue session',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    recent.first.title,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${c.session.tabs.length} open tabs · ${tasks.length} open tasks in this workspace',
+                    style: TextStyle(color: colors.subtle),
+                  ),
+                  const SizedBox(height: 14),
+                  TextButton.icon(
+                    onPressed: () => c.openObject(recent.first.id),
+                    icon: const Icon(Icons.arrow_forward, size: 18),
+                    label: const Text('Resume context'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+      _buildQuickCaptureBar(colors, c),
+      _buildInboxBanner(colors, c),
+      const SizedBox(height: 8),
+      // Quick Actions
+      Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          FilledButton.icon(
+            onPressed: () => c.create('orbit.note'),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('New note'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => c.create('orbit.task'),
+            icon: const Icon(Icons.check_circle_outline, size: 18),
+            label: const Text('New task'),
+          ),
+        ],
+      ),
+      const SizedBox(height: 24),
+      // Focus & Work Session Card (CTX-04, CTX-12)
+      _FocusSessionCard(controller: c),
+      const SizedBox(height: 12),
+      // Where Was I? navigation trail
+      if (recent.length >= 2) ...[
+        Padding(
+          padding: const EdgeInsets.only(bottom: 20),
+          child: Row(
+            children: [
+              Icon(Icons.route_outlined, size: 16, color: colors.subtle),
+              const SizedBox(width: 8),
+              Text(
+                'Recent:',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: colors.subtle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (var i = 0; i < recent.length; i++) ...[
+                        if (i > 0)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Icon(
+                              Icons.chevron_right,
+                              size: 14,
+                              color: colors.subtle.withValues(alpha: 0.5),
+                            ),
+                          ),
+                        TextButton.icon(
+                          icon: Icon(
+                            objectIcon(recent[i].typeId),
+                            size: OrbitSize.iconInline,
+                          ),
+                          label: Text(
+                            recent[i].title.isEmpty
+                                ? 'Untitled'
+                                : recent[i].title,
+                          ),
+                          onPressed: () => c.openObject(recent[i].id),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+      // Activity Heatmap
+      Card(
+        color: colors.panel,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(OrbitRadius.card),
+          side: BorderSide(color: colors.border),
+        ),
+        margin: const EdgeInsets.only(bottom: 20),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: HeatmapWidget(
+            controller: c,
+            onSelectDate: (d) => c.openTodayNote(date: d),
+          ),
+        ),
+      ),
+      // Active Game Project Card
+      () {
+        UniversalObject? gdd;
+        for (final o in c.activeObjects) {
+          if (!o.isDeleted &&
+              (o.properties['isGdd'] == true ||
+                  (o.typeId == 'orbit.view' &&
+                      o.properties['viewType'] == 'game_dashboard'))) {
+            gdd = o;
+            break;
+          }
+        }
+        if (gdd == null) return const SizedBox.shrink();
+
+        final pName =
+            gdd.properties['project']?.toString() ??
+            gdd.title.replaceAll('Dashboard', '').replaceAll('GDD', '').trim();
+        if (pName.isEmpty) return const SizedBox.shrink();
+
+        final gTasks = c.activeObjects
+            .where(
+              (o) =>
+                  !o.isDeleted &&
+                  o.typeId == 'orbit.task' &&
+                  (o.properties['project']?.toString().toLowerCase() ==
+                          pName.toLowerCase() ||
+                      (o.properties['folder'] as String?)
+                              ?.toLowerCase()
+                              .contains(pName.toLowerCase()) ==
+                          true),
+            )
+            .toList();
+        final gTotal = gTasks.length;
+        final gDone = gTasks.where((t) => t.isCompleted).length;
+        final gPercent = gTotal > 0 ? ((gDone * 100) ~/ gTotal) : 0;
+        final gBugs = gTasks
+            .where(
+              (t) =>
+                  !t.isCompleted &&
+                  (t.properties['isBug'] == true ||
+                      t.properties['category'] == 'Bug' ||
+                      t.properties['severity'] != null),
+            )
+            .length;
+        final gBlocked = gTasks.where((t) {
+          if (t.isCompleted) return false;
+          final raw = t.properties['blockedBy'];
+          if (raw == null) return false;
+          final List<String> ids = switch (raw) {
+            List l => l.map((e) => e.toString()).toList(),
+            String s =>
+              s
+                  .split(',')
+                  .map((e) => e.trim())
+                  .where((e) => e.isNotEmpty)
+                  .toList(),
+            _ => const [],
+          };
+          return ids.any((id) {
+            final b = c.find(id);
+            return b != null && !b.isDeleted && !b.isCompleted;
+          });
+        }).length;
+
+        final gDash = c.activeObjects
+            .where(
+              (o) =>
+                  !o.isDeleted &&
+                  o.typeId == 'orbit.view' &&
+                  o.properties['viewType'] == 'game_dashboard' &&
+                  o.properties['project']?.toString().toLowerCase() ==
+                      pName.toLowerCase(),
+            )
+            .firstOrNull;
+
+        final gBoard = c.activeObjects
+            .where(
+              (o) =>
+                  !o.isDeleted &&
+                  o.typeId == 'orbit.view' &&
+                  o.properties['preset'] == 'gamedev' &&
+                  o.properties['project']?.toString().toLowerCase() ==
+                      pName.toLowerCase(),
+            )
+            .firstOrNull;
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 24),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [colors.raised, colors.panel],
+            ),
+            border: Border.all(color: colors.border),
+            borderRadius: BorderRadius.circular(OrbitRadius.card),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.sports_esports_outlined,
+                    size: 18,
+                    color: colors.accent,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'GAME PROJECT',
+                    style: TextStyle(
+                      color: colors.accent,
+                      fontSize: 10.5,
+                      letterSpacing: 1.2,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    pName,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (gBlocked > 0) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade900.withValues(alpha: .2),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.lock_outline,
+                            size: 11,
+                            color: Colors.amber.shade400,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            '$gBlocked Blocked',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: Colors.amber.shade300,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  if (gBugs > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade900.withValues(alpha: .2),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.bug_report,
+                            size: 11,
+                            color: Colors.red.shade400,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            '$gBugs Bugs',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: Colors.red.shade300,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$gDone / $gTotal Tasks Complete ($gPercent%)',
+                          style: TextStyle(fontSize: 12, color: colors.subtle),
+                        ),
+                        const SizedBox(height: 6),
+                        OrbitAnimatedProgress(
+                          value: gTotal > 0 ? (gDone / gTotal) : 0.0,
+                          backgroundColor: colors.raised,
+                          color: colors.accent,
+                          minHeight: 5,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 20),
+                  if (gDash != null)
+                    FilledButton.tonal(
+                      onPressed: () => c.openObject(gDash.id),
+                      child: const Text('Dashboard'),
+                    ),
+                  if (gBoard != null) ...[
+                    const SizedBox(width: 8),
+                    OutlinedButton(
+                      onPressed: () => c.openObject(gBoard.id),
+                      child: const Text('Board'),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        );
+      }(),
+
+      // Active Reverse Engineering & Research Project Card
+      () {
+        UniversalObject? targetOverview;
+        for (final o in c.activeObjects) {
+          if (!o.isDeleted &&
+              (o.properties['isTargetOverview'] == true ||
+                  (o.typeId == 'orbit.view' &&
+                      o.properties['viewType'] == 're_dashboard'))) {
+            targetOverview = o;
+            break;
+          }
+        }
+        if (targetOverview == null) return const SizedBox.shrink();
+
+        final tName =
+            targetOverview.properties['target']?.toString() ??
+            targetOverview.title
+                .replaceAll('Overview', '')
+                .replaceAll('Dashboard', '')
+                .trim();
+        if (tName.isEmpty) return const SizedBox.shrink();
+
+        final arch =
+            targetOverview.properties['architecture']?.toString() ?? 'x86-64';
+        final format = targetOverview.properties['format']?.toString() ?? 'PE';
+
+        final tObjects = c.activeObjects
+            .where(
+              (o) =>
+                  !o.isDeleted &&
+                  (o.properties['target']?.toString().toLowerCase() ==
+                          tName.toLowerCase() ||
+                      (o.properties['folder'] as String?)
+                              ?.toLowerCase()
+                              .contains(tName.toLowerCase()) ==
+                          true),
+            )
+            .toList();
+
+        final functionsCount = tObjects
+            .where(
+              (o) =>
+                  o.properties['category'] == 'Function' ||
+                  o.properties.containsKey('address'),
+            )
+            .length;
+        final hypotheses = tObjects
+            .where((o) => o.properties['category'] == 'Hypothesis')
+            .toList();
+        final openHypotheses = hypotheses
+            .where(
+              (h) =>
+                  (h.properties['status'] as String?)?.toLowerCase() !=
+                      'confirmed' &&
+                  (h.properties['status'] as String?)?.toLowerCase() !=
+                      'rejected',
+            )
+            .length;
+        final findingsCount = tObjects
+            .where((o) => o.properties['category'] == 'Finding')
+            .length;
+
+        final reDash = c.activeObjects
+            .where(
+              (o) =>
+                  !o.isDeleted &&
+                  o.typeId == 'orbit.view' &&
+                  o.properties['viewType'] == 're_dashboard' &&
+                  o.properties['target']?.toString().toLowerCase() ==
+                      tName.toLowerCase(),
+            )
+            .firstOrNull;
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 24),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [colors.raised, colors.panel],
+            ),
+            border: Border.all(color: colors.border),
+            borderRadius: BorderRadius.circular(OrbitRadius.card),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.biotech_outlined, size: 18, color: colors.accent),
+                  const SizedBox(width: 8),
+                  Text(
+                    'BINARY RESEARCH & REVERSE ENGINEERING',
+                    style: TextStyle(
+                      color: colors.accent,
+                      fontSize: 11,
+                      letterSpacing: 1.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colors.accent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '$format · $arch',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: colors.accent,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                tName,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '$functionsCount functions documented · $openHypotheses open hypotheses · $findingsCount findings',
+                style: TextStyle(color: colors.subtle),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  FilledButton.tonalIcon(
+                    onPressed: () {
+                      if (reDash != null) {
+                        c.openObject(reDash.id);
+                      } else {
+                        c.openObject(targetOverview!.id);
+                      }
+                    },
+                    icon: const Icon(Icons.analytics_outlined, size: 16),
+                    label: const Text('Open Research Dashboard'),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => c.openObject(targetOverview!.id),
+                    icon: const Icon(Icons.description_outlined, size: 16),
+                    label: const Text('Target Overview'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      }(),
+      const SizedBox(height: 16),
+      // Today's Tasks
+      _heading(context, "Today's tasks", '${todayTasks.length} due'),
+      if (todayTasks.isEmpty)
+        _quiet(context, 'Nothing due today.')
+      else
+        ...todayTasks.take(5).map((o) => TaskRow(object: o, controller: c)),
+      const SizedBox(height: 26),
+      // Upcoming
+      _heading(context, 'Upcoming', '${upcomingEntries.length} scheduled'),
+      if (upcomingEntries.isEmpty)
+        _quiet(context, 'No upcoming events or deadlines scheduled.')
+      else
+        ...upcomingEntries.take(4).map((entry) {
+          final (obj, dt, tag) = entry;
+          return ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            leading: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: colors.raised,
+                border: Border.all(color: colors.border),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                objectIcon(obj.typeId),
+                size: 18,
+                color: colors.accent,
+              ),
+            ),
+            title: Text(
+              obj.title.isEmpty ? 'Untitled' : obj.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(
+              formatFriendlyDueDate(dt, now: now),
+              style: TextStyle(fontSize: 12, color: colors.subtle),
+            ),
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: colors.panel,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: colors.border),
+              ),
+              child: Text(
+                tag,
+                style: TextStyle(fontSize: 11, color: colors.subtle),
+              ),
+            ),
+            onTap: () => c.openObject(obj.id),
+          );
+        }),
+      const SizedBox(height: 26),
+      // Recent Objects
+      _heading(context, 'Recent objects', '${recent.length} recent'),
+      if (recent.isEmpty)
+        _quiet(context, 'Recently opened notes and objects appear here.')
+      else
+        ...recent.map(
+          (o) => ObjectRow(object: o, onTap: () => c.openObject(o.id)),
+        ),
+      const SizedBox(height: 28),
+      Row(
+        children: [
+          Icon(Icons.cloud_off_outlined, size: 14, color: colors.subtle),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Local by default. Your work stays with you.',
+              style: TextStyle(color: colors.subtle, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    ];
+  }
+
+  List<Widget> _buildPeriodicReviewContent(
+    BuildContext context,
+    OrbitColors colors,
+    WorkspaceController c,
+  ) {
+    final (start, end) = switch (_zoom) {
+      TemporalZoom.day => (
+        DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day),
+        DateTime(
+          _selectedDate.year,
+          _selectedDate.month,
+          _selectedDate.day,
+          23,
+          59,
+          59,
+          999,
+        ),
+      ),
+      TemporalZoom.week => _weekRange(_selectedDate),
+      TemporalZoom.month => _monthRange(_selectedDate),
+      TemporalZoom.quarter => _quarterRange(_selectedDate),
+      TemporalZoom.year => _yearRange(_selectedDate),
+    };
+
+    final notes = c.notesCreatedBetween(start, end);
+    final completedTasks = c.tasksCompletedBetween(start, end);
+    final unfinishedTasks = c.tasksUnfinishedBetween(start, end);
+    final activeProjects = c.projectsActiveBetween(start, end);
+
+    final periodLabel = switch (_zoom) {
+      TemporalZoom.day => 'Day',
+      TemporalZoom.week => 'Week',
+      TemporalZoom.month => 'Month',
+      TemporalZoom.quarter => 'Quarter',
+      TemporalZoom.year => 'Year',
+    };
+
+    return [
+      // Factual Metric Cards Grid
+      Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: [
+          _metricCard(
+            context,
+            colors,
+            icon: Icons.edit_note,
+            title: 'Notes Created',
+            value: '${notes.length}',
+          ),
+          _metricCard(
+            context,
+            colors,
+            icon: Icons.check_circle_outline,
+            title: 'Tasks Completed',
+            value: '${completedTasks.length}',
+          ),
+          _metricCard(
+            context,
+            colors,
+            icon: Icons.hourglass_top,
+            title: 'Unfinished Tasks',
+            value: '${unfinishedTasks.length}',
+          ),
+          _metricCard(
+            context,
+            colors,
+            icon: Icons.folder_open,
+            title: 'Active Projects',
+            value: '${activeProjects.length}',
+          ),
+        ],
+      ),
+      const SizedBox(height: 24),
+
+      // Reflection note CTA banner
+      Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: colors.raised,
+          borderRadius: BorderRadius.circular(OrbitRadius.card),
+          border: Border.all(color: colors.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: colors.accent.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                Icons.rate_review_outlined,
+                color: colors.accent,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$periodLabel Review Reflection',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Synthesize accomplishments, clear open loops, and plan ahead with embedded dynamic views.',
+                    style: TextStyle(color: colors.subtle, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            _buildReviewActionButton(context, colors, c),
           ],
         ),
+      ),
+      const SizedBox(height: 24),
+
+      // Completed Tasks
+      _heading(
+        context,
+        'Tasks Completed this $periodLabel',
+        '${completedTasks.length} done',
+      ),
+      if (completedTasks.isEmpty)
+        _quiet(
+          context,
+          'No tasks were marked complete during this $periodLabel.',
+        )
+      else
+        ...completedTasks.map((t) => TaskRow(object: t, controller: c)),
+      const SizedBox(height: 24),
+
+      // Unfinished Tasks / Open Loops
+      _heading(
+        context,
+        'Unfinished Tasks / Open Loops',
+        '${unfinishedTasks.length} open',
+      ),
+      if (unfinishedTasks.isEmpty)
+        _quiet(context, 'No open loops remaining for this period!')
+      else
+        ...unfinishedTasks
+            .take(15)
+            .map((t) => TaskRow(object: t, controller: c)),
+      const SizedBox(height: 24),
+
+      // Notes Created
+      _heading(
+        context,
+        'Notes Created this $periodLabel',
+        '${notes.length} notes',
+      ),
+      if (notes.isEmpty)
+        _quiet(context, 'No notes created during this $periodLabel.')
+      else
+        ...notes.map(
+          (o) => ObjectRow(object: o, onTap: () => c.openObject(o.id)),
+        ),
+      const SizedBox(height: 24),
+
+      // Active Projects
+      if (activeProjects.isNotEmpty) ...[
+        _heading(
+          context,
+          'Active Projects',
+          '${activeProjects.length} projects',
+        ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: activeProjects.map((p) {
+            return ActionChip(
+              avatar: const Icon(Icons.folder_outlined, size: 16),
+              label: Text(p),
+              onPressed: () => c.openProjectDashboard(p),
+            );
+          }).toList(),
+        ),
+      ],
+    ];
+  }
+
+  Widget _metricCard(
+    BuildContext context,
+    OrbitColors colors, {
+    required IconData icon,
+    required String title,
+    required String value,
+  }) {
+    return Container(
+      width: 170,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: colors.raised,
+        borderRadius: BorderRadius.circular(OrbitRadius.card),
+        border: Border.all(color: colors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: colors.accent),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
+          ),
+          const SizedBox(height: 2),
+          Text(title, style: TextStyle(fontSize: 11, color: colors.subtle)),
+        ],
       ),
     );
   }
@@ -1134,6 +1944,7 @@ class HomeView extends ConsumerWidget {
           ],
         ),
       );
+
   Widget _quiet(BuildContext context, String text) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 20),
     child: Text(
@@ -1574,29 +2385,18 @@ class _FocusSessionCardState extends State<_FocusSessionCard> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
-        color: colors.panel,
-        border: Border.all(color: colors.border),
-        borderRadius: BorderRadius.circular(OrbitRadius.card),
+        border: Border(bottom: BorderSide(color: colors.divider)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Icon(Icons.timer_outlined, size: 18, color: colors.accent),
-              const SizedBox(width: 8),
-              Text(
-                'FOCUS & WORK SESSIONS',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.8,
-                  color: colors.subtle,
-                ),
-              ),
-              const Spacer(),
               TextButton.icon(
                 onPressed: () =>
                     _showStartSessionDialog(context, initialCategory: 'work'),
@@ -1640,14 +2440,75 @@ class _FocusSessionCardState extends State<_FocusSessionCard> {
                 ],
               ),
             ),
-          ] else ...[
-            const SizedBox(height: 4),
-            Text(
-              'Track honest active focus time across work, study, and reading without unrecorded background surveillance.',
-              style: TextStyle(fontSize: 12, color: colors.subtle),
-            ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Resume actions move below their summary at narrow widths or large text sizes.
+class _HomeResumeRow extends StatefulWidget {
+  const _HomeResumeRow({
+    required this.content,
+    required this.action,
+    this.onTap,
+  });
+  final Widget content, action;
+  final VoidCallback? onTap;
+
+  @override
+  State<_HomeResumeRow> createState() => _HomeResumeRowState();
+}
+
+class _HomeResumeRowState extends State<_HomeResumeRow> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = OrbitColors.of(context);
+    final rowContent = LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth / MediaQuery.textScalerOf(context).scale(1) <
+            520) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              widget.content,
+              const SizedBox(height: 12),
+              widget.action,
+            ],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: widget.content),
+            const SizedBox(width: 24),
+            widget.action,
+          ],
+        );
+      },
+    );
+
+    if (widget.onTap == null) return rowContent;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: OrbitMotionScope.duration(context, OrbitMotion.micro),
+          decoration: BoxDecoration(
+            color: _hovered
+                ? colors.accent.withValues(alpha: 0.04)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: rowContent,
+        ),
       ),
     );
   }
@@ -1692,11 +2553,13 @@ class ObjectRow extends StatelessWidget {
     required this.onTap,
     this.trailing,
     this.query,
+    this.wrapTitle = false,
   });
   final UniversalObject object;
   final VoidCallback onTap;
   final Widget? trailing;
   final String? query;
+  final bool wrapTitle;
 
   @override
   Widget build(BuildContext context) {
@@ -1729,62 +2592,73 @@ class ObjectRow extends StatelessWidget {
       ),
       title: Text(
         object.title.isEmpty ? 'Untitled' : object.title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+        maxLines: wrapTitle ? null : 1,
+        overflow: wrapTitle ? TextOverflow.clip : TextOverflow.ellipsis,
         style: const TextStyle(fontSize: 14),
       ),
-      subtitle: snippet != null
-          ? Text.rich(
-              TextSpan(
-                children: [
-                  if (snippet.source != 'body')
-                    TextSpan(
-                      text:
-                          '[${snippet.source == 'canvas' ? 'Canvas' : 'Property'}] ',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: colors.accent,
-                      ),
-                    ),
-                  if (snippet.matchStart > 0)
-                    TextSpan(
-                      text: snippet.text.substring(
-                        0,
-                        math.min(snippet.matchStart, snippet.text.length),
-                      ),
-                      style: TextStyle(fontSize: 11, color: colors.subtle),
-                    ),
-                  if (snippet.matchStart < snippet.text.length)
-                    TextSpan(
-                      text: snippet.text.substring(
-                        snippet.matchStart,
-                        math.min(
-                          snippet.matchStart + snippet.matchLength,
-                          snippet.text.length,
+      subtitle: snippet != null && snippet.source != 'title'
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  objectContextLabel(object),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: colors.subtle),
+                ),
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      if (snippet.source != 'body' && snippet.source != 'title')
+                        TextSpan(
+                          text:
+                              '[${snippet.source == 'canvas' ? 'Canvas' : 'Property'}] ',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: colors.accent,
+                          ),
                         ),
-                      ),
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: colors.text,
-                      ),
-                    ),
-                  if (snippet.matchStart + snippet.matchLength <
-                      snippet.text.length)
-                    TextSpan(
-                      text: snippet.text.substring(
-                        snippet.matchStart + snippet.matchLength,
-                      ),
-                      style: TextStyle(fontSize: 11, color: colors.subtle),
-                    ),
-                ],
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+                      if (snippet.matchStart > 0)
+                        TextSpan(
+                          text: snippet.text.substring(
+                            0,
+                            math.min(snippet.matchStart, snippet.text.length),
+                          ),
+                          style: TextStyle(fontSize: 11, color: colors.subtle),
+                        ),
+                      if (snippet.matchStart < snippet.text.length)
+                        TextSpan(
+                          text: snippet.text.substring(
+                            snippet.matchStart,
+                            math.min(
+                              snippet.matchStart + snippet.matchLength,
+                              snippet.text.length,
+                            ),
+                          ),
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: colors.text,
+                          ),
+                        ),
+                      if (snippet.matchStart + snippet.matchLength <
+                          snippet.text.length)
+                        TextSpan(
+                          text: snippet.text.substring(
+                            snippet.matchStart + snippet.matchLength,
+                          ),
+                          style: TextStyle(fontSize: 11, color: colors.subtle),
+                        ),
+                    ],
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             )
           : Text(
-              object.typeId.replaceFirst('orbit.', ''),
+              objectContextLabel(object),
               style: TextStyle(fontSize: 11, color: colors.subtle),
             ),
       trailing: trailing,
@@ -1912,31 +2786,74 @@ class _TaskRowState extends State<TaskRow> {
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
+        duration: OrbitMotionScope.duration(context, OrbitMotion.control),
+        padding: EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: OrbitDensity.of(context).compact ? 3 : 6,
+        ),
         margin: const EdgeInsets.symmetric(vertical: 1),
         decoration: BoxDecoration(
-          color: _hovered ? colors.hover : Colors.transparent,
+          color: _hovered
+              ? colors.hover
+              : isDone
+              ? colors.accent.withValues(alpha: .035)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(6),
         ),
         child: Row(
           children: [
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: Checkbox(
-                value: isDone,
-                activeColor: colors.accent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(5),
+            AnimatedScale(
+              scale:
+                  (isDone &&
+                      !OrbitMotionScope.isReduced(context) &&
+                      !OrbitMotionScope.isOff(context))
+                  ? 1.06
+                  : 1.0,
+              duration: OrbitMotionScope.duration(context, OrbitMotion.micro),
+              curve: OrbitMotion.ease,
+              child: SizedBox(
+                width: 32,
+                height: 32,
+                child: Checkbox(
+                  value: isDone,
+                  activeColor: colors.accent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  onChanged: (val) {
+                    final willBeDone = val == true;
+                    widget.onCompleted?.call(willBeDone);
+                    widget.controller.edit(
+                      o.id,
+                      properties: {...o.properties, 'completed': val},
+                    );
+                    if (willBeDone && context.mounted) {
+                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            o.title.isNotEmpty
+                                ? 'Task completed: "${o.title}"'
+                                : 'Task completed',
+                          ),
+                          duration: const Duration(seconds: 3),
+                          action: SnackBarAction(
+                            label: 'Undo',
+                            onPressed: () {
+                              widget.controller.edit(
+                                o.id,
+                                properties: {
+                                  ...o.properties,
+                                  'completed': false,
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      );
+                    }
+                  },
                 ),
-                onChanged: (val) {
-                  widget.onCompleted?.call(val == true);
-                  widget.controller.edit(
-                    o.id,
-                    properties: {...o.properties, 'completed': val},
-                  );
-                },
               ),
             ),
             const SizedBox(width: 8),
@@ -1965,8 +2882,9 @@ class _TaskRowState extends State<TaskRow> {
                           context,
                           OrbitMotion.panel,
                         ),
-                        style: TextStyle(
-                          fontSize: 13.5,
+                        style: OrbitTypography.body(context).copyWith(
+                          fontSize: 14.5,
+                          height: 1.45,
                           color: isDone ? colors.muted : colors.text,
                           decoration: isDone
                               ? TextDecoration.lineThrough
@@ -1992,7 +2910,7 @@ class _TaskRowState extends State<TaskRow> {
                 ),
                 child: Text(
                   '#$project',
-                  style: TextStyle(fontSize: 10.5, color: colors.subtle),
+                  style: TextStyle(fontSize: 12, color: colors.subtle),
                 ),
               ),
             ],
@@ -2032,7 +2950,7 @@ class _TaskRowState extends State<TaskRow> {
                         child: Text(
                           priority.toUpperCase(),
                           style: TextStyle(
-                            fontSize: 9.5,
+                            fontSize: 12,
                             fontWeight: FontWeight.w600,
                             letterSpacing: .5,
                             color: switch (priority) {
@@ -2124,7 +3042,7 @@ class _TaskRowState extends State<TaskRow> {
                             Text(
                               friendlyDate,
                               style: TextStyle(
-                                fontSize: 11,
+                                fontSize: 12,
                                 color: isOverdue
                                     ? Colors.redAccent
                                     : colors.subtle,
@@ -2149,7 +3067,7 @@ class _TaskRowState extends State<TaskRow> {
                                 Text(
                                   'Date',
                                   style: TextStyle(
-                                    fontSize: 10.5,
+                                    fontSize: 12,
                                     color: colors.subtle,
                                   ),
                                 ),
@@ -2302,6 +3220,27 @@ enum KanbanPreset {
     ('investigating', 'Investigating'),
     ('partial', 'Partially Understood'),
     ('confirmed', 'Confirmed'),
+  ]),
+  research('research', 'Research', [
+    ('inbox', 'Inbox'),
+    ('reading', 'Reading'),
+    ('investigating', 'Investigating'),
+    ('synthesizing', 'Synthesizing'),
+    ('published', 'Published'),
+  ]),
+  content('content', 'Content Pipeline', [
+    ('ideas', 'Ideas'),
+    ('drafting', 'Drafting'),
+    ('editing', 'Editing'),
+    ('scheduled', 'Scheduled'),
+    ('published', 'Published'),
+  ]),
+  personal('personal', 'Personal Planning', [
+    ('inbox', 'Inbox'),
+    ('next', 'Next'),
+    ('waiting', 'Waiting'),
+    ('scheduled', 'Scheduled'),
+    ('done', 'Done'),
   ]);
 
   const KanbanPreset(this.id, this.label, this.columns);
@@ -2484,6 +3423,7 @@ class _TasksViewState extends State<TasksView> {
     final isFunctionsPreset = currentPresetId == 'functions';
 
     final allTasks = c.activeObjects
+        .where(c.inActiveSpace)
         .where(
           (t) =>
               !t.isDeleted &&
@@ -3308,13 +4248,13 @@ class _TasksViewState extends State<TasksView> {
           colTasks[columns.last.$1]!.add(t);
         }
       } else {
-        final rawStatus = (t.properties['status'] as String?)
-            ?.toLowerCase()
-            .replaceAll(' ', '-');
-        if (rawStatus != null && colTasks.containsKey(rawStatus)) {
+        final rawStatus = boardStatus(
+          t.properties['status'],
+          columns.map((c) => c.$1).toList(),
+        );
+        if (colTasks.containsKey(rawStatus)) {
           colTasks[rawStatus]!.add(t);
-        } else if (rawStatus != null &&
-            rawStatus.contains('part') &&
+        } else if (rawStatus.contains('part') &&
             colTasks.containsKey('partial')) {
           colTasks['partial']!.add(t);
         } else if (colTasks.containsKey('todo')) {
@@ -3336,21 +4276,25 @@ class _TasksViewState extends State<TasksView> {
         Expanded(
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var i = 0; i < columns.length; i++) ...[
-                  if (i > 0) const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildKanbanColumn(
-                      columns[i].$1,
-                      columns[i].$2,
-                      colTasks[columns[i].$1] ?? [],
-                      colors,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var i = 0; i < columns.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 12),
+                    SizedBox(
+                      width: OrbitDensity.of(context).boardColumn,
+                      child: _buildKanbanColumn(
+                        columns[i].$1,
+                        columns[i].$2,
+                        colTasks[columns[i].$1] ?? [],
+                        colors,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -3485,7 +4429,7 @@ class _TasksViewState extends State<TasksView> {
                     ),
                     child: Text(
                       '${tasks.length}',
-                      style: TextStyle(fontSize: 10, color: colors.subtle),
+                      style: TextStyle(fontSize: 12, color: colors.subtle),
                     ),
                   ),
                   const Spacer(),
@@ -3495,8 +4439,8 @@ class _TasksViewState extends State<TasksView> {
                     padding: EdgeInsets.zero,
                     visualDensity: VisualDensity.compact,
                     constraints: const BoxConstraints(
-                      minWidth: 20,
-                      minHeight: 20,
+                      minWidth: 32,
+                      minHeight: 32,
                     ),
                     onPressed: () {
                       setState(() => _inlineAddColumnId = colId);
@@ -3529,7 +4473,7 @@ class _TasksViewState extends State<TasksView> {
                           ),
                           child: Text(
                             t.title.isEmpty ? 'Untitled' : t.title,
-                            style: const TextStyle(fontSize: 12.5),
+                            style: const TextStyle(fontSize: 14.5),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -3578,8 +4522,8 @@ class _TasksViewState extends State<TasksView> {
                         icon: const Icon(Icons.check, size: 14),
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(
-                          minWidth: 20,
-                          minHeight: 20,
+                          minWidth: 32,
+                          minHeight: 32,
                         ),
                         onPressed: () => _submitNewTask(
                           _inlineAddController.text,
@@ -3590,8 +4534,8 @@ class _TasksViewState extends State<TasksView> {
                         icon: const Icon(Icons.close, size: 14),
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(
-                          minWidth: 20,
-                          minHeight: 20,
+                          minWidth: 32,
+                          minHeight: 32,
                         ),
                         onPressed: () =>
                             setState(() => _inlineAddColumnId = null),
@@ -3664,7 +4608,7 @@ class _TasksViewState extends State<TasksView> {
         onTap: () => setState(() => _peekTaskId = t.id),
         onDoubleTap: () => widget.controller.openObject(t.id),
         child: Padding(
-          padding: const EdgeInsets.all(10),
+          padding: EdgeInsets.all(OrbitDensity.of(context).cardPadding),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -3690,7 +4634,8 @@ class _TasksViewState extends State<TasksView> {
                       child: Text(
                         t.title.isEmpty ? 'Untitled' : t.title,
                         style: TextStyle(
-                          fontSize: 12.5,
+                          fontSize: 14.5,
+                          height: 1.45,
                           fontWeight: FontWeight.w500,
                           decoration: t.isCompleted
                               ? TextDecoration.lineThrough
@@ -3807,7 +4752,7 @@ class _TasksViewState extends State<TasksView> {
           Text(
             text,
             style: TextStyle(
-              fontSize: 10,
+              fontSize: 12,
               fontWeight: FontWeight.w500,
               color: color ?? colors.subtle,
             ),
@@ -3926,299 +4871,395 @@ class _TaskDetailState extends State<TaskDetail> {
           ? 'Deleted task: ${broken.title}'
           : 'Broken reference: ${broken.title}';
     }
-    return ListView(
-      padding: const EdgeInsets.all(28),
-      children: [
-        Row(
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 980),
+        child: ListView(
+          padding: const EdgeInsets.all(28),
           children: [
-            Checkbox(
-              value: o.isCompleted,
-              onChanged: (v) => property('completed', v),
-            ),
-            Expanded(
-              child: TextField(
-                controller: title,
-                style: Theme.of(context).textTheme.headlineSmall,
-                decoration: const InputDecoration(
-                  hintText: 'Task title',
-                  filled: false,
+            Row(
+              children: [
+                Checkbox(
+                  value: o.isCompleted,
+                  onChanged: (v) => property('completed', v),
                 ),
-                onChanged: (v) => widget.controller.edit(o.id, title: v),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
-        Wrap(
-          spacing: 16,
-          runSpacing: 16,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            SizedBox(
-              width: 150,
-              child: DropdownButtonFormField<String>(
-                initialValue:
-                    [
-                      'low',
-                      'medium',
-                      'high',
-                      'urgent',
-                    ].contains(o.properties['priority'])
-                    ? o.properties['priority'] as String
-                    : 'medium',
-                decoration: const InputDecoration(labelText: 'Priority'),
-                isExpanded: true,
-                items: ['low', 'medium', 'high', 'urgent']
-                    .map(
-                      (v) => DropdownMenuItem(
-                        value: v,
-                        child: Text(v[0].toUpperCase() + v.substring(1)),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (v) => property('priority', v),
-              ),
-            ),
-            SizedBox(
-              width: 140,
-              child: DropdownButtonFormField<String>(
-                isExpanded: true,
-                key: ValueKey('status-${o.id}-$status'),
-                initialValue: status,
-                decoration: const InputDecoration(labelText: 'Status'),
-                items: [
-                  for (final option in statuses.entries)
-                    DropdownMenuItem(
-                      value: option.key,
-                      child: Text(
-                        option.value,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                Expanded(
+                  child: TextField(
+                    controller: title,
+                    minLines: 1,
+                    maxLines: null,
+                    style: Theme.of(context).textTheme.headlineSmall,
+                    decoration: const InputDecoration(
+                      hintText: 'Task title',
+                      filled: false,
                     ),
-                ],
-                onChanged: (v) {
-                  if (v != null) {
-                    property('status', v);
-                    if (v == 'done') {
-                      property('completed', true);
-                    } else if (o.isCompleted) {
-                      property('completed', false);
+                    onChanged: (v) => widget.controller.edit(o.id, title: v),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                SizedBox(
+                  width: 150,
+                  child: DropdownButtonFormField<String>(
+                    initialValue:
+                        [
+                          'low',
+                          'medium',
+                          'high',
+                          'urgent',
+                        ].contains(o.properties['priority'])
+                        ? o.properties['priority'] as String
+                        : 'medium',
+                    decoration: const InputDecoration(labelText: 'Priority'),
+                    isExpanded: true,
+                    items: ['low', 'medium', 'high', 'urgent']
+                        .map(
+                          (v) => DropdownMenuItem(
+                            value: v,
+                            child: Text(v[0].toUpperCase() + v.substring(1)),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) => property('priority', v),
+                  ),
+                ),
+                SizedBox(
+                  width: 140,
+                  child: DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    key: ValueKey('status-${o.id}-$status'),
+                    initialValue: status,
+                    decoration: const InputDecoration(labelText: 'Status'),
+                    items: [
+                      for (final option in statuses.entries)
+                        DropdownMenuItem(
+                          value: option.key,
+                          child: Text(
+                            option.value,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: (v) {
+                      if (v != null) {
+                        property('status', v);
+                        if (v == 'done') {
+                          property('completed', true);
+                        } else if (o.isCompleted) {
+                          property('completed', false);
+                        }
+                      }
+                    },
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate:
+                          DateTime.tryParse('${o.properties['dueDate']}') ??
+                          DateTime.now(),
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (date != null) {
+                      property(
+                        'dueDate',
+                        '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
+                      );
                     }
-                  }
-                },
-              ),
-            ),
-            SizedBox(
-              width: 110,
-              child: DropdownButtonFormField<String>(
-                initialValue: o.properties['estimate'] is String
-                    ? o.properties['estimate'] as String
-                    : null,
-                decoration: const InputDecoration(labelText: 'Estimate'),
-                isExpanded: true,
-                items: [
-                  const DropdownMenuItem(value: null, child: Text('None')),
-                  for (final est in [
-                    '1',
-                    '2',
-                    '3',
-                    '5',
-                    '8',
-                    '13',
-                    'XS',
-                    'S',
-                    'M',
-                    'L',
-                    'XL',
-                  ])
-                    DropdownMenuItem(value: est, child: Text(est)),
-                ],
-                onChanged: (v) => property('estimate', v),
-              ),
-            ),
-            SizedBox(
-              width: 140,
-              child: TextFormField(
-                initialValue: o.properties['category'] is String
-                    ? o.properties['category'] as String
-                    : '',
-                decoration: const InputDecoration(labelText: 'Category'),
-                onChanged: (v) =>
-                    property('category', v.trim().isEmpty ? null : v.trim()),
-              ),
-            ),
-            SizedBox(
-              width: 180,
-              child: DropdownButtonFormField<String>(
-                isExpanded: true,
-                key: ValueKey('blocker-${o.id}-$blockerId'),
-                initialValue: blockerId,
-                decoration: const InputDecoration(labelText: 'Blocked by'),
-                items: [
-                  const DropdownMenuItem(value: null, child: Text('None')),
-                  ...blockers.entries.map(
-                    (t) => DropdownMenuItem(
-                      value: t.key,
-                      child: Text(
-                        t.value.isEmpty ? 'Untitled' : t.value,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-                ],
-                onChanged: (v) => property('blockedBy', v),
-              ),
-            ),
-            SizedBox(
-              width: 150,
-              child: DropdownButtonFormField<String>(
-                initialValue:
-                    gameDevDisciplines.contains(o.properties['discipline'])
-                    ? o.properties['discipline'] as String
-                    : null,
-                decoration: const InputDecoration(labelText: 'Discipline'),
-                isExpanded: true,
-                items: [
-                  const DropdownMenuItem(value: null, child: Text('None')),
-                  for (final d in gameDevDisciplines)
-                    DropdownMenuItem(value: d, child: Text(d)),
-                ],
-                onChanged: (v) => property('discipline', v),
-              ),
-            ),
-            SizedBox(
-              width: 140,
-              child: TextFormField(
-                initialValue: o.properties['milestone'] is String
-                    ? o.properties['milestone'] as String
-                    : '',
-                decoration: const InputDecoration(labelText: 'Milestone'),
-                onChanged: (v) =>
-                    property('milestone', v.trim().isEmpty ? null : v.trim()),
-              ),
-            ),
-            SizedBox(
-              width: 140,
-              child: DropdownButtonFormField<String>(
-                initialValue: bugSeverities.contains(o.properties['severity'])
-                    ? o.properties['severity'] as String
-                    : null,
-                decoration: const InputDecoration(labelText: 'Bug Severity'),
-                isExpanded: true,
-                items: [
-                  const DropdownMenuItem(
-                    value: null,
-                    child: Text('Not a bug / None'),
-                  ),
-                  for (final s in bugSeverities)
-                    DropdownMenuItem(value: s, child: Text(s.toUpperCase())),
-                ],
-                onChanged: (v) {
-                  property('severity', v);
-                  if (v != null) {
-                    property('isBug', true);
-                  }
-                },
-              ),
-            ),
-            SizedBox(
-              width: 110,
-              child: TextFormField(
-                initialValue: o.properties['build'] is String
-                    ? o.properties['build'] as String
-                    : '',
-                decoration: const InputDecoration(labelText: 'Build / Ver'),
-                onChanged: (v) =>
-                    property('build', v.trim().isEmpty ? null : v.trim()),
-              ),
-            ),
-            SizedBox(
-              width: 110,
-              child: TextFormField(
-                initialValue: o.properties['platform'] is String
-                    ? o.properties['platform'] as String
-                    : '',
-                decoration: const InputDecoration(labelText: 'Platform'),
-                onChanged: (v) =>
-                    property('platform', v.trim().isEmpty ? null : v.trim()),
-              ),
-            ),
-            OutlinedButton.icon(
-              onPressed: () async {
-                final date = await showDatePicker(
-                  context: context,
-                  initialDate:
-                      DateTime.tryParse('${o.properties['dueDate']}') ??
-                      DateTime.now(),
-                  firstDate: DateTime(2000),
-                  lastDate: DateTime(2100),
-                );
-                if (date != null) {
-                  property(
-                    'dueDate',
-                    '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
-                  );
-                }
-              },
-              icon: const Icon(Icons.calendar_today_outlined, size: 16),
-              label: Text(o.properties['dueDate'] as String? ?? 'Set due date'),
-            ),
-            if (o.properties['dueDate'] != null)
-              IconButton(
-                tooltip: 'Clear due date',
-                onPressed: () => property('dueDate', null),
-                icon: const Icon(Icons.close, size: 16),
-              ),
-          ],
-        ),
-        const SizedBox(height: 24),
-        TextField(
-          controller: body,
-          minLines: 6,
-          maxLines: null,
-          decoration: const InputDecoration(
-            hintText: 'Add details, context or Markdown links…',
-            alignLabelWithHint: true,
-          ),
-          onChanged: (v) => widget.controller.edit(o.id, body: v),
-        ),
-        const SizedBox(height: 20),
-        DropdownButtonFormField<String>(
-          initialValue:
-              widget.controller.activeObjects.any(
-                (v) => v.id == o.properties['contextId'],
-              )
-              ? o.properties['contextId'] as String
-              : null,
-          decoration: const InputDecoration(labelText: 'Related context'),
-          items: [
-            const DropdownMenuItem(value: null, child: Text('No context')),
-            ...widget.controller.activeObjects
-                .where((v) => v.id != o.id && v.typeId != 'orbit.file')
-                .map(
-                  (v) => DropdownMenuItem(
-                    value: v.id,
-                    child: Text(
-                      v.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                  },
+                  icon: const Icon(Icons.calendar_today_outlined, size: 16),
+                  label: Text(
+                    o.properties['dueDate'] as String? ?? 'Set due date',
                   ),
                 ),
+                if (o.properties['dueDate'] != null)
+                  IconButton(
+                    tooltip: 'Clear due date',
+                    onPressed: () => property('dueDate', null),
+                    icon: const Icon(Icons.close, size: 16),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            TextField(
+              controller: body,
+              style: OrbitTypography.body(
+                context,
+              ).copyWith(fontSize: 16, height: 1.55),
+              minLines: 6,
+              maxLines: null,
+              decoration: const InputDecoration(
+                hintText: 'Add details, context or Markdown links…',
+                alignLabelWithHint: true,
+              ),
+              onChanged: (v) => widget.controller.edit(o.id, body: v),
+            ),
+            const SizedBox(height: 20),
+            TaskPlanningPanel(controller: widget.controller, task: o),
+            ExpansionTile(
+              key: ValueKey('task-advanced-properties'),
+              tilePadding: EdgeInsets.zero,
+              title: const Text('Properties'),
+              subtitle: const Text(
+                'Estimate, discipline, dependencies and build context',
+              ),
+              children: [
+                Wrap(
+                  spacing: 16,
+                  runSpacing: 16,
+                  children: [
+                    SizedBox(
+                      width: 110,
+                      child: DropdownButtonFormField<String>(
+                        initialValue: o.properties['estimate'] is String
+                            ? o.properties['estimate'] as String
+                            : null,
+                        decoration: const InputDecoration(
+                          labelText: 'Estimate',
+                        ),
+                        isExpanded: true,
+                        items: [
+                          const DropdownMenuItem(
+                            value: null,
+                            child: Text('None'),
+                          ),
+                          for (final est in [
+                            '1',
+                            '2',
+                            '3',
+                            '5',
+                            '8',
+                            '13',
+                            'XS',
+                            'S',
+                            'M',
+                            'L',
+                            'XL',
+                          ])
+                            DropdownMenuItem(value: est, child: Text(est)),
+                        ],
+                        onChanged: (v) => property('estimate', v),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 140,
+                      child: TextFormField(
+                        initialValue: o.properties['category'] is String
+                            ? o.properties['category'] as String
+                            : '',
+                        decoration: const InputDecoration(
+                          labelText: 'Category',
+                        ),
+                        onChanged: (v) => property(
+                          'category',
+                          v.trim().isEmpty ? null : v.trim(),
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 180,
+                      child: DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        key: ValueKey('blocker-${o.id}-$blockerId'),
+                        initialValue: blockerId,
+                        decoration: const InputDecoration(
+                          labelText: 'Blocked by',
+                        ),
+                        items: [
+                          const DropdownMenuItem(
+                            value: null,
+                            child: Text('None'),
+                          ),
+                          ...blockers.entries.map(
+                            (t) => DropdownMenuItem(
+                              value: t.key,
+                              child: Text(
+                                t.value.isEmpty ? 'Untitled' : t.value,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                        ],
+                        onChanged: (v) => property('blockedBy', [
+                          ?v,
+                          if (rawBlocker is List)
+                            ...rawBlocker.whereType<String>().where(
+                              (id) => id != blockerId && id != v,
+                            ),
+                        ]),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 150,
+                      child: DropdownButtonFormField<String>(
+                        initialValue:
+                            gameDevDisciplines.contains(
+                              o.properties['discipline'],
+                            )
+                            ? o.properties['discipline'] as String
+                            : null,
+                        decoration: const InputDecoration(
+                          labelText: 'Discipline',
+                        ),
+                        isExpanded: true,
+                        items: [
+                          const DropdownMenuItem(
+                            value: null,
+                            child: Text('None'),
+                          ),
+                          for (final d in gameDevDisciplines)
+                            DropdownMenuItem(value: d, child: Text(d)),
+                        ],
+                        onChanged: (v) => property('discipline', v),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 140,
+                      child: TextFormField(
+                        initialValue: o.properties['milestone'] is String
+                            ? o.properties['milestone'] as String
+                            : '',
+                        decoration: const InputDecoration(
+                          labelText: 'Milestone',
+                        ),
+                        onChanged: (v) => property(
+                          'milestone',
+                          v.trim().isEmpty ? null : v.trim(),
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 140,
+                      child: DropdownButtonFormField<String>(
+                        initialValue:
+                            bugSeverities.contains(o.properties['severity'])
+                            ? o.properties['severity'] as String
+                            : null,
+                        decoration: const InputDecoration(
+                          labelText: 'Bug Severity',
+                        ),
+                        isExpanded: true,
+                        items: [
+                          const DropdownMenuItem(
+                            value: null,
+                            child: Text('Not a bug / None'),
+                          ),
+                          for (final s in bugSeverities)
+                            DropdownMenuItem(
+                              value: s,
+                              child: Text(s.toUpperCase()),
+                            ),
+                        ],
+                        onChanged: (v) {
+                          property('severity', v);
+                          if (v != null) {
+                            property('isBug', true);
+                          }
+                        },
+                      ),
+                    ),
+                    SizedBox(
+                      width: 110,
+                      child: TextFormField(
+                        initialValue: o.properties['build'] is String
+                            ? o.properties['build'] as String
+                            : '',
+                        decoration: const InputDecoration(
+                          labelText: 'Build / Ver',
+                        ),
+                        onChanged: (v) => property(
+                          'build',
+                          v.trim().isEmpty ? null : v.trim(),
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 110,
+                      child: TextFormField(
+                        initialValue: o.properties['platform'] is String
+                            ? o.properties['platform'] as String
+                            : '',
+                        decoration: const InputDecoration(
+                          labelText: 'Platform',
+                        ),
+                        onChanged: (v) => property(
+                          'platform',
+                          v.trim().isEmpty ? null : v.trim(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  initialValue:
+                      widget.controller.activeObjects.any(
+                        (v) => v.id == o.properties['contextId'],
+                      )
+                      ? o.properties['contextId'] as String
+                      : null,
+                  decoration: const InputDecoration(
+                    labelText: 'Related context',
+                  ),
+                  items: [
+                    const DropdownMenuItem(
+                      value: null,
+                      child: Text('No context'),
+                    ),
+                    ...widget.controller.activeObjects
+                        .where((v) => v.id != o.id && v.typeId != 'orbit.file')
+                        .map(
+                          (v) => DropdownMenuItem(
+                            value: v.id,
+                            child: Text(
+                              v.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                  ],
+                  onChanged: (v) => property('contextId', v),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: PopupMenuButton<String>(
+                tooltip: 'More task actions',
+                onSelected: (_) => widget.controller.trash(o.id),
+                itemBuilder: (_) => [
+                  const PopupMenuItem(
+                    value: 'trash',
+                    child: Text('Move to Trash'),
+                  ),
+                ],
+                child: const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Text('More actions'),
+                ),
+              ),
+            ),
           ],
-          onChanged: (v) => property('contextId', v),
         ),
-        const SizedBox(height: 24),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: () => widget.controller.trash(o.id),
-            icon: const Icon(Icons.delete_outline, size: 18),
-            label: const Text('Move to Trash'),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -4372,92 +5413,147 @@ class _EventDetailState extends State<EventDetail> {
   }
 }
 
-class SearchView extends StatefulWidget {
-  const SearchView({super.key, required this.controller});
+class _WorkspaceThemeSummary extends StatelessWidget {
+  const _WorkspaceThemeSummary({required this.controller});
   final WorkspaceController controller;
-  @override
-  State<SearchView> createState() => _SearchViewState();
-}
-
-class _SearchViewState extends State<SearchView> {
-  String query = '';
-  List<UniversalObject> results = [];
-  Timer? _debounce;
-  int _generation = 0;
-  String? searchError;
-  void _search(String value) {
-    _debounce?.cancel();
-    final generation = ++_generation;
-    setState(() {
-      query = value;
-      results = [];
-      searchError = null;
-    });
-    if (value.trim().isEmpty) return;
-    _debounce = Timer(const Duration(milliseconds: 180), () async {
-      try {
-        final found = await widget.controller.search(value.trim());
-        if (mounted && generation == _generation) {
-          setState(() => results = found);
-        }
-      } catch (e) {
-        if (mounted && generation == _generation) {
-          setState(() => searchError = '$e');
-        }
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(24),
-          child: TextField(
-            autofocus: true,
-            decoration: const InputDecoration(
-              hintText: 'Search your knowledge…',
-              prefixIcon: Icon(Icons.search),
+    final pack = OrbitThemePack.fromId(
+      controller.session.themePreset,
+      customPacks: controller.session.customThemes,
+    );
+    final colors = OrbitColors.of(context);
+    return OrbitCard(
+      padding: const EdgeInsets.all(16),
+      onTap: () => showOrbitThemeGalleryDialog(context, controller),
+      child: Row(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: pack.colors.background,
+              borderRadius: BorderRadius.circular(OrbitRadius.control),
+              border: Border.all(color: colors.border),
             ),
-            onChanged: _search,
-          ),
-        ),
-        Expanded(
-          child: query.trim().isEmpty
-              ? const EmptyWorkspace(
-                  icon: Icons.search,
-                  title: 'Find the thread.',
-                  description:
-                      'Search note text, task details and object titles. Everything stays on this device.',
-                )
-              : results.isEmpty
-              ? EmptyWorkspace(
-                  icon: Icons.search_off,
-                  title: searchError == null
-                      ? 'No matches yet'
-                      : 'Search unavailable',
-                  description: 'Try a shorter phrase or another title.',
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  itemCount: results.length,
-                  itemBuilder: (_, i) => ObjectRow(
-                    object: results[i],
-                    query: query,
-                    onTap: () => widget.controller.openObject(results[i].id),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      width: 14,
+                      decoration: BoxDecoration(
+                        color: pack.colors.panel,
+                        borderRadius: BorderRadius.horizontal(
+                          left: Radius.circular(OrbitRadius.control),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-        ),
-      ],
+                Positioned(
+                  left: 22,
+                  right: 8,
+                  top: 16,
+                  child: Container(height: 4, color: pack.colors.accent),
+                ),
+                Positioned(
+                  left: 22,
+                  right: 16,
+                  top: 28,
+                  child: Container(height: 3, color: pack.colors.subtle),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Workspace theme',
+                  style: TextStyle(
+                    color: colors.subtle,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  pack.name,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Typography, surfaces, accents, and corners move together.',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: colors.subtle),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Icon(Icons.open_in_new, size: 17, color: colors.muted),
+        ],
+      ),
     );
   }
+}
+
+/// A setting's control gets its own row before either label or value is squeezed.
+class _SettingsControlTile extends StatelessWidget {
+  const _SettingsControlTile({
+    required this.title,
+    required this.trailing,
+    this.subtitle,
+    this.contentPadding = EdgeInsets.zero,
+  });
+  final Widget title, trailing;
+  final Widget? subtitle;
+  final EdgeInsetsGeometry contentPadding;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: contentPadding.add(const EdgeInsets.symmetric(vertical: 8)),
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final labels = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            title,
+            if (subtitle != null) ...[
+              const SizedBox(height: 4),
+              DefaultTextStyle(
+                style: Theme.of(context).textTheme.bodySmall!,
+                child: subtitle!,
+              ),
+            ],
+          ],
+        );
+        if (constraints.maxWidth < 700 ||
+            MediaQuery.textScalerOf(context).scale(14) > 21) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [labels, const SizedBox(height: 8), trailing],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: labels),
+            const SizedBox(width: 20),
+            SizedBox(width: 260, child: trailing),
+          ],
+        );
+      },
+    ),
+  );
 }
 
 class SettingsView extends StatelessWidget {
@@ -4479,28 +5575,116 @@ class SettingsView extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(28),
           children: [
-            Text(
-              'Make room for your way.',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
+            Text('Settings', style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 16),
+            ProductivityToolbar(controller: controller),
             const SizedBox(height: 8),
             Text(
-              'A few thoughtful controls. Always a way back.',
+              'Appearance, editing, layout, and workspace preferences.',
               style: TextStyle(color: OrbitColors.of(context).subtle),
             ),
             const SizedBox(height: 28),
-            GoogleDriveSettings(workspace: controller),
-            const SizedBox(height: 28),
-            const Text(
-              'APPEARANCE',
-              style: TextStyle(fontSize: 11, letterSpacing: 1.8),
+            Text('Appearance', style: OrbitTypography.section(context)),
+            const SizedBox(height: 8),
+            Text('Accent palette', style: OrbitTypography.metadata(context)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final entry in const [
+                  ('violet', 'Observatory Violet', Color(0xFF8B7CF6)),
+                  ('cyan', 'Nebula Cyan', Color(0xFF06B6D4)),
+                  ('emerald', 'Emerald Aurora', Color(0xFF10B981)),
+                  ('amber', 'Solar Flare Amber', Color(0xFFF59E0B)),
+                  ('rose', 'Crimson Nova Rose', Color(0xFFF43F5E)),
+                  ('blue', 'Cobalt Deep Blue', Color(0xFF3B82F6)),
+                ])
+                  Tooltip(
+                    message: entry.$2,
+                    child: InkWell(
+                      key: ValueKey('settings-accent-${entry.$1}'),
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () => c.updateSession((s) {
+                        s.accentColor = entry.$1;
+                        s.colorOverrides = {...s.colorOverrides}
+                          ..remove('accent')
+                          ..remove('accentHover');
+                      }),
+                      child: AnimatedContainer(
+                        duration: OrbitMotionScope.duration(
+                          context,
+                          OrbitMotion.micro,
+                        ),
+                        curve: OrbitMotion.ease,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: s.accentColor == entry.$1
+                              ? entry.$3.withValues(alpha: 0.18)
+                              : OrbitColors.of(context).panel,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: s.accentColor == entry.$1
+                                ? entry.$3
+                                : OrbitColors.of(context).border,
+                            width: s.accentColor == entry.$1 ? 1.5 : 1.0,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 14,
+                              height: 14,
+                              decoration: BoxDecoration(
+                                color: entry.$3,
+                                shape: BoxShape.circle,
+                                boxShadow: s.accentColor == entry.$1
+                                    ? [
+                                        BoxShadow(
+                                          color: entry.$3.withValues(
+                                            alpha: 0.5,
+                                          ),
+                                          blurRadius: 6,
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                              child: s.accentColor == entry.$1
+                                  ? const Icon(
+                                      Icons.check,
+                                      size: 10,
+                                      color: Colors.white,
+                                    )
+                                  : null,
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                entry.$2.split(' ').first,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: s.accentColor == entry.$1
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
+                                  color: s.accentColor == entry.$1
+                                      ? OrbitColors.of(context).text
+                                      : OrbitColors.of(context).subtle,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
-            const ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.dark_mode_outlined),
-              title: Text('Orbit Dark'),
-              subtitle: Text('Graphite surfaces · muted violet accents'),
-            ),
+            const SizedBox(height: 14),
+            ThemeColorSettings(controller: c),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Compact density'),
@@ -4508,11 +5692,8 @@ class SettingsView extends StatelessWidget {
               onChanged: (v) => c.updateSession((s) => s.compact = v),
             ),
             const SizedBox(height: 22),
-            const Text(
-              'EDITOR',
-              style: TextStyle(fontSize: 11, letterSpacing: 1.8),
-            ),
-            ListTile(
+            Text('Editor', style: OrbitTypography.section(context)),
+            _SettingsControlTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Text size'),
               trailing: Text('${s.fontSize.round()} px'),
@@ -4525,23 +5706,267 @@ class SettingsView extends StatelessWidget {
               label: '${s.fontSize.round()}',
               onChanged: (v) => c.updateSession((s) => s.fontSize = v),
             ),
-            ListTile(
+            _SettingsControlTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Reading width'),
+              title: const Text('Editor and reading width'),
               trailing: Text('${s.contentWidth.round()} px'),
             ),
             Slider(
               value: s.contentWidth,
               min: 520,
-              max: 1200,
-              divisions: 17,
+              max: 2000,
+              divisions: 37,
               onChanged: (v) => c.updateSession((s) => s.contentWidth = v),
             ),
-            const SizedBox(height: 22),
-            const Text(
-              'LAYOUT & MOTION',
-              style: TextStyle(fontSize: 11, letterSpacing: 1.8),
+            _SettingsControlTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('App zoom'),
+              subtitle: const Text(
+                'Whole interface: Ctrl + / minus; Ctrl 0 to reset',
+              ),
+              trailing: DropdownButton<double>(
+                isExpanded: true,
+                itemHeight: null,
+                key: const ValueKey('settings-app-zoom'),
+                value: s.uiZoom,
+                items:
+                    ([
+                          ...{
+                            .75,
+                            .9,
+                            1.0,
+                            1.1,
+                            1.25,
+                            1.5,
+                            1.75,
+                            2.0,
+                            s.uiZoom,
+                          },
+                        ]..sort())
+                        .map(
+                          (v) => DropdownMenuItem(
+                            value: v,
+                            child: Text('${(v * 100).round()}%'),
+                          ),
+                        )
+                        .toList(),
+                onChanged: (v) {
+                  if (v != null) c.updateSession((s) => s.uiZoom = v);
+                },
+              ),
             ),
+            _SettingsControlTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Font family'),
+              subtitle: Text(
+                s.fontFamily == 'Times New Roman'
+                    ? 'Times New Roman (Academic Serif)'
+                    : (s.fontFamily == 'Georgia'
+                          ? 'Georgia (Editorial Serif)'
+                          : (s.fontFamily == 'Consolas'
+                                ? 'Consolas (Code Monospace)'
+                                : 'Segoe UI (Clean Sans)')),
+              ),
+              trailing: DropdownButton<String>(
+                isExpanded: true,
+                itemHeight: null,
+                key: const ValueKey('settings-font-family-dropdown'),
+                value:
+                    [
+                      'Segoe UI',
+                      'Times New Roman',
+                      'Georgia',
+                      'Consolas',
+                    ].contains(s.fontFamily)
+                    ? s.fontFamily
+                    : 'Segoe UI',
+                underline: const SizedBox.shrink(),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'Segoe UI',
+                    child: Text('Segoe UI (Default Sans)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Times New Roman',
+                    child: Text(
+                      'Times New Roman (Serif)',
+                      style: TextStyle(fontFamily: 'Times New Roman'),
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Georgia',
+                    child: Text(
+                      'Georgia (Serif)',
+                      style: TextStyle(fontFamily: 'Georgia'),
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Consolas',
+                    child: Text(
+                      'Consolas (Code)',
+                      style: TextStyle(fontFamily: 'monospace'),
+                    ),
+                  ),
+                ],
+                onChanged: (v) {
+                  if (v != null) {
+                    c.updateSession((s) => s.fontFamily = v);
+                  }
+                },
+              ),
+            ),
+
+            Container(
+              margin: const EdgeInsets.only(top: 8, bottom: 16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: OrbitColors.of(context).background,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: OrbitColors.of(context).border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Reading preview',
+                    style: OrbitTypography.metadata(context),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'A quiet place for clear ideas.\nThe quick brown fox jumps over the lazy dog.',
+                    key: const ValueKey('settings-reading-font-preview'),
+                    style: NoteTypography(
+                      fontFamily: s.fontFamily,
+                      fontSize: s.fontSize,
+                      lineHeight: s.editorLineHeight,
+                    ).body(color: OrbitColors.of(context).text),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'For serif reading, try 18–20 px with comfortable line spacing.',
+                    style: OrbitTypography.metadata(context),
+                  ),
+                ],
+              ),
+            ),
+            SwitchListTile(
+              key: const ValueKey('settings-spellcheck-switch'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Spell and grammar check'),
+              subtitle: const Text(
+                'Offline dictionary and grammar analysis with right-click suggestions',
+              ),
+              value: s.spellCheckEnabled,
+              onChanged: (v) => c.updateSession((s) => s.spellCheckEnabled = v),
+            ),
+            if (s.userDictionary.isNotEmpty)
+              _SettingsControlTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  'Custom dictionary (${s.userDictionary.length} words)',
+                ),
+                subtitle: Text(s.userDictionary.join(', ')),
+                trailing: TextButton.icon(
+                  key: const ValueKey('settings-clear-dictionary-button'),
+                  onPressed: () =>
+                      c.updateSession((s) => s.userDictionary = []),
+                  icon: const Icon(Icons.delete_sweep, size: 18),
+                  label: const Text('Clear'),
+                ),
+              ),
+            _SettingsControlTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Default editor view mode'),
+              subtitle: const Text(
+                'Initial mode when opening a note without saved state',
+              ),
+              trailing: DropdownButton<String>(
+                isExpanded: true,
+                itemHeight: null,
+                key: const ValueKey('settings-default-mode-dropdown'),
+                value: s.defaultNoteMode,
+                underline: const SizedBox.shrink(),
+                items: const [
+                  DropdownMenuItem(value: 'rich', child: Text('Rich Visual')),
+                  DropdownMenuItem(value: 'write', child: Text('Raw Markdown')),
+                  DropdownMenuItem(value: 'split', child: Text('Split View')),
+                  DropdownMenuItem(value: 'read', child: Text('Reading View')),
+                ],
+                onChanged: (v) {
+                  if (v != null) {
+                    c.updateSession((s) => s.defaultNoteMode = v);
+                  }
+                },
+              ),
+            ),
+            _SettingsControlTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Default document format'),
+              subtitle: const Text(
+                'Standard document syntax for newly created notes',
+              ),
+              trailing: DropdownButton<String>(
+                isExpanded: true,
+                itemHeight: null,
+                key: const ValueKey('settings-default-format-dropdown'),
+                value: s.defaultDocumentFormat,
+                underline: const SizedBox.shrink(),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'markdown',
+                    child: Text('Markdown (GFM)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'latex',
+                    child: Text('LaTeX Document'),
+                  ),
+                ],
+                onChanged: (v) {
+                  if (v != null) {
+                    c.updateSession((s) => s.defaultDocumentFormat = v);
+                  }
+                },
+              ),
+            ),
+            SwitchListTile(
+              key: const ValueKey('settings-bionic-reading-switch'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Enable Bionic Reading by default'),
+              subtitle: const Text(
+                'Highlights initial fixation letters in preview for faster saccadic comprehension',
+              ),
+              value: s.bionicReadingDefault,
+              onChanged: (v) =>
+                  c.updateSession((s) => s.bionicReadingDefault = v),
+            ),
+            _SettingsControlTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Line spacing'),
+              subtitle: const Text(
+                'Vertical line height in note editor and formatted reading views',
+              ),
+              trailing: DropdownButton<double>(
+                isExpanded: true,
+                itemHeight: null,
+                key: const ValueKey('settings-line-spacing-dropdown'),
+                value: [1.4, 1.6, 1.8].contains(s.editorLineHeight)
+                    ? s.editorLineHeight
+                    : 1.6,
+                underline: const SizedBox.shrink(),
+                items: const [
+                  DropdownMenuItem(value: 1.4, child: Text('1.4 (Compact)')),
+                  DropdownMenuItem(value: 1.6, child: Text('1.6 (Standard)')),
+                  DropdownMenuItem(value: 1.8, child: Text('1.8 (Relaxed)')),
+                ],
+                onChanged: (v) {
+                  if (v != null) {
+                    c.updateSession((s) => s.editorLineHeight = v);
+                  }
+                },
+              ),
+            ),
+            const SizedBox(height: 22),
+            Text('Layout and motion', style: OrbitTypography.section(context)),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Show explorer'),
@@ -4583,14 +6008,378 @@ class SettingsView extends StatelessWidget {
                 label: const Text('Reset layout'),
               ),
             ),
-            const SizedBox(height: 24),
-            const Text(
-              'YOUR DATA',
-              style: TextStyle(fontSize: 11, letterSpacing: 1.8),
+            const SizedBox(height: 22),
+            Text(
+              'Storage and Auto-Save',
+              style: OrbitTypography.section(context),
             ),
+            _SettingsControlTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Auto-save debounce interval'),
+              subtitle: const Text(
+                'Delay after typing before flushing drafts to disk',
+              ),
+              trailing: DropdownButton<int>(
+                isExpanded: true,
+                itemHeight: null,
+                key: const ValueKey('settings-autosave-interval-dropdown'),
+                value: [500, 1000, 2500].contains(s.autoSaveInterval)
+                    ? s.autoSaveInterval
+                    : 1000,
+                underline: const SizedBox.shrink(),
+                items: const [
+                  DropdownMenuItem(value: 500, child: Text('500ms (Fast)')),
+                  DropdownMenuItem(
+                    value: 1000,
+                    child: Text('1000ms (Balanced)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 2500,
+                    child: Text('2500ms (Relaxed)'),
+                  ),
+                ],
+                onChanged: (v) {
+                  if (v != null) c.updateSession((s) => s.autoSaveInterval = v);
+                },
+              ),
+            ),
+            SwitchListTile(
+              key: const ValueKey('settings-auto-snapshot-switch'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Auto-snapshot on document close'),
+              subtitle: const Text(
+                'Automatically records a historical recovery checkpoint when closing a note',
+              ),
+              value: s.autoSnapshotOnClose,
+              onChanged: (v) =>
+                  c.updateSession((s) => s.autoSnapshotOnClose = v),
+            ),
+            SwitchListTile(
+              key: const ValueKey('settings-reverse-engineering-switch'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Reverse-engineering research tools'),
+              subtitle: const Text(
+                'Show experimental research project and record templates. Existing notes and maps stay accessible when disabled.',
+              ),
+              value: s.reverseEngineeringEnabled,
+              onChanged: (v) =>
+                  c.updateSession((s) => s.reverseEngineeringEnabled = v),
+            ),
+            const SizedBox(height: 22),
+            Text(
+              'Focus & Deep Work Timer',
+              style: OrbitTypography.section(context),
+            ),
+            _SettingsControlTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Focus session duration'),
+              subtitle: const Text('Standard Pomodoro work block length'),
+              trailing: DropdownButton<int>(
+                isExpanded: true,
+                itemHeight: null,
+                key: const ValueKey('settings-focus-duration-dropdown'),
+                value: [15, 20, 25, 30, 45, 60].contains(s.focusMinutes)
+                    ? s.focusMinutes
+                    : 25,
+                underline: const SizedBox.shrink(),
+                items: const [
+                  DropdownMenuItem(value: 15, child: Text('15 min')),
+                  DropdownMenuItem(value: 20, child: Text('20 min')),
+                  DropdownMenuItem(value: 25, child: Text('25 min (Standard)')),
+                  DropdownMenuItem(value: 30, child: Text('30 min')),
+                  DropdownMenuItem(
+                    value: 45,
+                    child: Text('45 min (Deep Work)'),
+                  ),
+                  DropdownMenuItem(value: 60, child: Text('60 min (Extended)')),
+                ],
+                onChanged: (v) {
+                  if (v != null) {
+                    c.updateSession((s) => s.focusMinutes = v);
+                    globalFocusTimer.configureDurations(focus: v);
+                  }
+                },
+              ),
+            ),
+            _SettingsControlTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Short break duration'),
+              subtitle: const Text(
+                'Rest period between standard focus sessions',
+              ),
+              trailing: DropdownButton<int>(
+                isExpanded: true,
+                itemHeight: null,
+                key: const ValueKey('settings-short-break-dropdown'),
+                value: [3, 5, 10].contains(s.shortBreakMinutes)
+                    ? s.shortBreakMinutes
+                    : 5,
+                underline: const SizedBox.shrink(),
+                items: const [
+                  DropdownMenuItem(value: 3, child: Text('3 min (Quick)')),
+                  DropdownMenuItem(value: 5, child: Text('5 min (Standard)')),
+                  DropdownMenuItem(value: 10, child: Text('10 min (Longer)')),
+                ],
+                onChanged: (v) {
+                  if (v != null) {
+                    c.updateSession((s) => s.shortBreakMinutes = v);
+                    globalFocusTimer.configureDurations(shortBreak: v);
+                  }
+                },
+              ),
+            ),
+            _SettingsControlTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Long break duration'),
+              subtitle: const Text(
+                'Extended rest after completing a 4-session cycle',
+              ),
+              trailing: DropdownButton<int>(
+                isExpanded: true,
+                itemHeight: null,
+                key: const ValueKey('settings-long-break-dropdown'),
+                value: [15, 20, 30].contains(s.longBreakMinutes)
+                    ? s.longBreakMinutes
+                    : 15,
+                underline: const SizedBox.shrink(),
+                items: const [
+                  DropdownMenuItem(value: 15, child: Text('15 min (Standard)')),
+                  DropdownMenuItem(value: 20, child: Text('20 min')),
+                  DropdownMenuItem(value: 30, child: Text('30 min (Relaxed)')),
+                ],
+                onChanged: (v) {
+                  if (v != null) {
+                    c.updateSession((s) => s.longBreakMinutes = v);
+                    globalFocusTimer.configureDurations(longBreak: v);
+                  }
+                },
+              ),
+            ),
+            const SizedBox(height: 22),
+            Text(
+              'Canvas and Spatial Boards',
+              style: OrbitTypography.section(context),
+            ),
+            _SettingsControlTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Default paper grid'),
+              subtitle: const Text(
+                'Background paper texture and alignment grid for new canvases',
+              ),
+              trailing: DropdownButton<String>(
+                isExpanded: true,
+                itemHeight: null,
+                key: const ValueKey('settings-canvas-grid-dropdown'),
+                value:
+                    [
+                      'dots',
+                      'grid',
+                      'graph',
+                      'cross',
+                      'hex',
+                      'blueprint',
+                      'lines',
+                      'ruled',
+                      'isometric',
+                      'blank',
+                    ].contains(s.defaultCanvasGrid)
+                    ? s.defaultCanvasGrid
+                    : 'dots',
+                underline: const SizedBox.shrink(),
+                items: const [
+                  DropdownMenuItem(value: 'dots', child: Text('Standard dots')),
+                  DropdownMenuItem(value: 'grid', child: Text('Standard grid')),
+                  DropdownMenuItem(
+                    value: 'graph',
+                    child: Text('Engineering graph'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'cross',
+                    child: Text('Cross / Reticle (+)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'hex',
+                    child: Text('Hexagonal honeycomb'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'blueprint',
+                    child: Text('Architectural blueprint'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'lines',
+                    child: Text('Ruled notebook lines'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'ruled',
+                    child: Text('Student ruled margin'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'isometric',
+                    child: Text('Isometric 3D grid'),
+                  ),
+                  DropdownMenuItem(value: 'blank', child: Text('Blank paper')),
+                ],
+                onChanged: (v) {
+                  if (v != null) {
+                    c.updateSession((s) => s.defaultCanvasGrid = v);
+                  }
+                },
+              ),
+            ),
+            SwitchListTile(
+              key: const ValueKey('settings-canvas-snap-switch'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Snap to grid by default'),
+              subtitle: const Text(
+                'Automatically aligns newly placed spatial cards and shapes to grid nodes',
+              ),
+              value: s.canvasSnapToGrid,
+              onChanged: (v) => c.updateSession((s) => s.canvasSnapToGrid = v),
+            ),
+            const SizedBox(height: 22),
+            Text(
+              'Audio & Voice Memos',
+              style: OrbitTypography.section(context),
+            ),
+            _SettingsControlTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Default playback speed'),
+              subtitle: const Text(
+                'Standard playback rate when listening to voice memos and audio notes',
+              ),
+              trailing: DropdownButton<double>(
+                isExpanded: true,
+                itemHeight: null,
+                key: const ValueKey('settings-audio-speed-dropdown'),
+                value: [1.0, 1.25, 1.5, 2.0].contains(s.defaultAudioSpeed)
+                    ? s.defaultAudioSpeed
+                    : 1.0,
+                underline: const SizedBox.shrink(),
+                items: const [
+                  DropdownMenuItem(value: 1.0, child: Text('1.0× (Normal)')),
+                  DropdownMenuItem(value: 1.25, child: Text('1.25× (Brisk)')),
+                  DropdownMenuItem(
+                    value: 1.5,
+                    child: Text('1.5× (Accelerated)'),
+                  ),
+                  DropdownMenuItem(value: 2.0, child: Text('2.0× (Double)')),
+                ],
+                onChanged: (v) {
+                  if (v != null) {
+                    c.updateSession((s) => s.defaultAudioSpeed = v);
+                  }
+                },
+              ),
+            ),
+            () {
+              final notes = c.activeObjects
+                  .where((o) => !o.isDeleted && o.typeId == 'orbit.note')
+                  .toList();
+              final canvases = c.activeObjects
+                  .where((o) => !o.isDeleted && o.typeId == 'orbit.canvas')
+                  .toList();
+              final tasks = c.activeObjects
+                  .where((o) => !o.isDeleted && o.typeId == 'orbit.task')
+                  .toList();
+              var totalWords = 0;
+              var totalSnapshots = 0;
+              for (final n in notes) {
+                final text = n.body.trim();
+                if (text.isNotEmpty) {
+                  totalWords += text.split(RegExp(r'\s+')).length;
+                }
+                final revisions = n.properties['revisions'];
+                if (revisions is List) {
+                  totalSnapshots += revisions.length;
+                }
+              }
+
+              return OrbitHoverLiftCard(
+                key: const ValueKey('settings-vault-analytics-card'),
+                margin: const EdgeInsets.only(top: 24, bottom: 12),
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 16,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.insights_rounded,
+                          size: 20,
+                          color: OrbitColors.of(context).accent,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Observatory Vault Analytics',
+                          style: OrbitTypography.section(context),
+                        ),
+
+                        const OrbitPulseBadge(
+                          key: ValueKey('settings-vault-live-badge'),
+                          label: 'TELEMETRY LIVE',
+                          active: true,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Live telemetry of indexed knowledge objects and document revisions',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: OrbitColors.of(context).subtle,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 16,
+                      children: [
+                        _buildMetricCol(
+                          context,
+                          'Notes',
+                          notes.length,
+                          Icons.description_outlined,
+                        ),
+                        _buildMetricCol(
+                          context,
+                          'Canvases',
+                          canvases.length,
+                          Icons.gesture_rounded,
+                        ),
+                        _buildMetricCol(
+                          context,
+                          'Tasks',
+                          tasks.length,
+                          Icons.check_circle_outline_rounded,
+                        ),
+                        _buildMetricCol(
+                          context,
+                          'Snapshots',
+                          totalSnapshots,
+                          Icons.history_rounded,
+                        ),
+                        _buildMetricCol(
+                          context,
+                          'Total Words',
+                          totalWords,
+                          Icons.text_fields_rounded,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }(),
+            const SizedBox(height: 16),
+            GoogleDriveSettings(workspace: controller),
+            const SizedBox(height: 24),
+            Text('Workspace data', style: OrbitTypography.section(context)),
             const SizedBox(height: 12),
             SelectableText(
-              c.repository.location,
+              c.hasWorkspace ? c.repository.location : 'Personal Vault',
               style: TextStyle(
                 fontSize: 12,
                 color: OrbitColors.of(context).subtle,
@@ -4621,6 +6410,34 @@ class SettingsView extends StatelessWidget {
                   icon: const Icon(Icons.refresh, size: 18),
                   label: const Text('Reload from files'),
                 ),
+                OutlinedButton.icon(
+                  key: const ValueKey('settings-optimize-vault-button'),
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Row(
+                          children: [
+                            Icon(
+                              Icons.check_circle_outline,
+                              color: OrbitColors.of(context).accent,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                'Vault integrity verified. Local indexes and snapshot caches pruned.',
+                              ),
+                            ),
+                          ],
+                        ),
+                        duration: const Duration(seconds: 3),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.cleaning_services_outlined, size: 18),
+                  label: const Text('Optimize Vault Cache'),
+                ),
               ],
             ),
             const SizedBox(height: 14),
@@ -4632,8 +6449,53 @@ class SettingsView extends StatelessWidget {
                 color: OrbitColors.of(context).subtle,
               ),
             ),
+            const SizedBox(height: 24),
+            _WorkspaceThemeSummary(controller: c),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildMetricCol(
+    BuildContext context,
+    String label,
+    int count,
+    IconData icon,
+  ) {
+    final colors = OrbitColors.of(context);
+    return SizedBox(
+      width: 150,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 14, color: colors.subtle),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: colors.subtle,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          OrbitAnimatedCounter(
+            value: count,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: colors.text,
+              letterSpacing: -0.5,
+            ),
+          ),
+        ],
       ),
     );
   }

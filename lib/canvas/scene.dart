@@ -20,6 +20,7 @@ const canvasElementTypes = {
   'link',
   'section',
   'swatch',
+  'audio',
 };
 
 class CanvasElement {
@@ -51,6 +52,18 @@ class CanvasElement {
       data['groupId'] is String && (data['groupId'] as String).isNotEmpty
       ? data['groupId'] as String
       : null;
+  String get cardPresentation {
+    if (data['presentation'] is String) return data['presentation'] as String;
+    if (data['data'] is Map &&
+        (data['data'] as Map)['presentation'] is String) {
+      return (data['data'] as Map)['presentation'] as String;
+    }
+    return 'card';
+  }
+
+  Map<String, dynamic>? get viewConfig => data['viewConfig'] is Map
+      ? Map<String, dynamic>.from(data['viewConfig'] as Map)
+      : null;
   bool get hasEndpoints =>
       isConnectorElement(this) &&
       [
@@ -75,6 +88,53 @@ class CanvasElement {
   bool get hidden => data['hidden'] == true;
   int get color => data['color'] is int ? data['color'] as int : 0xff8b7cf6;
   double get strokeWidth => finiteNumber(data['strokeWidth'], 3).clamp(.1, 100);
+  double? get fontSize =>
+      data['fontSize'] is num ? (data['fontSize'] as num).toDouble() : null;
+
+  /// Resolves effective font size for a section header, respecting explicit
+  /// `fontSize`, `headerSize` preset, Markdown heading prefixes, or element height.
+  double get sectionFontSize {
+    if (fontSize != null) return fontSize!;
+    final hs = data['headerSize'];
+    if (hs == 'huge') return 42.0;
+    if (hs == 'xlarge') return 32.0;
+    if (hs == 'large') return 24.0;
+    if (hs == 'medium') return 18.0;
+    if (hs == 'small') return 13.0;
+
+    final trimmed = text.trim();
+    if (trimmed.startsWith('# ')) return 24.0;
+    if (trimmed.startsWith('## ')) return 18.0;
+    if (trimmed.startsWith('### ')) return 13.0;
+
+    if (height > 44) {
+      return (height * (13.0 / 40.0)).clamp(11.0, 72.0);
+    }
+    return 13.0;
+  }
+
+  /// Resolves effective stroke width for a section header line.
+  double get sectionStrokeWidth {
+    if (data['strokeWidth'] is num) {
+      return (data['strokeWidth'] as num).toDouble();
+    }
+    if (data['lineThickness'] is num) {
+      return (data['lineThickness'] as num).toDouble();
+    }
+    final hs = data['headerSize'];
+    if (hs == 'huge') return 6.0;
+    if (hs == 'xlarge') return 4.5;
+    if (hs == 'large') return 3.5;
+    if (hs == 'medium') return 2.5;
+    if (hs == 'small') return 1.5;
+
+    final trimmed = text.trim();
+    if (trimmed.startsWith('# ')) return 3.5;
+    if (trimmed.startsWith('## ')) return 2.5;
+    if (sectionFontSize <= 13.0) return 1.5;
+    return (sectionFontSize * 0.12).clamp(1.5, 8.0);
+  }
+
   bool get renderable =>
       id.isNotEmpty &&
       canvasElementTypes.contains(type) &&
@@ -190,6 +250,7 @@ class CanvasScene {
         }
       }
       for (final element in _elements.values) {
+        _trackConnector(element);
         if (element.renderable && !element.hidden) {
           index.put(
             element.id,
@@ -203,6 +264,11 @@ class CanvasScene {
   final Map<String, dynamic> _root;
   final Map<String, CanvasElement> _elements = {};
   final Map<String, int> _order = {};
+  // Reverse references include hidden connectors and missing endpoints, so
+  // showing/restoring/replacing an endpoint follows the same update path.
+  final Map<String, Set<String>> _attachedConnectors = {};
+  int _boundsRevision = -1;
+  CanvasBounds? _cachedContentBounds;
   int _nextOrder = 0;
   int revision = 0;
   final List<dynamic> _opaque = [];
@@ -213,6 +279,31 @@ class CanvasScene {
   Iterable<CanvasElement> get elements => _elements.values;
   CanvasElement? operator [](String id) => _elements[id];
   int get length => _elements.length;
+
+  void _trackConnector(CanvasElement element, {bool remove = false}) {
+    if (!isConnectorElement(element)) return;
+    for (final endpoint in {
+      element.startId,
+      element.endId,
+    }.whereType<String>()) {
+      if (remove) {
+        final ids = _attachedConnectors[endpoint];
+        ids?.remove(element.id);
+        if (ids?.isEmpty ?? false) _attachedConnectors.remove(endpoint);
+      } else {
+        (_attachedConnectors[endpoint] ??= {}).add(element.id);
+      }
+    }
+  }
+
+  void _refreshAttachedConnectors(String id) {
+    for (final connectorId in _attachedConnectors[id] ?? const <String>{}) {
+      final conn = _elements[connectorId]!;
+      if (conn.renderable && !conn.hidden) {
+        index.put(conn.id, _effectiveBounds(conn).inflate(conn.strokeWidth));
+      }
+    }
+  }
 
   CanvasBounds _effectiveBounds(CanvasElement element) {
     if ((element.type == 'connector' ||
@@ -273,7 +364,10 @@ class CanvasScene {
     if (readOnly || !element.renderable) return;
     revision++;
     _order.putIfAbsent(element.id, () => _nextOrder++);
+    final previous = _elements[element.id];
+    if (previous != null) _trackConnector(previous, remove: true);
     _elements[element.id] = element;
+    _trackConnector(element);
     index.remove(element.id);
     if (!element.hidden) {
       index.put(
@@ -281,44 +375,28 @@ class CanvasScene {
         _effectiveBounds(element).inflate(element.strokeWidth),
       );
     }
-    // Update spatial index for any connectors attached to this element
-    for (final conn in _elements.values) {
-      if ((conn.type == 'connector' ||
-              conn.type == 'arrow' ||
-              conn.type == 'line') &&
-          (conn.startId == element.id || conn.endId == element.id) &&
-          !conn.hidden) {
-        index.remove(conn.id);
-        index.put(conn.id, _effectiveBounds(conn).inflate(conn.strokeWidth));
-      }
-    }
+    _refreshAttachedConnectors(element.id);
   }
 
   void remove(String id) {
     if (readOnly) return;
     revision++;
-    _elements.remove(id);
+    final previous = _elements.remove(id);
+    if (previous != null) _trackConnector(previous, remove: true);
     _order.remove(id);
     index.remove(id);
-    for (final conn in _elements.values) {
-      if ((conn.type == 'connector' ||
-              conn.type == 'arrow' ||
-              conn.type == 'line') &&
-          (conn.startId == id || conn.endId == id) &&
-          !conn.hidden) {
-        index.remove(conn.id);
-        index.put(conn.id, _effectiveBounds(conn).inflate(conn.strokeWidth));
-      }
-    }
+    _refreshAttachedConnectors(id);
   }
 
   CanvasBounds? get contentBounds {
+    if (_boundsRevision == revision) return _cachedContentBounds;
     CanvasBounds? result;
     for (final element in elements.where((e) => e.renderable && !e.hidden)) {
       final eb = _effectiveBounds(element);
       result = result?.union(eb) ?? eb;
     }
-    return result;
+    _boundsRevision = revision;
+    return _cachedContentBounds = result;
   }
 
   int? orderOf(String id) => _order[id];

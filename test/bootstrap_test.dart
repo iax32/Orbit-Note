@@ -27,7 +27,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Room for your next idea.'), findsOneWidget);
+    expect(find.byTooltip('Next day'), findsOneWidget);
     await tester.tap(find.text('New note'));
     await tester.pumpAndSettle();
     expect(repository.objects.single.typeId, 'orbit.note');
@@ -37,7 +37,7 @@ void main() {
     );
     final c = container.read(workspaceProvider.notifier);
     c.edit(repository.objects.single.id, body: 'A real local note');
-    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pump(Duration(milliseconds: c.session.autoSaveInterval + 50));
     await tester.pumpAndSettle();
     expect(repository.objects.single.body, 'A real local note');
     c.navigate(OrbitDestination.tasks);

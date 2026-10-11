@@ -4,14 +4,21 @@ import '../../app/workspace_controller.dart';
 import '../../domain/universal_object.dart';
 import 'analysis_dashboard_view.dart';
 import 'calendar_view.dart';
+import 'collection_kanban_view.dart';
+import 'collection_table_view.dart';
 import 'course_dashboard_view.dart';
 import 'exercise_table_view.dart';
 import 'function_table_view.dart';
 import 'game_dashboard_view.dart';
+import 'heatmap_view.dart';
 import 'ioc_table_view.dart';
 import 'milestone_view.dart';
+import 'project_dashboard_view.dart';
 import 'timeline_view.dart';
 import 'workspace_views.dart';
+import 'smart_view_surface.dart';
+import 'research_workspace_view.dart';
+import 'gantt_view.dart';
 
 class SavedViewHost extends StatefulWidget {
   const SavedViewHost({
@@ -66,6 +73,15 @@ class _SavedViewHostState extends State<SavedViewHost> {
     final colors = OrbitColors.of(context);
     final c = widget.controller;
     final v = c.find(widget.viewObject.id) ?? widget.viewObject;
+    if (v.properties['viewType'] == 'research') {
+      return ResearchWorkspaceView(controller: c, view: v);
+    }
+    if (v.properties['smartQuery'] != null) {
+      return SmartViewSurface(controller: c, view: v);
+    }
+    if (v.properties['viewType'] == 'gantt') {
+      return GanttView(controller: c, view: v);
+    }
     final viewType = (v.properties['viewType'] as String?) ?? 'tasks';
     final folder = v.properties['folder'] as String?;
     final scope = v.properties['scope'] as String?;
@@ -166,11 +182,14 @@ class _SavedViewHostState extends State<SavedViewHost> {
                 children: [
                   Icon(
                     switch (viewType) {
+                      'table' => Icons.table_chart_outlined,
                       'board' => Icons.view_kanban_outlined,
                       'calendar' => Icons.calendar_month_outlined,
                       'timeline' => Icons.timeline_outlined,
+                      'heatmap' => Icons.auto_awesome_outlined,
                       'exercises' => Icons.table_chart_outlined,
                       'overview' => Icons.dashboard_outlined,
+                      'project' => Icons.folder_special_outlined,
                       'game_dashboard' => Icons.sports_esports_outlined,
                       'milestones' => Icons.flag_outlined,
                       're_dashboard' => Icons.biotech_outlined,
@@ -261,7 +280,10 @@ class _SavedViewHostState extends State<SavedViewHost> {
                 ],
               ),
               const SizedBox(height: 10),
-              Row(
+              Wrap(
+                spacing: 4,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   // View Type Switcher Tabs
                   _ViewTab(
@@ -281,6 +303,14 @@ class _SavedViewHostState extends State<SavedViewHost> {
                   ),
                   const SizedBox(width: 4),
                   _ViewTab(
+                    icon: Icons.table_chart_outlined,
+                    label: 'Table',
+                    selected: viewType == 'table',
+                    onTap: () => _updateProperty('viewType', 'table'),
+                    colors: colors,
+                  ),
+                  const SizedBox(width: 4),
+                  _ViewTab(
                     icon: Icons.calendar_month_outlined,
                     label: 'Calendar',
                     selected: viewType == 'calendar',
@@ -293,6 +323,14 @@ class _SavedViewHostState extends State<SavedViewHost> {
                     label: 'Timeline',
                     selected: viewType == 'timeline',
                     onTap: () => _updateProperty('viewType', 'timeline'),
+                    colors: colors,
+                  ),
+                  const SizedBox(width: 4),
+                  _ViewTab(
+                    icon: Icons.auto_awesome_outlined,
+                    label: 'Heatmap',
+                    selected: viewType == 'heatmap',
+                    onTap: () => _updateProperty('viewType', 'heatmap'),
                     colors: colors,
                   ),
                   if (showCourseTabs) ...[
@@ -358,7 +396,6 @@ class _SavedViewHostState extends State<SavedViewHost> {
                       colors: colors,
                     ),
                   ],
-                  const Spacer(),
                   const SizedBox(width: 8),
                   // Preset dropdown if in Board mode
                   if (viewType == 'board') ...[
@@ -403,12 +440,25 @@ class _SavedViewHostState extends State<SavedViewHost> {
                           value: 'functions',
                           child: Text('Function Status'),
                         ),
+                        DropdownMenuItem(
+                          value: 'research',
+                          child: Text('Research'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'content',
+                          child: Text('Content Pipeline'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'personal',
+                          child: Text('Personal Planning'),
+                        ),
                       ],
                     ),
                     const SizedBox(width: 16),
                   ],
                   // Course / Project progress bar
-                  if (totalTasks > 0) ...[
+                  // The project dashboard already reports its own membership.
+                  if (totalTasks > 0 && viewType != 'project') ...[
                     SizedBox(
                       width: 100,
                       child: ClipRRect(
@@ -439,13 +489,21 @@ class _SavedViewHostState extends State<SavedViewHost> {
         // Embedded View Body
         Expanded(
           child: switch (viewType) {
-            'board' => TasksView(
-              key: ValueKey('board-${v.id}-$preset'),
+            'table' => CollectionTableView(
+              key: ValueKey('table-${v.id}'),
               controller: c,
               viewObject: v,
               folderFilter: folder,
               scope: scope,
-              initialTab: 'board',
+            ),
+            'board' => CollectionKanbanView(
+              key: ValueKey(
+                'board-${v.id}-${v.properties['groupBy'] ?? 'status'}-$preset',
+              ),
+              controller: c,
+              viewObject: v,
+              folderFilter: folder,
+              scope: scope,
             ),
             'calendar' => CalendarView(
               key: ValueKey('calendar-${v.id}'),
@@ -456,6 +514,13 @@ class _SavedViewHostState extends State<SavedViewHost> {
             ),
             'timeline' => TimelineView(
               key: ValueKey('timeline-${v.id}'),
+              controller: c,
+              viewObject: v,
+              folderFilter: folder,
+              scope: scope,
+            ),
+            'heatmap' => HeatmapView(
+              key: ValueKey('heatmap-${v.id}'),
               controller: c,
               viewObject: v,
               folderFilter: folder,
@@ -513,6 +578,10 @@ class _SavedViewHostState extends State<SavedViewHost> {
               viewObject: v,
               folderFilter: folder,
               scope: scope,
+            ),
+            'project' => ProjectDashboardView(
+              projectName: (v.properties['project'] ?? v.title).toString(),
+              controller: c,
             ),
             _ => TasksView(
               key: ValueKey('tasks-${v.id}'),

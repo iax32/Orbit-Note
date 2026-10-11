@@ -31,22 +31,23 @@ class _HoverChromeState extends State<HoverChrome> {
       alwaysIncludeSemantics: true,
       child: IgnorePointer(ignoring: !visible, child: widget.child),
     );
+    final chrome = Focus(
+      canRequestFocus: false,
+      onFocusChange: (value) => setState(() => _focused = value),
+      child: control,
+    );
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: Focus(
-        canRequestFocus: false,
-        onFocusChange: (value) => setState(() => _focused = value),
-        child: widget.content == null
-            ? control
-            : Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  control,
-                  Expanded(child: widget.content!),
-                ],
-              ),
-      ),
+      child: widget.content == null
+          ? chrome
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: widget.content!),
+                SizedBox(width: 70, child: chrome),
+              ],
+            ),
     );
   }
 }
