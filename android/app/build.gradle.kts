@@ -26,6 +26,7 @@ val releaseKeyPassword = signingValue("ORBIT_ANDROID_KEY_PASSWORD")
     ?: signingProperties.getProperty("keyPassword")?.trim()?.takeIf { it.isNotEmpty() }
 val requireProductionSigning =
     System.getenv("ORBIT_REQUIRE_PRODUCTION_SIGNING")?.toBoolean() == true
+val isPreviewBuild = System.getenv("ORBIT_ANDROID_PREVIEW")?.toBoolean() == true
 
 val hasProductionSigning = listOf(
     releaseStoreFile,
@@ -52,7 +53,8 @@ android {
     }
 
     defaultConfig {
-        applicationId = "org.orbitnote.app"
+        applicationId = if (isPreviewBuild) "org.orbitnote.app.preview" else "org.orbitnote.app"
+        manifestPlaceholders["orbitAppLabel"] = if (isPreviewBuild) "Orbit Note Preview" else "Orbit Note"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

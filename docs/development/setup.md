@@ -86,7 +86,11 @@ secrets `ORBIT_ANDROID_PREVIEW_KEYSTORE_BASE64` and
 `ORBIT_ANDROID_PREVIEW_STORE_PASSWORD`; no private signing material enters Git or
 artifacts. It verifies the APK signature and records package metadata/checksums.
 The owner authorized a new key after the reset; it cannot update earlier APKs
-signed with the lost key. Android device acceptance remains unperformed.
+signed with the lost key. The preview workflow sets `ORBIT_ANDROID_PREVIEW=true`,
+using `org.orbitnote.app.preview` and the label Orbit Note Preview so it installs
+beside the older app without replacing its private data. Default builds retain
+`org.orbitnote.app` and the Orbit Note label. Android device acceptance remains
+unperformed.
 
 ## Bootstrap evidence
 

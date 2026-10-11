@@ -7,6 +7,9 @@ it cannot update the older differently signed Android installation. Build Androi
 on the repository's GitHub Actions runner with a dedicated private preview key,
 not an ephemeral debug signing fallback. Retain the key outside source and release
 assets; GitHub Actions stores it only as encrypted repository secrets.
+The preview uses `org.orbitnote.app.preview` and Orbit Note Preview, allowing
+side-by-side installation with the older differently signed app. Default builds
+retain the existing application identity and label.
 
 Scope: reconcile older origin/main ancestry while preserving current tested
 source, inspect source for private configuration, commit/push, build current

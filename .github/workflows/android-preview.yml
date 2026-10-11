@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ORBIT_GOOGLE_BUILD_MODE: local-only
+      ORBIT_ANDROID_PREVIEW: 'true'
       ORBIT_REQUIRE_PRODUCTION_SIGNING: 'true'
       ORBIT_ANDROID_STORE_FILE: ${{ github.workspace }}/.local/android-preview.jks
       ORBIT_ANDROID_STORE_PASSWORD: ${{ secrets.ORBIT_ANDROID_PREVIEW_STORE_PASSWORD }}
