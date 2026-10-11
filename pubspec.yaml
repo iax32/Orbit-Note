@@ -32,6 +32,7 @@ dependencies:
   sqlite3: ^3.5.2
   url_launcher: ^6.3.2
   uuid: ^4.6.0
+  watcher: 1.2.1
   web: ^1.1.1
   yaml: ^3.1.4
   yaml_edit: ^2.2.4

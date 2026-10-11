@@ -18,6 +18,14 @@ artifacts/checksums with accurate limitations. Windows portable release is alrea
 verified; Google OAuth registration and automatic sync remain unavailable. No
 desktop-control testing or public collaboration hosting. Work in progress.
 
+Publication gate found a real Linux watcher limitation in the full CI run:
+native recursive directory watching missed new nested attachments. Linux now uses
+the Dart team's recursive watcher, waits for initial registration, and closes its
+subscription on Vault close. Windows/Android/macOS retain their existing native
+adapter. Regression coverage includes newly created nested attachment files and
+nested note creation, modification, rename and deletion. Rebuild both artifacts
+from the corrected source; do not publish the earlier draft packages.
+
 ---
 
 # Completed task — Windows release and Google connection readiness, 2026-10-11

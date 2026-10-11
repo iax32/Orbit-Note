@@ -188,6 +188,37 @@ void main() {
   );
 
   test(
+    'nested external files notify after creation, rename and deletion',
+    () async {
+      final changes = <String>[];
+      final subscription = repository.externalFileChanges.listen(changes.add);
+      addTearDown(subscription.cancel);
+      final file = File(p.join(folder.path, 'Notes', 'nested', 'external.md'));
+      await file.parent.create(recursive: true);
+      await file.writeAsString('Original', flush: true);
+      Future<void> waitFor(String path) async {
+        final deadline = DateTime.now().add(const Duration(seconds: 10));
+        while (!changes.contains(path) && DateTime.now().isBefore(deadline)) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+        expect(changes, contains(path));
+      }
+
+      await waitFor('Notes/nested/external.md');
+      changes.clear();
+      await file.writeAsString('External edit', flush: true);
+      await waitFor('Notes/nested/external.md');
+      changes.clear();
+      final renamed = await file.rename(p.join(file.parent.path, 'renamed.md'));
+      await waitFor('Notes/nested/renamed.md');
+      changes.clear();
+      await renamed.delete();
+      await waitFor('Notes/nested/renamed.md');
+      expect(changes.any((path) => path.startsWith('Attachments/')), isFalse);
+    },
+  );
+
+  test(
     'forgetting a retained source removes history and only its immutable bytes',
     () async {
       final first = await repository.importAttachment(

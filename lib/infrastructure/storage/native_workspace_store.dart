@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -6,6 +7,7 @@ import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
+import 'package:watcher/watcher.dart';
 
 import '../../domain/workspace_failure.dart';
 import 'path_safety.dart';
@@ -165,6 +167,39 @@ class NativeWorkspaceStore
   }
 
   late Directory _root;
+  StreamController<WatchEvent>? _linuxEvents;
+  StreamSubscription<WatchEvent>? _linuxWatchSubscription;
+
+  String _relativeWatchPath(String path) =>
+      p.relative(path, from: _root.path).replaceAll('\\', '/');
+
+  bool _isObjectWatchPath(String path) =>
+      !path.startsWith('.orbit/') &&
+      !path.contains('.orbit-') &&
+      !path.startsWith('Attachments/');
+
+  Future<void> _startLinuxWatcher() async {
+    if (!Platform.isLinux) return;
+    // Directory.watch(recursive: true) does not recurse on Linux. The watcher
+    // installs watches for existing/new subdirectories and reconciles races
+    // between creating a directory and writing its first file.
+    final watcher = DirectoryWatcher(_root.path);
+    final events = StreamController<WatchEvent>.broadcast();
+    final failure = Completer<void>();
+    _linuxEvents = events;
+    _linuxWatchSubscription = watcher.events.listen(
+      events.add,
+      onError: (Object error, StackTrace stack) {
+        if (!watcher.isReady && !failure.isCompleted) {
+          failure.completeError(error, stack);
+        } else {
+          events.addError(error, stack);
+        }
+      },
+    );
+    await Future.any([watcher.ready, failure.future]);
+  }
+
   NativeVaultLock? _ownership;
   void _requireOwnership() {
     if (_ownership == null) {
@@ -179,38 +214,51 @@ class NativeWorkspaceStore
   @override
   bool get isBrowser => false;
   @override
-  Stream<String> get changes => _root.watch(recursive: true).expand((event) {
-    String relative(String path) =>
-        p.relative(path, from: _root.path).replaceAll('\\', '/');
-    final paths = [
-      relative(event.path),
-      if (event is FileSystemMoveEvent && event.destination != null)
-        relative(event.destination!),
-    ];
-    return paths
-        .where(
-          (path) =>
-              !path.startsWith('.orbit/') &&
-              !path.contains('.orbit-') &&
-              !path.startsWith('Attachments/'),
-        )
-        .map((path) => event.isDirectory ? '*' : path);
-  });
+  Stream<String> get changes {
+    if (Platform.isLinux) {
+      return _linuxEvents!.stream
+          .map((event) => _relativeWatchPath(event.path))
+          .where(_isObjectWatchPath);
+    }
+    return _root.watch(recursive: true).expand((event) {
+      String relative(String path) =>
+          p.relative(path, from: _root.path).replaceAll('\\', '/');
+      final paths = [
+        relative(event.path),
+        if (event is FileSystemMoveEvent && event.destination != null)
+          relative(event.destination!),
+      ];
+      return paths
+          .where(
+            (path) =>
+                !path.startsWith('.orbit/') &&
+                !path.contains('.orbit-') &&
+                !path.startsWith('Attachments/'),
+          )
+          .map((path) => event.isDirectory ? '*' : path);
+    });
+  }
 
   @override
-  Stream<String> get attachmentChanges =>
-      _root.watch(recursive: true).expand((event) {
-        String relative(String path) =>
-            p.relative(path, from: _root.path).replaceAll('\\', '/');
-        final paths = [
-          relative(event.path),
-          if (event is FileSystemMoveEvent && event.destination != null)
-            relative(event.destination!),
-        ];
-        return paths
-            .where((path) => path.startsWith('Attachments/'))
-            .where((path) => !event.isDirectory);
-      });
+  Stream<String> get attachmentChanges {
+    if (Platform.isLinux) {
+      return _linuxEvents!.stream
+          .map((event) => _relativeWatchPath(event.path))
+          .where((path) => path.startsWith('Attachments/'));
+    }
+    return _root.watch(recursive: true).expand((event) {
+      String relative(String path) =>
+          p.relative(path, from: _root.path).replaceAll('\\', '/');
+      final paths = [
+        relative(event.path),
+        if (event is FileSystemMoveEvent && event.destination != null)
+          relative(event.destination!),
+      ];
+      return paths
+          .where((path) => path.startsWith('Attachments/'))
+          .where((path) => !event.isDirectory);
+    });
+  }
 
   @override
   Future<void> initialize({String? path}) async {
@@ -296,6 +344,7 @@ class NativeWorkspaceStore
       }
     }
     if (supportsRecovery) await _pruneAttachmentStages(this);
+    await _startLinuxWatcher();
   }
 
   Future<File> _file(String relativePath) async {
@@ -724,6 +773,12 @@ class NativeWorkspaceStore
 
   @override
   Future<void> close() async {
+    final subscription = _linuxWatchSubscription;
+    final events = _linuxEvents;
+    _linuxWatchSubscription = null;
+    _linuxEvents = null;
+    await subscription?.cancel();
+    await events?.close();
     final ownership = _ownership;
     _ownership = null;
     await ownership?.close();
