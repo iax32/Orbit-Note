@@ -1,4 +1,4 @@
-# Current task — Publish source and Windows/Android artifacts, 2026-10-11
+# Completed task — Publish source and Windows/Android artifacts, 2026-10-11
 
 User explicitly authorized pushing the current source to iax32/Orbit-Note and
 publishing Windows and APK artifacts. The original Android signing key and SDK
@@ -16,15 +16,48 @@ source, inspect source for private configuration, commit/push, build current
 release-mode Android preview, verify signature/package metadata, and publish
 artifacts/checksums with accurate limitations. Windows portable release is already
 verified; Google OAuth registration and automatic sync remain unavailable. No
-desktop-control testing or public collaboration hosting. Work in progress.
+desktop-control testing or public collaboration hosting.
 
 Publication gate found a real Linux watcher limitation in the full CI run:
 native recursive directory watching missed new nested attachments. Linux now uses
 the Dart team's recursive watcher, waits for initial registration, and closes its
 subscription on Vault close. Windows/Android/macOS retain their existing native
 adapter. Regression coverage includes newly created nested attachment files and
-nested note creation, modification, rename and deletion. Rebuild both artifacts
-from the corrected source; do not publish the earlier draft packages.
+nested note creation, modification, rename and deletion. Both artifacts were
+rebuilt from the corrected source; the earlier draft packages were replaced.
+
+Source is pushed to origin/main, preserving the previously published ancestry.
+Release/build commit: cc4b72cf6fe4ea69c45b7c9ccb55fce44d099b3c.
+[Published 1.0.0 preview](https://github.com/iax32/Orbit-Note/releases/tag/v1.0.0%2B1)
+contains Windows portable ZIP, signed Android preview APK, package/signature
+metadata, source provenance and SHA-256 checksums. GitHub asset digests match the
+locally verified files. README links point to this preview rather than older
+stable binaries. Private signing material and account configuration are excluded
+from Git and downloadable assets. The tag-triggered legacy release job was
+cancelled to prevent it replacing these verified packages or promoting the preview.
+
+Validation: local analysis of lib/test/tool is clean; format and strict checks
+pass (540 files, zero final changes). All 1,872 local tests pass
+(.local/publish-fix-full.log), including 21 storage checks. The Linux CI quality
+gate passes format/analysis and 1,870 tests with two platform-specific skips
+(.local/publish-fix-ci-quality-api.log;
+[CI](https://github.com/iax32/Orbit-Note/actions/runs/38172094069)).
+The previously failing external attachment check and new nested file lifecycle
+check pass on Linux. Windows release compiles in 86.7 seconds
+(.local/publish-fix-windows.log); all 57 packaged payload files match ZIP entries
+(.local/publish-fix-package.log). The local executable remains directly runnable
+from build/windows/x64/runner/Release/orbit_note.exe.
+[Android release build](https://github.com/iax32/Orbit-Note/actions/runs/38172094141)
+passes APK signature verification; downloaded checksum, retained signing
+certificate, preview identity, label and launcher match. Android device acceptance,
+Windows production signing and live Google authentication remain unverified or
+unconfigured; no claim of full roadmap completion. The additional Windows debug,
+Android debug and Web preview compile jobs all pass; the full CI run is green.
+Both public package download links return HTTP 200. Final source/documentation
+push preserves the release tag at the exact build commit above.
+
+Suggested next task: Android device acceptance of opening/importing a Vault,
+Markdown editing, PDF reading, Canvas interaction and backup/restore.
 
 ---
 

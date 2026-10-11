@@ -17,21 +17,31 @@ An open-source, local-first personal knowledge operating system combining linked
 
 ## 📥 Downloads
 
-Get the latest stable build for your platform from the [**Releases**](https://github.com/iax32/Orbit-Note/releases/latest) page:
+The current **1.0.0 preview** is available on the [release page](https://github.com/iax32/Orbit-Note/releases/tag/v1.0.0%2B1).
+Older stable releases remain available in the [release archive](https://github.com/iax32/Orbit-Note/releases).
 
 | Platform | Download Link | Notes |
 | :--- | :--- | :--- |
-| **🪟 Windows (x64)** | [**Download `OrbitNote-Windows-x64.zip`**](https://github.com/iax32/Orbit-Note/releases/latest) | Standalone portable folder. No installer needed. |
+| **🪟 Windows (x64)** | [**Download `OrbitNote-Windows-x64.zip`**](https://github.com/iax32/Orbit-Note/releases/download/v1.0.0%2B1/OrbitNote-Windows-x64.zip) | Standalone portable folder. Unsigned; no installer needed. |
+| **📱 Android preview** | [**Download `OrbitNote-Android-Preview.apk`**](https://github.com/iax32/Orbit-Note/releases/download/v1.0.0%2B1/OrbitNote-Android-Preview.apk) | Release-mode APK, dedicated preview signing key; installs alongside older Orbit Note installations. |
+
+Verify downloads with the release's `SHA256SUMS.txt`. These packages support offline
+core features; Google sign-in is unconfigured until distributor OAuth registration
+is completed. Android device acceptance is still pending.
 
 ### 🚀 Running on Windows
-1. Download [**`OrbitNote-Windows-x64.zip`**](https://github.com/iax32/Orbit-Note/releases/latest).
+1. Download [**`OrbitNote-Windows-x64.zip`**](https://github.com/iax32/Orbit-Note/releases/download/v1.0.0%2B1/OrbitNote-Windows-x64.zip).
 2. Extract the ZIP archive anywhere on your PC (e.g. `Desktop` or `Program Files`).
 3. Double-click **`orbit_note.exe`** to launch!
 > *Note: Keep all extracted files and the `data/` folder together in the same directory.*
 
 ### 📱 Android and 🌐 Web status
 
-Android and Web are validation builds, outside the Windows 1.0 release cut.
+Android preview uses `org.orbitnote.app.preview` and the label **Orbit Note Preview**.
+Its new signing key cannot update older APKs; the separate identity preserves the
+older installation. Transfer Vaults explicitly through portable backup/import.
+
+Android and Web remain validation builds, outside the Windows 1.0 release cut.
 Android device acceptance, browser persistence, and folder import still need a
 production pass. Build them locally with `flutter build apk --debug` or
 `flutter build web --release`.
