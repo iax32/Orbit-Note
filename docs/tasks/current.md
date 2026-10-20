@@ -1,11 +1,17 @@
-# In progress — GitHub source and desktop/mobile preview publication, 2026-10-20
+# Published — GitHub source and Windows/Android preview, 2026-10-20
 
-User authorized pushing the accumulated source and publishing current Windows
-and Android releases to `iax32/Orbit-Note`. Scope: inspect publishable files,
-retain private configuration/signing outside Git, increment to 1.0.1+2, build a
-Windows setup EXE and release-mode Android preview APK with the existing preview
-key, verify checksums/identity, and publish a dated preview linked to its commit.
-Keep the local runnable Windows folder. No personal Vaults or app auto-launch.
+Source pushed at `b669857503f6e89e80feecdf18f0142bcd680d7a`; version 1.0.1+2.
+[Published preview](https://github.com/iax32/Orbit-Note/releases/tag/preview-2026-10-20)
+contains a Windows setup EXE and signed Android preview APK, with checksums,
+runtime manifest and signature/package evidence. Existing Android preview key
+and identity retained; version code 2 updates the previous preview. Remote asset
+digests/sizes and source tag verified. Local runnable Windows folder also rebuilt.
+Source audit: 1,027 files, no private material found; strict formatting/analysis
+clean. Prior app validation: 2,628 passed, 2 existing skips. Additional repository
+CI remained running at publication; it is not claimed as passing. Windows remains
+unsigned; Android Google sign-in remains local-only and device acceptance pending.
+No personal Vaults or app auto-launch. Next suggested task: physical Android update/
+import and cross-device acceptance with the published preview; stop before it.
 See [publication evidence](github-publication-2026-10-20.md).
 
 ## Previous task
