@@ -14,11 +14,16 @@ Future<void> showStudyWorkspace(
   BuildContext context,
   WorkspaceController c, {
   String? course,
+  String? courseId,
   DateTime? exam,
 }) => showDialog<void>(
   context: context,
-  builder: (_) =>
-      StudyWorkspace(controller: c, initialCourse: course, initialExam: exam),
+  builder: (_) => StudyWorkspace(
+    controller: c,
+    initialCourse: course,
+    initialCourseId: courseId,
+    initialExam: exam,
+  ),
 );
 
 Future<void> showStudyCardEditor(
@@ -30,6 +35,7 @@ Future<void> showStudyCardEditor(
   int? page,
   String? checksum,
   String? course,
+  String? courseId,
 }) async {
   if (passage.length > 100000) {
     await showDialog<void>(
@@ -103,6 +109,7 @@ Future<void> showStudyCardEditor(
               const SizedBox(height: 12),
               TextField(
                 controller: courseField,
+                readOnly: courseId != null,
                 enabled: !busy && !locked,
                 maxLength: 500,
                 decoration: const InputDecoration(
@@ -128,6 +135,7 @@ Future<void> showStudyCardEditor(
                                   question: question.text,
                                   answer: answer.text,
                                   course: courseField.text,
+                                  courseId: courseId,
                                   source: source,
                                   passage: passage,
                                   page: page,
@@ -168,10 +176,12 @@ class StudyWorkspace extends ConsumerStatefulWidget {
     super.key,
     required this.controller,
     this.initialCourse,
+    this.initialCourseId,
     this.initialExam,
   });
   final WorkspaceController controller;
   final String? initialCourse;
+  final String? initialCourseId;
   final DateTime? initialExam;
   @override
   ConsumerState<StudyWorkspace> createState() => _StudyWorkspaceState();
@@ -222,7 +232,9 @@ class _StudyWorkspaceState extends ConsumerState<StudyWorkspace> {
   }
 
   bool _matches(UniversalObject o) =>
-      (_course == null || o.properties['course'] == _course) &&
+      (widget.initialCourseId != null
+          ? c.matchesStudyCourse(o, widget.initialCourseId!)
+          : (_course == null || o.properties['course'] == _course)) &&
       (_filter.isEmpty ||
           '${o.title} ${o.body}'.toLowerCase().contains(_filter.toLowerCase()));
 
@@ -298,7 +310,7 @@ class _StudyWorkspaceState extends ConsumerState<StudyWorkspace> {
                         child: Text(course, overflow: TextOverflow.ellipsis),
                       ),
                   ],
-                  onChanged: _busy
+                  onChanged: _busy || widget.initialCourseId != null
                       ? null
                       : (v) => setState(() {
                           _course = v == '' ? null : v;
@@ -348,9 +360,9 @@ class _StudyWorkspaceState extends ConsumerState<StudyWorkspace> {
           const SizedBox(height: 12),
           if (_course != null)
             StudyResumePanel(
-              key: ValueKey(_course),
+              key: ValueKey(widget.initialCourseId ?? _course),
               controller: c,
-              course: _course!,
+              course: widget.initialCourseId ?? _course!,
             ),
           Text(
             '${due.length} due now · ${upcoming.length} due ${_exam == null ? 'within 7 days' : 'before your exam'} · ${cards.where((o) => StudyCard(o).suspended).length} paused',
@@ -375,7 +387,12 @@ class _StudyWorkspaceState extends ConsumerState<StudyWorkspace> {
                 onPressed: readonly
                     ? null
                     : () async {
-                        await showStudyCardEditor(context, c, course: _course);
+                        await showStudyCardEditor(
+                          context,
+                          c,
+                          course: _course,
+                          courseId: widget.initialCourseId,
+                        );
                         if (mounted) setState(() {});
                       },
                 icon: const Icon(Icons.add),
@@ -750,6 +767,7 @@ class _StudyWorkspaceState extends ConsumerState<StudyWorkspace> {
                                   ? pdf['page'] as int
                                   : null,
                               course: _course,
+                              courseId: widget.initialCourseId,
                             );
                             if (mounted) setState(() {});
                           },

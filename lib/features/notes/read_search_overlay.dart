@@ -49,6 +49,24 @@ class ReadSearchGroup extends StatelessWidget {
   Widget build(BuildContext context) => child;
 }
 
+/// Foldable renderers must reveal their text before source search maps boxes.
+class ReadSearchActivity extends InheritedWidget {
+  const ReadSearchActivity({
+    super.key,
+    required this.active,
+    required super.child,
+  });
+  final bool active;
+  static bool of(BuildContext context) =>
+      context
+          .dependOnInheritedWidgetOfExactType<ReadSearchActivity>()
+          ?.active ??
+      false;
+  @override
+  bool updateShouldNotify(ReadSearchActivity oldWidget) =>
+      active != oldWidget.active;
+}
+
 /// Adds transient search decoration without replacing the Markdown renderer or
 /// altering its selectable text, links, custom widgets or stored source.
 class ReadSearchOverlay extends StatefulWidget {
@@ -240,7 +258,10 @@ class ReadSearchOverlayState extends State<ReadSearchOverlay> {
                 revision: _revision,
               )
             : null,
-        child: KeyedSubtree(key: _content, child: widget.child),
+        child: ReadSearchActivity(
+          active: request?.query.isNotEmpty == true,
+          child: KeyedSubtree(key: _content, child: widget.child),
+        ),
       ),
     );
   }

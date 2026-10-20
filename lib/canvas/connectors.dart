@@ -121,13 +121,22 @@ enum ConnectorMarker {
   none,
   arrow,
   dot,
-  diamond;
+  diamond,
+  hollowTriangle,
+  hollowDiamond,
+  filledDiamond;
 
   static ConnectorMarker parse(
     String? value, {
     ConnectorMarker defaultMarker = ConnectorMarker.none,
   }) {
     switch (value?.toLowerCase()) {
+      case 'hollowtriangle':
+        return ConnectorMarker.hollowTriangle;
+      case 'hollowdiamond':
+        return ConnectorMarker.hollowDiamond;
+      case 'filleddiamond':
+        return ConnectorMarker.filledDiamond;
       case 'arrow':
         return ConnectorMarker.arrow;
       case 'dot':
@@ -151,6 +160,12 @@ enum ConnectorMarker {
         return 'Dot';
       case ConnectorMarker.diamond:
         return 'Diamond';
+      case ConnectorMarker.hollowTriangle:
+        return 'Hollow triangle';
+      case ConnectorMarker.hollowDiamond:
+        return 'Hollow diamond';
+      case ConnectorMarker.filledDiamond:
+        return 'Filled diamond';
     }
   }
 }
@@ -197,6 +212,17 @@ class ConnectorEndpoints {
   final ConnectorAnchor resolvedStartAnchor;
   final ConnectorAnchor resolvedEndAnchor;
   final List<CanvasPoint> controlPoints;
+
+  CanvasPoint tangentTarget({required bool atStart}) {
+    final tip = atStart ? start : end;
+    final candidates = atStart
+        ? [...controlPoints, end]
+        : [...controlPoints.reversed, start];
+    return candidates.firstWhere(
+      (p) => (p - tip).length > .001,
+      orElse: () => tip + const CanvasPoint(1, 0),
+    );
+  }
 
   CanvasPoint get midpoint {
     if (controlPoints.isNotEmpty) {
@@ -261,18 +287,14 @@ ConnectorEndpoints resolveConnectorEndpoints(
   CanvasElement connector,
   CanvasScene scene,
 ) {
-  final startId = connector.data['startId'] as String?;
-  final endId = connector.data['endId'] as String?;
+  final startId = connector.startId;
+  final endId = connector.endId;
   final startElem = startId != null ? scene[startId] : null;
   final endElem = endId != null ? scene[endId] : null;
 
-  final startAnchorSetting = ConnectorAnchor.parse(
-    connector.data['startAnchor'] as String?,
-  );
-  final endAnchorSetting = ConnectorAnchor.parse(
-    connector.data['endAnchor'] as String?,
-  );
-  final routing = ConnectorRouting.parse(connector.data['routing'] as String?);
+  final startAnchorSetting = ConnectorAnchor.parse(connector.startAnchor);
+  final endAnchorSetting = ConnectorAnchor.parse(connector.endAnchor);
+  final routing = ConnectorRouting.parse(connector.routing);
 
   CanvasPoint startPoint;
   CanvasPoint endPoint;
@@ -338,6 +360,43 @@ ConnectorEndpoints resolveConnectorEndpoints(
     startPoint = storedConnectorStart(connector);
     endPoint = storedConnectorEnd(connector);
   }
+  CanvasPoint offsetAnchor(
+    CanvasElement node,
+    CanvasPoint point,
+    ConnectorAnchor anchor,
+    Object? raw,
+  ) {
+    if (raw is! num || !raw.isFinite) return point;
+    final fraction = raw.toDouble().clamp(0.0, 1.0);
+    return switch (anchor) {
+      ConnectorAnchor.left || ConnectorAnchor.right => CanvasPoint(
+        point.x,
+        node.y + node.height * fraction,
+      ),
+      ConnectorAnchor.top || ConnectorAnchor.bottom => CanvasPoint(
+        node.x + node.width * fraction,
+        point.y,
+      ),
+      ConnectorAnchor.auto => point,
+    };
+  }
+
+  if (startElem != null) {
+    startPoint = offsetAnchor(
+      startElem,
+      startPoint,
+      resolvedStartAnchor,
+      connector.data['startAnchorOffset'],
+    );
+  }
+  if (endElem != null) {
+    endPoint = offsetAnchor(
+      endElem,
+      endPoint,
+      resolvedEndAnchor,
+      connector.data['endAnchorOffset'],
+    );
+  }
   final controlPoints = <CanvasPoint>[];
   if (routing == ConnectorRouting.curved) {
     final dist = (endPoint - startPoint).length;
@@ -379,11 +438,15 @@ ConnectorEndpoints resolveConnectorEndpoints(
 
     controlPoints.addAll([cp1, cp2]);
   } else if (routing == ConnectorRouting.orthogonal) {
+    final lane = finiteNumber(
+      connector.data['routingOffset'],
+      0,
+    ).clamp(-10000.0, 10000.0);
     if (resolvedStartAnchor == ConnectorAnchor.left ||
         resolvedStartAnchor == ConnectorAnchor.right) {
       if (resolvedEndAnchor == ConnectorAnchor.left ||
           resolvedEndAnchor == ConnectorAnchor.right) {
-        final midX = (startPoint.x + endPoint.x) / 2;
+        final midX = (startPoint.x + endPoint.x) / 2 + lane;
         controlPoints.add(CanvasPoint(midX, startPoint.y));
         controlPoints.add(CanvasPoint(midX, endPoint.y));
       } else {
@@ -392,7 +455,7 @@ ConnectorEndpoints resolveConnectorEndpoints(
     } else {
       if (resolvedEndAnchor == ConnectorAnchor.top ||
           resolvedEndAnchor == ConnectorAnchor.bottom) {
-        final midY = (startPoint.y + endPoint.y) / 2;
+        final midY = (startPoint.y + endPoint.y) / 2 + lane;
         controlPoints.add(CanvasPoint(startPoint.x, midY));
         controlPoints.add(CanvasPoint(endPoint.x, midY));
       } else {
@@ -421,6 +484,10 @@ bool hitTestConnector(
   final endpoints = resolveConnectorEndpoints(connector, scene);
   final effTol = tolerance + connector.strokeWidth / 2;
 
+  for (final label in connectorEndLabels(connector, endpoints)) {
+    if (label.bounds.inflate(tolerance).contains(point)) return true;
+  }
+
   // 1. Test text label pill bounds if text is present
   if (connector.text.trim().isNotEmpty) {
     final mid = endpoints.midpoint;
@@ -438,7 +505,7 @@ bool hitTestConnector(
   }
 
   // 2. Test routing geometry
-  final routing = ConnectorRouting.parse(connector.data['routing'] as String?);
+  final routing = ConnectorRouting.parse(connector.routing);
   if (routing == ConnectorRouting.curved &&
       endpoints.controlPoints.length >= 2) {
     // Subdivide cubic bezier curve
@@ -481,4 +548,70 @@ bool hitTestConnector(
     // Straight segment
     return distanceToSegment(point, endpoints.start, endpoints.end) <= effTol;
   }
+}
+
+/// Shared geometry for Canvas paint and portable SVG. The tip touches the class;
+/// closed UML markers extend back along the edge, away from the class interior.
+List<CanvasPoint> umlMarkerPolygon(
+  ConnectorMarker marker,
+  CanvasPoint tip,
+  CanvasPoint toward,
+) {
+  if (!{
+    ConnectorMarker.hollowTriangle,
+    ConnectorMarker.hollowDiamond,
+    ConnectorMarker.filledDiamond,
+  }.contains(marker)) {
+    return const [];
+  }
+  final delta = toward - tip;
+  final length = math.max(.001, delta.length);
+  final axis = CanvasPoint(delta.x / length, delta.y / length);
+  final normal = CanvasPoint(-axis.y, axis.x);
+  if (marker == ConnectorMarker.hollowTriangle) {
+    return [tip, tip + axis * 20 + normal * 10, tip + axis * 20 - normal * 10];
+  }
+  return [
+    tip,
+    tip + axis * 12 + normal * 7,
+    tip + axis * 24,
+    tip + axis * 12 - normal * 7,
+  ];
+}
+
+List<({String text, CanvasBounds bounds})> connectorEndLabels(
+  CanvasElement e,
+  ConnectorEndpoints endpoints,
+) {
+  final result = <({String text, CanvasBounds bounds})>[];
+  for (final atStart in [true, false]) {
+    final prefix = atStart ? 'start' : 'end';
+    final lines = [e.data['${prefix}Multiplicity'], e.data['${prefix}Role']]
+        .whereType<String>()
+        .where((s) => s.trim().isNotEmpty)
+        .map((s) => s.trim())
+        .toList();
+    if (lines.isEmpty) continue;
+    final tip = atStart ? endpoints.start : endpoints.end;
+    final toward = endpoints.tangentTarget(atStart: atStart);
+    final delta = toward - tip;
+    final width =
+        (lines.fold<int>(0, (n, s) => math.max(n, s.length)) * 8.0 + 12).clamp(
+          36.0,
+          240.0,
+        );
+    final height = lines.length * 18.0 + 4;
+    final horizontal = delta.x.abs() >= delta.y.abs();
+    final x = horizontal
+        ? (delta.x >= 0 ? tip.x + 28 : tip.x - width - 28)
+        : tip.x + 12;
+    final y = horizontal
+        ? tip.y - height - 6
+        : (delta.y >= 0 ? tip.y + 28 : tip.y - height - 28);
+    result.add((
+      text: lines.join('\n'),
+      bounds: CanvasBounds(x, y, width, height),
+    ));
+  }
+  return result;
 }

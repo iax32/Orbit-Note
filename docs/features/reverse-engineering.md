@@ -1,5 +1,35 @@
 # Reverse engineering knowledge preset
 
+## Recorded function-map comparison — 2026-10-13
+
+Compare builds in research dashboards and Function tables opens a scoped comparison.
+Choose baseline and candidate versions of the same explicit binary ID. Pairing
+requires a unique exact module ID and stable symbol/name; duplicate symbols are
+Ambiguous, auto-address names and missing/invalid location context stay Unmatched.
+The viewer never pairs by a bare numeric address. At most 1,000 selected function
+records are compared. Missing build identity is visibly excluded; other binaries
+cannot supply a pair. Lists filter by classification and symbol/module, with
+30-row pagination. Original records open from the expanded baseline/candidate cards.
+
+Changed compares recorded purpose, prototype fields, status/confidence and relative
+location. Rebased means those fields and normalized RVA match while address/base
+changed. Unchanged means only the compared metadata matches: authored note bodies,
+instructions, binary bytes and behaviour are not compared. Added/Removed means a
+record exists on only one side; it is not proof a function changed in the binary,
+especially with incomplete imports. Invalid or bare virtual addresses do not imply
+rebasing. File offsets can be compared within their explicit location space.
+
+Save comparison note retains the chosen build identities, summary, source UUIDs
+and captured revisions as portable Markdown/properties. Create investigation task
+links the row's original function records and adds verification checks. It never
+patches a binary, moves findings or completes another task. Open investigation
+reuses the created task during the dialog session. Source changes/unsaved records,
+future schemas, missing records and failed saves block stale report/task creation.
+Refresh comparison explicitly re-reads the current scoped records. Vault switches
+require reopening. Reports are snapshots; source-version metadata retains their
+provenance. Existing Connections/Canvas/notes can use these canonical objects.
+
+
 Status: experimental / future, optional and hidden unless enabled. Source: S10.
 Orbit remains a knowledge layer around specialist tools, not a debugger/decompiler.
 

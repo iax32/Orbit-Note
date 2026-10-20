@@ -200,6 +200,15 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> documentUndo(WidgetTester tester, {bool redo = false}) async {
+    // Search inputs retain their native history; document commands are explicit
+    // while focus remains in Find/Replace.
+    await tester.tap(
+      find.byKey(ValueKey(redo ? 'note-document-redo' : 'note-document-undo')),
+    );
+    await tester.pumpAndSettle();
+  }
+
   testWidgets(
     'find selects exact cells in both directions and retains query focus',
     (tester) async {
@@ -246,10 +255,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(body, table.replaceFirst(r'a\|b', r'x\|y'));
       expect(cell(tester, 1, 1).controller!.text, 'x|y target');
-      await undo(tester);
+      await documentUndo(tester);
       expect(body, table);
       expect(cell(tester, 1, 1).controller!.text, 'a|b target');
-      await undo(tester, redo: true);
+      await documentUndo(tester, redo: true);
       expect(cell(tester, 1, 1).controller!.text, 'x|y target');
     },
   );
@@ -294,7 +303,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(body, callout.replaceAll('target', 'kitten'));
     expect(bodyField(tester).controller!.text, contains('second kitten'));
-    await undo(tester);
+    await documentUndo(tester);
     expect(body, callout);
     expect(bodyField(tester).controller!.text, contains('second target'));
   });
@@ -486,7 +495,7 @@ void main() {
       await tester.tap(find.textContaining('Apply '));
       await tester.pumpAndSettle();
       expect(body, source.replaceFirst('second target', 'second edited'));
-      await undo(tester);
+      await documentUndo(tester);
       expect(body, source);
     },
   );

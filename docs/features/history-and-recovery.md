@@ -73,3 +73,36 @@ Start with single-object save/recovery and meaningful local undo. Add durable
 grouped history when multi-object mutations require it. Full workspace time travel,
 historical board rendering, selective reversal and branches need separate design
 and storage budgets. They must not be claimed by a basic undo stack.
+
+## Competing pane drafts — 2026-10-13
+
+Note body and Canvas scene publications compare against the last content that
+the originating pane observed. A conflicting edit keeps the shared content and
+retains the competing draft rather than overwriting it. Notes show Review drafts;
+the workspace warning button and command palette keep the review accessible
+after its pane is closed. Review compares shared and retained content, saves a
+separate ordinary note/Canvas, or explicitly discards the retained draft. Saving
+a copy keeps source identity references and metadata; it never rewrites the
+original. Failed recovery, or a newer edit arriving during recovery, retains the
+unresolved draft. Canvas comparisons currently show serialized scene details.
+
+Unresolved conflicts block normal exit/Vault switching via flushAll. Retained
+conflicts are session-local, not a crash-durable journal or collaborative merge
+algorithm. Hard process termination can still lose a retained conflict; save its
+copy before closing. Title/property edits use their existing mutation paths.
+Parallel saves retain the latest body/title/properties; no-op edit callbacks
+avoid creating unnecessary dirty state/revisions. Queued object/folder creation
+rejects changed Vault ownership, and creation freezes caller maps before waiting.
+
+## Bulk lifecycle quality — 2026-10-19
+
+Queued organization and lifecycle commands retain their originating Vault/opening.
+Bulk moves and copies freeze their selections; duplicate copies skip trashed and
+read-only objects. Empty Trash excludes items added after the command begins and
+blocks on unsaved/conflicting work. If permanent cleanup partially succeeds, the
+UI removes only durably deleted identities, retains survivors and reports failure.
+Existing per-owner deletion and native folder journals still govern recovery;
+this is not atomic grouped deletion or durable grouped Undo. Confirmation dialogs
+reject retired Vaults/reviewed objects, and Explorer bulk Trash counts successful
+commands while retaining failed selections. Guarded planning Undo retains later
+edits and can retry a failed storage write.

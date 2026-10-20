@@ -5,6 +5,8 @@ import 'linked_section.dart';
 import 'universal_object.dart';
 import 'writing_structure.dart';
 import 'document_review.dart';
+import 'publication_layout.dart';
+import 'technical_article.dart';
 import 'package:yaml/yaml.dart';
 
 /// An immutable presentation snapshot. Never serializes back to owning Markdown.
@@ -26,6 +28,35 @@ class PublicationStyle {
   final String author, header;
   double get width => letter ? 612 : 595.28;
   double get height => letter ? 792 : 841.89;
+  Map<String, dynamic> toJson() => {
+    'letter': letter,
+    'margin': margin,
+    'fontSize': fontSize,
+    'serif': serif,
+    'numberHeadings': numberHeadings,
+    'titlePage': titlePage,
+    'contents': contents,
+    'pageNumbers': pageNumbers,
+    'author': author,
+    'header': header,
+  };
+  static PublicationStyle fromJson(Map<String, dynamic> value) {
+    final style = PublicationStyle(
+      letter: value['letter'] as bool? ?? false,
+      margin: (value['margin'] as num?)?.toDouble() ?? 54,
+      fontSize: (value['fontSize'] as num?)?.toDouble() ?? 11,
+      serif: value['serif'] as bool? ?? false,
+      numberHeadings: value['numberHeadings'] as bool? ?? false,
+      titlePage: value['titlePage'] as bool? ?? false,
+      contents: value['contents'] as bool? ?? true,
+      pageNumbers: value['pageNumbers'] as bool? ?? true,
+      author: value['author'] as String? ?? '',
+      header: value['header'] as String? ?? '',
+    );
+    style.validate();
+    return style;
+  }
+
   void validate() {
     if (!margin.isFinite ||
         margin < 24 ||
@@ -55,6 +86,7 @@ class PublicationDocument {
     this.headings,
     this.warnings,
     this.style,
+    this.article,
   );
   final String title, source;
   final List<md.Node> nodes;
@@ -62,12 +94,14 @@ class PublicationDocument {
   final List<PublicationHeading> headings;
   final List<String> warnings;
   final PublicationStyle style;
+  final ArticleMetadata? article;
   static PublicationDocument parse(
     String title,
     String source,
     PublicationStyle style, {
     List<UniversalObject> objects = const [],
     String ownerId = '',
+    Map<String, Map<String, dynamic>>? layouts,
   }) {
     style.validate();
     if (source.length > 2000000) {
@@ -76,6 +110,14 @@ class PublicationDocument {
       );
     }
     final warnings = <String>[];
+    ArticleMetadata? article;
+    try {
+      article = ArticleMetadata.fromSource(source);
+    } on FormatException {
+      warnings.add(
+        'Unsupported article metadata is preserved in the note and omitted from HTML metadata.',
+      );
+    }
     if (source.contains('<!-- orbit:columns v=1 -->')) {
       warnings.add(
         'Columns use a stacked print layout. Their Markdown content is retained.',
@@ -91,6 +133,8 @@ class PublicationDocument {
         'Image-and-text sections use a stacked print layout; captions and source labels remain visible.',
       );
     }
+    final leadingSettings = PublicationSettings.parse(source);
+    if (leadingSettings != null) source = source.substring(leadingSettings.end);
     final frontmatter = RegExp(
       r'^---\r?\n[\s\S]*?\r?\n(?:---|\.\.\.)(?:\r?\n|$)',
     ).firstMatch(source);
@@ -108,6 +152,16 @@ class PublicationDocument {
       } catch (_) {
         /* Unknown frontmatter remains literal and recoverable. */
       }
+    }
+    final settings = leadingSettings ?? PublicationSettings.parse(source);
+    final printLayouts =
+        layouts ??
+        {
+          for (final e in (settings?.data['blocks'] as Map? ?? {}).entries)
+            e.key as String: Map<String, dynamic>.from(e.value as Map),
+        };
+    if (leadingSettings == null && settings != null) {
+      source = source.substring(settings.end);
     }
     final literal = writingLiteralRanges(source);
     final edits = <({int start, int end, String text})>[];
@@ -187,6 +241,35 @@ class PublicationDocument {
       inlineSyntaxes: [_Footnote(), _InlineMath()],
     );
     final nodes = document.parseLines(source.split(RegExp(r'\r\n|\n|\r')));
+    final keys = <String, int>{};
+    for (final node in nodes.where(publicationLayoutTarget)) {
+      final key = publicationLayoutKey(node);
+      keys[key] = (keys[key] ?? 0) + 1;
+    }
+    for (final node in nodes.where(publicationLayoutTarget)) {
+      final e = node as md.Element, key = publicationLayoutKey(node);
+      e.attributes['orbit-key'] = key;
+      if (keys[key] != 1) {
+        e.attributes['orbit-ambiguous'] = 'true';
+        if (printLayouts.containsKey(key)) {
+          warnings.add(
+            'Identical images/tables have ambiguous layout settings. Their layout is not applied.',
+          );
+        }
+        continue;
+      }
+      if (printLayouts[key] case final value?) {
+        final layout = PublicationBlockLayout.fromJson(value);
+        for (final item in layout.toJson().entries) {
+          e.attributes['orbit-${item.key}'] = '${item.value}';
+        }
+      }
+    }
+    if (printLayouts.keys.any((key) => !keys.containsKey(key))) {
+      warnings.add(
+        'Some saved image/table layouts no longer match the content. Their settings are retained; choose a current block to configure it.',
+      );
+    }
     if (nodes.any((n) => n is md.Text && n.text.contains('<'))) {
       warnings.add(
         'Raw HTML and unsupported extension blocks are retained as literal text; scripts and widgets do not run.',
@@ -229,6 +312,7 @@ class PublicationDocument {
       List.unmodifiable(headings),
       List.unmodifiable(warnings),
       style,
+      article,
     );
   }
 }

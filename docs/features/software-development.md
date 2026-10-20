@@ -1,5 +1,76 @@
 # Software development knowledge
 
+## Source browsing quality — 2026-10-19
+
+Read-only source browsers scope late evidence-save/copy feedback to the originating
+read request, avoiding success/error labels on a different selected file. Longest
+line width is calculated when reading source, rather than splitting the entire
+file again for every selection/theme rebuild. Existing lazy listing/line limits,
+exact line endings and explicit capture remain unchanged. Attachment code/model
+previews also gain versioned refresh, retry and stale-read retirement.
+[Evidence and scope](../tasks/file-workflow-quality-2026-10-19.md).
+
+## Saved launch profiles and local web preview — 2026-10-13
+
+Code workspace now provides editable Python/C++/custom run/build profiles with
+project-relative working folders, ordered argument arrays and output placeholders.
+Configuration saves retain unknown fields, expected hashes and recoverable
+checkpoints. Explicit profile runs validate saved context and stop subsequent
+steps on failure or cancellation, including pending startup. Basic multi-file C++
+commands are supported without claiming build-system discovery or transactions.
+
+An explicit native static web preview serves selected-project assets/modules on
+IPv4 loopback with saved-file/external-change reload, visible address and stop
+controls. Hidden paths, unsupported source, directory listings, symlink escapes
+and cross-site/invalid Host requests are refused. No public hosting, package
+installation, auto-start or Vault migration. See [setup and limits](../development/code-workspace-setup.md)
+and [ADR-0029](../adr/0029-code-launch-and-loopback-preview.md).
+
+## Editable Code workspace — 2026-10-13 (DEV-01/03/05 local adapters)
+
+The owner's IDE request explicitly extends the earlier read-only source scope for
+a selected coding project. Explorer, command palette, Game and Analysis dashboards
+open a multi-file project editor with source creation, search, independent undo,
+find/replace, line operations, recovered drafts, guarded saves and checkpoint
+comparison. HTML/Python/C++ include offline snippets and optional local LSP
+completion, diagnostics, hover, definition, symbols and reviewed formatting.
+Explicit Python syntax/run/pdb, C++ single-file build/run/configured console debugger
+and HTML browser preview share bounded output/input/cancellation. Source files keep
+external UTF-8 authority; linked Vault evidence is created only on explicit capture.
+
+See [setup, recovery and limitations](../development/code-workspace-setup.md) and
+[ADR-0028](../adr/0028-scoped-code-workspace.md). Read-only browsers described below
+remain read-only. This delivery does not complete Git adapters, graphical debug
+adapters, build-system discovery or native mobile/web execution. Local language
+servers, interpreters and compilers are separately installed tools. No new package
+or Vault migration is introduced; current task records actual validation.
+
+## Scoped source search and evidence — 2026-10-13
+
+Game dashboards retain Browse source files; research dashboards add Source &
+evidence. Search all files scans the selected folder listing with literal query,
+case/whole-word and path filters, progress, cancellation and readable skip/limit
+status. Results show path, exact line and excerpt. Opening verifies the full-source
+UTF-8 SHA-256 before selecting that line. Changed files open with a warning and no
+old-line selection. Code-reference capture in Gameplay also benefits from search.
+
+Search is read-only, sequential and session-local: 500 matching lines and 16 Mi
+UTF-16 code units per operation, on the existing 5,000-file/1 MiB preview bounds.
+Path filters apply before limits. Cancellation yields within large text files;
+unreadable/binary/oversized files and incomplete directory lists are explicit.
+Assembly (.asm/.s) and log (.log) files are now browsable; unsupported syntax
+highlighting uses plain text. No repository execution, writes or Git inspection.
+
+Save evidence note on dashboard-opened browsers retains exact line text in a safe
+Markdown fence, source path/range/language, capture time, excerpt SHA-256 and whole
+source SHA-256, plus the original project/dashboard UUID as a resource link.
+The captured local folder label/path is descriptive metadata, not a saved access
+grant. The note remains useful with no checkout. Snapshot hashes do not certify a
+Git commit; existing manual immutable-commit citations remain a separate workflow.
+Evidence uses ordinary validated note saves, history and universal Canvas placement.
+No new store, token, plugin permission or migration is required.
+
+
 ## Source excerpt capture — 2026-10-10 (DEV-01–03 subset)
 
 The source browser supports whole-line ranges using first/last inputs or a line

@@ -18,11 +18,12 @@ class SessionState {
     this.extra = const {},
     this.searchWorkspace = const {},
     this.spaces = const {},
+    this.projectContext = const {},
     this.dashboard = const {},
-    this.tabs = const [],
+    List<String> tabs = const [],
     this.activeId,
     this.secondaryId,
-    this.recent = const [],
+    List<String> recent = const [],
     this.sidebarVisible = true,
     this.inspectorVisible = false,
     this.sidebarWidth = 240,
@@ -39,16 +40,16 @@ class SessionState {
     this.cameras = const {},
     this.noteViews = const {},
     this.noteSort = 'modified-desc',
-    this.collapsedFolders = const [],
+    List<String> collapsedFolders = const [],
     this.showAttachments = false,
     this.explorerCalendarCollapsed = true,
     this.reverseEngineeringEnabled = false,
-    this.pinnedTabs = const [],
-    this.bookmarkedTabs = const [],
-    this.closedTabs = const [],
-    this.archivedFolders = const [],
+    List<String> pinnedTabs = const [],
+    List<String> bookmarkedTabs = const [],
+    List<String> closedTabs = const [],
+    List<String> archivedFolders = const [],
     this.activeWorkSession,
-    this.completedWorkSessions = const [],
+    List<Map<String, dynamic>> completedWorkSessions = const [],
     bool spellCheckEnabled = true,
     List<String> userDictionary = const [],
     String accentColor = 'violet',
@@ -72,7 +73,15 @@ class SessionState {
     bool showLineNumbers = true,
     List<Map<String, dynamic>> customThemes = const [],
     Map<String, int> folderColors = const {},
-  }) : preferences = AppPreferences(
+  }) : tabs = List.of(tabs),
+       recent = List.of(recent),
+       collapsedFolders = List.of(collapsedFolders),
+       pinnedTabs = List.of(pinnedTabs),
+       bookmarkedTabs = List.of(bookmarkedTabs),
+       closedTabs = List.of(closedTabs),
+       archivedFolders = List.of(archivedFolders),
+       completedWorkSessions = List.of(completedWorkSessions),
+       preferences = AppPreferences(
          fontSize: fontSize,
          uiZoom: uiZoom,
          contentWidth: contentWidth,
@@ -102,6 +111,7 @@ class SessionState {
   final Map<String, dynamic> extra;
   Map<String, dynamic> searchWorkspace;
   Map<String, dynamic> spaces;
+  Map<String, dynamic> projectContext;
   Map<String, dynamic> dashboard;
   OrbitDestination destination;
   List<String> tabs;
@@ -252,6 +262,9 @@ class SessionState {
     }
     final knownKeys = SessionState().toJson().keys.toSet();
     return SessionState(
+      projectContext: json['projectContext'] is Map
+          ? Map<String, dynamic>.from(json['projectContext'] as Map)
+          : const {},
       spaces: json['spaces'] is Map
           ? Map<String, dynamic>.from(json['spaces'] as Map)
           : const {},
@@ -431,6 +444,7 @@ class SessionState {
     'version': 1,
     'searchWorkspace': searchWorkspace,
     'spaces': spaces,
+    'projectContext': projectContext,
     'dashboard': dashboard,
     'destination': destination.name,
     'tabs': tabs,

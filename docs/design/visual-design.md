@@ -246,8 +246,8 @@ title. Calendar empty agendas scroll in short panes.
 
 Home continuation cards omit LaTeX preambles. Workspace note statistics appear
 only in the Notes destination; LaTeX uses a document/character label instead of
-prose word and reading-time estimates. Horizontal equation scrolling does not
-change the document reading-progress indicator.
+prose word and reading-time estimates. Note editors omit the scroll/reading-progress
+stripe; normal scrolling and saved document positions remain available.
 
 PDF navigation/zoom precede reading and research tools, with shared separators
 and a visible horizontal scrollbar when tools exceed the pane. Canvas uses the

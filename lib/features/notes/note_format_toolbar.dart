@@ -70,6 +70,15 @@ class NoteFormatToolbar extends StatelessWidget {
                   child: Row(
                     children: [
                       if (onCommand != null)
+                        IconButton(
+                          tooltip: 'Format block',
+                          icon: const Icon(
+                            Icons.view_agenda_outlined,
+                            size: 18,
+                          ),
+                          onPressed: () => onCommand!('Format block'),
+                        ),
+                      if (onCommand != null)
                         PopupMenuButton<String>(
                           tooltip: 'Insert block or equation',
                           icon: const Icon(Icons.add_circle_outline, size: 18),
@@ -104,6 +113,8 @@ class NoteFormatToolbar extends StatelessWidget {
                                     'Suggest replacement',
                                     'Review annotations',
                                     'Horizontal rule',
+                                    'BTW block',
+                                    'Math Lab',
                                   ]
                                   .map(
                                     (label) => PopupMenuItem(

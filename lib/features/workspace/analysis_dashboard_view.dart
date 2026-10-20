@@ -4,6 +4,9 @@ import '../../app/workspace_controller.dart';
 import '../../domain/universal_object.dart';
 import 'research_record_dialog.dart';
 import 'dashboard_columns.dart';
+import 'source_browser_dialog.dart';
+import 'code_ide_workspace.dart';
+import 'research_comparison_dialog.dart';
 
 class AnalysisDashboardView extends StatelessWidget {
   const AnalysisDashboardView({
@@ -356,6 +359,40 @@ class AnalysisDashboardView extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: [
+                OutlinedButton.icon(
+                  onPressed: () => showCodeIde(
+                    context,
+                    controller: controller,
+                    owner: viewObject,
+                    evidenceFolder:
+                        '${folderFilter ?? 'Reverse Engineering/$targetName'}/Sessions',
+                  ),
+                  icon: const Icon(Icons.developer_mode),
+                  label: const Text('Code workspace'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => showSourceBrowser(
+                    context,
+                    controller: controller,
+                    owner: viewObject,
+                    folder:
+                        '${folderFilter ?? 'Reverse Engineering/$targetName'}/Sessions',
+                  ),
+                  icon: const Icon(Icons.manage_search),
+                  label: const Text('Source & evidence'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => showResearchComparison(
+                    context,
+                    controller,
+                    matchesScope: _matchesScope,
+                    folder:
+                        '${folderFilter ?? 'Reverse Engineering/$targetName'}/Sessions',
+                    target: targetName,
+                  ),
+                  icon: const Icon(Icons.compare_arrows),
+                  label: const Text('Compare builds'),
+                ),
                 FilledButton.icon(
                   onPressed: () => _quickCreateFunction(context),
                   icon: const Icon(Icons.add, size: 16),

@@ -31,7 +31,7 @@ extension WorkspaceStudyResume on WorkspaceController {
   List<UniversalObject> unfinishedStudyWork(String course) => activeObjects
       .where(
         (o) =>
-            o.properties['course'] == course &&
+            matchesStudyCourse(o, course) &&
             o.typeId == 'orbit.task' &&
             !o.isCompleted &&
             ![
@@ -48,7 +48,7 @@ extension WorkspaceStudyResume on WorkspaceController {
     return activeObjects
         .where(
           (o) =>
-              o.properties['course'] == course &&
+              matchesStudyCourse(o, course) &&
               o.properties['studyUnderstanding'] == 'uncertain' &&
               !dismissed.contains(o.id),
         )
@@ -77,7 +77,8 @@ extension WorkspaceStudyResume on WorkspaceController {
     final ids = session.tabs
         .where(
           (id) =>
-              find(id)?.properties['course'] == course &&
+              find(id) != null &&
+              matchesStudyCourse(find(id)!, course) &&
               find(id)?.isDeleted == false,
         )
         .toList();
@@ -113,7 +114,8 @@ extension WorkspaceStudyResume on WorkspaceController {
       'version': 1,
       'id': old?['id'] ?? const Uuid().v4(),
       'kind': 'space',
-      'name': 'Study: ${course.substring(0, course.length.clamp(0, 90))}',
+      'name':
+          'Study: ${find(course)?.properties['isCourseOverview'] == true ? courseName(find(course)!) : course.substring(0, course.length.clamp(0, 90))}',
       'studyCourse': course,
       'studyVersion': 1,
       'context': context,

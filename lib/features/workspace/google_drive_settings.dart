@@ -8,12 +8,14 @@ import '../../app/orbit_theme.dart';
 import '../../app/workspace_controller.dart';
 import '../../application/sync/sync_inventory.dart';
 import '../../application/backup_bundle.dart';
+import '../../application/sync/google_account.dart';
 import '../../infrastructure/sync/google_drive_api.dart';
 import '../../platform/import_backup.dart';
 import 'package:file_selector/file_selector.dart';
 import 'backup_import_dialog.dart';
 import '../../app/collaboration_controller.dart';
 import 'collaboration_settings.dart';
+import 'drive_sync_settings.dart';
 
 String googleStorageLabel(BigInt? bytes) {
   if (bytes == null) return 'Unavailable';
@@ -36,7 +38,86 @@ class GoogleDriveSettings extends ConsumerStatefulWidget {
 }
 
 class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
+  Future<void> _setupGoogle(GoogleCloudController cloud) async {
+    final setup = cloud.auth is GoogleDesktopSetup
+        ? cloud.auth as GoogleDesktopSetup
+        : null;
+    final import = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => OrbitDialog(
+        title: const Text('Activate Google sign-in'),
+        content: const SingleChildScrollView(
+          child: Text(
+            'This preview was built without Google app registration. Normal releases include it so you can simply sign in.\n\nFor this desktop preview, import the JSON downloaded from Google Cloud → Google Auth Platform → Clients → Desktop app. It is stored on this device, outside your Vault. Do not enter a Google password or account token.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              final opened = await launchUrl(
+                Uri.parse('https://console.cloud.google.com/auth/clients'),
+                mode: LaunchMode.externalApplication,
+              );
+              if (!opened && dialogContext.mounted) {
+                ScaffoldMessenger.maybeOf(dialogContext)?.showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Could not open Google Cloud. Try opening its console in your browser.',
+                    ),
+                  ),
+                );
+              }
+            },
+            child: const Text('Open Google setup'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+          if (setup?.canConfigureDesktop == true)
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Import desktop client…'),
+            ),
+        ],
+      ),
+    );
+    if (import != true || !mounted || cloud.busy) return;
+    try {
+      final file = await openFile(
+        acceptedTypeGroups: [
+          const XTypeGroup(
+            label: 'Google desktop client',
+            extensions: ['json'],
+          ),
+        ],
+      );
+      if (file == null || !mounted || cloud.busy) return;
+      if (await file.length() > 65536) {
+        throw const GoogleCloudError(
+          'configuration',
+          'The selected file is too large for a desktop client configuration.',
+        );
+      }
+      final text = await file.readAsString();
+      if (!mounted || cloud.busy) return;
+      if (await cloud.configureDesktop(text) && mounted) await cloud.connect();
+    } on Object {
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not read the desktop client JSON. No Vault files were changed.',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   SyncFootprint? _size;
+  bool _allBackups = false;
+  String _backupQuery = '';
   String? _sizeError, _sizeVault;
   Future<void> _measure() async {
     final repository = widget.workspace.repository, id = repository.workspaceId;
@@ -99,6 +180,18 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
         final account = cloud.account,
             quota = cloud.quota,
             colors = OrbitColors.of(context);
+        final visibleBackups = cloud.backups
+            .where(
+              (b) =>
+                  b.subject == account?.subject &&
+                  (_allBackups ||
+                      b.workspaceId ==
+                          widget.workspace.repository.workspaceId) &&
+                  b.name.toLowerCase().contains(
+                    _backupQuery.toLowerCase().trim(),
+                  ),
+            )
+            .toList();
         return Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
@@ -125,12 +218,12 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
                     'Google Drive',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
-                  const Text('Local only', style: TextStyle(fontSize: 12)),
+                  const Text('Local-first', style: TextStyle(fontSize: 12)),
                 ],
               ),
               const SizedBox(height: 10),
               const Text(
-                'Your Vault stays on this device. Signing in does not upload your files.',
+                'Your local Vault stays available offline. Uploads follow your explicit backup and automatic sync choices.',
               ),
               const SizedBox(height: 18),
               OutlinedButton.icon(
@@ -215,7 +308,9 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
                     side: const BorderSide(color: Color(0xFF8E918F)),
                     minimumSize: const Size(220, 42),
                   ),
-                  onPressed: cloud.auth.configured ? cloud.connect : null,
+                  onPressed: cloud.auth.configured
+                      ? cloud.connect
+                      : () => _setupGoogle(cloud),
                   icon: Image.asset(
                     'assets/google-g.png',
                     width: 20,
@@ -328,6 +423,7 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
                 onPressed: _measure,
                 child: const Text('Refresh Vault size'),
               ),
+              DriveSyncSettings(workspace: widget.workspace),
               if (account != null && !cloud.reconnectRequired) ...[
                 const Divider(height: 30),
                 const Text(
@@ -348,7 +444,11 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
                                 await cloud.prepareRoot();
                               }
                             },
-                      child: const Text('Prepare Orbit folder'),
+                      child: Text(
+                        cloud.rootId == null
+                            ? 'Prepare Orbit folder'
+                            : 'Refresh Orbit folder',
+                      ),
                     ),
                     TextButton(
                       onPressed: () => launchUrl(
@@ -393,7 +493,7 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
                   style: TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const Text(
-                  'Save an independent Vault backup to your own Drive. Restoring creates a separate local folder. Automatic sync is not enabled.',
+                  'Save an independent Vault backup to your own Drive. Restoring creates a separate local folder. Backups are independent of automatic Vault sync.',
                 ),
                 Wrap(
                   spacing: 8,
@@ -404,27 +504,7 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
                       label: const Text('Back up this Vault'),
                       onPressed: cloud.busy
                           ? null
-                          : () async {
-                              if (!await _confirm(
-                                'Back up this Vault to Google Drive?',
-                                'Upload this Vault’s documents and attachments to the connected Google account. This is an independent backup, not automatic sync.',
-                              )) {
-                                return;
-                              }
-                              final workspaceId =
-                                  widget.workspace.repository.workspaceId;
-                              await cloud.uploadBackup(() async {
-                                if (!await widget.workspace.flushAll() ||
-                                    widget.workspace.repository.workspaceId !=
-                                        workspaceId) {
-                                  throw StateError(
-                                    'Vault changed or could not be saved.',
-                                  );
-                                }
-                                return widget.workspace.repository
-                                    .exportBundle();
-                              });
-                            },
+                          : () => _backupCurrentVault(cloud),
                     ),
                     TextButton(
                       onPressed: cloud.busy ? null : cloud.refreshBackups,
@@ -432,12 +512,40 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
                     ),
                   ],
                 ),
-                for (final backup in cloud.backups)
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    ChoiceChip(
+                      label: const Text('This Vault'),
+                      selected: !_allBackups,
+                      onSelected: (_) => setState(() => _allBackups = false),
+                    ),
+                    ChoiceChip(
+                      label: const Text('All Vaults'),
+                      selected: _allBackups,
+                      onSelected: (_) => setState(() => _allBackups = true),
+                    ),
+                  ],
+                ),
+                TextField(
+                  key: const ValueKey('drive-backup-search'),
+                  decoration: const InputDecoration(
+                    labelText: 'Find a backup',
+                    prefixIcon: Icon(Icons.search),
+                  ),
+                  onChanged: (value) => setState(() => _backupQuery = value),
+                ),
+                Text('${visibleBackups.length} backup(s)'),
+                if (visibleBackups.isEmpty)
+                  const Text(
+                    'No matching backups. Try All Vaults or refresh the list.',
+                  ),
+                for (final backup in visibleBackups)
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(backup.name),
                     subtitle: Text(
-                      googleStorageLabel(BigInt.from(backup.size)),
+                      '${googleStorageLabel(BigInt.from(backup.size))} · ${backup.workspaceId == widget.workspace.repository.workspaceId ? 'This Vault' : 'Another Vault'}',
                     ),
                     trailing: TextButton(
                       onPressed: cloud.busy
@@ -454,10 +562,56 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
     );
   }
 
+  Future<void> _backupCurrentVault(GoogleCloudController cloud) async {
+    final workspace = widget.workspace;
+    final generation = workspace.workspaceGeneration;
+    final id = workspace.repository.workspaceId;
+    final subject = cloud.account?.subject;
+    bool owns() =>
+        identical(widget.workspace, workspace) &&
+        workspace.workspaceGeneration == generation &&
+        workspace.repository.workspaceId == id &&
+        subject != null &&
+        cloud.account?.subject == subject;
+    if (!await _confirm(
+          'Back up this Vault to Google Drive?',
+          'Upload ${workspace.repository.name}’s documents and attachments to the connected Google account. This is an independent backup, not automatic sync.',
+        ) ||
+        !mounted) {
+      return;
+    }
+    if (!owns()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Vault or Google account changed. Start the backup again.',
+          ),
+        ),
+      );
+      return;
+    }
+    await cloud.uploadBackup(() async {
+      if (!owns() || !await workspace.flushAll() || !owns()) {
+        throw StateError(
+          'Vault changed or could not be saved. Start the backup again.',
+        );
+      }
+      final source = await workspace.repository.exportBundle();
+      if (!owns()) throw StateError('Vault changed before backup finished.');
+      return source;
+    });
+  }
+
   Future<void> _restoreDriveBackup(
     GoogleCloudController cloud,
     GoogleDriveBackup backup,
   ) async {
+    final workspace = widget.workspace,
+        generation = widget.workspace.workspaceGeneration;
+    bool owns() =>
+        mounted &&
+        identical(widget.workspace, workspace) &&
+        workspace.workspaceGeneration == generation;
     if (widget.workspace.repository.isBrowser) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -467,7 +621,7 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
       return;
     }
     final source = await cloud.downloadBackup(backup);
-    if (source == null || !mounted) return;
+    if (source == null || !mounted || !owns()) return;
     try {
       final bundle = BackupBundle.parse(source);
       if (await showDialog<bool>(
@@ -475,15 +629,15 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
                 builder: (_) => BackupImportDialog(bundle: bundle),
               ) !=
               true ||
-          !mounted) {
+          !owns()) {
         return;
       }
       final parent = await getDirectoryPath(confirmButtonText: 'Restore here');
-      if (parent == null || !mounted || !await widget.workspace.flushAll()) {
+      if (parent == null || !owns() || !await workspace.flushAll() || !owns()) {
         return;
       }
       final path = await importBackup(bundle, parent);
-      await widget.workspace.initialize(path: path);
+      if (owns()) await workspace.initialize(path: path);
     } on Object {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

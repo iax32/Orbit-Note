@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
 
@@ -35,9 +36,125 @@ class SyncEngine {
     return _running ??= _run().whenComplete(() => _running = null);
   }
 
+  /// Explicit resolution retains old cloud revisions and ordinary local history.
+  /// The durable operation ID makes a lost publication acknowledgement retryable.
+  Future<SyncResult> resolve(
+    String key, {
+    String? remoteVersion,
+    String? expectedLocalHash,
+  }) {
+    if (_running != null) {
+      throw StateError('Wait for the current sync to finish.');
+    }
+    return _running = _resolve(
+      key,
+      remoteVersion,
+      expectedLocalHash,
+    ).whenComplete(() => _running = null);
+  }
+
+  Future<SyncResult> _resolve(
+    String key,
+    String? remoteVersion,
+    String? expectedLocalHash,
+  ) async {
+    final target = provider;
+    if (target is! ImmutableRevisionSyncProvider) {
+      throw const WorkspaceFailure(
+        'This provider needs another resolution workflow.',
+      );
+    }
+    final state = await stateStore.load();
+    if (state == null ||
+        state['format'] != 'orbit-note-sync-state' ||
+        state['version'] != 1 ||
+        state['workspaceId'] != replica.workspaceId ||
+        state['bindingId'] != provider.bindingId) {
+      throw const WorkspaceConflict(
+        'Sync binding changed. Refresh before resolving.',
+      );
+    }
+    final conflicts = Map<String, dynamic>.from(state['conflicts'] as Map);
+    final conflict = conflicts[key] as Map?;
+    if (conflict == null || conflict['reason'] == 'missing-without-tombstone') {
+      throw const WorkspaceConflict(
+        'Refresh or recover the missing source before resolving.',
+      );
+    }
+    final alternatives =
+        [
+              if (conflict['remote'] is Map) conflict['remote'],
+              ...?conflict['alternatives'] as List?,
+            ]
+            .map(
+              (v) =>
+                  RemoteSyncEntry.fromJson(Map<String, dynamic>.from(v as Map)),
+            )
+            .toList();
+    final local = (await replica.inventory())[key];
+    if (expectedLocalHash != null &&
+        expectedLocalHash != (local?.hash ?? 'absent')) {
+      throw const WorkspaceConflict(
+        'Local content changed after review. Review the latest version before resolving.',
+      );
+    }
+    RemoteSyncEntry? chosen;
+    if (remoteVersion != null) {
+      final matches = alternatives.where((e) => e.version == remoteVersion);
+      if (matches.length != 1) {
+        throw const WorkspaceConflict('Choose a reviewed version.');
+      }
+      chosen = matches.single;
+    }
+    final entry = chosen?.entry ?? local;
+    if (entry == null) {
+      throw const WorkspaceConflict('There is no local source to keep.');
+    }
+    final parents = alternatives.map((e) => e.version).toList()..sort();
+    final intents = Map<String, dynamic>.from(
+      state['resolutions'] as Map? ?? {},
+    );
+    final prior = intents[key] as Map?;
+    final same =
+        prior != null &&
+        SyncEntry.fromJson(
+          Map<String, dynamic>.from(prior['entry'] as Map),
+        ).sameAs(entry) &&
+        jsonEncode(prior['parents']) == jsonEncode(parents);
+    final operation = same ? prior['operation'] as String : const Uuid().v4();
+    intents[key] = {
+      'operation': operation,
+      'entry': entry.toJson(),
+      'parents': parents,
+    };
+    state['resolutions'] = intents;
+    await stateStore.save(state);
+    final published = await target.publishResolution(
+      entry,
+      chosen == null ? replica.read(entry) : provider.download(chosen),
+      operationId: operation,
+      parents: parents,
+    );
+    if (!entry.sameAs(published.entry)) {
+      throw const WorkspaceConflict('Unexpected resolution acknowledgement.');
+    }
+    if (!entry.sameAs(local)) {
+      await replica.apply(entry, provider.download(published), expected: local);
+    }
+    (state['base'] as Map)[key] = entry.toJson();
+    (state['remote'] as Map)[key] = published.toJson();
+    (state['pending'] as Map).remove(key);
+    conflicts.remove(key);
+    intents.remove(key);
+    state['conflicts'] = conflicts;
+    await stateStore.save(state);
+    return _run();
+  }
+
   Future<SyncResult> _run() async {
     if (replica.workspaceId != provider.workspaceId ||
-        !provider.supportsConditionalPublication) {
+        (!provider.supportsConditionalPublication &&
+            provider is! ImmutableRevisionSyncProvider)) {
       throw const WorkspaceFailure(
         'Sync identity or safe publication capability is unavailable.',
       );
@@ -116,6 +233,29 @@ class SyncEngine {
     for (final item in delta.entries) {
       remote[item.entry.key] = item.toJson();
     }
+    for (final fork in delta.forks.entries) {
+      if (fork.value.length < 2 ||
+          fork.value.any((e) => e.entry.key != fork.key) ||
+          delta.entries.any((e) => e.entry.key == fork.key)) {
+        throw const WorkspaceConflict('Remote branches are ambiguous.');
+      }
+      remote.remove(fork.key);
+      for (final alternative in fork.value) {
+        validateSyncEntries({fork.key: alternative.entry});
+        await replica.preserveConflict(
+          alternative.version,
+          local[fork.key],
+          alternative,
+          provider.download(alternative),
+        );
+      }
+      conflicts[fork.key] = {
+        'reason': 'concurrent-revisions',
+        'local': local[fork.key]?.toJson(),
+        'alternatives': fork.value.map((e) => e.toJson()).toList(),
+      };
+    }
+    await stateStore.save(state);
     if (delta.entries.map((e) => e.entry.key).toSet().length !=
         delta.entries.length) {
       throw const WorkspaceConflict('Remote sync identities are ambiguous.');
@@ -156,6 +296,7 @@ class SyncEngine {
         return order == 0 ? a.compareTo(b) : order;
       });
     for (final key in keys) {
+      if (delta.forks.containsKey(key)) continue;
       final previous = base[key] == null
           ? null
           : SyncEntry.fromJson(Map<String, dynamic>.from(base[key] as Map));

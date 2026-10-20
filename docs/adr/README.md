@@ -44,3 +44,7 @@ for the earlier decision. Routine files, widgets and bug fixes do not need ADRs.
 - [0025 — Rolling event occurrences](0025-rolling-event-occurrences.md): same-identity events, explicit history and device-clock recurrence policy.
 - [0026 — Calendar occurrence projection](0026-calendar-occurrence-projection.md): stable occurrence keys, bounded future schedules and recoverable individual overrides.
 - [0027 — Shared Vault preview and Drive backups](0027-shared-vault-preview-and-drive-backups.md): self-hosted capability grants, conservative live merges, ordinary local history, independent Drive backups and explicit activation gates.
+- [0028 — Scoped code workspace](0028-scoped-code-workspace.md): native UTF-8 authority, independent recovery, guarded saves, explicit local tooling and validated LSP proposals.
+- [0029 — Code launch and loopback preview](0029-code-launch-and-loopback-preview.md): recoverable project command profiles, ordered cancellation, scoped HTTP assets and ephemeral preview lifecycle.
+- [0030 — Immutable personal Drive revisions](0030-immutable-drive-revisions.md): append-only branch preservation, durable upload IDs/sessions, explicit conflict resolution and opt-in native foreground coordination.
+- [0031 — Device sync continuity](0031-device-sync-continuity.md): opt-in inactive-Vault scheduling, secure explicit shared reconnect, authority handover and standalone server readiness.

@@ -14,6 +14,7 @@ import '../../app/orbit_components.dart';
 import '../../domain/research_document.dart';
 import '../../domain/object_reference.dart';
 import '../../domain/pdf_annotation.dart';
+import '../../domain/pdf_review_batch.dart';
 import '../../domain/pdf_quote_transfer.dart';
 import '../../domain/universal_object.dart';
 import '../../canvas/scene.dart';
@@ -104,12 +105,19 @@ class OrbitPdfReader extends StatefulWidget {
     this.onFormChanged,
     this.onSaveFilledCopy,
     this.onUpdateReview,
+    this.onDeleteReview,
+    this.onRestoreReview,
+    this.onReviewBatch,
+    this.onUndoReviewBatch,
     this.onReviewSummary,
+    this.onReviewBoard,
     this.onExportReview,
     this.onPageComment,
     this.onSaveAnnotatedCopy,
     this.linkedNotes = const [],
     this.onOpenLinkedNote,
+    this.onDeleteLinkedNote,
+    this.onRestoreLinkedNote,
     this.initialAnnotationId,
     this.navigationRequest = 0,
     this.initialSearchChecksum,
@@ -133,6 +141,8 @@ class OrbitPdfReader extends StatefulWidget {
   final VoidCallback? onOpenBookshelf;
   final List<UniversalObject> linkedNotes;
   final ValueChanged<String>? onOpenLinkedNote;
+  final Future<UniversalObject?> Function(UniversalObject)? onDeleteLinkedNote;
+  final Future<bool> Function(UniversalObject)? onRestoreLinkedNote;
   final String? initialAnnotationId;
   final int navigationRequest;
   final String? initialSearchChecksum;
@@ -146,7 +156,12 @@ class OrbitPdfReader extends StatefulWidget {
   final bool hasActiveNoteBeside;
   final bool hasActiveCanvasBeside;
   final SavePdfReview? onUpdateReview;
+  final Future<PdfAnnotation?> Function(PdfAnnotation)? onDeleteReview;
+  final Future<bool> Function(PdfAnnotation)? onRestoreReview;
+  final RunPdfReviewBatch? onReviewBatch;
+  final UndoPdfReviewBatch? onUndoReviewBatch;
   final Future<bool> Function(List<String>)? onReviewSummary;
+  final Future<bool> Function(List<PdfAnnotation>)? onReviewBoard;
   final Future<bool> Function(String)? onExportReview;
   final Future<bool> Function(int page, String comment)? onPageComment;
   final String objectId, title;
@@ -198,6 +213,8 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   late int _restorePage;
   double? _restoreZoom;
   bool _loadedOnce = false, _showNotes = false, _savingSelection = false;
+  bool _reviewExpanded = false;
+  final _reviewPanelKey = GlobalKey(debugLabel: 'PDF review workspace');
   bool _sourceNavigationPending = true;
   (int, double)? _pendingPosition;
   void Function(int, double)? _pendingPositionCallback;
@@ -221,6 +238,9 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   PdfPageMode _pageMode = PdfPageMode.continuous;
   int _activeColor = 0xff8b7cf6;
   String? _activeHighlightId;
+  late PdfAnnotationIndex _annotationIndex;
+  final _pendingMarkup = <int, List<CanvasElement>>{};
+  final _deletingReviewIds = <String>{};
   Timer? _highlightPulseTimer;
   ReadingRoom? _activeReadingRoom;
   String _paperTone = 'normal';
@@ -316,11 +336,11 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
 
   void _setActiveHighlight(String id) {
     _highlightPulseTimer?.cancel();
-    setState(() => _activeHighlightId = id);
+    _activeHighlightId = id;
     if (_viewer.isReady) _viewer.invalidate();
     _highlightPulseTimer = Timer(const Duration(seconds: 4), () {
       if (mounted && _activeHighlightId == id) {
-        setState(() => _activeHighlightId = null);
+        _activeHighlightId = null;
         if (_viewer.isReady) _viewer.invalidate();
       }
     });
@@ -426,6 +446,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     _outlineFailed = false;
     _highlightPulseTimer?.cancel();
     _activeHighlightId = null;
+    _pendingMarkup.clear();
   }
 
   void _retry() {
@@ -567,6 +588,8 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
 
   void _editReview(PdfAnnotation annotation) {
     if (widget.readOnly ||
+        annotation.object.isReadOnly ||
+        annotation.fileId != widget.objectId ||
         widget.onUpdateReview == null ||
         !annotation.matches(widget.checksum)) {
       return;
@@ -580,6 +603,72 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
         onSave: widget.onUpdateReview!,
       ),
     );
+  }
+
+  Future<void> _deleteReview(PdfAnnotation annotation) async {
+    final remove = widget.onDeleteReview, restore = widget.onRestoreReview;
+    final id = annotation.object.id,
+        fileId = widget.objectId,
+        epoch = _documentEpoch;
+    if (widget.readOnly ||
+        annotation.object.isReadOnly ||
+        annotation.fileId != widget.objectId ||
+        remove == null ||
+        !_deletingReviewIds.add(id)) {
+      return;
+    }
+    setState(() {});
+    bool current() =>
+        mounted && widget.objectId == fileId && _documentEpoch == epoch;
+    PdfAnnotation? deleted;
+    try {
+      deleted = await remove(annotation);
+    } catch (_) {}
+    if (!mounted || !current()) {
+      if (mounted) {
+        setState(() => _deletingReviewIds.remove(id));
+      } else {
+        _deletingReviewIds.remove(id);
+      }
+      return;
+    }
+    setState(() => _deletingReviewIds.remove(id));
+    if (deleted == null) {
+      _notice(
+        'Could not delete this review item. It may have changed or have unsaved edits; refresh and retry.',
+      );
+      return;
+    }
+    if (_activeHighlightId == id) _activeHighlightId = null;
+    if (_viewer.isReady) _viewer.invalidate();
+    final snapshot = deleted;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            '${annotation.isPageComment ? 'Comment' : 'Highlight'} and its note moved to Trash.',
+          ),
+          duration: const Duration(seconds: 8),
+          action: restore == null
+              ? null
+              : SnackBarAction(
+                  label: 'Undo',
+                  onPressed: () async {
+                    if (!current()) return;
+                    var restored = false;
+                    try {
+                      restored = !widget.readOnly && await restore(snapshot);
+                    } catch (_) {}
+                    if (current() && !restored) {
+                      _notice(
+                        'Could not undo. The latest note is preserved; you can restore it from Trash.',
+                      );
+                    }
+                  },
+                ),
+        ),
+      );
   }
 
   Future<void> _addPageComment() async {
@@ -742,7 +831,26 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
           ),
         ),
         actions: [
-          if (!widget.readOnly && widget.onUpdateReview != null)
+          if (!widget.readOnly &&
+              !annotation.object.isReadOnly &&
+              widget.onDeleteReview != null)
+            TextButton.icon(
+              onPressed: _deletingReviewIds.contains(annotation.object.id)
+                  ? null
+                  : () {
+                      Navigator.pop(context);
+                      _deleteReview(annotation);
+                    },
+              icon: const Icon(Icons.delete_outline),
+              label: Text(
+                annotation.isPageComment
+                    ? 'Delete comment'
+                    : 'Delete highlight',
+              ),
+            ),
+          if (!widget.readOnly &&
+              !annotation.object.isReadOnly &&
+              widget.onUpdateReview != null)
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
@@ -1041,6 +1149,11 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   @override
   void initState() {
     super.initState();
+    _annotationIndex = PdfAnnotationIndex(
+      widget.annotations,
+      widget.objectId,
+      widget.checksum,
+    );
     _restoreReadingRoom();
     _isFavorite = widget.initialFavorite;
     _page = math.max(1, widget.initialPage);
@@ -1059,6 +1172,19 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   @override
   void didUpdateWidget(OrbitPdfReader oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final annotationsChanged = !_annotationIndex.matches(
+      widget.annotations,
+      widget.objectId,
+      widget.checksum,
+    );
+    if (annotationsChanged) {
+      _annotationIndex = PdfAnnotationIndex(
+        widget.annotations,
+        widget.objectId,
+        widget.checksum,
+        previous: _annotationIndex,
+      );
+    }
     if (widget.objectId != oldWidget.objectId ||
         widget.initialReadingRoomId != oldWidget.initialReadingRoomId) {
       _restoreReadingRoom();
@@ -1085,7 +1211,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
       _bytes = Future.sync(widget.loadBytes);
       return;
     }
-    if (_viewer.isReady && widget.annotations != oldWidget.annotations) {
+    if (_viewer.isReady && annotationsChanged) {
       _viewer.invalidate();
     }
     if (widget.navigationRequest != oldWidget.navigationRequest ||
@@ -1513,12 +1639,14 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   Future<void> _extractToCanvas(
     PdfViewerContextMenuBuilderParams params,
   ) async {
-    if (_savingSelection || widget.onExtractToCanvas == null) return;
+    final save = widget.onExtractToCanvas;
+    if (_savingSelection || widget.readOnly || save == null) return;
     final fileId = widget.objectId, checksum = widget.checksum;
     _savingSelection = true;
     try {
       final ranges = await params.textSelectionDelegate.getSelectedTextRanges();
       if (!mounted ||
+          widget.readOnly ||
           ranges.isEmpty ||
           widget.objectId != fileId ||
           widget.checksum != checksum) {
@@ -1527,7 +1655,16 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
       final text = ranges.map((r) => r.text).join('\n');
       final page = ranges.first.pageNumber;
       params.dismissContextMenu();
-      await widget.onExtractToCanvas!(text, page);
+      final saved = await save(text, page);
+      if (mounted && widget.objectId == fileId && widget.checksum == checksum) {
+        if (saved) {
+          await params.textSelectionDelegate.clearTextSelection();
+        } else {
+          _notice(
+            'Could not save this quote to Canvas. Your selection is retained; check the save status and retry.',
+          );
+        }
+      }
     } catch (error) {
       _notice('Could not extract to canvas: $error');
     } finally {
@@ -1538,12 +1675,14 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   Future<void> _extractToActiveNote(
     PdfViewerContextMenuBuilderParams params,
   ) async {
-    if (_savingSelection || widget.onInsertIntoActiveNote == null) return;
+    final save = widget.onInsertIntoActiveNote;
+    if (_savingSelection || widget.readOnly || save == null) return;
     final fileId = widget.objectId, checksum = widget.checksum;
     _savingSelection = true;
     try {
       final ranges = await params.textSelectionDelegate.getSelectedTextRanges();
       if (!mounted ||
+          widget.readOnly ||
           ranges.isEmpty ||
           widget.objectId != fileId ||
           widget.checksum != checksum) {
@@ -1552,7 +1691,16 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
       final text = ranges.map((r) => r.text).join('\n');
       final page = ranges.first.pageNumber;
       params.dismissContextMenu();
-      await widget.onInsertIntoActiveNote!(text, page);
+      final saved = await save(text, page);
+      if (mounted && widget.objectId == fileId && widget.checksum == checksum) {
+        if (saved) {
+          await params.textSelectionDelegate.clearTextSelection();
+        } else {
+          _notice(
+            'Could not save this quote to the note. Your selection is retained; check the save status and retry.',
+          );
+        }
+      }
     } catch (error) {
       _notice('Could not insert into active note: $error');
     } finally {
@@ -1782,77 +1930,117 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
               ),
             ) ??
             false;
+        if (!saved) return; // Cancel is not a persistence failure.
       } else {
+        _pendingMarkup.clear();
+        for (final region in regions) {
+          (_pendingMarkup[region.data['page'] as int] ??= []).add(region);
+        }
+        _viewer.invalidate();
         saved = current() && await save(quote, regions, '');
       }
-      if (!mounted) return;
-      if (saved) setState(() => _showAnnotations = true);
+      if (!current()) return;
+      if (saved) {
+        await params.textSelectionDelegate.clearTextSelection();
+        if (!current()) return;
+        if (comment) setState(() => _showAnnotations = true);
+      }
       _notice(
         saved
-            ? 'Highlight saved. Open its note to edit comments or link it elsewhere.'
+            ? 'Highlight saved. Click it to edit or delete; find all marks in Highlights and comments.'
             : 'Highlight could not be saved. The original PDF is unchanged.',
       );
-    } catch (e) {
-      _notice('Could not save this selection: $e');
+    } catch (_) {
+      if (current()) {
+        _notice(
+          'Could not save this selection. The original PDF is unchanged; retry from the selected text.',
+        );
+      }
     } finally {
       _savingSelection = false;
+      _pendingMarkup.clear();
+      if (mounted && _viewer.isReady) _viewer.invalidate();
     }
   }
 
   void _paintAnnotations(Canvas canvas, Rect pageRect, PdfPage page) {
     if (!_showMarkup) return;
-    for (final annotation in widget.annotations) {
-      if (!annotation.matches(widget.checksum) || annotation.isPageComment) {
-        continue;
-      }
+    for (final entry in _annotationIndex.markupForPage(page.pageNumber)) {
+      final annotation = entry.annotation;
       final isActive = _activeHighlightId == annotation.object.id;
       final style = annotation.style;
       final color = Color(annotation.color);
 
-      for (final region in annotation.regions) {
-        if (region.data['page'] != page.pageNumber) continue;
-        final rect = Rect.fromLTWH(
-          pageRect.left + region.x * pageRect.width,
-          pageRect.top + region.y * pageRect.height,
-          region.width * pageRect.width,
-          region.height * pageRect.height,
-        );
+      _paintMarkupRegion(
+        canvas,
+        pageRect,
+        entry.region,
+        color,
+        style,
+        isActive,
+      );
+    }
+    for (final region
+        in _pendingMarkup[page.pageNumber] ?? const <CanvasElement>[]) {
+      _paintMarkupRegion(
+        canvas,
+        pageRect,
+        region,
+        Color(region.color),
+        region.data['style'] as String? ?? 'highlight',
+        false,
+      );
+    }
+  }
 
-        if (style == 'underline') {
-          canvas.drawLine(
-            Offset(rect.left, rect.bottom - 1),
-            Offset(rect.right, rect.bottom - 1),
-            Paint()
-              ..color = color.withAlpha(220)
-              ..strokeWidth = 2.5
-              ..strokeCap = StrokeCap.round,
-          );
-        } else if (style == 'strikeout') {
-          canvas.drawLine(
-            Offset(rect.left, rect.center.dy),
-            Offset(rect.right, rect.center.dy),
-            Paint()
-              ..color = color.withAlpha(220)
-              ..strokeWidth = 2.0
-              ..strokeCap = StrokeCap.round,
-          );
-        } else {
-          canvas.drawRRect(
-            RRect.fromRectAndRadius(rect, const Radius.circular(2)),
-            Paint()..color = color.withAlpha(75),
-          );
-        }
+  void _paintMarkupRegion(
+    Canvas canvas,
+    Rect pageRect,
+    CanvasElement region,
+    Color color,
+    String style,
+    bool isActive,
+  ) {
+    final rect = Rect.fromLTWH(
+      pageRect.left + region.x * pageRect.width,
+      pageRect.top + region.y * pageRect.height,
+      region.width * pageRect.width,
+      region.height * pageRect.height,
+    );
 
-        if (isActive) {
-          canvas.drawRRect(
-            RRect.fromRectAndRadius(rect.inflate(3), const Radius.circular(4)),
-            Paint()
-              ..color = OrbitColors.of(context).accent
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 2.5,
-          );
-        }
-      }
+    if (style == 'underline') {
+      canvas.drawLine(
+        Offset(rect.left, rect.bottom - 1),
+        Offset(rect.right, rect.bottom - 1),
+        Paint()
+          ..color = color.withAlpha(220)
+          ..strokeWidth = 2.5
+          ..strokeCap = StrokeCap.round,
+      );
+    } else if (style == 'strikeout') {
+      canvas.drawLine(
+        Offset(rect.left, rect.center.dy),
+        Offset(rect.right, rect.center.dy),
+        Paint()
+          ..color = color.withAlpha(220)
+          ..strokeWidth = 2.0
+          ..strokeCap = StrokeCap.round,
+      );
+    } else {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(2)),
+        Paint()..color = color.withAlpha(75),
+      );
+    }
+
+    if (isActive) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect.inflate(3), const Radius.circular(4)),
+        Paint()
+          ..color = OrbitColors.of(context).accent
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.5,
+      );
     }
   }
 
@@ -1863,11 +2051,11 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   ) {
     final overlays = <Widget>[];
     if (!_showMarkup) return overlays;
-    for (final annotation in widget.annotations) {
-      if (!annotation.matches(widget.checksum)) continue;
+    for (final annotation in _annotationIndex.commentsForPage(
+      page.pageNumber,
+    )) {
       // Text markup is paint-only so it cannot consume selection drags. Its
       // editable note remains accessible from the review/connected-notes panel.
-      if (!annotation.isPageComment) continue;
       final bounds = annotation.boundsForPage(page.pageNumber);
       if (bounds == null) continue;
 
@@ -1908,6 +2096,62 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     return overlays;
   }
 
+  Future<void> _showAnnotationMenu(
+    PdfAnnotation annotation,
+    Offset position,
+  ) async {
+    final epoch = _documentEpoch, checksum = widget.checksum;
+    final global = _viewer.documentToGlobal(position);
+    if (global == null) return;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final point = overlay.globalToLocal(global);
+    final choice = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromSize(
+        Rect.fromLTWH(point.dx, point.dy, 1, 1),
+        overlay.size,
+      ),
+      items: [
+        const PopupMenuItem(value: 'details', child: Text('Highlight details')),
+        if (!widget.readOnly &&
+            !annotation.object.isReadOnly &&
+            widget.onUpdateReview != null)
+          const PopupMenuItem(
+            value: 'edit',
+            child: Text('Edit color, style and comment'),
+          ),
+        if (annotation.quote.isNotEmpty)
+          const PopupMenuItem(value: 'copy', child: Text('Copy quote')),
+        if (!widget.readOnly &&
+            !annotation.object.isReadOnly &&
+            widget.onDeleteReview != null)
+          const PopupMenuItem(value: 'delete', child: Text('Delete highlight')),
+      ],
+    );
+    if (!mounted ||
+        epoch != _documentEpoch ||
+        checksum != widget.checksum ||
+        !widget.annotations.any(
+          (a) => identical(a.object, annotation.object),
+        )) {
+      return;
+    }
+    switch (choice) {
+      case 'details':
+        _showHighlightDetail(annotation);
+      case 'edit':
+        _editReview(annotation);
+      case 'delete':
+        await _deleteReview(annotation);
+      case 'copy':
+        try {
+          await Clipboard.setData(ClipboardData(text: annotation.quote));
+        } catch (_) {
+          if (mounted) _notice('Clipboard unavailable. Review unchanged.');
+        }
+    }
+  }
+
   bool _tapMarkup(
     BuildContext context,
     PdfViewerController controller,
@@ -1915,30 +2159,31 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   ) {
     if (!_showMarkup ||
         _forms ||
-        details.type != PdfViewerGeneralTapType.tap ||
+        !{
+          PdfViewerGeneralTapType.tap,
+          PdfViewerGeneralTapType.secondaryTap,
+        }.contains(details.type) ||
         controller.textSelectionDelegate.hasSelectedText) {
       return false;
     }
-    for (final annotation in widget.annotations.reversed) {
-      if (annotation.isPageComment || !annotation.matches(widget.checksum)) {
-        continue;
-      }
-      for (final region in annotation.regions) {
-        final page = region.data['page'] as int;
-        if (page > controller.layout.pageLayouts.length) {
-          continue;
-        }
-        final rect = controller.layout.pageLayouts[page - 1];
-        if (Rect.fromLTWH(
-          rect.left + region.x * rect.width,
-          rect.top + region.y * rect.height,
-          region.width * rect.width,
-          region.height * rect.height,
-        ).contains(details.documentPosition)) {
+    final layouts = controller.layout.pageLayouts;
+    for (var i = 0; i < layouts.length; i++) {
+      final rect = layouts[i];
+      if (!rect.contains(details.documentPosition)) continue;
+      final annotation = _annotationIndex.hitTest(
+        i + 1,
+        (details.documentPosition.dx - rect.left) / rect.width,
+        (details.documentPosition.dy - rect.top) / rect.height,
+      );
+      if (annotation != null) {
+        if (details.type == PdfViewerGeneralTapType.secondaryTap) {
+          _showAnnotationMenu(annotation, details.documentPosition);
+        } else {
           _showHighlightDetail(annotation);
-          return true;
         }
+        return true;
       }
+      break;
     }
     if (_zenMode && details.type == PdfViewerGeneralTapType.tap) {
       setState(() => _zenControlsVisible = !_zenControlsVisible);
@@ -1947,12 +2192,24 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     return false;
   }
 
-  Widget _annotationPanel() => PdfReviewPanel(
+  Widget _annotationPanel({bool expanded = false}) => PdfReviewPanel(
+    key: _reviewPanelKey,
+    expanded: expanded,
+    onExpand: () => setState(() {
+      _reviewExpanded = !_reviewExpanded;
+      _showNotes = false;
+    }),
+    onBatch: widget.readOnly ? null : widget.onReviewBatch,
+    onUndoBatch: widget.readOnly ? null : widget.onUndoReviewBatch,
+    colors: pdfHighlightColors,
     annotations: widget.annotations,
     page: _page,
     checksum: widget.checksum,
     onNavigate: _goToAnnotation,
-    onClose: () => setState(() => _showAnnotations = false),
+    onClose: () => setState(() {
+      _showAnnotations = false;
+      _reviewExpanded = false;
+    }),
     onCopy: _copyReview,
     onExport: widget.onExportReview == null ? null : _exportReview,
     onAnnotatedCopy:
@@ -1970,7 +2227,12 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     onEdit: widget.readOnly || widget.onUpdateReview == null
         ? null
         : _editReview,
+    onDelete: widget.readOnly || widget.onDeleteReview == null
+        ? null
+        : _deleteReview,
+    deletingIds: Set.of(_deletingReviewIds),
     onSummary: widget.readOnly ? null : widget.onReviewSummary,
+    onBoard: widget.readOnly ? null : widget.onReviewBoard,
   );
 
   Widget _fallback(String message) => Center(
@@ -2871,10 +3133,12 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                                       epoch == _viewerEpoch &&
                                       page != null) {
                                     final changed = _page != page;
-                                    setState(() {
-                                      _page = page;
-                                      _pageInput.text = '$page';
-                                    });
+                                    if (changed) {
+                                      setState(() {
+                                        _page = page;
+                                        _pageInput.text = '$page';
+                                      });
+                                    }
                                     _positionChanged();
                                     if (changed) _fitComfort();
                                   }
@@ -3158,12 +3422,18 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                           ),
                         ),
                       ),
+                    if (_reviewExpanded && _showAnnotations)
+                      Positioned.fill(child: _annotationPanel(expanded: true)),
                   ],
                 );
               },
             ),
           ),
-          OrbitDisclosure(visible: _showAnnotations, child: _annotationPanel()),
+          if (!_reviewExpanded)
+            OrbitDisclosure(
+              visible: _showAnnotations,
+              child: _annotationPanel(),
+            ),
           if (widget.onOpenLinkedNote != null)
             OrbitDisclosure(
               visible: _showNotes,
@@ -3173,6 +3443,8 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                 fileId: widget.objectId,
                 checksum: widget.checksum,
                 onOpen: (id) => _openNote(id),
+                onDelete: widget.readOnly ? null : widget.onDeleteLinkedNote,
+                onRestore: widget.readOnly ? null : widget.onRestoreLinkedNote,
                 onClose: () {
                   setState(() => _showNotes = false);
                   _readerFocus.requestFocus();

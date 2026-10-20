@@ -1,5 +1,8 @@
 # Documentation map
 
+2026-10-13: Windows Google registration and real owner account access are verified;
+a configured release is available. Manual backup/restore remains explicit.
+
 2026-10-11: [self-hosted shared Vault preview](development/shared-vault-setup.md),
 [Google Drive activation and backup/restore](development/google-drive-activation.md).
 Personal automatic sync remains unfinished; these are distinct bounded workflows.
@@ -53,6 +56,7 @@ Use **Orbit Note**, **universal object**, **canvas**, and **Space** consistently
 - [Current milestone: durable local core](planning/current-milestone.md).
 - [Current task](tasks/current.md) and [task template](tasks/TEMPLATE.md).
 - [Development setup and verification](development/setup.md).
+- [Code workspace and local language tools](development/code-workspace-setup.md).
 - [ADR template](adr/TEMPLATE.md).
 
 **Status vocabulary:** accepted = chosen direction; proposed = needs validation

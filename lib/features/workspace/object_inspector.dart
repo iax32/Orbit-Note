@@ -33,8 +33,39 @@ class ObjectInspector extends ConsumerStatefulWidget {
 class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
   int _relationTab = 0; // 0: Linked, 1: Unlinked, 2: Outbound, 3: Related
   bool _showLocalGraph = false;
+  final _linkingMentions = <String>{};
 
-  bool _isInternalProp(String key) => key == 'orbitLinkBindings';
+  bool _writeProperty(
+    UniversalObject expected,
+    String key,
+    dynamic value,
+    int generation, {
+    bool remove = false,
+  }) {
+    if (!mounted) return false;
+    final c = widget.controller;
+    final ok = c.editObjectMetadata(
+      expected,
+      generation: generation,
+      changes: remove ? const {} : {key: value},
+      remove: remove ? {key} : const {},
+    );
+    if (!ok) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          content: Text(
+            generation == c.workspaceGeneration
+                ? c.error ?? 'Could not update this property.'
+                : 'The Vault changed. Your draft is retained; close and reopen the dialog.',
+          ),
+        ),
+      );
+    }
+    return ok;
+  }
+
+  bool _isInternalProp(String key) =>
+      key == 'orbitLinkBindings' || key == 'orbitConnections';
 
   PropertyType _inferPropertyType(String key, dynamic value) {
     if (value is bool) return PropertyType.boolean;
@@ -307,6 +338,7 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
     String key,
     dynamic value,
   ) {
+    final generation = widget.controller.workspaceGeneration;
     final type = _inferPropertyType(key, value);
 
     return Padding(
@@ -329,8 +361,7 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
             onPressed: () {
-              widget.controller.removeProperty(o.id, key);
-              setState(() {});
+              _writeProperty(o, key, null, generation, remove: true);
             },
             icon: Icon(Icons.close, color: colors.subtle),
           );
@@ -369,6 +400,7 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
     dynamic value,
     PropertyType type,
   ) {
+    final generation = widget.controller.workspaceGeneration;
     switch (type) {
       case PropertyType.boolean:
         final boolVal = value == true;
@@ -380,8 +412,7 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
               value: boolVal,
               activeThumbColor: colors.accent,
               onChanged: (v) {
-                widget.controller.updateProperty(o.id, key, v);
-                setState(() {});
+                _writeProperty(o, key, v, generation);
               },
             ),
           ),
@@ -521,8 +552,7 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
                       padding: EdgeInsets.zero,
                       onPressed: () {
                         final next = List<String>.from(tagsList)..remove(tag);
-                        widget.controller.updateProperty(o.id, key, next);
-                        setState(() {});
+                        _writeProperty(o, key, next, generation);
                       },
                       icon: const Icon(Icons.close, size: 14),
                     ),
@@ -714,7 +744,7 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
               if (outbound.isEmpty) {
                 return _buildEmptyRelationBox(
                   colors,
-                  'No outbound wiki-links found.',
+                  'No outbound references found.',
                 );
               }
               return Column(
@@ -793,6 +823,7 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
       LinkedMentionType.studyReference => 'study source',
       LinkedMentionType.planningResource => 'planning resource',
       LinkedMentionType.researchRelation => m.label ?? 'research link',
+      LinkedMentionType.objectReference => m.label ?? 'live reference',
     };
 
     return Container(
@@ -870,6 +901,9 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
     UnlinkedMention m,
     String targetId,
   ) {
+    final c = widget.controller,
+        generation = widget.controller.workspaceGeneration;
+    final pendingKey = '$generation:${m.source.id}:${m.startIndex}';
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
@@ -923,20 +957,35 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  onPressed: () async {
-                    await widget.controller.linkUnlinkedMention(m, targetId);
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Linked mention in "${m.source.title}"',
-                          ),
-                          duration: const Duration(seconds: 2),
-                        ),
-                      );
-                      setState(() {});
-                    }
-                  },
+                  onPressed: _linkingMentions.contains(pendingKey)
+                      ? null
+                      : () async {
+                          if (!mounted ||
+                              generation != c.workspaceGeneration ||
+                              !_linkingMentions.add(pendingKey)) {
+                            return;
+                          }
+                          setState(() {});
+                          final ok = await c.linkUnlinkedMention(
+                            m,
+                            targetId,
+                            expectedGeneration: generation,
+                          );
+                          _linkingMentions.remove(pendingKey);
+                          if (mounted && generation == c.workspaceGeneration) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  ok
+                                      ? 'Linked mention in "${m.source.title}"'
+                                      : 'Mention not saved. The passage changed or its save needs attention. Refresh and review the source.',
+                                ),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                            setState(() {});
+                          }
+                        },
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1070,7 +1119,7 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
             alignment: Alignment.centerLeft,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           ),
-          onPressed: () => widget.controller.trash(o.id),
+          onPressed: () => widget.controller.trash(o.id, expected: o),
           icon: const Icon(Icons.delete_outline, size: 15),
           label: const Text('Move to Trash', style: TextStyle(fontSize: 12)),
         ),
@@ -1092,6 +1141,7 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
     BuildContext context,
     UniversalObject o,
   ) async {
+    final generation = widget.controller.workspaceGeneration;
     final formKey = GlobalKey<FormState>();
     final keyController = TextEditingController();
     final valueController = TextEditingController();
@@ -1124,6 +1174,9 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
                       validator: (v) {
                         final trimmed = v?.trim() ?? '';
                         if (trimmed.isEmpty) return 'Name cannot be empty';
+                        if (_isInternalProp(trimmed)) {
+                          return 'This property is managed by Orbit Note';
+                        }
                         if (o.properties.containsKey(trimmed)) {
                           return 'Property "$trimmed" already exists';
                         }
@@ -1210,7 +1263,7 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
                                 firstDate: DateTime(2000),
                                 lastDate: DateTime(2100),
                               );
-                              if (res != null) {
+                              if (res != null && ctx.mounted) {
                                 setDialogState(() => pickedDate = res);
                               }
                             },
@@ -1240,8 +1293,8 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
                             if (v == null || v.trim().isEmpty) {
                               return 'Please enter a number';
                             }
-                            if (num.tryParse(v.trim()) == null) {
-                              return 'Must be a valid number';
+                            if (num.tryParse(v.trim())?.isFinite != true) {
+                              return 'Enter a finite number';
                             }
                           } else if (selectedType == PropertyType.url) {
                             final trimmed = v?.trim() ?? '';
@@ -1265,7 +1318,11 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
                 ),
                 FilledButton(
                   onPressed: () {
-                    if (!formKey.currentState!.validate()) return;
+                    if (!mounted ||
+                        !dialogCtx.mounted ||
+                        formKey.currentState?.validate() != true) {
+                      return;
+                    }
                     final key = keyController.text.trim();
                     dynamic parsedValue;
                     switch (selectedType) {
@@ -1293,8 +1350,9 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
                         parsedValue = valueController.text.trim();
                         break;
                     }
-                    widget.controller.updateProperty(o.id, key, parsedValue);
-                    setState(() {});
+                    if (!_writeProperty(o, key, parsedValue, generation)) {
+                      return;
+                    }
                     Navigator.of(dialogCtx).pop();
                   },
                   child: const Text('Add Property'),
@@ -1313,6 +1371,7 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
     String key,
     String currentValue,
   ) async {
+    final generation = widget.controller.workspaceGeneration;
     final controller = TextEditingController(text: currentValue);
     await _showPropertyDialog(
       context: context,
@@ -1334,12 +1393,10 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
           ),
           FilledButton(
             onPressed: () {
-              widget.controller.updateProperty(
-                o.id,
-                key,
-                controller.text.trim(),
-              );
-              setState(() {});
+              if (!mounted || !dialogCtx.mounted) return;
+              if (!_writeProperty(o, key, controller.text.trim(), generation)) {
+                return;
+              }
               Navigator.of(dialogCtx).pop();
             },
             child: const Text('Save'),
@@ -1355,6 +1412,7 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
     String key,
     num currentValue,
   ) async {
+    final generation = widget.controller.workspaceGeneration;
     final formKey = GlobalKey<FormState>();
     final controller = TextEditingController(text: '$currentValue');
     await _showPropertyDialog(
@@ -1377,8 +1435,8 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
               if (v == null || v.trim().isEmpty) {
                 return 'Enter a number';
               }
-              if (num.tryParse(v.trim()) == null) {
-                return 'Must be a valid number';
+              if (num.tryParse(v.trim())?.isFinite != true) {
+                return 'Enter a finite number';
               }
               return null;
             },
@@ -1391,10 +1449,13 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
           ),
           FilledButton(
             onPressed: () {
-              if (!formKey.currentState!.validate()) return;
+              if (!mounted ||
+                  !dialogCtx.mounted ||
+                  formKey.currentState?.validate() != true) {
+                return;
+              }
               final parsed = num.parse(controller.text.trim());
-              widget.controller.updateProperty(o.id, key, parsed);
-              setState(() {});
+              if (!_writeProperty(o, key, parsed, generation)) return;
               Navigator.of(dialogCtx).pop();
             },
             child: const Text('Save'),
@@ -1410,6 +1471,7 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
     String key,
     String currentUrl,
   ) async {
+    final generation = widget.controller.workspaceGeneration;
     final formKey = GlobalKey<FormState>();
     final controller = TextEditingController(text: currentUrl);
     await _showPropertyDialog(
@@ -1446,13 +1508,15 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
           ),
           FilledButton(
             onPressed: () {
-              if (!formKey.currentState!.validate()) return;
-              widget.controller.updateProperty(
-                o.id,
-                key,
-                controller.text.trim(),
-              );
-              setState(() {});
+              if (!mounted ||
+                  !dialogCtx.mounted ||
+                  formKey.currentState?.validate() != true) {
+                return;
+              }
+              if (!mounted || !dialogCtx.mounted) return;
+              if (!_writeProperty(o, key, controller.text.trim(), generation)) {
+                return;
+              }
               Navigator.of(dialogCtx).pop();
             },
             child: const Text('Save'),
@@ -1468,6 +1532,7 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
     String key,
     List<String> currentTags,
   ) async {
+    final generation = widget.controller.workspaceGeneration;
     final controller = TextEditingController();
     await _showPropertyDialog(
       context: context,
@@ -1489,13 +1554,15 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
           ),
           FilledButton(
             onPressed: () {
+              if (!mounted || !dialogCtx.mounted) return;
               final newTag = controller.text.trim().replaceAll('#', '');
               if (newTag.isNotEmpty && !currentTags.contains(newTag)) {
-                widget.controller.updateProperty(o.id, key, [
+                if (!_writeProperty(o, key, [
                   ...currentTags,
                   newTag,
-                ]);
-                setState(() {});
+                ], generation)) {
+                  return;
+                }
               }
               Navigator.of(dialogCtx).pop();
             },
@@ -1512,6 +1579,7 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
     String key,
     String currentDateStr,
   ) async {
+    final generation = widget.controller.workspaceGeneration;
     final parsed = DateTime.tryParse(currentDateStr) ?? DateTime.now();
     final picked = await showDatePicker(
       context: context,
@@ -1526,8 +1594,7 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
     if (picked != null && mounted) {
       final formatted =
           '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
-      widget.controller.updateProperty(o.id, key, formatted);
-      setState(() {});
+      _writeProperty(o, key, formatted, generation);
     }
   }
 }

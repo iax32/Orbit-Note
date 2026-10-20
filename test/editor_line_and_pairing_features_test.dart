@@ -7,6 +7,13 @@ import 'package:orbit_note/features/notes/markdown_editing.dart';
 import 'package:orbit_note/features/notes/note_editor.dart';
 
 void main() {
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('pasteboard'),
+          (_) async => null,
+        );
+  });
   TestWidgetsFlutterBinding.ensureInitialized();
 
   Widget createTestApp(Widget child) {
@@ -356,7 +363,7 @@ void main() {
     });
   });
 
-  group('NoteEditor Line Indicator & Reading Progress Bar Tests', () {
+  group('NoteEditor Line Indicator Tests', () {
     testWidgets(
       'renders note-line-col-indicator and updates live with cursor position',
       (tester) async {
@@ -396,10 +403,10 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Check reading progress bar exists
+        // Scrolling uses the normal editor viewport, without a progress stripe.
         expect(
           find.byKey(const ValueKey('note-reading-progress-bar')),
-          findsOneWidget,
+          findsNothing,
         );
       },
     );

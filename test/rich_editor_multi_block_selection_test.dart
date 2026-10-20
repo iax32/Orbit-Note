@@ -119,37 +119,61 @@ void main() {
     expect(find.byKey(const ValueKey('selected-block-2')), findsOneWidget);
   });
 
-  testWidgets('Shift + Click selects block range', (tester) async {
-    await open(
-      tester,
-      '# Title\n\nBlock one.\n\nBlock two.\n\nBlock three.\n\n',
-    );
+  testWidgets(
+    'Shift + Click selects a text range without moving the paragraph layout',
+    (tester) async {
+      await open(
+        tester,
+        '# Title\n\nBlock one.\n\nBlock two.\n\nBlock three.\n\n',
+      );
 
-    // Tap block 2 (Block one.)
-    await tester.tap(field('Block one.'));
-    await tester.pumpAndSettle();
+      // Tap block 2 (Block one.)
+      await tester.tap(field('Block one.'));
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('selected-block-2')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('cross-selected-block-2')),
+        findsNothing,
+      );
 
-    // Shift + Click on block 6 (Block three.)
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
-    await tester.tap(field('Block three.'));
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
-    await tester.pumpAndSettle();
+      // Shift + Click on block 6 (Block three.)
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.tap(field('Block three.'));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pumpAndSettle();
 
-    // Content blocks 2, 4, 6 should be selected
-    expect(find.byKey(const ValueKey('selected-block-0')), findsNothing);
-    expect(find.byKey(const ValueKey('selected-block-2')), findsOneWidget);
-    expect(find.byKey(const ValueKey('selected-block-4')), findsOneWidget);
-    expect(find.byKey(const ValueKey('selected-block-6')), findsOneWidget);
+      // Content blocks 2, 4, 6 should be selected
+      expect(find.byKey(const ValueKey('selected-block-0')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('cross-selected-block-2')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('cross-selected-block-4')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('cross-selected-block-6')),
+        findsOneWidget,
+      );
 
-    // Click without Shift clears multi-block selection
-    await tester.tap(field('Block two.'));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('selected-block-2')), findsNothing);
-    expect(find.byKey(const ValueKey('selected-block-4')), findsNothing);
-    expect(find.byKey(const ValueKey('selected-block-6')), findsNothing);
-  });
+      // Click without Shift clears multi-block selection
+      await tester.tap(field('Block two.'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('cross-selected-block-2')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('cross-selected-block-4')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('cross-selected-block-6')),
+        findsNothing,
+      );
+    },
+  );
 
   testWidgets(
     'Shift + Down and Shift + Up extend and contract block selection',
@@ -207,9 +231,9 @@ void main() {
     // Tap block 2 and Shift+Click block 4
     await tester.tap(field('Block one.'));
     await tester.pumpAndSettle();
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
-    await tester.tap(field('Block two.'));
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    tester
+        .state<RichMarkdownEditorState>(find.byType(RichMarkdownEditor))
+        .selectBlockRange(2, 4);
     await tester.pumpAndSettle();
 
     clipboard = '';
@@ -230,9 +254,9 @@ void main() {
       // Select Block one (block 2) and Block two (block 4)
       await tester.tap(field('Block one.'));
       await tester.pumpAndSettle();
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
-      await tester.tap(field('Block two.'));
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      tester
+          .state<RichMarkdownEditorState>(find.byType(RichMarkdownEditor))
+          .selectBlockRange(2, 4);
       await tester.pumpAndSettle();
 
       // Cut (Ctrl+X)
@@ -252,9 +276,9 @@ void main() {
       // Select Block two and Block three, then Backspace
       await tester.tap(field('Block two.'));
       await tester.pumpAndSettle();
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
-      await tester.tap(field('Block three.'));
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      tester
+          .state<RichMarkdownEditorState>(find.byType(RichMarkdownEditor))
+          .selectBlockRange(4, 6);
       await tester.pumpAndSettle();
 
       await key(tester, LogicalKeyboardKey.backspace);
@@ -324,9 +348,9 @@ void main() {
       // Select Block one and Block two
       await tester.tap(field('Block one.'));
       await tester.pumpAndSettle();
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
-      await tester.tap(field('Block two.'));
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      tester
+          .state<RichMarkdownEditorState>(find.byType(RichMarkdownEditor))
+          .selectBlockRange(2, 4);
       await tester.pumpAndSettle();
 
       // Type character 'x'

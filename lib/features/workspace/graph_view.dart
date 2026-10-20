@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import '../../app/orbit_theme.dart';
 import '../../app/workspace_controller.dart';
 import '../../domain/universal_object.dart';
-import '../../domain/wiki_links.dart';
-import '../../domain/research_workspace.dart';
+import '../../domain/object_connections.dart';
+import 'vault_insights_dialog.dart';
 
 class GraphNode {
   GraphNode({
@@ -66,23 +66,20 @@ class GraphData {
     int maxHops = 2,
     Set<String>? typeFilters,
     String query = '',
+    List<ObjectConnection>? connections,
   }) {
     final activeObjects = objects.where((o) => !o.isDeleted).toList();
     final allowedTypes =
         typeFilters ??
-        {'orbit.note', 'orbit.task', 'orbit.canvas', 'orbit.event'};
+        {
+          'orbit.note',
+          'orbit.task',
+          'orbit.canvas',
+          'orbit.event',
+          'orbit.file',
+          'orbit.view',
+        };
 
-    final targets = activeObjects
-        .map(
-          (o) => NoteLinkTarget(
-            id: o.id,
-            title: o.title,
-            aliases: (o.properties['aliases'] is List)
-                ? (o.properties['aliases'] as List).whereType<String>().toList()
-                : const [],
-          ),
-        )
-        .toList();
     final rawEdges = <GraphEdge>[];
     final edgeKeys = <String>{};
 
@@ -94,56 +91,9 @@ class GraphData {
       }
     }
 
-    for (final o in activeObjects) {
-      for (final link in researchRelations(o)) {
-        addEdge(o.id, link.id);
-      }
-      // 1. WikiLinks in notes
-      if (o.typeId == 'orbit.note' && o.body.isNotEmpty) {
-        final links = parseWikiLinks(o.body);
-        for (final link in links) {
-          final target = resolveWikiLink(
-            link,
-            targets,
-            bindings: o.linkBindings,
-          ).target;
-          if (target != null) addEdge(o.id, target.id);
-        }
-      }
-
-      // 2. Task context link
-      if (o.typeId == 'orbit.task') {
-        final ctx = o.properties['contextId'] ?? o.properties['context'];
-        if (ctx is String && ctx.isNotEmpty) {
-          addEdge(o.id, ctx);
-        }
-      }
-
-      // 3. Event linked context
-      if (o.typeId == 'orbit.event') {
-        final ctx =
-            o.properties['contextId'] ??
-            o.properties['context'] ??
-            o.properties['linkedId'];
-        if (ctx is String && ctx.isNotEmpty) {
-          addEdge(o.id, ctx);
-        }
-      }
-
-      // 4. Canvas transcluded elements
-      if (o.typeId == 'orbit.canvas') {
-        final elements = o.data['elements'];
-        if (elements is List) {
-          for (final el in elements) {
-            if (el is Map) {
-              final target = el['targetId'] ?? el['objectId'];
-              if (target is String && target.isNotEmpty) {
-                addEdge(o.id, target);
-              }
-            }
-          }
-        }
-      }
+    for (final edge
+        in connections ?? ObjectConnectionResolver().resolve(activeObjects)) {
+      addEdge(edge.source.id, edge.target.id);
     }
 
     // Filter nodes if in local focus mode
@@ -313,6 +263,8 @@ class _GraphViewState extends State<GraphView>
     'orbit.task',
     'orbit.canvas',
     'orbit.event',
+    'orbit.file',
+    'orbit.view',
   };
   GraphNode? _hoveredNode;
   GraphData? _cachedGraph;
@@ -417,6 +369,7 @@ class _GraphViewState extends State<GraphView>
       _hoveredNode = null;
       _cachedGraph = GraphData.build(
         objects: c.objects,
+        connections: c.objectConnections,
         focusId: _localMode ? activeId : null,
         maxHops: _depth,
         typeFilters: _typeFilters,
@@ -551,6 +504,14 @@ class _GraphViewState extends State<GraphView>
                     ),
 
                     // Search Filter
+                    TextButton.icon(
+                      icon: const Icon(Icons.insights_outlined, size: 18),
+                      label: const Text('Vault Insights'),
+                      onPressed: () => showDialog<void>(
+                        context: context,
+                        builder: (_) => VaultInsightsDialog(controller: c),
+                      ),
+                    ),
                     PopupMenuButton<String>(
                       tooltip: 'Choose local graph focus',
                       icon: const Icon(Icons.my_location),
@@ -665,6 +626,21 @@ class _GraphViewState extends State<GraphView>
                                 : _typeFilters.add('orbit.canvas');
                           }),
                         ),
+                        for (final entry in {
+                          'orbit.event': 'Events',
+                          'orbit.file': 'Files',
+                          'orbit.view': 'Views',
+                        }.entries)
+                          _TypeFilterChip(
+                            label: entry.value,
+                            color: const Color(0xFF65C6A3),
+                            selected: _typeFilters.contains(entry.key),
+                            onTap: () => setState(() {
+                              if (!_typeFilters.remove(entry.key)) {
+                                _typeFilters.add(entry.key);
+                              }
+                            }),
+                          ),
                         const SizedBox(width: 8),
                         Tooltip(
                           message: 'Fit graph to view',

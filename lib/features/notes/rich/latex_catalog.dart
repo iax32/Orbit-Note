@@ -3,6 +3,7 @@
 // ignore_for_file: implementation_imports
 import 'package:flutter_math_fork/src/parser/tex/symbols.dart';
 import 'package:flutter_math_fork/src/ast/types.dart';
+import '../../../domain/math_templates.dart';
 
 class LatexEntry {
   const LatexEntry(this.name, this.source, this.category, [this.glyph = '']);
@@ -66,6 +67,8 @@ const latexTemplates = [
 
 final latexCatalog = List<LatexEntry>.unmodifiable([
   ...latexTemplates,
+  for (final template in mathLabTemplates)
+    LatexEntry(template.name, template.tex, template.category),
   for (final entry in texSymbolCommandConfigs[Mode.math]!.entries)
     LatexEntry(
       entry.key.startsWith('\\') ? entry.key.substring(1) : entry.key,

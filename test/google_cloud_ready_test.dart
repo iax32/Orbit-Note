@@ -35,18 +35,27 @@ void main() {
     GoogleDriveApi(
       auth: auth,
       client: MockClient(handler),
-      localMetadata: TestGoogleCredentials(),
+      localMetadata: TestGoogleCredentials()
+        ..value = '{"subject-1":{"id":"root-ready","pending":false}}',
     ),
   );
 
   for (final restore in [false, true]) {
     test(
-      '${restore ? 'restore' : 'sign-in'} loads backups without writes',
+      '${restore ? 'restore' : 'sign-in'} loads backups and reuses its existing folder without writes',
       () async {
         final auth = FakeGoogleAuth();
         if (!restore) auth.current = null;
         final cloud = controller(auth, (request) async {
           expect(request.method, 'GET');
+          if (request.url.path.endsWith('/root-ready')) {
+            return response({
+              'id': 'root-ready',
+              'ownedByMe': true,
+              'mimeType': GoogleDriveApi.folderMime,
+              'appProperties': {'orbitRole': 'root'},
+            });
+          }
           return request.url.path.endsWith('/about')
               ? response({
                   'storageQuota': {'limit': '1000', 'usage': '100'},
@@ -58,7 +67,11 @@ void main() {
         expect(cloud.account?.subject, 'subject-1');
         expect(cloud.quota?.remaining, BigInt.from(900));
         expect(cloud.backups.single.id, 'backup-1');
-        expect(cloud.message, isNull);
+        if (restore) {
+          expect(cloud.message, isNull);
+        } else {
+          expect(cloud.message, contains('Drive is ready'));
+        }
         expect(cloud.busy, isFalse);
         expect(cloud.signingIn, isFalse);
       },

@@ -55,7 +55,12 @@ void main() {
     await tester.tap(find.text('Apply'));
     await tester.pumpAndSettle();
     expect(edits, 0);
-    expect(find.text('Heading'), findsOneWidget);
+    expect(field('Changed'), findsOneWidget);
+    expect(find.textContaining('Your draft is retained'), findsOneWidget);
+    expect(
+      tester.widget<NoteEditor>(find.byType(NoteEditor)).body,
+      '# Heading\n\nBody',
+    );
     expect(tester.takeException(), isNull);
   });
   testWidgets(

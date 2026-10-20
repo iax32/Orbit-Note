@@ -150,11 +150,11 @@ class CalloutSourceParts {
     headerEnd = first?.end ?? 0;
     final header = first?[0]?.replaceFirst(RegExp(r'\r?\n$'), '') ?? '';
     final match = RegExp(
-      r'^>\s*\[!([a-zA-Z]+)\][ \t]*(.*)$',
+      r'^>\s*\[!([a-zA-Z]+)\]([+-]?)[ \t]*(.*)$',
     ).firstMatch(header);
     typeStart = match == null ? 0 : header.indexOf('[!') + 2;
     typeEnd = typeStart + (match?[1]?.length ?? 0);
-    final title = match?[2] ?? '';
+    final title = match?[3] ?? '';
     titleStart = (match?.end ?? 0) - title.trimLeft().length;
     titleEnd = ((match?.end ?? 0) - title.length + title.trimRight().length)
         .clamp(titleStart, header.length);
@@ -166,6 +166,20 @@ class CalloutSourceParts {
   final String source;
   late final int headerEnd, typeStart, typeEnd, titleStart, titleEnd;
   late final StructuredTextProjection body;
+  String editTitle(String next) {
+    if (typeEnd <= typeStart || next.contains(RegExp(r'[\r\n]'))) {
+      throw const FormatException('Use a single-line callout title.');
+    }
+    final start = titleStart, end = titleEnd;
+    final separator =
+        next.isNotEmpty &&
+            start > 0 &&
+            !RegExp(r'[ \t]').hasMatch(source[start - 1])
+        ? ' '
+        : '';
+    return source.replaceRange(start, end, '$separator$next');
+  }
+
   String editBody(String next) {
     if (next == body.text) return source;
     final header = source.substring(0, headerEnd);

@@ -25,13 +25,18 @@ import '../platform/ocr_pages.dart';
 import '../domain/ocr_document.dart';
 import '../domain/object_discovery.dart';
 import '../domain/pdf_annotation.dart';
+import '../domain/pdf_review_batch.dart';
 import '../domain/research_document.dart';
 import '../domain/research_workspace.dart';
 import '../domain/reverse_engineering.dart';
+import '../domain/research_comparison.dart';
+import '../domain/source_browser.dart';
 import '../canvas/scene.dart';
+import '../canvas/diagram_reference.dart';
 import '../domain/wiki_links.dart';
 import '../domain/search_text.dart';
 import '../domain/work_session.dart';
+import '../domain/project_context.dart';
 import 'session_state.dart';
 import '../domain/smart_view_query.dart';
 import '../domain/task_planning.dart';
@@ -42,8 +47,16 @@ import '../domain/study_card.dart';
 import '../domain/gameplay_workbench.dart';
 import '../domain/gameplay_release.dart';
 import '../domain/model_asset.dart';
+import '../domain/course_progress.dart';
+import '../domain/json_values.dart';
+import '../domain/object_connections.dart';
+import '../domain/note_composition.dart';
 
 part 'workspace_productivity.dart';
+part 'workspace_courses.dart';
+part 'workspace_editor_drafts.dart';
+part 'workspace_reference_bridges.dart';
+part 'workspace_project_context.dart';
 part 'workspace_ocr.dart';
 part 'workspace_study.dart';
 part 'workspace_study_resume.dart';
@@ -52,6 +65,8 @@ part 'workspace_creative.dart';
 part 'workspace_research.dart';
 part 'workspace_work_calendars.dart';
 part 'workspace_gameplay.dart';
+part 'workspace_technical.dart';
+part 'workspace_pdf_review.dart';
 
 final repositoryProvider = Provider<WorkspaceRepository>(
   (ref) => WorkspaceRepository(),
@@ -62,7 +77,33 @@ final workspaceProvider = NotifierProvider<WorkspaceController, int>(
 
 /// Coordinates drafts and serialized durable commands. UI never writes files.
 class WorkspaceController extends Notifier<int> {
+  final _connectionResolver = ObjectConnectionResolver();
+  List<UniversalObject>? _connectionSnapshot;
+  List<ObjectConnection> _connectionEdges = const [];
   bool _creatingCreativeProject = false;
+  bool _creatingCourse = false;
+  final Set<String> _courseBoardsCreating = {};
+  final Map<String, EditorDraftConflict> editorDraftConflicts = {};
+  final _editorDraftRecoveries =
+      <
+        String,
+        ({
+          int generation,
+          EditorDraftConflict draft,
+          Future<UniversalObject?> future,
+        })
+      >{};
+  List<UniversalObject>? _projectChoicesSource;
+  Map<String, String> _projectChoicesCache = const {};
+  final Map<
+    String,
+    ({
+      String workspace,
+      Map<String, dynamic> before,
+      Map<String, dynamic> after,
+    })
+  >
+  _projectMutationUndo = {};
   WorkspaceController({
     PdfTextExtractor? pdfTextExtractor,
     OcrPageExtractor? ocrExtractor,
@@ -109,7 +150,8 @@ class WorkspaceController extends Notifier<int> {
   Completer<void>? _productivityOperation;
   List<UniversalObject>? _querySnapshot;
   String _queryDay = '';
-  final Map<String, List<UniversalObject>> _viewQueryCache = {};
+  final Map<(String, String?, String?), List<UniversalObject>> _viewQueryCache =
+      {};
   ({UniversalObject before, UniversalObject after})? _planningUndo;
   List<UniversalObject> objects = [];
   bool loading = true;
@@ -118,6 +160,8 @@ class WorkspaceController extends Notifier<int> {
   final Map<String, String> failures = {};
   final Map<String, Timer> _timers = {};
   final Map<String, Future<void>> _saving = {};
+  final Set<String> _trashing = {};
+  bool _pdfReviewBatchBusy = false;
   Timer? _sessionTimer;
   bool _alive = true;
   bool savingSettings = false;
@@ -191,20 +235,22 @@ class WorkspaceController extends Notifier<int> {
 
   /// Constructed for a single Vault opening. The eventual sync coordinator must
   /// discard this adapter on switch; the repository generation also enforces it.
-  WorkspaceSyncReplica createSyncReplica() => WorkspaceSyncReplica(
-    repository,
-    canApply: () =>
-        _alive &&
-        hasWorkspace &&
-        !loading &&
-        dirty.isEmpty &&
-        _saving.isEmpty &&
-        failures.isEmpty,
-    onApplied: () {
-      mergeRepositoryObjects();
-      notify();
-    },
-  );
+  WorkspaceSyncReplica createSyncReplica({bool Function()? isCurrent}) =>
+      WorkspaceSyncReplica(
+        repository,
+        isCurrent: isCurrent,
+        canApply: () =>
+            _alive &&
+            hasWorkspace &&
+            !loading &&
+            dirty.isEmpty &&
+            _saving.isEmpty &&
+            failures.isEmpty,
+        onApplied: () {
+          mergeRepositoryObjects();
+          notify();
+        },
+      );
   String? lastClosed;
   bool externalChangesPending = false;
   bool _checkingExternal = false;
@@ -242,6 +288,9 @@ class WorkspaceController extends Notifier<int> {
     Future.microtask(initialize);
     return 0;
   }
+
+  void Function() observeChanges(void Function() listener) =>
+      listenSelf((_, _) => listener());
 
   void notify() {
     if (_alive && hasWorkspace) _pdfIndexer?.synchronize(objects);
@@ -559,29 +608,45 @@ class WorkspaceController extends Notifier<int> {
     }
   }
 
-  List<UniversalObject> backlinks(String id) => activeObjects
-      .where(
-        (o) =>
-            (StudyCard.supported(o) &&
-                StudyCard(o).source?['objectId'] == id) ||
-            calendarResources(o).contains(id) ||
-            parseWikiLinks(o.body).any(
-              (link) =>
-                  resolveWikiLink(
-                    link,
-                    linkTargets,
-                    bindings: o.linkBindings,
-                  ).target?.id ==
-                  id,
-            ),
-      )
-      .toList();
+  List<UniversalObject> backlinks(String id) {
+    final ids = connectionsTo(id).map((r) => r.source.id).toSet();
+    return activeObjects.where((o) => ids.contains(o.id)).toList();
+  }
 
-  List<LinkedMention> linkedMentions(String id) => findLinkedMentions(
-    targetId: id,
-    objects: activeObjects,
-    targets: linkTargets,
-  );
+  List<LinkedMention> linkedMentions(String id) {
+    final existing = findLinkedMentions(
+      targetId: id,
+      objects: activeObjects,
+      targets: linkTargets,
+    );
+    for (final edge in connectionsTo(id)) {
+      if (existing.any(
+        (m) =>
+            m.source.id == edge.source.id &&
+            (m.targetLocation == null ||
+                m.targetLocation?.target == edge.target.target) &&
+            m.sourceOffset == edge.offset &&
+            (m.sourceLocation ?? ObjectReference(m.source.id)).target ==
+                edge.location.target,
+      )) {
+        continue;
+      }
+      existing.add(
+        LinkedMention(
+          source: edge.source,
+          targetId: id,
+          targetTitle: find(id)?.title ?? id,
+          snippet: edge.label,
+          type: LinkedMentionType.objectReference,
+          label: edge.label,
+          targetLocation: edge.target,
+          sourceLocation: edge.location,
+          sourceOffset: edge.offset,
+        ),
+      );
+    }
+    return existing;
+  }
 
   List<UnlinkedMention> unlinkedMentions(String id) => findUnlinkedMentions(
     targetId: id,
@@ -589,38 +654,38 @@ class WorkspaceController extends Notifier<int> {
     targets: linkTargets,
   );
 
-  Future<void> linkUnlinkedMention(
+  Future<bool> linkUnlinkedMention(
     UnlinkedMention mention,
-    String targetId,
-  ) async {
-    final source = find(mention.source.id);
-    if (source == null) return;
-    final updatedBody = linkMentionInMarkdown(source.body, mention, targetId);
-    if (updatedBody != source.body) {
-      edit(source.id, body: updatedBody);
-      await flush(source.id);
+    String targetId, {
+    int? expectedGeneration,
+  }) async {
+    final generation = workspaceGeneration;
+    final source = find(mention.source.id), target = find(targetId);
+    if (expectedGeneration != null && expectedGeneration != generation ||
+        source == null ||
+        source.isDeleted ||
+        source.isReadOnly ||
+        target == null ||
+        target.isDeleted ||
+        repository.readOnly ||
+        source.workspaceId != mention.source.workspaceId ||
+        source.body != mention.source.body) {
+      return false;
     }
+    final updatedBody = linkMentionInMarkdown(source.body, mention, targetId);
+    if (updatedBody == source.body) return false;
+    edit(source.id, body: updatedBody);
+    await flush(source.id);
+    return generation == workspaceGeneration &&
+        find(source.id)?.isDeleted == false &&
+        find(source.id)?.body == updatedBody &&
+        !dirty.contains(source.id) &&
+        !failures.containsKey(source.id);
   }
 
   List<UniversalObject> outboundLinks(String id) {
-    final o = find(id);
-    if (o == null) return const [];
-    final links = parseWikiLinks(o.body);
-    final targets = <UniversalObject>[];
-    for (final link in links) {
-      final target = resolveWikiLink(
-        link,
-        linkTargets,
-        bindings: o.linkBindings,
-      ).target;
-      if (target != null) {
-        final targetObj = find(target.id);
-        if (targetObj != null && !targets.any((t) => t.id == targetObj.id)) {
-          targets.add(targetObj);
-        }
-      }
-    }
-    return targets;
+    final ids = connectionsFrom(id).map((r) => r.target.id).toSet();
+    return activeObjects.where((o) => ids.contains(o.id)).toList();
   }
 
   /// Groups all unresolved WikiLinks across active notes by missing title (LNK-05).
@@ -964,31 +1029,56 @@ class WorkspaceController extends Notifier<int> {
   }
 
   /// Adds a tag to an object's properties.
-  Future<void> addTagToObject(String objectId, String tag) async {
+  Future<void> addTagToObject(
+    String objectId,
+    String tag, {
+    int? expectedGeneration,
+  }) async {
+    if (expectedGeneration != null &&
+        expectedGeneration != workspaceGeneration) {
+      return;
+    }
     final clean = tag.trim().replaceAll(RegExp(r'^#'), '');
     if (clean.isEmpty) return;
     final o = find(objectId);
-    if (o == null || o.isReadOnly || repository.readOnly) return;
+    if (o == null || o.isDeleted || o.isReadOnly || repository.readOnly) return;
+    if (o.properties['tags'] != null && o.properties['tags'] is! List) return;
     final currentTags = (o.properties['tags'] is List)
-        ? (o.properties['tags'] as List).map((e) => e.toString()).toList()
-        : <String>[];
-    if (!currentTags.any((t) => t.toLowerCase() == clean.toLowerCase())) {
+        ? List<dynamic>.from(o.properties['tags'] as List)
+        : <dynamic>[];
+    if (!currentTags.any(
+      (t) =>
+          t.toString().trim().replaceAll(RegExp(r'^#'), '').toLowerCase() ==
+          clean.toLowerCase(),
+    )) {
       currentTags.add(clean);
       updateProperty(objectId, 'tags', currentTags);
     }
   }
 
   /// Removes a tag from an object's properties.
-  Future<void> removeTagFromObject(String objectId, String tag) async {
+  Future<void> removeTagFromObject(
+    String objectId,
+    String tag, {
+    int? expectedGeneration,
+  }) async {
+    if (expectedGeneration != null &&
+        expectedGeneration != workspaceGeneration) {
+      return;
+    }
     final clean = tag.trim().replaceAll(RegExp(r'^#'), '').toLowerCase();
     final o = find(objectId);
-    if (o == null || o.isReadOnly || repository.readOnly) return;
+    if (o == null || o.isDeleted || o.isReadOnly || repository.readOnly) return;
     if (o.properties['tags'] is List) {
       final currentTags = (o.properties['tags'] as List)
-          .map((e) => e.toString())
           .where(
             (t) =>
-                t.trim().replaceAll(RegExp(r'^#'), '').toLowerCase() != clean,
+                t
+                    .toString()
+                    .trim()
+                    .replaceAll(RegExp(r'^#'), '')
+                    .toLowerCase() !=
+                clean,
           )
           .toList();
       updateProperty(objectId, 'tags', currentTags);
@@ -999,6 +1089,66 @@ class WorkspaceController extends Notifier<int> {
     final o = find(id);
     if (o == null || o.isReadOnly || repository.readOnly) return;
     edit(id, properties: {...o.properties, key: value});
+  }
+
+  /// Apply only reviewed metadata fields, retaining unrelated concurrent edits.
+  /// The normal edit/autosave and conflict-recovery paths still own persistence.
+  bool editObjectMetadata(
+    UniversalObject expected, {
+    required int generation,
+    String? title,
+    Map<String, dynamic> changes = const {},
+    Set<String> remove = const {},
+    Set<String> unchanged = const {},
+  }) {
+    final current = find(expected.id);
+    if (!_alive ||
+        !hasWorkspace ||
+        generation != workspaceGeneration ||
+        expected.workspaceId != repository.workspaceId ||
+        current == null ||
+        current.workspaceId != expected.workspaceId ||
+        current.isDeleted ||
+        current.isReadOnly ||
+        repository.readOnly) {
+      if (_alive && generation == workspaceGeneration) {
+        error =
+            'This item is no longer editable. Close the dialog and reopen it.';
+        notify();
+      }
+      return false;
+    }
+    final keys = {...changes.keys, ...remove, ...unchanged};
+    if ((title != null && current.title != expected.title) ||
+        keys.any(
+          (key) =>
+              current.properties.containsKey(key) !=
+                  expected.properties.containsKey(key) ||
+              !jsonValuesEqual(
+                current.properties[key],
+                expected.properties[key],
+              ),
+        )) {
+      error =
+          'This field changed while you were editing. Your draft is retained; cancel and reopen to review the latest value.';
+      notify();
+      return false;
+    }
+    final properties = Map<String, dynamic>.from(current.properties)
+      ..removeWhere((key, _) => remove.contains(key));
+    properties.addAll(changes);
+    edit(
+      current.id,
+      title: title,
+      properties: keys.isEmpty ? null : properties,
+    );
+    final updated = find(current.id);
+    return updated != null &&
+        (title == null || updated.title == title) &&
+        changes.entries.every(
+          (e) => jsonValuesEqual(updated.properties[e.key], e.value),
+        ) &&
+        remove.every((key) => !updated.properties.containsKey(key));
   }
 
   void removeProperty(String id, String key) {
@@ -1196,18 +1346,39 @@ class WorkspaceController extends Notifier<int> {
 
   Future<bool> organize(Future<void> Function() command) async {
     if (loading) return false;
+    final repo = repository, generation = workspaceGeneration;
     if (!await flushAll()) return false;
+    bool current() =>
+        _alive &&
+        identical(repo, repository) &&
+        generation == workspaceGeneration &&
+        !loading;
+    if (!current()) return false;
     loading = true;
     notify();
     try {
       await command();
+      if (!_alive ||
+          !identical(repo, repository) ||
+          generation != workspaceGeneration) {
+        return false;
+      }
       mergeRepositoryObjects();
       error = null;
     } catch (e) {
+      if (!_alive ||
+          !identical(repo, repository) ||
+          generation != workspaceGeneration) {
+        return false;
+      }
       mergeRepositoryObjects();
       error = '$e';
     } finally {
-      loading = false;
+      if (_alive &&
+          identical(repo, repository) &&
+          generation == workspaceGeneration) {
+        loading = false;
+      }
     }
     notify();
     return error == null;
@@ -1324,8 +1495,16 @@ class WorkspaceController extends Notifier<int> {
     }
     if (secondary) {
       session.secondaryId = id;
+      final openedForProject = find(id);
+      if (openedForProject != null) {
+        recordProjectActivity(openedForProject, 'opened');
+      }
     } else {
       session.activeId = id;
+      final openedForProject = find(id);
+      if (openedForProject != null) {
+        recordProjectActivity(openedForProject, 'opened');
+      }
       if (!_navigatingHistory) {
         if (_navIndex >= 0 && _navIndex < _navHistory.length - 1) {
           _navHistory.removeRange(_navIndex + 1, _navHistory.length);
@@ -1433,7 +1612,7 @@ class WorkspaceController extends Notifier<int> {
   void closeTab(String id) {
     if (session.autoSnapshotOnClose) {
       final obj = find(id);
-      if (obj != null && obj.typeId == 'orbit.note') {
+      if (obj != null && !obj.isDeleted && obj.typeId == 'orbit.note') {
         unawaited(createDocumentSnapshot(id, label: 'Auto-snapshot on close'));
       }
     }
@@ -1530,13 +1709,23 @@ class WorkspaceController extends Notifier<int> {
   }
 
   void cycleTab({bool reverse = false, bool secondary = false}) {
-    if (session.tabs.isEmpty) return;
+    final seen = <String>{};
+    final beside = secondary ? session.activeId : session.secondaryId;
+    final candidates = session.tabs.where((id) {
+      final object = find(id);
+      return seen.add(id) &&
+          object != null &&
+          !object.isDeleted &&
+          // Only notes currently support two views of the same object.
+          (!secondary || id != beside || object.typeId == 'orbit.note');
+    }).toList();
+    if (candidates.isEmpty) return;
     final id = secondary ? session.secondaryId : session.activeId;
-    final index = session.tabs.indexOf(id ?? '');
+    final index = candidates.indexOf(id ?? '');
     final next = index < 0
         ? 0
-        : (index + (reverse ? -1 : 1)) % session.tabs.length;
-    openObject(session.tabs[next], secondary: secondary);
+        : (index + (reverse ? -1 : 1)) % candidates.length;
+    openObject(candidates[next], secondary: secondary);
   }
 
   void reorderTab(int oldIndex, int newIndex) {
@@ -1630,6 +1819,7 @@ class WorkspaceController extends Notifier<int> {
       return null;
     }
     try {
+      if (original == null) properties = projectCreationProperties(properties);
       EventSchedule.fromProperties(properties);
       if (original != null &&
           (find(original.id)?.revision != original.revision ||
@@ -1654,6 +1844,7 @@ class WorkspaceController extends Notifier<int> {
               ),
             );
       mergeRepositoryObjects();
+      recordProjectActivity(saved, original == null ? 'created' : 'saved');
       error = null;
       notify();
       return saved;
@@ -1672,9 +1863,11 @@ class WorkspaceController extends Notifier<int> {
     Map<String, dynamic> properties = const {},
     Map<String, dynamic>? data,
   }) async {
+    final generation = workspaceGeneration;
     try {
       final now = DateTime.now();
       final today = calendarDate(now);
+      properties = projectCreationProperties(properties);
       validateResearchProperties(properties);
       if (properties['workingCalendar'] != null) {
         WorkingCalendar(
@@ -1713,7 +1906,12 @@ class WorkspaceController extends Notifier<int> {
                 ? {'schemaVersion': 1, 'elements': <dynamic>[]}
                 : const {}),
       );
+      if (generation != workspaceGeneration ||
+          object.workspaceId != repository.workspaceId) {
+        return null;
+      }
       objects = [...objects, object];
+      recordProjectActivity(object, 'created');
       error = null;
       if (_activeWorkSession != null && _activeWorkSession!.isRecordingActive) {
         _activeWorkSession = _activeWorkSession!.recordCreate(object.id);
@@ -1726,6 +1924,7 @@ class WorkspaceController extends Notifier<int> {
       }
       return object;
     } catch (e) {
+      if (generation != workspaceGeneration) return null;
       error = '$e';
       notify();
       return null;
@@ -1735,30 +1934,101 @@ class WorkspaceController extends Notifier<int> {
   Future<UniversalObject?> createUniversityCourse(
     String courseName, {
     String semester = 'WS 2026',
-    int ects = 5,
+    num ects = 5,
     String courseCode = '',
     String lecturer = '',
     String targetParentFolder = 'Notes',
   }) async {
-    final cleanName = courseName.trim().isEmpty ? 'Course' : courseName.trim();
-    final courseFolder = targetParentFolder == 'Notes'
-        ? 'University/$cleanName'
-        : '$targetParentFolder/$cleanName';
-
-    // 1. Create folder structure
-    try {
-      await repository.createFolder(courseFolder);
-      await repository.createFolder('$courseFolder/Lectures');
-      await repository.createFolder('$courseFolder/Exercises');
-      await repository.createFolder('$courseFolder/Exam Preparation');
-    } catch (e) {
-      error = '$e';
+    if (_creatingCourse) return null;
+    final cleanName = courseName.trim();
+    if (cleanName.isEmpty ||
+        cleanName.length > 120 ||
+        !ects.isFinite ||
+        ects < 0 ||
+        ects > 120 ||
+        RegExp(r'[\x00-\x1f\\/:*?"<>|]').hasMatch(cleanName) ||
+        cleanName == '.' ||
+        cleanName == '..') {
+      error =
+          'Use a course name without path characters and ECTS between 0 and 120.';
       notify();
+      return null;
+    }
+    _creatingCourse = true;
+    final generation = workspaceGeneration;
+    final owner = repository.workspaceId;
+    UniversalObject? overview;
+    void checkOwner() {
+      if (generation != workspaceGeneration ||
+          owner != repository.workspaceId ||
+          loading) {
+        throw StateError(
+          'Course setup stopped because the Vault changed. Completed items remain in the original Vault.',
+        );
+      }
     }
 
-    // 2. Create Course Overview Note
-    final overviewBody =
-        '''# $cleanName Overview
+    Future<UniversalObject?> add(
+      String type, {
+      required String title,
+      String body = '',
+      Map<String, dynamic> properties = const {},
+      Map<String, dynamic>? data,
+    }) async {
+      checkOwner();
+      final object = await create(
+        type,
+        open: false,
+        title: title,
+        body: body,
+        properties: {
+          ...properties,
+          'project': '',
+          'context': '',
+          if (overview != null) 'courseId': overview.id,
+        },
+        data: data,
+      );
+      checkOwner();
+      if (object == null) {
+        throw StateError(error ?? 'Course setup could not save an item.');
+      }
+      return object;
+    }
+
+    try {
+      final courseFolder = targetParentFolder == 'Notes'
+          ? 'University/$cleanName'
+          : '$targetParentFolder/$cleanName';
+
+      if (activeObjects.any(
+        (o) =>
+            o.properties['isCourseOverview'] == true &&
+            o.properties['folder'] == courseFolder,
+      )) {
+        throw StateError(
+          'A course already uses this folder. Choose a distinct name or parent folder.',
+        );
+      }
+      checkOwner();
+      // 1. Create folder structure
+      try {
+        checkOwner();
+        await repository.createFolder(courseFolder);
+        checkOwner();
+        await repository.createFolder('$courseFolder/Lectures');
+        checkOwner();
+        await repository.createFolder('$courseFolder/Exercises');
+        checkOwner();
+        await repository.createFolder('$courseFolder/Exam Preparation');
+      } catch (e) {
+        rethrow;
+      }
+      checkOwner();
+
+      // 2. Create Course Overview Note
+      final overviewBody =
+          '''# $cleanName Overview
 
 **Course:** $cleanName${courseCode.isNotEmpty ? ' ($courseCode)' : ''} | **Semester:** $semester | **ECTS:** $ects${lecturer.isNotEmpty ? ' | **Lecturer:** $lecturer' : ''}
 
@@ -1778,24 +2048,26 @@ Welcome to $cleanName. This course workspace contains your lectures, exercise sh
 > Fundamental theorem of $cleanName.
 ''';
 
-    final overviewNote = await create(
-      'orbit.note',
-      title: '$cleanName Overview',
-      body: overviewBody,
-      properties: {
-        'folder': courseFolder,
-        'course': cleanName,
-        'courseCode': courseCode.isNotEmpty ? courseCode : cleanName,
-        'semester': semester,
-        'ects': ects,
-        'lecturer': lecturer,
-        'isCourseOverview': true,
-      },
-    );
+      final overviewNote = await add(
+        'orbit.note',
+        title: '$cleanName Overview',
+        body: overviewBody,
+        properties: {
+          'folder': courseFolder,
+          'course': cleanName,
+          'courseCode': courseCode.isNotEmpty ? courseCode : cleanName,
+          'semester': semester,
+          'ects': ects,
+          'lecturer': lecturer,
+          'isCourseOverview': true,
+          'courseStatus': 'active',
+        },
+      );
 
-    // 3. Create starter Lecture Note
-    final lectureBody =
-        '''# Lecture 01 — Foundations
+      overview = overviewNote;
+      // 3. Create starter Lecture Note
+      final lectureBody =
+          '''# Lecture 01 — Foundations
 
 **Date:** ${calendarDate(DateTime.now())} | **Course:** $cleanName${lecturer.isNotEmpty ? ' | **Lecturer:** $lecturer' : ''}
 
@@ -1830,100 +2102,115 @@ Welcome to $cleanName. This course workspace contains your lectures, exercise sh
 Core foundations introduced. Review definitions before the exercise session.
 ''';
 
-    await create(
-      'orbit.note',
-      title: 'Lecture 01 - Foundations',
-      body: lectureBody,
-      properties: {
-        'folder': '$courseFolder/Lectures',
-        'course': cleanName,
-        'topic': 'Foundations',
-      },
-    );
+      await add(
+        'orbit.note',
+        title: 'Lecture 01 - Foundations',
+        body: lectureBody,
+        properties: {
+          'folder': '$courseFolder/Lectures',
+          'course': cleanName,
+          'topic': 'Foundations',
+        },
+      );
 
-    // 4. Create starter Exercise Canvas
-    await create(
-      'orbit.canvas',
-      title: 'Exercise 01 - Practice Sheet',
-      properties: {
-        'folder': '$courseFolder/Exercises',
-        'course': cleanName,
-        'topic': 'Foundations',
-        'exerciseStatus': 'not_started',
-        'difficulty': 'medium',
-        'confidence': 'medium',
-        'backgroundStyle': 'grid',
-      },
-    );
+      // 4. Create starter Exercise Canvas
+      await add(
+        'orbit.canvas',
+        title: 'Exercise 01 - Practice Sheet',
+        properties: {
+          'folder': '$courseFolder/Exercises',
+          'course': cleanName,
+          'topic': 'Foundations',
+          'exerciseStatus': 'not_started',
+          'difficulty': 'medium',
+          'confidence': 'medium',
+          'backgroundStyle': 'grid',
+        },
+      );
 
-    // 5. Create Scoped Views
-    await create(
-      'orbit.view',
-      title: '$cleanName Tasks',
-      properties: {
-        'folder': courseFolder,
-        'scope': cleanName,
-        'viewType': 'tasks',
-        'preset': 'university',
-      },
-    );
+      // 5. Create Scoped Views
+      await add(
+        'orbit.view',
+        title: '$cleanName Tasks',
+        properties: {
+          'folder': courseFolder,
+          'scope': cleanName,
+          'folderFilter': courseFolder,
+          'viewType': 'tasks',
+          'preset': 'university',
+        },
+      );
 
-    await create(
-      'orbit.view',
-      title: '$cleanName Board',
-      properties: {
-        'folder': courseFolder,
-        'scope': cleanName,
-        'viewType': 'board',
-        'preset': 'university',
-      },
-    );
+      await add(
+        'orbit.view',
+        title: '$cleanName Board',
+        properties: {
+          'folder': courseFolder,
+          'scope': cleanName,
+          'folderFilter': courseFolder,
+          'viewType': 'board',
+          'preset': 'university',
+        },
+      );
 
-    await create(
-      'orbit.view',
-      title: '$cleanName Calendar',
-      properties: {
-        'folder': courseFolder,
-        'scope': cleanName,
-        'viewType': 'calendar',
-      },
-    );
+      await add(
+        'orbit.view',
+        title: '$cleanName Calendar',
+        properties: {
+          'folder': courseFolder,
+          'scope': cleanName,
+          'folderFilter': courseFolder,
+          'viewType': 'calendar',
+        },
+      );
 
-    await create(
-      'orbit.view',
-      title: '$cleanName Timeline',
-      properties: {
-        'folder': courseFolder,
-        'scope': cleanName,
-        'viewType': 'timeline',
-      },
-    );
+      await add(
+        'orbit.view',
+        title: '$cleanName Timeline',
+        properties: {
+          'folder': courseFolder,
+          'scope': cleanName,
+          'folderFilter': courseFolder,
+          'viewType': 'timeline',
+        },
+      );
 
-    await create(
-      'orbit.view',
-      title: '$cleanName Exercises',
-      properties: {
-        'folder': courseFolder,
-        'scope': cleanName,
-        'viewType': 'exercises',
-      },
-    );
+      await add(
+        'orbit.view',
+        title: '$cleanName Exercises',
+        properties: {
+          'folder': courseFolder,
+          'scope': cleanName,
+          'folderFilter': courseFolder,
+          'viewType': 'exercises',
+        },
+      );
 
-    session.collapsedFolders = session.collapsedFolders
-        .where(
-          (f) =>
-              !f.contains(cleanName) &&
-              f != 'Notes' &&
-              !f.endsWith('University'),
-        )
-        .toList();
-    persistSession();
-    notify();
+      session.collapsedFolders = session.collapsedFolders
+          .where(
+            (f) =>
+                !f.contains(cleanName) &&
+                f != 'Notes' &&
+                !f.endsWith('University'),
+          )
+          .toList();
+      persistSession();
+      notify();
 
-    if (overviewNote != null) {
-      openObject(overviewNote.id);
+      if (overviewNote != null) {
+        openObject(overviewNote.id);
+      }
+      return overviewNote;
+    } catch (e) {
+      if (generation == workspaceGeneration) {
+        error =
+            'Course setup stopped: $e. Saved items are retained; no existing content was deleted.';
+        notify();
+      }
+      return null;
+    } finally {
+      _creatingCourse = false;
     }
-    return overviewNote;
   }
 
   Future<UniversalObject?> createLectureNote({
@@ -5080,7 +5367,10 @@ ${links(against)}
   /// preserving folder, properties, data, and body, then opens the new copy.
   Future<UniversalObject?> duplicateObject(String id) async {
     final original = find(id);
-    if (original == null || repository.readOnly || original.isReadOnly) {
+    if (original == null ||
+        original.isDeleted ||
+        repository.readOnly ||
+        original.isReadOnly) {
       return null;
     }
     final title = original.title.isEmpty ? 'Untitled' : original.title;
@@ -5097,10 +5387,23 @@ ${links(against)}
 
   /// Batch-duplicates multiple objects.
   Future<List<UniversalObject>> duplicateObjects(Iterable<String> ids) async {
+    final selection = ids.toSet().toList();
+    final repo = repository, generation = workspaceGeneration;
     final result = <UniversalObject>[];
-    for (final id in ids) {
+    for (final id in selection) {
+      if (!_alive ||
+          !identical(repo, repository) ||
+          generation != workspaceGeneration) {
+        break;
+      }
+      final original = find(id);
+      if (original == null || original.isDeleted || original.isReadOnly) {
+        continue;
+      }
       final dup = await duplicateObject(id);
       if (dup != null) result.add(dup);
+      // Do not bury a failed copy beneath successes later in the batch.
+      if (dup == null) break;
     }
     return result;
   }
@@ -5111,8 +5414,10 @@ ${links(against)}
   Future<bool> moveObjectToFolder(String id, String folder) =>
       moveObjectsToFolder([id], folder);
 
-  Future<bool> moveObjectsToFolder(Iterable<String> ids, String folder) =>
-      organize(() => repository.moveObjectsToFolder(ids, folder));
+  Future<bool> moveObjectsToFolder(Iterable<String> ids, String folder) {
+    final selection = ids.toSet().toList(), repo = repository;
+    return organize(() => repo.moveObjectsToFolder(selection, folder));
+  }
 
   Future<bool> moveFolder(String source, String target) => organize(() async {
     await repository.moveFolder(source, target);
@@ -5275,6 +5580,7 @@ ${links(against)}
     ResearchDocument? document,
     String? expectedChecksum,
   }) async {
+    final opening = workspaceGeneration, repo = repository;
     final file = find(fileId);
     if (file == null ||
         file.isDeleted ||
@@ -5291,7 +5597,7 @@ ${links(against)}
       return null;
     }
     try {
-      final note = await repository.create(
+      final note = await repo.create(
         typeId: 'orbit.note',
         title: document == null
             ? '${file.title} · page $page'
@@ -5307,14 +5613,21 @@ ${links(against)}
             'objectId': fileId,
             'page': page,
             'checksum': file.properties['checksum'],
+            'quote': quote,
           },
         },
       );
+      if (opening != workspaceGeneration || !identical(repo, repository)) {
+        return null;
+      }
       objects = [...objects, note];
       error = null;
       openObject(note.id);
       return note;
     } catch (e) {
+      if (opening != workspaceGeneration || !identical(repo, repository)) {
+        return null;
+      }
       error = '$e';
       notify();
       return null;
@@ -5328,7 +5641,8 @@ ${links(against)}
     String pdfId,
     String pdfTitle,
   ) async {
-    if (repository.readOnly) return false;
+    final opening = workspaceGeneration;
+    if (!_validPdfExtraction(pdfId, page, quote)) return false;
     final file = find(pdfId);
     if (file == null || file.isDeleted) return false;
 
@@ -5361,18 +5675,41 @@ ${links(against)}
     if (targetNote == null) {
       return false;
     }
+    if (targetNote.isReadOnly ||
+        targetNote.properties['documentFormat'] == 'latex' ||
+        editorDraftConflicts.values.any((d) => d.objectId == targetNote!.id)) {
+      return false;
+    }
 
     final quoteMarkdown = ObjectReference(
       pdfId,
       page: page,
     ).quoteMarkdown(pdfTitle, quote);
-    final currentBody = targetNote.body.trimRight();
+    final currentBody = targetNote.body;
+    final eol = currentBody.contains('\r\n') ? '\r\n' : '\n';
     final updatedBody = currentBody.isEmpty
-        ? quoteMarkdown
-        : '$currentBody\n\n$quoteMarkdown';
+        ? quoteMarkdown.replaceAll('\n', eol)
+        : '$currentBody$eol$eol${quoteMarkdown.replaceAll('\n', eol)}';
     edit(targetNote.id, body: updatedBody);
     await flush(targetNote.id);
-    return true;
+    return opening == workspaceGeneration &&
+        !dirty.contains(targetNote.id) &&
+        !failures.containsKey(targetNote.id) &&
+        find(targetNote.id)?.body == updatedBody;
+  }
+
+  bool _validPdfExtraction(String id, int page, String quote) {
+    final source = find(id);
+    return !repository.readOnly &&
+        source != null &&
+        !source.isDeleted &&
+        !source.isReadOnly &&
+        source.typeId == 'orbit.file' &&
+        source.properties['mimeType'] == 'application/pdf' &&
+        page > 0 &&
+        page <= 999999 &&
+        quote.trim().isNotEmpty &&
+        quote.length <= 100000;
   }
 
   /// Extracts a quote from a PDF onto a Canvas (placing a card on the active/adjacent canvas, or creating one).
@@ -5383,13 +5720,19 @@ ${links(against)}
     String pdfTitle, {
     String? targetCanvasId,
   }) async {
-    if (repository.readOnly) return false;
+    final opening = workspaceGeneration;
+    if (!_validPdfExtraction(pdfId, page, quote)) return false;
     final file = find(pdfId);
     if (file == null || file.isDeleted) return false;
 
     UniversalObject? canvasObj;
     if (targetCanvasId != null) {
       canvasObj = find(targetCanvasId);
+      if (canvasObj == null ||
+          canvasObj.typeId != 'orbit.canvas' ||
+          canvasObj.isDeleted) {
+        return false;
+      }
     }
     if (canvasObj == null) {
       final primary = find(session.activeId);
@@ -5407,14 +5750,26 @@ ${links(against)}
         if (existingCanvases.isNotEmpty) {
           canvasObj = existingCanvases.first;
         } else {
-          canvasObj = await create('orbit.canvas', title: '$pdfTitle Canvas');
+          canvasObj = await create(
+            'orbit.canvas',
+            title: '$pdfTitle Canvas',
+            open: false,
+          );
         }
       }
     }
 
-    if (canvasObj == null) return false;
+    if (opening != workspaceGeneration ||
+        canvasObj == null ||
+        canvasObj.isReadOnly ||
+        canvasObj.isDeleted ||
+        canvasObj.typeId != 'orbit.canvas' ||
+        editorDraftConflicts.values.any((d) => d.objectId == canvasObj!.id)) {
+      return false;
+    }
 
-    final scene = CanvasScene.fromJson(canvasObj.properties);
+    final scene = CanvasScene.fromJson(canvasObj.data);
+    if (scene.readOnly) return false;
     final count = scene.elements.length;
     final atX = 160.0 + (count % 4) * 320.0;
     final atY = 160.0 + (count ~/ 4) * 180.0;
@@ -5445,8 +5800,14 @@ ${links(against)}
       },
     });
     scene.put(element);
-    edit(canvasObj.id, properties: scene.toJson());
+    edit(canvasObj.id, data: scene.toJson());
     await flush(canvasObj.id);
+    if (opening != workspaceGeneration ||
+        dirty.contains(canvasObj.id) ||
+        failures.containsKey(canvasObj.id) ||
+        find(canvasObj.id)?.isDeleted != false) {
+      return false;
+    }
 
     if (session.activeId != canvasObj.id &&
         session.secondaryId != canvasObj.id) {
@@ -5463,6 +5824,7 @@ ${links(against)}
     String comment = '',
     bool pageComment = false,
   }) async {
+    final opening = workspaceGeneration, repo = repository;
     final file = find(fileId);
     if (file == null ||
         file.isDeleted ||
@@ -5484,7 +5846,7 @@ ${links(against)}
     }
     try {
       final page = regions.first.data['page'] as int;
-      final note = await repository.create(
+      final note = await repo.create(
         typeId: 'orbit.note',
         title:
             '${file.title} · ${pageComment ? 'comment' : 'highlight'} p. $page',
@@ -5503,11 +5865,17 @@ ${links(against)}
           },
         },
       );
+      if (opening != workspaceGeneration || !identical(repo, repository)) {
+        return null;
+      }
       objects = [...objects, note];
       error = null;
       notify();
       return note;
     } catch (e) {
+      if (opening != workspaceGeneration || !identical(repo, repository)) {
+        return null;
+      }
       error = '$e';
       notify();
       return null;
@@ -5584,6 +5952,78 @@ ${links(against)}
       error = '$e';
       notify();
       return false;
+    }
+  }
+
+  /// Uses ordinary revision-checked note saves and history. A stale popup or
+  /// concurrent writing draft must never delete/restore a newer annotation.
+  Future<PdfAnnotation?> deletePdfReview(PdfAnnotation expected) async =>
+      _setPdfReviewTrashed(expected, trashed: true);
+
+  Future<UniversalObject?> deletePdfLinkedNote(
+    UniversalObject expected,
+    String fileId,
+  ) async {
+    if (expected.typeId != 'orbit.note' ||
+        !pdfLinkedNotes(fileId).any((n) => identical(n, expected))) {
+      return null;
+    }
+    return await trash(expected.id, expected: expected)
+        ? find(expected.id)
+        : null;
+  }
+
+  Future<bool> restorePdfReview(PdfAnnotation expected) async =>
+      await _setPdfReviewTrashed(expected, trashed: false) != null;
+
+  Future<PdfAnnotation?> _setPdfReviewTrashed(
+    PdfAnnotation expected, {
+    required bool trashed,
+  }) async {
+    if (!hasWorkspace ||
+        loading ||
+        repository.readOnly ||
+        !identical(find(expected.object.id), expected.object) ||
+        expected.object.isReadOnly ||
+        expected.object.isDeleted == trashed ||
+        expected.object.typeId != 'orbit.note' ||
+        expected.object.properties['pdfHighlightVersion'] != 1 ||
+        expected.fileId == null ||
+        dirty.contains(expected.object.id) ||
+        _saving.containsKey(expected.object.id) ||
+        editorDraftConflicts.values.any(
+          (d) => d.objectId == expected.object.id,
+        )) {
+      return null;
+    }
+    final repo = repository, opening = workspaceGeneration;
+    try {
+      final saved = await repo.save(
+        expected.object.copyWith(
+          deletedAt: trashed ? DateTime.now().toUtc() : null,
+          clearDeletedAt: !trashed,
+        ),
+      );
+      if (workspaceGeneration != opening || !identical(repository, repo)) {
+        return null;
+      }
+      _mergeSavedDeletion(saved);
+      if (trashed) {
+        // The save above already retains the before-image. Generic closeTab
+        // creates another snapshot, changing the just-deleted revision and
+        // invalidating Undo. Close only its presentation here.
+        _closeTrashedTabs(saved.id);
+      }
+      error = null;
+      notify();
+      return PdfAnnotation(saved);
+    } on Object catch (e) {
+      if (workspaceGeneration == opening && identical(repository, repo)) {
+        error =
+            'Could not ${trashed ? 'delete' : 'restore'} the review item. Its saved note and original PDF are retained. $e';
+        notify();
+      }
+      return null;
     }
   }
 
@@ -5750,7 +6190,12 @@ ${links(against)}
     Map<String, dynamic>? data,
   }) {
     final object = find(id);
-    if (object == null || object.isReadOnly || repository.readOnly) return;
+    if (object == null ||
+        object.isDeleted ||
+        object.isReadOnly ||
+        repository.readOnly) {
+      return;
+    }
     if (object.typeId == 'orbit.task' &&
         object.properties['recurrence'] != null &&
         !object.isCompleted &&
@@ -5792,6 +6237,13 @@ ${links(against)}
     } on Object catch (e) {
       error = '$e';
       notify();
+      return;
+    }
+    if ((title == null || title == object.title) &&
+        (body == null || body == object.body) &&
+        (properties == null ||
+            jsonEncode(properties) == jsonEncode(object.properties)) &&
+        (data == null || jsonEncode(data) == jsonEncode(object.data))) {
       return;
     }
     final updated = object.copyWith(
@@ -6050,7 +6502,17 @@ ${links(against)}
 
   Future<void> _saveDraft(UniversalObject before) async {
     try {
+      final wasCompleted =
+          repository.objects
+              .where((o) => o.id == before.id)
+              .firstOrNull
+              ?.isCompleted ==
+          true;
       final saved = await repository.save(before);
+      recordProjectActivity(
+        saved,
+        saved.isCompleted && !wasCompleted ? 'completed' : 'saved',
+      );
       final current = find(before.id);
       final unchanged = identical(current, before);
       objects = [
@@ -6075,7 +6537,10 @@ ${links(against)}
       await flush(id);
     }
     await saveSession();
-    return dirty.isEmpty && failures.isEmpty && !_settingsSaveFailed;
+    return dirty.isEmpty &&
+        failures.isEmpty &&
+        !_settingsSaveFailed &&
+        editorDraftConflicts.isEmpty;
   }
 
   void cancelAllTimers() {
@@ -6115,28 +6580,150 @@ ${links(against)}
     }
   }
 
-  Future<void> trash(String id) async {
-    await flush(id);
-    if (dirty.contains(id)) return;
-    try {
-      await repository.trash(id);
-      mergeRepositoryObjects();
-      closeTab(id);
-      notify();
-    } catch (e) {
-      error = '$e';
-      notify();
+  void _closeTrashedTabs(String id) {
+    final beside = session.secondaryId;
+    session.tabs = session.tabs.where((v) => v != id).toList();
+    session.pinnedTabs = session.pinnedTabs.where((v) => v != id).toList();
+    session.closedTabs = session.closedTabs.where((v) => v != id).toList();
+    if (lastClosed == id) lastClosed = null;
+    if (session.activeId == id) {
+      session.activeId = beside != id && find(beside)?.isDeleted == false
+          ? beside
+          : session.tabs.lastOrNull;
+      if (session.activeId != null &&
+          !session.tabs.contains(session.activeId)) {
+        session.tabs.add(session.activeId!);
+      }
+    }
+    if (session.secondaryId == id || session.secondaryId == session.activeId) {
+      session.secondaryId = null;
+    }
+    persistSession();
+  }
+
+  // A keystroke delivered while a durable deletion is pending remains in the
+  // same recoverable Trash note, with the committed revision as its save base.
+  void _mergeSavedDeletion(UniversalObject saved) {
+    final draft = find(saved.id);
+    mergeRepositoryObjects();
+    if (draft != null && dirty.contains(saved.id)) {
+      objects = [
+        for (final o in objects)
+          if (o.id == saved.id)
+            draft.copyWith(
+              revision: saved.revision,
+              deletedAt: saved.deletedAt,
+              clearDeletedAt: !saved.isDeleted,
+            )
+          else
+            o,
+      ];
     }
   }
 
-  Future<void> restore(String id) async {
+  Future<bool> trash(String id, {UniversalObject? expected}) async {
+    final repo = repository, opening = workspaceGeneration;
+    if (find(id) == null) mergeRepositoryObjects();
+    final object = find(id), key = '$opening:$id';
+    if (object == null || object.isDeleted) return false;
+    if (repo.readOnly ||
+        object.isReadOnly ||
+        (expected != null && !identical(expected, object)) ||
+        editorDraftConflicts.values.any((d) => d.objectId == id)) {
+      error =
+          'Could not move this note to Trash. Resolve its editing conflict or read-only state, then retry.';
+      notify();
+      return false;
+    }
+    if (!_trashing.add(key)) return false;
     try {
-      await repository.restore(id);
-      mergeRepositoryObjects();
+      await flush(id);
+      final current = find(id);
+      if (opening != workspaceGeneration || !identical(repo, repository)) {
+        return false;
+      }
+      if (current == null ||
+          current.isDeleted ||
+          current.isReadOnly ||
+          dirty.contains(id) ||
+          failures.containsKey(id) ||
+          editorDraftConflicts.values.any((d) => d.objectId == id) ||
+          current.body != object.body ||
+          current.title != object.title ||
+          !jsonValuesEqual(
+            Map<String, dynamic>.from(current.properties)
+              ..remove('orbitLinkBindings')
+              ..remove('aliases'),
+            Map<String, dynamic>.from(object.properties)
+              ..remove('orbitLinkBindings')
+              ..remove('aliases'),
+          ) ||
+          !jsonValuesEqual(current.data, object.data)) {
+        error =
+            'Could not move this note to Trash. Its latest edits are retained; check the save status and retry.';
+        notify();
+        return false;
+      }
+      final saved = await repo.save(
+        current.copyWith(deletedAt: DateTime.now().toUtc()),
+      );
+      if (opening != workspaceGeneration || !identical(repo, repository)) {
+        return false;
+      }
+      _mergeSavedDeletion(saved);
+      _closeTrashedTabs(id);
+      error = null;
       notify();
+      return true;
     } catch (e) {
-      error = '$e';
+      if (opening == workspaceGeneration && identical(repo, repository)) {
+        error =
+            'Could not move this note to Trash. Your note and original files are retained. $e';
+        notify();
+      }
+      return false;
+    } finally {
+      _trashing.remove(key);
+    }
+  }
+
+  Future<bool> restore(String id, {UniversalObject? expected}) async {
+    final repo = repository, opening = workspaceGeneration;
+    if (expected != null &&
+        (!identical(find(id), expected) || dirty.contains(id))) {
+      return false;
+    }
+    try {
+      await flush(id);
+      if (opening != workspaceGeneration ||
+          !identical(repo, repository) ||
+          dirty.contains(id) ||
+          failures.containsKey(id)) {
+        return false;
+      }
+      final current = find(id);
+      if (current == null ||
+          !current.isDeleted ||
+          (expected != null && !identical(current, expected)) ||
+          current.isReadOnly ||
+          repo.readOnly ||
+          editorDraftConflicts.values.any((d) => d.objectId == id)) {
+        return false;
+      }
+      final saved = await repo.save(current.copyWith(clearDeletedAt: true));
+      if (opening != workspaceGeneration || !identical(repo, repository)) {
+        return false;
+      }
+      _mergeSavedDeletion(saved);
+      error = null;
       notify();
+      return true;
+    } catch (e) {
+      if (opening == workspaceGeneration && identical(repo, repository)) {
+        error = '$e';
+        notify();
+      }
+      return false;
     }
   }
 
@@ -6160,7 +6747,12 @@ ${links(against)}
     String? body,
   }) async {
     final object = find(id);
-    if (object == null) return null;
+    if (object == null ||
+        object.isDeleted ||
+        object.isReadOnly ||
+        repository.readOnly) {
+      return null;
+    }
     final now = DateTime.now();
     final snapTitle = title ?? object.title;
     final snapBody = body ?? object.body;
@@ -6260,40 +6852,69 @@ ${links(against)}
     _purgeNavHistory(ids);
   }
 
-  Future<void> deletePermanently(String id) async {
-    await flush(id);
-    try {
-      await repository.deletePermanently(id);
-      mergeRepositoryObjects();
+  // A journal can complete some owners before a later owner fails. Reconcile
+  // only removed IDs, retaining surviving Trash items and their session state.
+  void _reconcileRemovedObjects(Set<String> candidates) {
+    final remaining = repository.objects.map((o) => o.id).toSet();
+    final removed = candidates.difference(remaining);
+    mergeRepositoryObjects();
+    for (final id in removed) {
       closeTab(id);
       if (lastClosed == id) lastClosed = null;
-      _purgeSessionReferences({id});
-      persistSession();
-      notify();
+    }
+    _purgeSessionReferences(removed);
+    persistSession();
+  }
+
+  Future<void> deletePermanently(String id, {UniversalObject? expected}) async {
+    final repo = repository, generation = workspaceGeneration;
+    bool current() =>
+        _alive &&
+        identical(repo, repository) &&
+        generation == workspaceGeneration;
+    if (expected != null && !identical(find(id), expected)) return;
+    await flush(id);
+    if (!current() ||
+        dirty.contains(id) ||
+        failures.containsKey(id) ||
+        editorDraftConflicts.values.any((d) => d.objectId == id) ||
+        (expected != null && !identical(find(id), expected))) {
+      return;
+    }
+    try {
+      await repo.deletePermanently(id);
+      if (current()) error = null;
     } catch (e) {
-      error = '$e';
-      notify();
+      if (current()) error = '$e';
+    } finally {
+      if (current()) {
+        _reconcileRemovedObjects({id});
+        notify();
+      }
     }
   }
 
   Future<void> emptyTrash() async {
+    final repo = repository, generation = workspaceGeneration;
+    final trashedIds = objects
+        .where((o) => o.isDeleted)
+        .map((o) => o.id)
+        .toSet();
+    bool current() =>
+        _alive &&
+        identical(repo, repository) &&
+        generation == workspaceGeneration;
+    if (!await flushAll() || !current()) return;
     try {
-      final trashedIds = objects
-          .where((o) => o.isDeleted)
-          .map((o) => o.id)
-          .toSet();
-      await repository.emptyTrash();
-      mergeRepositoryObjects();
-      for (final id in trashedIds) {
-        closeTab(id);
-        if (lastClosed == id) lastClosed = null;
-      }
-      _purgeSessionReferences(trashedIds);
-      persistSession();
-      notify();
+      await repo.emptyTrash(ids: trashedIds);
+      if (current()) error = null;
     } catch (e) {
-      error = '$e';
-      notify();
+      if (current()) error = '$e';
+    } finally {
+      if (current()) {
+        _reconcileRemovedObjects(trashedIds);
+        notify();
+      }
     }
   }
 

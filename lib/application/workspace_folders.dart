@@ -25,32 +25,34 @@ extension WorkspaceFolders on WorkspaceRepository {
   bool _inside(String folder, String ancestor) =>
       folder == ancestor || folder.startsWith('$ancestor/');
 
-  Future<void> moveObjectsToFolder(Iterable<String> ids, String folder) =>
-      _serial(() async {
-        _requireWritable();
-        await _verifyManifest();
-        final target = _folder(folder);
-        if (!_folders.contains(target)) {
-          throw const WorkspaceFailure('Choose an existing folder.');
-        }
-        final selected = ids.toSet().map(_requireObject).toList();
-        final movedPaths = {
-          for (final o in selected.where((o) => o.typeId == 'orbit.note'))
-            _paths[o.id]!: '$target/${p.posix.basename(_paths[o.id]!)}',
-        };
-        final files = <FolderFileChange>[];
-        for (final object in selected) {
-          _validate(object);
-          final source = _paths[object.id]!;
-          final destination = object.typeId == 'orbit.note'
-              ? '$target/${p.posix.basename(source)}'
-              : source;
-          files.add(
-            _folderChange(object, target, destination, movedPaths: movedPaths),
-          );
-        }
-        await _applyFolders(files);
-      });
+  Future<void> moveObjectsToFolder(Iterable<String> ids, String folder) {
+    final selection = ids.toSet();
+    return _ownedOrganization(() async {
+      _requireWritable();
+      await _verifyManifest();
+      final target = _folder(folder);
+      if (!_folders.contains(target)) {
+        throw const WorkspaceFailure('Choose an existing folder.');
+      }
+      final selected = selection.map(_requireObject).toList();
+      final movedPaths = {
+        for (final o in selected.where((o) => o.typeId == 'orbit.note'))
+          _paths[o.id]!: '$target/${p.posix.basename(_paths[o.id]!)}',
+      };
+      final files = <FolderFileChange>[];
+      for (final object in selected) {
+        _validate(object);
+        final source = _paths[object.id]!;
+        final destination = object.typeId == 'orbit.note'
+            ? '$target/${p.posix.basename(source)}'
+            : source;
+        files.add(
+          _folderChange(object, target, destination, movedPaths: movedPaths),
+        );
+      }
+      await _applyFolders(files);
+    });
+  }
 
   FolderFileChange _folderChange(
     UniversalObject object,

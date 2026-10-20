@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'connectors.dart';
 import 'geometry.dart';
 import 'scene.dart';
+import 'uml.dart';
 
 /// Exports a [CanvasScene] to a standard vector SVG document string.
 ///
@@ -12,6 +13,7 @@ String canvasToSvg(
   CanvasBounds? bounds,
   bool transparent = false,
   int? backgroundColor,
+  int? foregroundColor,
   String? backgroundStyle,
   Iterable<String>? elementIds,
   double scale = 1.0,
@@ -114,7 +116,7 @@ String canvasToSvg(
     if (element.hidden || !element.renderable) continue;
     if (targetIds != null && !targetIds.contains(element.id)) continue;
 
-    _renderElementSvg(buffer, element, scene, bgHex);
+    _renderElementSvg(buffer, element, scene, bgHex, foregroundColor);
   }
 
   buffer.writeln('</svg>');
@@ -126,9 +128,69 @@ void _renderElementSvg(
   CanvasElement element,
   CanvasScene scene,
   String canvasBgHex,
+  int? foregroundColor,
 ) {
   final accent = _toHexColor(element.color);
   final strokeW = element.strokeWidth;
+
+  if (isUmlClass(element)) {
+    final model = UmlClass(element);
+    final palette = UmlPalette(
+      int.parse('ff${canvasBgHex.substring(1)}', radix: 16),
+      foreground: foregroundColor,
+    );
+    final body = _toHexColor(palette.body),
+        header = _toHexColor(palette.header),
+        border = _toHexColor(palette.border),
+        divider = _toHexColor(palette.divider),
+        text = _toHexColor(palette.text);
+    final x = element.x, y = element.y, w = element.width, h = element.height;
+    final clip =
+        'uml-${element.id.codeUnits.map((c) => c.toRadixString(16).padLeft(4, '0')).join()}';
+    buf.writeln(
+      '<defs><clipPath id="$clip"><rect x="$x" y="$y" width="$w" height="$h" rx="8" /></clipPath></defs>',
+    );
+    buf.writeln('<g clip-path="url(#$clip)">');
+    buf.writeln('<rect x="$x" y="$y" width="$w" height="$h" fill="$body" />');
+    buf.writeln(
+      '<rect x="$x" y="$y" width="$w" height="${model.headerHeight}" fill="$header" />',
+    );
+    for (final dy in [
+      model.headerHeight,
+      model.headerHeight + model.attributeHeight,
+    ]) {
+      buf.writeln(
+        '<path d="M $x ${y + dy} H ${x + w}" fill="none" stroke="$divider" stroke-width="1" />',
+      );
+    }
+    if (model.stereotype.isNotEmpty) {
+      buf.writeln(
+        '<text x="${x + w / 2}" y="${y + 22}" text-anchor="middle" fill="$text" font-size="12">«${_escapeXml(model.stereotype)}»</text>',
+      );
+    }
+    buf.writeln(
+      '<text x="${x + w / 2}" y="${y + (model.stereotype.isEmpty ? 30 : 52)}" text-anchor="middle" fill="$text" font-size="16" font-weight="600" font-style="${model.abstractClass ? 'italic' : 'normal'}">${_escapeXml(model.name)}</text>',
+    );
+    for (final section in [
+      (model.attributes, model.headerHeight),
+      (model.operations, model.headerHeight + model.attributeHeight),
+    ]) {
+      for (var i = 0; i < section.$1.length; i++) {
+        _renderTextLines(
+          buf,
+          section.$1[i],
+          x + 14,
+          y + section.$2 + 25 + i * 22,
+          text,
+          15,
+        );
+      }
+    }
+    buf.writeln(
+      '<path d="M ${x + 14} ${y + model.headerHeight - 1} h 30" stroke="$accent" stroke-width="2" stroke-opacity=".75" /></g><rect x="$x" y="$y" width="$w" height="$h" rx="8" fill="none" stroke="$border" stroke-width="$strokeW" />',
+    );
+    return;
+  }
 
   switch (element.type) {
     case 'rectangle':
@@ -501,21 +563,47 @@ void _renderElementSvg(
 
       // Markers
       if (startMarker != ConnectorMarker.none) {
-        final firstTarget = endpoints.controlPoints.isNotEmpty
-            ? endpoints.controlPoints.first
-            : end;
+        final firstTarget = endpoints.tangentTarget(atStart: true);
         final angle = math.atan2(
           start.y - firstTarget.y,
           start.x - firstTarget.x,
         );
-        _renderMarkerSvg(buf, start, angle, startMarker, accent, strokeW);
+        _renderMarkerSvg(
+          buf,
+          start,
+          angle,
+          startMarker,
+          accent,
+          strokeW,
+          canvasBgHex,
+        );
       }
       if (endMarker != ConnectorMarker.none) {
-        final lastTarget = endpoints.controlPoints.isNotEmpty
-            ? endpoints.controlPoints.last
-            : start;
+        final lastTarget = endpoints.tangentTarget(atStart: false);
         final angle = math.atan2(end.y - lastTarget.y, end.x - lastTarget.x);
-        _renderMarkerSvg(buf, end, angle, endMarker, accent, strokeW);
+        _renderMarkerSvg(
+          buf,
+          end,
+          angle,
+          endMarker,
+          accent,
+          strokeW,
+          canvasBgHex,
+        );
+      }
+
+      for (final label in connectorEndLabels(element, endpoints)) {
+        final b = label.bounds;
+        final clip =
+            'uml-label-${element.id.codeUnits.map((c) => c.toRadixString(16).padLeft(4, '0')).join()}-${_formatNum(b.left)}-${_formatNum(b.top)}';
+        buf.writeln(
+          '<defs><clipPath id="$clip"><rect x="${b.left}" y="${b.top}" width="${b.width}" height="${b.height}" /></clipPath></defs><g clip-path="url(#$clip)">',
+        );
+        buf.writeln(
+          '<rect x="${b.left}" y="${b.top}" width="${b.width}" height="${b.height}" fill="$canvasBgHex" />',
+        );
+        _renderTextLines(buf, label.text, b.left + 2, b.top + 14, accent, 12);
+        buf.writeln('</g>');
       }
 
       // Midpoint label pill
@@ -544,7 +632,19 @@ void _renderMarkerSvg(
   ConnectorMarker marker,
   String color,
   double strokeWidth,
+  String background,
 ) {
+  final toward = pt + CanvasPoint(-math.cos(angle), -math.sin(angle));
+  final polygon = umlMarkerPolygon(marker, pt, toward);
+  if (polygon.isNotEmpty) {
+    final points = polygon
+        .map((p) => '${_formatNum(p.x)},${_formatNum(p.y)}')
+        .join(' ');
+    buf.writeln(
+      '<polygon points="$points" fill="${marker == ConnectorMarker.filledDiamond ? color : background}" stroke="$color" stroke-width="$strokeWidth" />',
+    );
+    return;
+  }
   if (marker == ConnectorMarker.arrow) {
     final head = math.max(12.0, strokeWidth * 3.5);
     final p1x = pt.x - math.cos(angle - 0.48) * head;

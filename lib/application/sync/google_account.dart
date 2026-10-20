@@ -57,6 +57,12 @@ abstract interface class GoogleCredentialStore {
   Future<void> delete();
 }
 
+/// Optional preview-build activation; production builds bundle app registration.
+abstract interface class GoogleDesktopSetup {
+  bool get canConfigureDesktop;
+  Future<void> configureDesktop(String downloadedJson);
+}
+
 const googleDriveScope = 'https://www.googleapis.com/auth/drive.file';
 const googleScopes = ['openid', 'profile', 'email', googleDriveScope];
 

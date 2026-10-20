@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../app/orbit_components.dart';
+import '../../app/orbit_draft_guard.dart';
 import '../../domain/writing_structure.dart';
 import '../../domain/document_footnotes.dart';
 import '../../domain/document_anchors.dart';
@@ -18,6 +20,7 @@ class WritingWorkspace extends StatefulWidget {
     required this.onRepair,
     this.onClose,
     this.initialTab = 0,
+    this.canApply,
   });
   final String source, noteId;
   final List<UniversalObject> objects;
@@ -27,6 +30,7 @@ class WritingWorkspace extends StatefulWidget {
   final Future<void> Function(UniversalObject host, SectionUse use) onRepair;
   final VoidCallback? onClose;
   final int initialTab;
+  final bool Function(String before)? canApply;
   @override
   State<WritingWorkspace> createState() => _WritingWorkspaceState();
 }
@@ -46,6 +50,16 @@ class _WritingWorkspaceState extends State<WritingWorkspace> {
     } catch (e) {
       error(e);
       return false;
+    }
+  }
+
+  void validateSource(String before) {
+    if (!mounted ||
+        widget.source != before ||
+        widget.canApply?.call(before) == false) {
+      throw StateError(
+        'The note changed or is read-only. Your draft is retained here; copy it before reopening the writing tool.',
+      );
     }
   }
 
@@ -142,6 +156,10 @@ class _WritingWorkspaceState extends State<WritingWorkspace> {
       '${section.level}',
       secondLabel: 'Heading level (1–6)',
       multiline: false,
+      validate: (title, level) {
+        validateSource(before);
+        renameWritingSection(before, section, title, int.tryParse(level) ?? 0);
+      },
     );
     if (!mounted || draft == null) return;
     try {
@@ -171,6 +189,10 @@ class _WritingWorkspaceState extends State<WritingWorkspace> {
       definitions.firstOrNull?.text ?? '',
       secondLabel: 'Definition',
       multiline: true,
+      validate: (nextId, text) {
+        validateSource(before);
+        model.save(id, text, renamedId: nextId);
+      },
     );
     if (!mounted || draft == null) return;
     try {
@@ -613,14 +635,16 @@ class _WritingWorkspaceState extends State<WritingWorkspace> {
 Future<(String, String)?> showFootnoteDraft(
   BuildContext context,
   String id,
-  String text,
-) => _edit(
+  String text, {
+  void Function(String id, String text)? validate,
+}) => _edit(
   context,
   'Footnote',
   id,
   text,
   secondLabel: 'Definition',
   multiline: true,
+  validate: validate,
 );
 
 Future<(String, String)?> _edit(
@@ -630,6 +654,7 @@ Future<(String, String)?> _edit(
   String second, {
   required String secondLabel,
   required bool multiline,
+  void Function(String first, String second)? validate,
 }) => showDialog<(String, String)>(
   context: context,
   builder: (_) => _WritingDraftDialog(
@@ -638,6 +663,7 @@ Future<(String, String)?> _edit(
     second: second,
     secondLabel: secondLabel,
     multiline: multiline,
+    validate: validate,
   ),
 );
 
@@ -648,9 +674,11 @@ class _WritingDraftDialog extends StatefulWidget {
     required this.second,
     required this.secondLabel,
     required this.multiline,
+    this.validate,
   });
   final String title, first, second, secondLabel;
   final bool multiline;
+  final void Function(String first, String second)? validate;
   @override
   State<_WritingDraftDialog> createState() => _WritingDraftDialogState();
 }
@@ -658,6 +686,26 @@ class _WritingDraftDialog extends StatefulWidget {
 class _WritingDraftDialogState extends State<_WritingDraftDialog> {
   late final a = TextEditingController(text: widget.first);
   late final b = TextEditingController(text: widget.second);
+  String? error;
+  void apply() {
+    try {
+      if (widget.validate != null) {
+        widget.validate!(a.text.trim(), b.text);
+      } else if (widget.multiline) {
+        DocumentFootnotes('').save(a.text.trim(), b.text);
+      }
+      Navigator.pop(context, (a.text.trim(), b.text));
+    } catch (failure) {
+      setState(
+        () => error = switch (failure) {
+          ArgumentError(:final message) => '$message',
+          StateError(:final message) => message,
+          _ => '$failure',
+        },
+      );
+    }
+  }
+
   @override
   void dispose() {
     a.dispose();
@@ -666,40 +714,52 @@ class _WritingDraftDialogState extends State<_WritingDraftDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text(widget.title),
-    scrollable: true,
-    content: SizedBox(
-      width: 600,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: a,
-            autofocus: true,
-            decoration: InputDecoration(
-              labelText: widget.multiline ? 'Identifier' : 'Heading',
-            ),
-            maxLength: widget.multiline ? 100 : 500,
+  Widget build(BuildContext context) => OrbitDraftGuard(
+    dirty: a.text != widget.first || b.text != widget.second,
+    builder: (context, requestClose) => OrbitDialog(
+      maxWidth: 640,
+      title: Text(widget.title),
+      content: SingleChildScrollView(
+        child: SizedBox(
+          width: 600,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: a,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: widget.multiline ? 'Identifier' : 'Heading',
+                ),
+                maxLength: widget.multiline ? 100 : 500,
+                onChanged: (_) => setState(() => error = null),
+              ),
+              TextField(
+                controller: b,
+                minLines: widget.multiline ? 3 : 1,
+                maxLines: widget.multiline ? 12 : 1,
+                decoration: InputDecoration(labelText: widget.secondLabel),
+                maxLength: widget.multiline ? 100000 : 16,
+                onChanged: (_) => setState(() => error = null),
+              ),
+              if (error != null)
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+            ],
           ),
-          TextField(
-            controller: b,
-            minLines: widget.multiline ? 3 : 1,
-            maxLines: widget.multiline ? 12 : 1,
-            decoration: InputDecoration(labelText: widget.secondLabel),
-          ),
-        ],
+        ),
       ),
+      actions: [
+        TextButton(onPressed: requestClose, child: const Text('Cancel')),
+        FilledButton(onPressed: apply, child: const Text('Apply')),
+      ],
     ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('Cancel'),
-      ),
-      FilledButton(
-        onPressed: () => Navigator.pop(context, (a.text.trim(), b.text)),
-        child: const Text('Apply'),
-      ),
-    ],
   );
 }

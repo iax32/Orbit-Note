@@ -1,5 +1,82 @@
 # Cloud sync — delivery status
 
+2026-10-15 continuity extension: successful bulk transfers can explicitly add
+selected inactive Vaults to a secure device-local schedule, checked every 1/5/15
+minutes while Orbit is open. Manage scheduled Vault checks exposes status,
+selection, pause/resume, check now and forget. The selected Google account,
+existing native locks and per-Vault pauses remain authoritative. Shared connection
+setup/connected sessions suspend Drive. This uses the existing batch/engine and
+does not install an OS service. See [usage](../development/google-drive-sync-setup.md)
+and current task for validation; physical-device acceptance remains separate.
+
+2026-10-15 bulk transfers: Settings → Sync offers **Upload multiple Vaults** and
+**Download multiple Vaults**. Native selection includes recent/current Vaults,
+an explicit Vault folder, or shallow discovery inside a chosen parent. No default
+selection or automatic personal-data upload. Sequential transfers reuse existing
+binding, provider, outbox, verified staging and conflict recovery. Per-Vault
+results, cancel/retry, same-UUID copy guards and account/opening invalidation
+preserve partial progress. Downloads create separate folders, register recents
+without changing the active selection, and retain sync bindings. Automatic sync
+runs for the active Vault; opt-in scheduled checks can update selected inactive
+Vaults. Without that opt-in, explicit batches update inactive Vaults.
+Newer bindings/locked folders need attention rather than replacement. Actual
+validation evidence is in the current task; prior single-Vault real-account
+acceptance does not itself validate this new batch UI against a live account.
+
+2026-10-15 automatic native preview: Settings → Sync now offers explicit automatic
+personal Drive sync, separate from independent backups. It synchronizes authored
+notes, boards, other owning objects, attachments and explicit deletion records
+through SyncEngine/WorkspaceSyncReplica. Opt-in is bound to the Google account and
+exact Vault/folder identity, survives restart, debounces local work and polls while
+Orbit is open. A local-only startup reads the saved opt-in before creating account
+services. Pause retains local files and remote revisions. Shared Vault temporarily
+pauses personal sync to avoid two remote authorities applying simultaneously.
+
+Concurrent publications use immutable Drive blobs/revision graphs, not unchecked
+PATCH. Multiple heads and local/remote divergence stop for compare/review; previous
+versions remain available in local recovery and Drive. Choosing this device or a
+cloud version appends a reviewed resolution. Newer local edits invalidate stale
+reviews. Browse synced Vaults can open an identity-checked cloud manifest into a
+new local folder and start verified downloads. Missing cloud revisions, altered
+checksums, unsupported formats and unsafe paths stop without deleting local work.
+See [ADR-0030](../adr/0030-immutable-drive-revisions.md) and
+[usage/limits](../development/google-drive-sync-setup.md).
+
+Limits: native folders, foreground app lifetime, 2 GiB per attachment/32 MiB per
+structured source, 10,000 retained revisions, 64 parents per resolution and existing
+16 MiB operational checkpoints. Empty folders and device settings/history/caches
+stay local. Device-only folder Archive metadata blocks setup explicitly. Some
+non-Notes physical moves and restore-over-permanent-delete transitions still need
+manual recovery. Retained cloud versions are not garbage-collected. Public OAuth
+rollout, Android activation and physical two-device acceptance remain release
+gates. Real-account acceptance passed on 2026-10-15 using two isolated native
+clients on one PC, including verified transfers, conflicts/resolution, resumable
+restart, lost acknowledgements and tombstones. This does not validate installed-app
+UI scheduling or secure credential storage. This preview does not turn personal
+Drive into multiplayer.
+
+2026-10-15 reliability update: manual backups now browse the connected account's
+backups by current Vault/all Vaults and name. Confirmation binds both Vault opening
+and Google account; cancelled preparation never starts an upload and late cancelled
+downloads cannot become restore candidates. A verified completed upload stays
+visible even if a subsequent listing fails. Transient resumable-upload failures use
+bounded 1/2/4-second recovery probes of the same session; expired access refreshes
+once, and storage quota/API setup errors do not masquerade as sign-in failures.
+The provider behavior follows Google's [error handling](https://developers.google.com/workspace/drive/api/guides/handle-errors)
+and [resumable upload](https://developers.google.com/workspace/drive/api/guides/manage-uploads)
+guidance. Cancellation is cooperative between bounded network operations, not an
+instant abort of an already accepted Drive request. No new OAuth scope, automatic
+Vault synchronization or account acceptance claim. Current task records tests.
+
+2026-10-13: Windows Google registration is active for the owner Testing audience.
+Real OAuth/token exchange/identity, quota and Vault/backup listing passed; a
+configured release was built. Explicit sign-in prepares/reuses an empty Orbit
+folder without uploading a Vault. Startup restore remains read-only. Preview
+activation has secure device-only client storage and actionable configuration
+errors. Manual backup/restore exists; automatic personal Vault sync, Android
+registration and public Google rollout remain unfinished. Historical entries below
+are superseded by [activation status](../development/google-drive-activation.md).
+
 2026-10-11: Manual immutable Drive backup/restore is implemented, with resumable
 chunks, cancellation, account binding, server MD5 and downloaded SHA-256 checks,
 review and import into a separate folder. OAuth activation/live account acceptance

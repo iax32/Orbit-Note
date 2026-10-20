@@ -5,8 +5,14 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import '../../application/sync/google_account.dart';
 import '../../application/backup_bundle.dart';
+import '../../application/sync/sync_provider.dart';
+import '../../application/sync/sync_policy.dart';
+import '../../domain/sync_entry.dart';
+import '../../domain/workspace_failure.dart';
+import '../storage/workspace_store.dart';
 
 part 'google_drive_backups.dart';
+part 'google_drive_replica.dart';
 
 class GoogleRemoteVault {
   const GoogleRemoteVault({
@@ -28,10 +34,12 @@ class GoogleDriveApi {
     required this.auth,
     required this.client,
     required this.localMetadata,
-  });
+    Future<void> Function(Duration)? wait,
+  }) : wait = wait ?? Future<void>.delayed;
   final GoogleAccountAuth auth;
   final http.Client client;
   final GoogleCredentialStore localMetadata;
+  final Future<void> Function(Duration) wait;
   Future<void> _rootOperations = Future<void>.value();
   static const folderMime = 'application/vnd.google-apps.folder';
   static const fileFields =
@@ -88,48 +96,7 @@ class GoogleDriveApi {
       _account(subject);
       if (response.statusCode == 401 && attempt == 0) continue;
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        String reason = '';
-        try {
-          reason =
-              ((jsonDecode(response.body)['error']['errors'] as List).first
-                      as Map)['reason']
-                  as String? ??
-              '';
-        } on Object {
-          /* Sanitized fallback below. */
-        }
-        if (reason == 'storageQuotaExceeded') {
-          throw const GoogleCloudError(
-            'quota',
-            'Google storage is full. Your local files are safe.',
-          );
-        }
-        throw switch (response.statusCode) {
-          401 => const GoogleCloudError(
-            'reauth',
-            'Google Drive needs to be connected again.',
-          ),
-          403 => const GoogleCloudError(
-            'permission',
-            'Orbit no longer has access to these Google Drive files.',
-          ),
-          404 => const GoogleCloudError(
-            'missing',
-            'This Google Drive folder is no longer available.',
-          ),
-          429 => const GoogleCloudError(
-            'rate',
-            'Google Drive is temporarily busy. Try again shortly.',
-          ),
-          >= 500 => const GoogleCloudError(
-            'offline',
-            'Google Drive is temporarily unavailable.',
-          ),
-          _ => const GoogleCloudError(
-            'provider',
-            'Google Drive could not complete this action.',
-          ),
-        };
+        throw _responseError(response);
       }
       try {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -141,6 +108,67 @@ class GoogleDriveApi {
       }
     }
     throw const GoogleCloudError('reauth', 'Reconnect Google Drive.');
+  }
+
+  GoogleCloudError _responseError(http.Response response) {
+    String reason = '';
+    try {
+      reason =
+          ((jsonDecode(response.body)['error']['errors'] as List).first
+                  as Map)['reason']
+              as String? ??
+          '';
+    } on Object {
+      /* Sanitized fallback below. */
+    }
+    if (reason == 'storageQuotaExceeded') {
+      return const GoogleCloudError(
+        'quota',
+        'Google storage is full. Your local files are safe.',
+      );
+    }
+    if (reason == 'accessNotConfigured' || reason == 'serviceDisabled') {
+      return const GoogleCloudError(
+        'configuration',
+        'The Google Drive API is disabled for this app project. Enable Google Drive API in Google Cloud, then use Refresh account. Signing in again will not fix this.',
+      );
+    }
+    if ({
+      'rateLimitExceeded',
+      'userRateLimitExceeded',
+      'dailyLimitExceeded',
+    }.contains(reason)) {
+      return const GoogleCloudError(
+        'rate',
+        'Google Drive has reached a request limit. Wait before retrying; signing in again will not fix this.',
+      );
+    }
+    return switch (response.statusCode) {
+      401 => const GoogleCloudError(
+        'reauth',
+        'Google Drive needs to be connected again.',
+      ),
+      403 => const GoogleCloudError(
+        'permission',
+        'Orbit no longer has access to these Google Drive files.',
+      ),
+      404 => const GoogleCloudError(
+        'missing',
+        'This Google Drive folder is no longer available.',
+      ),
+      429 => const GoogleCloudError(
+        'rate',
+        'Google Drive is temporarily busy. Try again shortly.',
+      ),
+      >= 500 => const GoogleCloudError(
+        'offline',
+        'Google Drive is temporarily unavailable.',
+      ),
+      _ => const GoogleCloudError(
+        'provider',
+        'Google Drive could not complete this action.',
+      ),
+    };
   }
 
   Future<GoogleStorageQuota> quota() async => GoogleStorageQuota.fromJson(

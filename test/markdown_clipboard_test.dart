@@ -4,6 +4,53 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:orbit_note/features/notes/markdown_clipboard.dart';
 
 void main() {
+  for (final wrapper in ['p', 'div', 'div><p']) {
+    test(
+      'paragraph-wrapped browser list items keep text on the bullet ($wrapper)',
+      () {
+        final closing = wrapper == 'div><p' ? '</p></div>' : '</$wrapper>';
+        final opening = '<$wrapper>';
+        expect(
+          htmlToMarkdown(
+            '<h2>Final Reminders</h2><ul>'
+            '<li>\n $opening<strong>Be on time:</strong> Exam at 13:15.$closing</li>'
+            '<li>$opening<strong>Submit manually:</strong> Save your answers.$closing</li>'
+            '</ul>',
+          ),
+          '## Final Reminders\n\n- **Be on time:** Exam at 13:15.\n- **Submit manually:** Save your answers.',
+        );
+      },
+    );
+  }
+
+  test(
+    'browser list wrappers retain attributes, Unicode, links and literal code spacing',
+    () {
+      expect(
+        htmlToMarkdown(
+          '<UL><LI data-start="10">\r\n<P class="paragraph">'
+          '<strong>Café 😀:</strong> <code>a  b &amp; c</code> '
+          '<a href="https://example.com">Source</a></P></LI></UL>',
+        ),
+        '- **Café 😀:** `a  b & c` [Source](https://example.com)',
+      );
+    },
+  );
+
+  test(
+    'intentional empty list items and separate prose paragraphs survive conversion',
+    () {
+      expect(
+        htmlToMarkdown('<ul><li><p></p></li><li><p>Filled</p></li></ul>'),
+        '- \n- Filled',
+      );
+      expect(
+        htmlToMarkdown('<p>First paragraph</p><p>Second paragraph</p>'),
+        'First paragraph\n\nSecond paragraph',
+      );
+    },
+  );
+
   test('converts common browser formatting to readable Markdown', () {
     expect(
       htmlToMarkdown(
@@ -49,5 +96,6 @@ void main() {
     );
     await tester.pumpWidget(const SizedBox());
     expect(await readMarkdownClipboard(), '**From web**');
+    expect(await readMarkdownClipboard(preferHtml: false), 'plain fallback');
   });
 }

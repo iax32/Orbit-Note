@@ -70,3 +70,38 @@ shown. Dismissal persists until Reset suggestions; no speculative relevance is
 inferred. Continuations remain device-local, manual, one per course, bounded by
 the existing 30 saved contexts. Failed saves are reported. STUDY-04 and the
 manual CTX-08–11 subsets are supported; automatic tracking remains separate.
+
+## Connected course hub — 2026-10-13
+
+Explorer's Courses button and the command palette open Courses & study progress.
+Add a course with name/code, semester, fractional ECTS and lecturer. Existing
+overview notes are discovered automatically. Search and semester/status filters
+expose active, passed and archived courses. Editable display names leave authored
+Markdown and existing paths untouched. Passed ECTS require an explicit Passed
+status; task completion never infers a grade or earned credits.
+
+Each course shows independent assignment completion, solved practice and manually
+understood concept counts, plus overdue tasks and linked material. Create lecture
+notes, practice Canvases and assignments; link existing objects or remove course
+membership without deleting them. Membership prefers optional courseId (overview
+UUID), then legacy folders/labels. An explicit empty ID means detached. Same-name
+courses in different parent folders remain separate in this hub and its linked
+views, Study & Review and course continuations. Source-linked cards inherit a
+matching source course ID. Legacy name-based entry points continue to work.
+
+Course planning opens existing assignment/exam/study scheduling; items created
+from the hub retain course ID and folder, without inheriting an unrelated active
+project. Read-only courses remain readable. Metadata saves preserve concurrent
+body/unrelated property edits and reject overlapping stale form changes. Template
+setup stops on save failure or changed Vault; completed items are retained and
+discoverable, with an explanation. Setup is not a multi-file atomic transaction.
+Duplicate course folders are rejected rather than silently mixing their records.
+
+Open study board creates/reopens a normal Canvas with three editable columns,
+canonical course/material cards and two live saved queries: course material and
+open assignments. Initial placements include at most 18 material objects; query
+cards continue to reflect current sources. Later captures are ordinary Canvas
+operations. Removing a placement never removes a course, task or source. This
+reuses existing Canvas references, captions, checklists, links and layout tools;
+it does not claim complete Milanote/Notion feature parity, timetable imports,
+automatic grading or a new course-specific database.

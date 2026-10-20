@@ -53,38 +53,34 @@ extension GoogleDriveBackups on GoogleDriveApi {
     http.Request request,
   ) async {
     _account(subject);
-    request.followRedirects = false;
-    request.headers['Authorization'] = 'Bearer ${await auth.accessToken()}';
-    _account(subject);
-    final response = await http.Response.fromStream(
-      await client.send(request).timeout(const Duration(seconds: 45)),
-    ).timeout(const Duration(seconds: 45));
-    _account(subject);
-    if (response.statusCode == 401) {
-      throw const GoogleCloudError(
-        'reauth',
-        'Reconnect Google Drive to continue.',
-      );
+    for (var attempt = 0; attempt < 2; attempt++) {
+      final outgoing = http.Request(request.method, request.url)
+        ..followRedirects = false
+        ..headers.addAll(request.headers)
+        ..bodyBytes = request.bodyBytes;
+      outgoing.headers['Authorization'] =
+          'Bearer ${await auth.accessToken(refresh: attempt > 0)}';
+      _account(subject);
+      final response = await http.Response.fromStream(
+        await client.send(outgoing).timeout(const Duration(seconds: 45)),
+      ).timeout(const Duration(seconds: 45));
+      _account(subject);
+      if (response.statusCode == 401 && attempt == 0) continue;
+      if (response.statusCode == 404 || response.statusCode == 410) {
+        throw const GoogleCloudError(
+          'missing',
+          'This Drive transfer is no longer available. Start it again.',
+        );
+      }
+      if (response.statusCode >= 400) {
+        throw _responseError(response);
+      }
+      return response;
     }
-    if (response.statusCode == 403) {
-      throw const GoogleCloudError(
-        'permission',
-        'Drive refused this transfer. Check access and available storage.',
-      );
-    }
-    if (response.statusCode == 404 || response.statusCode == 410) {
-      throw const GoogleCloudError(
-        'missing',
-        'This Drive transfer is no longer available. Start it again.',
-      );
-    }
-    if (response.statusCode >= 400) {
-      throw const GoogleCloudError(
-        'transfer',
-        'Drive could not finish the transfer. Your local Vault is safe.',
-      );
-    }
-    return response;
+    throw const GoogleCloudError(
+      'reauth',
+      'Reconnect Google Drive to continue.',
+    );
   }
 
   /// An immutable backup, not a last-write-wins replica of live owning files.
@@ -179,18 +175,43 @@ extension GoogleDriveBackups on GoogleDriveApi {
       http.Response received;
       try {
         received = await _backupRequest(subject, chunk);
-      } on GoogleCloudError {
-        rethrow;
-      } on Object {
+      } on Object catch (error) {
+        if (error is GoogleCloudError &&
+            !{'offline', 'rate'}.contains(error.code)) {
+          rethrow;
+        }
         if (++attempts > 3) {
           throw const GoogleCloudError(
             'offline',
             'Transfer interrupted. Reconnect and retry; your local Vault is safe.',
           );
         }
-        final probe = http.Request('PUT', session)
-          ..headers['Content-Range'] = 'bytes */${bytes.length}';
-        received = await _backupRequest(subject, probe);
+        while (true) {
+          await wait(Duration(seconds: 1 << (attempts - 1)));
+          if (isCancelled?.call() == true) {
+            throw const GoogleCloudError(
+              'cancelled',
+              'Upload cancelled. Local files are unchanged.',
+            );
+          }
+          final probe = http.Request('PUT', session)
+            ..headers['Content-Range'] = 'bytes */${bytes.length}';
+          try {
+            received = await _backupRequest(subject, probe);
+            break;
+          } on Object catch (error) {
+            if (error is GoogleCloudError &&
+                !{'offline', 'rate'}.contains(error.code)) {
+              rethrow;
+            }
+            if (++attempts > 3) {
+              throw const GoogleCloudError(
+                'offline',
+                'Transfer interrupted. Reconnect and retry; your local Vault is safe.',
+              );
+            }
+          }
+        }
       }
       if (received.statusCode == 200 || received.statusCode == 201) {
         if ((jsonDecode(received.body) as Map)['id'] != id) {

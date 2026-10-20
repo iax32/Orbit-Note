@@ -4,6 +4,7 @@ import '../../app/workspace_controller.dart';
 import '../../domain/calendar_event.dart';
 import '../../domain/universal_object.dart';
 import 'task_planning_panel.dart';
+import 'workspace_views.dart' show EmptyWorkspace;
 
 class TimelineEntry {
   final UniversalObject object;
@@ -47,22 +48,31 @@ class _TimelineViewState extends State<TimelineView> {
     final c = widget.controller;
     final colors = OrbitColors.of(context);
 
+    final savedScope = widget.viewObject?.properties['scope'];
+    final savedFolder = widget.viewObject?.properties['folder'];
     final effectiveScope =
-        widget.scope ??
-        (widget.viewObject?.properties['scope'] as String?)?.trim();
+        widget.scope ?? (savedScope is String ? savedScope.trim() : null);
     final effectiveFolder =
         widget.folderFilter ??
-        (widget.viewObject?.properties['folder'] as String?)?.trim();
+        (savedFolder is String ? savedFolder.trim() : null);
 
     Set<String>? queryIds;
-    if (widget.viewObject?.properties['smartQuery'] != null) {
+    if (widget.viewObject != null) {
       try {
         queryIds = c
-            .queryViewObjects(widget.viewObject!)
+            .queryViewObjects(
+              widget.viewObject!,
+              folderFilter: widget.folderFilter,
+              scope: widget.scope,
+            )
             .map((e) => e.id)
             .toSet();
-      } on Object {
-        queryIds = {};
+      } on Object catch (error) {
+        return EmptyWorkspace(
+          icon: Icons.warning_amber_outlined,
+          title: 'Unable to load this timeline',
+          description: '$error',
+        );
       }
     }
     bool matchesScope(UniversalObject o) {
@@ -291,201 +301,208 @@ class _TimelineViewState extends State<TimelineView> {
                                   color: colors.border.withValues(alpha: .5),
                                 ),
                               ),
-                              child: ListTile(
-                                trailing: IconButton(
-                                  tooltip:
-                                      'Reschedule ${entry.isTask ? 'deadline' : 'event'}',
-                                  icon: const Icon(Icons.event_outlined),
-                                  onPressed:
-                                      c.repository.readOnly || o.isReadOnly
-                                      ? null
-                                      : () async {
-                                          final day = await showDatePicker(
-                                            context: context,
-                                            initialDate: entry.isTask
-                                                ? entry.date
-                                                : entry.date.toLocal(),
-                                            firstDate: DateTime(1),
-                                            lastDate: DateTime(9999, 12, 31),
-                                          );
-                                          if (day != null && context.mounted) {
-                                            await previewCalendarMove(
-                                              context,
-                                              c,
-                                              CalendarDragData(
-                                                o,
-                                                entry.isTask
-                                                    ? 'dueDate'
-                                                    : 'scheduledDate',
-                                              ),
-                                              day,
+                              child: Material(
+                                color: Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
+                                child: ListTile(
+                                  trailing: IconButton(
+                                    tooltip:
+                                        'Reschedule ${entry.isTask ? 'deadline' : 'event'}',
+                                    icon: const Icon(Icons.event_outlined),
+                                    onPressed:
+                                        c.repository.readOnly || o.isReadOnly
+                                        ? null
+                                        : () async {
+                                            final day = await showDatePicker(
+                                              context: context,
+                                              initialDate: entry.isTask
+                                                  ? entry.date
+                                                  : entry.date.toLocal(),
+                                              firstDate: DateTime(1),
+                                              lastDate: DateTime(9999, 12, 31),
                                             );
-                                          }
-                                        },
-                                ),
-                                dense: true,
-                                leading: Container(
-                                  width: 38,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: entry.isEvent
-                                        ? colors.accent.withValues(alpha: .15)
-                                        : colors.raised,
-                                    borderRadius: BorderRadius.circular(6),
+                                            if (day != null &&
+                                                context.mounted) {
+                                              await previewCalendarMove(
+                                                context,
+                                                c,
+                                                CalendarDragData(
+                                                  o,
+                                                  entry.isTask
+                                                      ? 'dueDate'
+                                                      : 'scheduledDate',
+                                                ),
+                                                day,
+                                              );
+                                            }
+                                          },
                                   ),
-                                  child: Text(
-                                    dayStr,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 14,
+                                  dense: true,
+                                  leading: Container(
+                                    width: 38,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
                                       color: entry.isEvent
-                                          ? colors.accent
-                                          : colors.text,
+                                          ? colors.accent.withValues(alpha: .15)
+                                          : colors.raised,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      dayStr,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                        color: entry.isEvent
+                                            ? colors.accent
+                                            : colors.text,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                title: Row(
-                                  children: [
-                                    if (entry.isTask)
-                                      Checkbox(
-                                        value: isCompleted,
-                                        activeColor: colors.accent,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            4,
+                                  title: Row(
+                                    children: [
+                                      if (entry.isTask)
+                                        Checkbox(
+                                          value: isCompleted,
+                                          activeColor: colors.accent,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
                                           ),
-                                        ),
-                                        onChanged: (val) {
-                                          c.edit(
-                                            o.id,
-                                            properties: {
-                                              ...o.properties,
-                                              'completed': val == true,
-                                            },
-                                          );
-                                        },
-                                      )
-                                    else
-                                      Padding(
-                                        padding: const EdgeInsets.only(
-                                          right: 8,
-                                        ),
-                                        child: Icon(
-                                          Icons.event_outlined,
-                                          size: 16,
-                                          color: colors.accent,
-                                        ),
-                                      ),
-                                    Expanded(
-                                      child: Text(
-                                        o.title.isEmpty ? 'Untitled' : o.title,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          decoration: isCompleted
-                                              ? TextDecoration.lineThrough
-                                              : null,
-                                          color: isCompleted
-                                              ? colors.subtle
-                                              : colors.text,
-                                        ),
-                                      ),
-                                    ),
-                                    if (category != null &&
-                                        category.isNotEmpty) ...[
-                                      const SizedBox(width: 6),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 6,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: colors.raised,
-                                          borderRadius: BorderRadius.circular(
-                                            4,
+                                          onChanged: (val) {
+                                            c.edit(
+                                              o.id,
+                                              properties: {
+                                                ...o.properties,
+                                                'completed': val == true,
+                                              },
+                                            );
+                                          },
+                                        )
+                                      else
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            right: 8,
                                           ),
-                                        ),
-                                        child: Text(
-                                          category,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: colors.subtle,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                    if (estimate != null &&
-                                        estimate.isNotEmpty) ...[
-                                      const SizedBox(width: 6),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 6,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: colors.accent.withValues(
-                                            alpha: .1,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            4,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          estimate,
-                                          style: TextStyle(
-                                            fontSize: 10,
+                                          child: Icon(
+                                            Icons.event_outlined,
+                                            size: 16,
                                             color: colors.accent,
                                           ),
                                         ),
-                                      ),
-                                    ],
-                                    if (priority != null &&
-                                        priority != 'medium' &&
-                                        priority != 'none') ...[
-                                      const SizedBox(width: 6),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 6,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color:
-                                              priority == 'urgent' ||
-                                                  priority == 'high'
-                                              ? Theme.of(context)
-                                                    .colorScheme
-                                                    .error
-                                                    .withValues(alpha: .15)
-                                              : colors.raised,
-                                          borderRadius: BorderRadius.circular(
-                                            4,
+                                      Expanded(
+                                        child: Text(
+                                          o.title.isEmpty
+                                              ? 'Untitled'
+                                              : o.title,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            decoration: isCompleted
+                                                ? TextDecoration.lineThrough
+                                                : null,
+                                            color: isCompleted
+                                                ? colors.subtle
+                                                : colors.text,
                                           ),
                                         ),
-                                        child: Text(
-                                          priority.toUpperCase(),
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
+                                      ),
+                                      if (category != null &&
+                                          category.isNotEmpty) ...[
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: colors.raised,
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            category,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: colors.subtle,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                      if (estimate != null &&
+                                          estimate.isNotEmpty) ...[
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: colors.accent.withValues(
+                                              alpha: .1,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            estimate,
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: colors.accent,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                      if (priority != null &&
+                                          priority != 'medium' &&
+                                          priority != 'none') ...[
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
                                             color:
                                                 priority == 'urgent' ||
                                                     priority == 'high'
-                                                ? Theme.of(
-                                                    context,
-                                                  ).colorScheme.error
-                                                : colors.subtle,
+                                                ? Theme.of(context)
+                                                      .colorScheme
+                                                      .error
+                                                      .withValues(alpha: .15)
+                                                : colors.raised,
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            priority.toUpperCase(),
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color:
+                                                  priority == 'urgent' ||
+                                                      priority == 'high'
+                                                  ? Theme.of(
+                                                      context,
+                                                    ).colorScheme.error
+                                                  : colors.subtle,
+                                            ),
                                           ),
                                         ),
-                                      ),
+                                      ],
                                     ],
-                                  ],
+                                  ),
+                                  onTap: () {
+                                    if (entry.isTask &&
+                                        widget.onTaskTap != null) {
+                                      widget.onTaskTap!(o);
+                                    } else {
+                                      c.openObject(o.id);
+                                    }
+                                  },
                                 ),
-                                onTap: () {
-                                  if (entry.isTask &&
-                                      widget.onTaskTap != null) {
-                                    widget.onTaskTap!(o);
-                                  } else {
-                                    c.openObject(o.id);
-                                  }
-                                },
                               ),
                             );
                           }),

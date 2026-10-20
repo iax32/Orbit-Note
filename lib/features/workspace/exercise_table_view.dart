@@ -1,3 +1,4 @@
+import '../../domain/course_progress.dart';
 import 'package:flutter/material.dart';
 import '../../app/orbit_theme.dart';
 import '../../app/workspace_controller.dart';
@@ -30,6 +31,11 @@ class _ExerciseTableViewState extends State<ExerciseTableView> {
   String _searchQuery = '';
 
   bool _matchesScope(UniversalObject o) {
+    final courseId = widget.viewObject.properties['courseId'];
+    if (courseId is String && courseId.isNotEmpty) {
+      final course = widget.controller.find(courseId);
+      return course != null && !course.isDeleted && belongsToCourse(o, course);
+    }
     final folder = widget.folderFilter;
     final scope = widget.scope;
     if (folder != null && folder.isNotEmpty) {

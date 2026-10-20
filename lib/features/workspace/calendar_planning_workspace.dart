@@ -19,11 +19,16 @@ Future<void> showCalendarPlanning(
   BuildContext context,
   WorkspaceController c, {
   String? course,
+  String? courseId,
   List<UniversalObject> Function()? scope,
 }) => showDialog<void>(
   context: context,
-  builder: (_) =>
-      CalendarPlanningWorkspace(controller: c, course: course, scope: scope),
+  builder: (_) => CalendarPlanningWorkspace(
+    controller: c,
+    course: course,
+    courseId: courseId,
+    scope: scope,
+  ),
 );
 
 class CalendarPlanningWorkspace extends ConsumerStatefulWidget {
@@ -31,10 +36,12 @@ class CalendarPlanningWorkspace extends ConsumerStatefulWidget {
     super.key,
     required this.controller,
     this.course,
+    this.courseId,
     this.scope,
   });
   final WorkspaceController controller;
   final String? course;
+  final String? courseId;
   final List<UniversalObject> Function()? scope;
   @override
   ConsumerState<CalendarPlanningWorkspace> createState() =>
@@ -236,6 +243,7 @@ class _CalendarPlanningWorkspaceState
                             c,
                             kind: k,
                             course: _course,
+                            courseId: widget.courseId,
                             day: _day,
                           ),
                           itemBuilder: (_) => [
@@ -288,8 +296,11 @@ class _CalendarPlanningWorkspaceState
                                   ),
                                 ),
                             ],
-                            onChanged: (v) =>
-                                setState(() => _course = v == '' ? null : v),
+                            onChanged: widget.courseId != null
+                                ? null
+                                : (v) => setState(
+                                    () => _course = v == '' ? null : v,
+                                  ),
                           ),
                         ),
                         SizedBox(

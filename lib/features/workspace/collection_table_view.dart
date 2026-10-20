@@ -1,4 +1,7 @@
+import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../../app/orbit_draft_guard.dart';
 import '../../app/orbit_theme.dart';
 import '../../app/workspace_controller.dart';
 import '../../domain/universal_object.dart';
@@ -28,6 +31,35 @@ class _CollectionTableViewState extends State<CollectionTableView> {
   String? _sortColumn;
   bool _sortAscending = true;
   late Set<String> _visibleColumns;
+  final _search = TextEditingController();
+  final _horizontal = ScrollController();
+  UniversalObject? _optionsSource;
+  List<dynamic> _unknownColumns = [];
+  int _actionEpoch = 0, _generation = -1;
+  bool _creating = false;
+  List<UniversalObject>? _viewObjects;
+  UniversalObject? _viewInput, _cachedView;
+  WorkspaceController? _viewController;
+
+  UniversalObject get _view {
+    final c = widget.controller;
+    if (!identical(_viewObjects, c.objects) ||
+        !identical(_viewInput, widget.viewObject) ||
+        !identical(_viewController, c)) {
+      _viewObjects = c.objects;
+      _viewInput = widget.viewObject;
+      _viewController = c;
+      _cachedView = c.find(widget.viewObject.id) ?? widget.viewObject;
+    }
+    return _cachedView!;
+  }
+
+  bool get _readOnly =>
+      _view.isReadOnly ||
+      _view.isDeleted ||
+      widget.controller.repository.readOnly ||
+      widget.viewObject.workspaceId != widget.controller.repository.workspaceId;
+  String _text(Object? value) => value?.toString() ?? '';
 
   static const List<String> allColumns = [
     'title',
@@ -42,10 +74,25 @@ class _CollectionTableViewState extends State<CollectionTableView> {
   @override
   void initState() {
     super.initState();
-    final savedCols = widget.viewObject.properties['columns'];
+    _loadOptions();
+  }
+
+  void _loadOptions() {
+    final source = _view;
+    _optionsSource = source;
+    _generation = widget.controller.workspaceGeneration;
+    final savedCols = source.properties['columns'];
     if (savedCols is List) {
-      _visibleColumns = savedCols.map((e) => e.toString()).toSet();
+      _visibleColumns = savedCols
+          .whereType<String>()
+          .where(allColumns.contains)
+          .toSet();
+      _unknownColumns = savedCols
+          .where((e) => e is! String || !allColumns.contains(e))
+          .toList();
+      if (_visibleColumns.isEmpty) _visibleColumns.add('title');
     } else {
+      _unknownColumns = [];
       _visibleColumns = {
         'title',
         'type',
@@ -56,72 +103,51 @@ class _CollectionTableViewState extends State<CollectionTableView> {
         'updated',
       };
     }
-    _sortColumn = widget.viewObject.properties['sortOption'] as String?;
-    _sortAscending =
-        widget.viewObject.properties['sortAscending'] as bool? ?? true;
+    final sort = source.properties['sortOption'];
+    _sortColumn = sort is String && allColumns.contains(sort) ? sort : null;
+    _sortAscending = source.properties['sortAscending'] is bool
+        ? source.properties['sortAscending'] as bool
+        : true;
+  }
+
+  @override
+  void didUpdateWidget(covariant CollectionTableView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller ||
+        oldWidget.viewObject.id != widget.viewObject.id ||
+        _generation != widget.controller.workspaceGeneration) {
+      _actionEpoch++;
+      _creating = false;
+      _searchQuery = '';
+      _search.clear();
+      _typeFilter = 'all';
+      _loadOptions();
+    }
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    _horizontal.dispose();
+    super.dispose();
   }
 
   bool _isManualCollection() {
-    return widget.viewObject.properties['manual'] == true ||
-        widget.viewObject.properties['memberIds'] is List;
+    return _view.properties['manual'] == true ||
+        _view.properties['memberIds'] is List;
   }
 
-  List<String> _getManualMemberIds() {
-    final raw = widget.viewObject.properties['memberIds'];
-    if (raw is List) {
-      return raw.map((e) => e.toString()).toList();
-    }
-    return [];
-  }
-
-  bool _matchesScope(UniversalObject o) {
-    if (o.isDeleted || o.typeId == 'orbit.view') return false;
-
-    if (_isManualCollection()) {
-      return _getManualMemberIds().contains(o.id);
-    }
-
-    final folder =
-        widget.folderFilter ??
-        (widget.viewObject.properties['folder'] as String?);
-    final scopeVal =
-        widget.scope ?? (widget.viewObject.properties['scope'] as String?);
-
-    if (folder != null && folder.isNotEmpty) {
-      final f = o.properties['folder'];
-      if (f is String && (f == folder || f.startsWith('$folder/'))) {
-        return true;
-      }
-      final p = widget.controller.repository.objectPath(o.id);
-      if (p != null && (p == folder || p.startsWith('$folder/'))) {
-        return true;
-      }
-      return false;
-    }
-
-    if (scopeVal != null && scopeVal.isNotEmpty) {
-      final course = o.properties['course']?.toString().toLowerCase();
-      final project = o.properties['project']?.toString().toLowerCase();
-      final contextVal = o.properties['context']?.toString().toLowerCase();
-      final lower = scopeVal.toLowerCase();
-      if (course == lower || project == lower || contextVal == lower) {
-        return true;
-      }
-      return false;
-    }
-
-    return true;
-  }
-
-  void _updateProperty(String key, dynamic value) {
+  void _patchView(Map<String, dynamic> changes) {
+    if (_readOnly) return;
     widget.controller.edit(
-      widget.viewObject.id,
-      properties: {...widget.viewObject.properties, key: value},
+      _view.id,
+      properties: {..._view.properties, ...changes},
     );
     setState(() {});
   }
 
   void _toggleColumn(String col) {
+    if (_readOnly) return;
     setState(() {
       if (_visibleColumns.contains(col)) {
         if (_visibleColumns.length > 1) {
@@ -131,7 +157,9 @@ class _CollectionTableViewState extends State<CollectionTableView> {
         _visibleColumns.add(col);
       }
     });
-    _updateProperty('columns', _visibleColumns.toList());
+    _patchView({
+      'columns': [..._visibleColumns, ..._unknownColumns],
+    });
   }
 
   void _onSort(String col) {
@@ -148,184 +176,230 @@ class _CollectionTableViewState extends State<CollectionTableView> {
         _sortAscending = true;
       }
     });
-    _updateProperty('sortOption', _sortColumn);
-    _updateProperty('sortAscending', _sortAscending);
+    _patchView({'sortOption': _sortColumn, 'sortAscending': _sortAscending});
+  }
+
+  void _notice(String message) {
+    if (mounted) {
+      ScaffoldMessenger.maybeOf(
+        context,
+      )?.showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  ValueChanged<T> _ownedValue<T>(ValueChanged<T> action) {
+    final c = widget.controller, owner = _view.id;
+    final generation = c.workspaceGeneration, epoch = _actionEpoch;
+    return (value) {
+      if (mounted &&
+          identical(c, widget.controller) &&
+          generation == c.workspaceGeneration &&
+          epoch == _actionEpoch &&
+          owner == _view.id) {
+        action(value);
+      }
+    };
+  }
+
+  UniversalObject? _writable(UniversalObject expected) {
+    final current = widget.controller.find(expected.id);
+    return !_readOnly &&
+            current != null &&
+            !current.isDeleted &&
+            !current.isReadOnly &&
+            current.workspaceId == expected.workspaceId
+        ? current
+        : null;
   }
 
   Future<void> _createNewItem(String typeId) async {
-    final effectiveFolder =
-        widget.folderFilter ??
-        (widget.viewObject.properties['folder'] as String?) ??
-        '';
-    final effectiveScope =
-        widget.scope ??
-        (widget.viewObject.properties['scope'] as String?) ??
-        '';
-
-    final defaultTitle = switch (typeId) {
-      'orbit.task' => 'New Task',
-      'orbit.canvas' => 'New Board',
-      _ => 'Untitled Note',
-    };
-
-    final props = <String, dynamic>{
-      if (effectiveFolder.isNotEmpty) 'folder': effectiveFolder,
-      if (effectiveScope.isNotEmpty) 'project': effectiveScope,
-      if (typeId == 'orbit.task') 'status': 'todo',
-    };
-
-    final newObj = await widget.controller.create(
-      typeId,
-      title: defaultTitle,
-      properties: props,
-    );
-
-    if (newObj != null && _isManualCollection()) {
-      final members = List<String>.from(_getManualMemberIds())..add(newObj.id);
-      _updateProperty('memberIds', members);
-    }
-  }
-
-  Future<void> _renameObject(UniversalObject o) async {
-    final ctrl = TextEditingController(text: o.title);
-    final res = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Rename Object'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            isDense: true,
-            hintText: 'Enter title',
-          ),
-          onSubmitted: (val) => Navigator.pop(ctx, val.trim()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-    if (res != null && res.isNotEmpty && res != o.title) {
-      widget.controller.edit(o.id, title: res);
-    }
-  }
-
-  Future<void> _editFolder(UniversalObject o) async {
-    final current = (o.properties['folder'] as String?) ?? '';
-    final ctrl = TextEditingController(text: current);
-    final res = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Move to Folder'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            isDense: true,
-            hintText: 'e.g. Work/Projects or University',
-          ),
-          onSubmitted: (val) => Navigator.pop(ctx, val.trim()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('Move'),
-          ),
-        ],
-      ),
-    );
-    if (res != null) {
-      widget.controller.edit(
-        o.id,
-        properties: {...o.properties, 'folder': res.isEmpty ? null : res},
+    if (_readOnly || _creating) return;
+    final c = widget.controller, origin = _view;
+    final generation = c.workspaceGeneration, epoch = _actionEpoch;
+    final manual = _isManualCollection();
+    final folder = widget.folderFilter ?? _text(origin.properties['folder']);
+    final scope = widget.scope ?? _text(origin.properties['scope']);
+    setState(() => _creating = true);
+    try {
+      final created = await c.create(
+        typeId,
+        title: switch (typeId) {
+          'orbit.task' => 'New Task',
+          'orbit.canvas' => 'New Board',
+          _ => 'Untitled Note',
+        },
+        properties: {
+          if (folder.isNotEmpty) 'folder': folder,
+          if (scope.isNotEmpty) 'project': scope,
+          if (origin.properties['courseId'] is String)
+            'courseId': origin.properties['courseId'],
+          if (typeId == 'orbit.task') 'status': 'todo',
+        },
       );
+      if (created == null || generation != c.workspaceGeneration || !manual) {
+        return;
+      }
+      final current = c.find(origin.id);
+      if (current == null ||
+          current.isDeleted ||
+          current.isReadOnly ||
+          c.repository.readOnly ||
+          !(current.properties['manual'] == true ||
+              current.properties['memberIds'] is List)) {
+        _notice(
+          'The item was created, but its original collection is unavailable.',
+        );
+        return;
+      }
+      final members = current.properties['memberIds'];
+      c.edit(
+        current.id,
+        properties: {
+          ...current.properties,
+          'memberIds': [if (members is List) ...members, created.id],
+        },
+      );
+    } finally {
+      if (mounted && epoch == _actionEpoch) setState(() => _creating = false);
     }
   }
 
-  Future<void> _addTag(UniversalObject o) async {
-    final ctrl = TextEditingController();
-    final res = await showDialog<String>(
+  Future<void> _textDialog({
+    required String title,
+    required String initial,
+    required String hint,
+    required String action,
+    required FutureOr<String?> Function(String) apply,
+  }) async {
+    final c = widget.controller, viewId = _view.id;
+    final generation = c.workspaceGeneration, epoch = _actionEpoch;
+    await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add Tag'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            isDense: true,
-            hintText: 'tag (without #)',
-          ),
-          onSubmitted: (val) => Navigator.pop(ctx, val.trim()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('Add'),
-          ),
-        ],
+      builder: (_) => _CollectionTextDialog(
+        title: title,
+        initial: initial,
+        hint: hint,
+        action: action,
+        apply: apply,
+        canApply: () =>
+            mounted &&
+            identical(widget.controller, c) &&
+            _view.id == viewId &&
+            c.workspaceGeneration == generation &&
+            epoch == _actionEpoch &&
+            !_readOnly,
       ),
     );
-    if (res != null && res.isNotEmpty) {
-      final clean = res.startsWith('#') ? res.substring(1) : res;
-      final existing = (o.properties['tags'] is List)
-          ? List<String>.from(o.properties['tags'] as List)
-          : <String>[];
-      if (!existing.contains(clean)) {
-        existing.add(clean);
-        widget.controller.edit(
-          o.id,
-          properties: {...o.properties, 'tags': existing},
+  }
+
+  Future<void> _renameObject(UniversalObject expected) async {
+    if (_writable(expected) == null) return;
+    await _textDialog(
+      title: 'Rename Object',
+      initial: expected.title,
+      hint: 'Enter title',
+      action: 'Save',
+      apply: (value) {
+        final current = _writable(expected);
+        if (current == null) return 'This item is unavailable or read-only.';
+        if (value.isEmpty) return 'Enter a title.';
+        if (current.title != expected.title && current.title != value) {
+          return 'The title changed elsewhere. Your draft is retained.';
+        }
+        widget.controller.edit(current.id, title: value);
+        return widget.controller.find(current.id)?.title == value
+            ? null
+            : 'The title could not be applied.';
+      },
+    );
+  }
+
+  Future<void> _editFolder(UniversalObject expected) async {
+    if (_writable(expected) == null) return;
+    final original = _text(expected.properties['folder']);
+    await _textDialog(
+      title: 'Move to Folder',
+      initial: original,
+      hint: 'Existing folder, e.g. Work/Projects',
+      action: 'Move',
+      apply: (value) async {
+        final current = _writable(expected);
+        if (current == null) return 'This item is unavailable or read-only.';
+        if (_text(current.properties['folder']) != original) {
+          return 'The folder changed elsewhere. Your draft is retained.';
+        }
+        final ok = await widget.controller.moveObjectToFolder(
+          current.id,
+          value,
         );
-      }
-    }
-  }
-
-  void _removeTag(UniversalObject o, String tag) {
-    final existing = (o.properties['tags'] is List)
-        ? List<String>.from(o.properties['tags'] as List)
-        : <String>[];
-    existing.remove(tag);
-    widget.controller.edit(
-      o.id,
-      properties: {...o.properties, 'tags': existing},
+        return ok
+            ? null
+            : widget.controller.error ??
+                  'The item could not be moved. Your draft is retained.';
+      },
     );
   }
 
-  void _updateStatus(UniversalObject o, String newStatus) {
-    final isDone = newStatus == 'done' || newStatus == 'closed';
+  Future<void> _addTag(UniversalObject expected) async {
+    if (_writable(expected) == null) return;
+    await _textDialog(
+      title: 'Add Tag',
+      initial: '',
+      hint: 'tag (without #)',
+      action: 'Add',
+      apply: (value) {
+        final current = _writable(expected);
+        if (current == null) return 'This item is unavailable or read-only.';
+        final clean = value.replaceFirst(RegExp(r'^#+'), '').trim();
+        if (clean.isEmpty) return 'Enter a tag.';
+        final raw = current.properties['tags'];
+        if (raw != null && raw is! List) {
+          return 'This tag format is unsupported; its data is preserved.';
+        }
+        final tags = raw is List ? [...raw] : <dynamic>[];
+        if (tags.whereType<String>().any(
+          (t) => t.toLowerCase() == clean.toLowerCase(),
+        )) {
+          return null;
+        }
+        tags.add(clean);
+        widget.controller.updateProperty(current.id, 'tags', tags);
+        return null;
+      },
+    );
+  }
+
+  void _removeTag(UniversalObject expected, String tag) {
+    final current = _writable(expected);
+    final raw = current?.properties['tags'];
+    if (current == null || raw is! List) return;
+    widget.controller.updateProperty(current.id, 'tags', [
+      for (final value in raw)
+        if (value != tag) value,
+    ]);
+  }
+
+  void _updateStatus(UniversalObject expected, String newStatus) {
+    final current = _writable(expected);
+    if (current == null) return;
     widget.controller.edit(
-      o.id,
+      current.id,
       properties: {
-        ...o.properties,
+        ...current.properties,
         'status': newStatus,
-        if (o.typeId == 'orbit.task') 'completed': isDone,
+        if (current.typeId == 'orbit.task')
+          'completed': newStatus == 'done' || newStatus == 'closed',
       },
     );
   }
 
-  void _updatePriority(UniversalObject o, String? newPriority) {
-    widget.controller.edit(
-      o.id,
-      properties: {
-        ...o.properties,
-        'priority': newPriority == 'none' ? null : newPriority,
-      },
+  void _updatePriority(UniversalObject expected, String? newPriority) {
+    final current = _writable(expected);
+    if (current == null) return;
+    widget.controller.updateProperty(
+      current.id,
+      'priority',
+      newPriority == 'none' ? null : newPriority,
     );
   }
 
@@ -340,12 +414,44 @@ class _CollectionTableViewState extends State<CollectionTableView> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
+      return Scrollbar(
+        controller: _horizontal,
+        thumbVisibility: true,
+        child: SingleChildScrollView(
+          controller: _horizontal,
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: math.max(constraints.maxWidth, 1100 * math.max(1, scale)),
+            height: constraints.maxHeight,
+            child: _buildTable(context),
+          ),
+        ),
+      );
+    },
+  );
+
+  Widget _buildTable(BuildContext context) {
+    if (!identical(_optionsSource, _view)) _loadOptions();
     final colors = OrbitColors.of(context);
     final isManual = _isManualCollection();
 
     // Query matched objects
-    var objects = widget.controller.objects.where(_matchesScope).toList();
+    var objects = <UniversalObject>[];
+    String? queryIssue;
+    try {
+      objects = widget.controller
+          .queryViewObjects(
+            _view,
+            folderFilter: widget.folderFilter,
+            scope: widget.scope,
+          )
+          .toList();
+    } on Object catch (error) {
+      queryIssue = '$error';
+    }
 
     // Type filter
     if (_typeFilter == 'notes') {
@@ -361,9 +467,9 @@ class _CollectionTableViewState extends State<CollectionTableView> {
       final q = _searchQuery.trim().toLowerCase();
       objects = objects.where((o) {
         if (o.title.toLowerCase().contains(q)) return true;
-        final status = (o.properties['status'] as String?)?.toLowerCase() ?? '';
+        final status = _text(o.properties['status']).toLowerCase();
         if (status.contains(q)) return true;
-        final folder = (o.properties['folder'] as String?)?.toLowerCase() ?? '';
+        final folder = _text(o.properties['folder']).toLowerCase();
         if (folder.contains(q)) return true;
         if (o.properties['tags'] is List) {
           for (final t in (o.properties['tags'] as List)) {
@@ -386,31 +492,34 @@ class _CollectionTableViewState extends State<CollectionTableView> {
             cmp = a.typeId.compareTo(b.typeId);
             break;
           case 'folder':
-            final fa = (a.properties['folder'] as String?) ?? '';
-            final fb = (b.properties['folder'] as String?) ?? '';
+            final fa = _text(a.properties['folder']);
+            final fb = _text(b.properties['folder']);
             cmp = fa.compareTo(fb);
             break;
           case 'status':
-            final sa = (a.properties['status'] as String?) ?? '';
-            final sb = (b.properties['status'] as String?) ?? '';
+            final sa = _text(a.properties['status']);
+            final sb = _text(b.properties['status']);
             cmp = sa.compareTo(sb);
             break;
           case 'priority':
-            final pa = (a.properties['priority'] as String?) ?? '';
-            final pb = (b.properties['priority'] as String?) ?? '';
+            final pa = _text(a.properties['priority']);
+            final pb = _text(b.properties['priority']);
             cmp = pa.compareTo(pb);
             break;
           case 'updated':
             cmp = a.updatedAt.compareTo(b.updatedAt);
             break;
         }
+        if (cmp == 0) cmp = a.id.compareTo(b.id);
         return _sortAscending ? cmp : -cmp;
       });
     }
 
     final effectiveFolder =
         widget.folderFilter ??
-        (widget.viewObject.properties['folder'] as String?);
+        (_view.properties['folder'] is String
+            ? _view.properties['folder'] as String
+            : null);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -425,41 +534,51 @@ class _CollectionTableViewState extends State<CollectionTableView> {
           child: Row(
             children: [
               // Collection Type Badge
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isManual
-                      ? colors.accent.withValues(alpha: 0.12)
-                      : colors.raised,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: isManual
-                        ? colors.accent.withValues(alpha: 0.3)
-                        : colors.border,
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 320),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
                   ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      isManual
-                          ? Icons.bookmarks_outlined
-                          : Icons.filter_alt_outlined,
-                      size: 13,
-                      color: isManual ? colors.accent : colors.subtle,
+                  decoration: BoxDecoration(
+                    color: isManual
+                        ? colors.accent.withValues(alpha: 0.12)
+                        : colors.raised,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: isManual
+                          ? colors.accent.withValues(alpha: 0.3)
+                          : colors.border,
                     ),
-                    const SizedBox(width: 5),
-                    Text(
-                      isManual
-                          ? 'Manual Collection (${objects.length})'
-                          : 'Smart Query (${objects.length}${effectiveFolder != null ? ' · $effectiveFolder' : ''})',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isManual
+                            ? Icons.bookmarks_outlined
+                            : Icons.filter_alt_outlined,
+                        size: 13,
                         color: isManual ? colors.accent : colors.subtle,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 5),
+                      Flexible(
+                        child: Text(
+                          isManual
+                              ? 'Manual Collection (${objects.length})'
+                              : 'Smart Query (${objects.length}${effectiveFolder != null ? ' · $effectiveFolder' : ''})',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: isManual ? colors.accent : colors.subtle,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -467,8 +586,14 @@ class _CollectionTableViewState extends State<CollectionTableView> {
               // Search input
               Expanded(
                 child: SizedBox(
-                  height: 32,
+                  height:
+                      32 *
+                      math.max(
+                        1,
+                        MediaQuery.textScalerOf(context).scale(12) / 12,
+                      ),
                   child: TextField(
+                    controller: _search,
                     onChanged: (val) => setState(() => _searchQuery = val),
                     style: TextStyle(fontSize: 12, color: colors.text),
                     decoration: InputDecoration(
@@ -515,6 +640,7 @@ class _CollectionTableViewState extends State<CollectionTableView> {
 
               // Columns customization button
               PopupMenuButton<String>(
+                key: ValueKey(('collection-columns', _view, _actionEpoch)),
                 tooltip: 'Customize Columns',
                 icon: Container(
                   padding: const EdgeInsets.symmetric(
@@ -546,7 +672,8 @@ class _CollectionTableViewState extends State<CollectionTableView> {
                     ],
                   ),
                 ),
-                onSelected: (col) => _toggleColumn(col),
+                enabled: !_readOnly,
+                onSelected: _ownedValue(_toggleColumn),
                 itemBuilder: (ctx) => [
                   for (final col in allColumns)
                     CheckedPopupMenuItem<String>(
@@ -560,6 +687,7 @@ class _CollectionTableViewState extends State<CollectionTableView> {
 
               // Add Item button
               PopupMenuButton<String>(
+                key: ValueKey(('collection-create', _view, _actionEpoch)),
                 tooltip: 'Add to Collection',
                 icon: Container(
                   padding: const EdgeInsets.symmetric(
@@ -586,7 +714,8 @@ class _CollectionTableViewState extends State<CollectionTableView> {
                     ],
                   ),
                 ),
-                onSelected: (type) => _createNewItem(type),
+                enabled: !_readOnly && !_creating && queryIssue == null,
+                onSelected: _ownedValue(_createNewItem),
                 itemBuilder: (ctx) => const [
                   PopupMenuItem(
                     value: 'orbit.note',
@@ -594,7 +723,12 @@ class _CollectionTableViewState extends State<CollectionTableView> {
                       children: [
                         Icon(Icons.description_outlined, size: 16),
                         SizedBox(width: 8),
-                        Text('New Note', style: TextStyle(fontSize: 13)),
+                        Expanded(
+                          child: Text(
+                            'New Note',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -604,7 +738,12 @@ class _CollectionTableViewState extends State<CollectionTableView> {
                       children: [
                         Icon(Icons.checklist_outlined, size: 16),
                         SizedBox(width: 8),
-                        Text('New Task', style: TextStyle(fontSize: 13)),
+                        Expanded(
+                          child: Text(
+                            'New Task',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -614,9 +753,11 @@ class _CollectionTableViewState extends State<CollectionTableView> {
                       children: [
                         Icon(Icons.dashboard_outlined, size: 16),
                         SizedBox(width: 8),
-                        Text(
-                          'New Board / Canvas',
-                          style: TextStyle(fontSize: 13),
+                        Expanded(
+                          child: Text(
+                            'New Board / Canvas',
+                            style: TextStyle(fontSize: 13),
+                          ),
                         ),
                       ],
                     ),
@@ -698,7 +839,9 @@ class _CollectionTableViewState extends State<CollectionTableView> {
 
         // Table Body
         Expanded(
-          child: objects.isEmpty
+          child: queryIssue != null
+              ? Center(child: Text(queryIssue))
+              : objects.isEmpty
               ? (widget.controller.objects.isEmpty
                     ? EmptyWorkspace(
                         icon: Icons.table_chart_outlined,
@@ -813,16 +956,24 @@ class _CollectionTableViewState extends State<CollectionTableView> {
       _ => Icons.description_outlined,
     };
 
-    final status =
-        (o.properties['status'] as String?) ??
-        (o.typeId == 'orbit.task' ? (o.isCompleted ? 'done' : 'todo') : 'none');
-    final priority = (o.properties['priority'] as String?) ?? 'none';
-    final folder = (o.properties['folder'] as String?) ?? '';
+    final storedStatus = _text(o.properties['status']);
+    final status = storedStatus.isNotEmpty
+        ? storedStatus
+        : (o.typeId == 'orbit.task'
+              ? (o.isCompleted ? 'done' : 'todo')
+              : 'none');
+    final storedPriority = _text(o.properties['priority']);
+    final priority = storedPriority.isEmpty ? 'none' : storedPriority;
+    final folder = _text(o.properties['folder']);
+    // Rows already come from the current query snapshot. Resolve identity again
+    // only when an action commits, rather than scanning the Vault per cell.
+    final writable = !_readOnly && !o.isReadOnly && !o.isDeleted;
     final tags = (o.properties['tags'] is List)
         ? (o.properties['tags'] as List).map((e) => e.toString()).toList()
         : <String>[];
 
     return Container(
+      key: ValueKey('collection-row-${o.id}'),
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       child: Row(
         children: [
@@ -838,9 +989,11 @@ class _CollectionTableViewState extends State<CollectionTableView> {
                       height: 22,
                       child: Checkbox(
                         value: o.isCompleted,
-                        onChanged: (val) {
-                          _updateStatus(o, val == true ? 'done' : 'todo');
-                        },
+                        onChanged: !writable
+                            ? null
+                            : (val) {
+                                _updateStatus(o, val == true ? 'done' : 'todo');
+                              },
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -879,7 +1032,7 @@ class _CollectionTableViewState extends State<CollectionTableView> {
                       minWidth: 20,
                       minHeight: 20,
                     ),
-                    onPressed: () => _renameObject(o),
+                    onPressed: writable ? () => _renameObject(o) : null,
                   ),
                 ],
               ),
@@ -919,7 +1072,8 @@ class _CollectionTableViewState extends State<CollectionTableView> {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: InkWell(
-                  onTap: () => _editFolder(o),
+                  key: ValueKey('collection-folder-${o.id}'),
+                  onTap: writable ? () => _editFolder(o) : null,
                   borderRadius: BorderRadius.circular(4),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
@@ -964,8 +1118,10 @@ class _CollectionTableViewState extends State<CollectionTableView> {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: PopupMenuButton<String>(
+                  key: ValueKey(('collection-status', _view, o, _actionEpoch)),
                   tooltip: 'Change Status',
-                  onSelected: (newSt) => _updateStatus(o, newSt),
+                  enabled: writable,
+                  onSelected: _ownedValue((newSt) => _updateStatus(o, newSt)),
                   itemBuilder: (ctx) => const [
                     PopupMenuItem(value: 'todo', child: Text('Todo')),
                     PopupMenuItem(
@@ -1015,8 +1171,15 @@ class _CollectionTableViewState extends State<CollectionTableView> {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: PopupMenuButton<String>(
+                  key: ValueKey((
+                    'collection-priority',
+                    _view,
+                    o,
+                    _actionEpoch,
+                  )),
                   tooltip: 'Change Priority',
-                  onSelected: (newPr) => _updatePriority(o, newPr),
+                  enabled: writable,
+                  onSelected: _ownedValue((newPr) => _updatePriority(o, newPr)),
                   itemBuilder: (ctx) => const [
                     PopupMenuItem(value: 'urgent', child: Text('🔴 Urgent')),
                     PopupMenuItem(value: 'high', child: Text('🟠 High')),
@@ -1072,16 +1235,20 @@ class _CollectionTableViewState extends State<CollectionTableView> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            '#$t',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: colors.subtle,
+                          Flexible(
+                            child: Text(
+                              '#$t',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: colors.subtle,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 2),
                           InkWell(
-                            onTap: () => _removeTag(o, t),
+                            onTap: writable ? () => _removeTag(o, t) : null,
                             child: Icon(
                               Icons.close,
                               size: 10,
@@ -1092,7 +1259,8 @@ class _CollectionTableViewState extends State<CollectionTableView> {
                       ),
                     ),
                   InkWell(
-                    onTap: () => _addTag(o),
+                    key: ValueKey('collection-add-tag-${o.id}'),
+                    onTap: writable ? () => _addTag(o) : null,
                     borderRadius: BorderRadius.circular(4),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
@@ -1151,7 +1319,9 @@ class _CollectionTableViewState extends State<CollectionTableView> {
                     minWidth: 28,
                     minHeight: 28,
                   ),
-                  onPressed: () => widget.controller.trash(o.id),
+                  onPressed: writable
+                      ? () => widget.controller.trash(o.id)
+                      : null,
                 ),
               ],
             ),
@@ -1180,4 +1350,85 @@ class _CollectionTableViewState extends State<CollectionTableView> {
       _ => colors.subtle,
     };
   }
+}
+
+class _CollectionTextDialog extends StatefulWidget {
+  const _CollectionTextDialog({
+    required this.title,
+    required this.initial,
+    required this.hint,
+    required this.action,
+    required this.apply,
+    required this.canApply,
+  });
+  final String title, initial, hint, action;
+  final FutureOr<String?> Function(String) apply;
+  final bool Function() canApply;
+  @override
+  State<_CollectionTextDialog> createState() => _CollectionTextDialogState();
+}
+
+class _CollectionTextDialogState extends State<_CollectionTextDialog> {
+  late final input = TextEditingController(text: widget.initial);
+  bool busy = false;
+  String? error;
+  @override
+  void dispose() {
+    input.dispose();
+    super.dispose();
+  }
+
+  Future<void> submit() async {
+    if (busy) return;
+    if (!widget.canApply()) {
+      setState(
+        () => error =
+            'The collection changed. Your draft is retained; reopen the original item.',
+      );
+      return;
+    }
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    String? issue;
+    try {
+      issue = await widget.apply(input.text.trim());
+    } catch (_) {
+      issue = 'The change could not be applied. Your draft is retained.';
+    }
+    if (!mounted) return;
+    if (issue == null) {
+      Navigator.pop(context);
+    } else {
+      setState(() {
+        busy = false;
+        error = issue;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => OrbitDraftGuard(
+    dirty: input.text != widget.initial,
+    busy: busy,
+    builder: (context, close) => AlertDialog(
+      title: Text(widget.title),
+      content: TextField(
+        controller: input,
+        autofocus: true,
+        readOnly: busy,
+        decoration: InputDecoration(hintText: widget.hint, errorText: error),
+        onChanged: (_) => setState(() {}),
+        onSubmitted: (_) => submit(),
+      ),
+      actions: [
+        TextButton(onPressed: busy ? null : close, child: const Text('Cancel')),
+        FilledButton(
+          onPressed: busy ? null : submit,
+          child: Text(widget.action),
+        ),
+      ],
+    ),
+  );
 }

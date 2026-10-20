@@ -61,10 +61,7 @@ class _SavedViewHostState extends State<SavedViewHost> {
   }
 
   void _updateProperty(String key, dynamic value) {
-    widget.controller.edit(
-      widget.viewObject.id,
-      properties: {...widget.viewObject.properties, key: value},
-    );
+    widget.controller.updateProperty(widget.viewObject.id, key, value);
     setState(() {});
   }
 
@@ -82,45 +79,26 @@ class _SavedViewHostState extends State<SavedViewHost> {
     if (v.properties['viewType'] == 'gantt') {
       return GanttView(controller: c, view: v);
     }
+    if (['viewType', 'folder', 'scope', 'preset'].any((key) {
+      final value = v.properties[key];
+      return value != null && value is! String;
+    })) {
+      return const EmptyWorkspace(
+        icon: Icons.warning_amber_outlined,
+        title: 'Unsupported view settings',
+        description:
+            'This view contains unsupported settings. Its definition is preserved; edit the original settings before reopening it.',
+      );
+    }
     final viewType = (v.properties['viewType'] as String?) ?? 'tasks';
     final folder = v.properties['folder'] as String?;
     final scope = v.properties['scope'] as String?;
     final preset = (v.properties['preset'] as String?) ?? 'universal';
 
-    // Calculate scoped task completion progress
-    bool matchesScope(UniversalObject o) {
-      if (folder != null && folder.isNotEmpty) {
-        final f = o.properties['folder'];
-        if (f is String && (f == folder || f.startsWith('$folder/'))) {
-          return true;
-        }
-        final p = c.repository.objectPath(o.id);
-        if (p != null && (p == folder || p.startsWith('$folder/'))) {
-          return true;
-        }
-      }
-      if (scope != null && scope.isNotEmpty) {
-        final course = o.properties['course']?.toString().toLowerCase();
-        final project = o.properties['project']?.toString().toLowerCase();
-        final contextVal = o.properties['context']?.toString().toLowerCase();
-        final lowerScope = scope.toLowerCase();
-        if (course == lowerScope ||
-            project == lowerScope ||
-            contextVal == lowerScope) {
-          return true;
-        }
-      }
-      if ((folder == null || folder.isEmpty) &&
-          (scope == null || scope.isEmpty)) {
-        return true;
-      }
-      return false;
-    }
-
-    final scopedTasks = c
-        .ofType('orbit.task')
-        .where((t) => !t.isDeleted && matchesScope(t))
-        .toList();
+    // Use the same membership as the actual table/timeline, including manual lists.
+    final scopedTasks = c.queryViewIssue(v) == null
+        ? c.queryViewObjects(v).where((o) => o.typeId == 'orbit.task').toList()
+        : <UniversalObject>[];
     final totalTasks = scopedTasks.length;
     final completedTasks = scopedTasks.where((t) => t.isCompleted).length;
     final progressPercent = totalTasks == 0

@@ -3,6 +3,11 @@
 Status: accepted implemented subset, 2026-09-12. Extends ADR-0007/0010/0016.
 This does not mark Google Drive, WebDAV or end-user sync complete.
 
+2026-10-15: [ADR-0030](0030-immutable-drive-revisions.md) partially supersedes the
+conditional-publication-only gate below for explicit immutable revision providers.
+Concurrent branches remain recoverable conflicts; ordinary mutable providers still
+require atomic conditional publication. The original foundation decision follows.
+
 ## Decision
 
 Native stores hold an OS file lock at `.orbit/device/vault.lock` before recovery

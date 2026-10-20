@@ -1,5 +1,8 @@
 # Feature specifications
 
+Technical writing workflow: [Technical articles, research diagrams and CMS handoff](technical-article-publishing.md)
+documents the local EDT/REV/CAN/PORT subset and its export/SEO boundaries.
+
 These documents turn the chat's feature ideas into concrete product behavior.
 They supplement the compact [feature catalog](../product/feature-catalog.md) and
 architectural contracts; they do not change the [current task](../tasks/current.md).

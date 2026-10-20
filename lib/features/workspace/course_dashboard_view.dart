@@ -1,3 +1,4 @@
+import '../../domain/course_progress.dart';
 import 'package:flutter/material.dart';
 import '../../app/orbit_theme.dart';
 import '../../app/workspace_controller.dart';
@@ -23,6 +24,11 @@ class CourseDashboardView extends StatelessWidget {
   final ValueChanged<String>? onSelectViewType;
 
   bool _matchesScope(UniversalObject o) {
+    final courseId = viewObject.properties['courseId'];
+    if (courseId is String && courseId.isNotEmpty) {
+      final course = controller.find(courseId);
+      return course != null && !course.isDeleted && belongsToCourse(o, course);
+    }
     final ff = folderFilter;
     final sc = scope;
     if (ff != null && ff.isNotEmpty) {

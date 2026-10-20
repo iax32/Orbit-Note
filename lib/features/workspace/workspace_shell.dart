@@ -1,10 +1,16 @@
 import 'orbit_tab_strip.dart';
+import '../../app/drive_vault_scheduler.dart';
+import '../../platform/vault_discovery.dart';
+import 'course_hub.dart';
+import 'object_bridges.dart';
+import '../notes/editor_draft_review.dart';
 import '../notes/ocr_review_dialog.dart';
 import '../notes/ocr_image_highlight.dart';
 import 'backup_import_dialog.dart';
 import '../../app/orbit_density.dart';
 import '../../app/orbit_components.dart';
 import 'dart:async';
+import '../../canvas/scene.dart';
 import 'dart:convert';
 import 'dart:ui' show AppExitResponse;
 import 'dart:ui' as ui;
@@ -28,6 +34,7 @@ import '../../app/orbit_theme.dart';
 import '../../app/session_state.dart';
 import '../../app/workspace_controller.dart';
 import '../../app/google_cloud_controller.dart';
+import '../../app/drive_sync_controller.dart';
 import '../../app/collaboration_controller.dart';
 import 'collaboration_settings.dart';
 import '../../domain/universal_object.dart';
@@ -44,6 +51,8 @@ import '../../platform/vault_folder.dart';
 import '../../platform/export_file.dart';
 import '../../platform/open_attachment.dart';
 import '../canvas/canvas_editor.dart';
+import '../canvas/diagram_note_dialog.dart';
+import '../../canvas/diagram_reference.dart';
 import '../notes/note_editor.dart';
 import '../notes/read_attachment_preview.dart';
 import '../notes/attachment_recovery_dialog.dart';
@@ -69,7 +78,10 @@ import 'note_folder_explorer.dart';
 import 'graph_view.dart';
 import 'saved_view_host.dart';
 import 'object_inspector.dart';
+import 'object_rename_dialog.dart';
+import 'project_context_panel.dart';
 import 'explorer_mini_calendar.dart';
+import 'code_ide_workspace.dart';
 
 class WorkspaceShell extends ConsumerStatefulWidget {
   const WorkspaceShell({super.key});
@@ -98,7 +110,8 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       return;
     }
     _capturingReferences = true;
-    final workspace = c.repository.workspaceId;
+    final workspace = c.repository.workspaceId,
+        generation = c.workspaceGeneration;
     final place = _canvasCaptures[canvasId]?.prepare(
       globalPosition: globalPosition,
     );
@@ -107,10 +120,10 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     try {
       message('Capturing ${batch.length} reference files…');
       for (final file in batch) {
-        if (!mounted || c.repository.workspaceId != workspace) return;
+        if (!_captureStillCurrent(generation, workspace)) return;
         try {
           final bytes = await readIncomingFile(file);
-          if (c.repository.workspaceId != workspace) return;
+          if (!_captureStillCurrent(generation, workspace)) return;
           final source = await c.captureCreativeReference(
             canvasId,
             file.name,
@@ -122,7 +135,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
           message('Could not capture ${file.name}: $e');
         }
       }
-      if (!mounted || c.repository.workspaceId != workspace) return;
+      if (!_captureStillCurrent(generation, workspace)) return;
       final board = c.find(canvasId);
       final placed =
           board != null &&
@@ -145,6 +158,41 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   String explorerFilter = '';
   String explorerTypeFilter = 'all';
   bool _secondaryFocused = false;
+  bool _secondaryVisible = false;
+  final _primaryPaneFocus = FocusScopeNode(debugLabel: 'Orbit primary pane');
+  final _secondaryPaneFocus = FocusScopeNode(
+    debugLabel: 'Orbit secondary pane',
+  );
+  bool get _targetSecondary => _secondaryFocused && _secondaryVisible;
+  int _editorFocusSerial = 0;
+  int? _editorFocusGeneration;
+  String? _editorFocusId;
+  String _editorFocusPane = 'primary';
+
+  void _focusPaneEditor({bool secondary = false}) {
+    if (!mounted) return;
+    final id = secondary ? c.session.secondaryId : c.session.activeId;
+    setState(() {
+      _secondaryFocused = secondary;
+      _editorFocusId = id;
+      _editorFocusPane = secondary ? 'secondary' : 'primary';
+      _editorFocusSerial++;
+      _editorFocusGeneration = c.workspaceGeneration;
+    });
+    (secondary ? _secondaryPaneFocus : _primaryPaneFocus).requestFocus();
+  }
+
+  void _closeSecondaryPane() {
+    c.updateSession((s) => s.secondaryId = null);
+    _focusPaneEditor();
+  }
+
+  void _cycleFocusedTab({bool reverse = false}) {
+    final secondary = _targetSecondary && c.session.secondaryId != null;
+    c.cycleTab(reverse: reverse, secondary: secondary);
+    _focusPaneEditor(secondary: secondary);
+  }
+
   WorkspaceController get c => ref.read(workspaceProvider.notifier);
   @override
   void initState() {
@@ -161,6 +209,8 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   @override
   void dispose() {
     lifecycle.dispose();
+    _primaryPaneFocus.dispose();
+    _secondaryPaneFocus.dispose();
     super.dispose();
   }
 
@@ -270,6 +320,14 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   Future<void> switchVault() async {
     try {
       final recent = await c.repository.recentLocations();
+      final discovered = await discoverVaults(recent);
+      String label(String path) {
+        for (final vault in discovered.vaults) {
+          if (vaultPathsEqual(path, vault.path)) return vault.name;
+        }
+        return path.split(RegExp(r'[/\\]')).last;
+      }
+
       if (!mounted) return;
       await showDialog<void>(
         context: context,
@@ -344,7 +402,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                       trailing: path == c.repository.location
                           ? const Icon(Icons.check, size: 18)
                           : const Icon(Icons.chevron_right, size: 18),
-                      title: Text(path.split(RegExp(r'[/\\]')).last),
+                      title: Text(label(path)),
                       subtitle: Text(
                         path,
                         maxLines: 2,
@@ -569,12 +627,25 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     return file.readAsBytes();
   }
 
-  Future<UniversalObject?> importBytes(String name, Uint8List bytes) async {
+  bool _captureStillCurrent(int generation, String workspace) =>
+      mounted &&
+      c.hasWorkspace &&
+      !c.loading &&
+      c.workspaceGeneration == generation &&
+      c.repository.workspaceId == workspace;
+
+  Future<UniversalObject?> importBytes(
+    String name,
+    Uint8List bytes, {
+    int? captureGeneration,
+    String? captureWorkspace,
+  }) async {
+    final generation = captureGeneration ?? c.workspaceGeneration;
+    final workspace = captureWorkspace ?? c.repository.workspaceId;
+    if (!_captureStillCurrent(generation, workspace)) return null;
     try {
-      final attachment = await c.repository.importAttachment(
-        name: name,
-        bytes: bytes,
-      );
+      final attachment = await c.importProjectAttachment(name, bytes);
+      if (!_captureStillCurrent(generation, workspace)) return null;
       // Preserve any active note drafts while adding the newly owned attachment.
       if (c.find(attachment.id) == null) c.objects = [...c.objects, attachment];
       c.notify();
@@ -602,10 +673,17 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   }
 
   Future<String?> insertAttachment({String? noteId}) async {
+    final generation = c.workspaceGeneration,
+        workspace = c.repository.workspaceId;
     try {
       final file = await openFile();
       if (file == null) return null;
-      final object = await importBytes(file.name, await readIncomingFile(file));
+      final object = await importBytes(
+        file.name,
+        await readIncomingFile(file),
+        captureGeneration: generation,
+        captureWorkspace: workspace,
+      );
       return object == null ? null : attachmentMarkdown(object, noteId: noteId);
     } catch (e) {
       message('File selection failed: $e');
@@ -614,13 +692,20 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   }
 
   Future<String?> pasteImage({String? noteId}) async {
+    final generation = c.workspaceGeneration,
+        workspace = c.repository.workspaceId;
     try {
       final bytes = await Pasteboard.image;
       if (bytes == null) {
         message('No image on the clipboard.');
         return null;
       }
-      final object = await importBytes('Screenshot.png', bytes);
+      final object = await importBytes(
+        'Screenshot.png',
+        bytes,
+        captureGeneration: generation,
+        captureWorkspace: workspace,
+      );
       return object == null ? null : attachmentMarkdown(object, noteId: noteId);
     } catch (e) {
       message('Image paste is unavailable: $e');
@@ -630,14 +715,29 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
 
   Future<CanvasImageReference?> canvasImage(
     String name,
-    Uint8List bytes,
-  ) async {
+    Uint8List bytes, {
+    int? captureGeneration,
+    String? captureWorkspace,
+  }) async {
+    final generation = captureGeneration ?? c.workspaceGeneration;
+    final workspace = captureWorkspace ?? c.repository.workspaceId;
+    if (!_captureStillCurrent(generation, workspace)) return null;
     final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
-    final descriptor = await ui.ImageDescriptor.encoded(buffer);
-    final ratio = descriptor.height / descriptor.width;
-    descriptor.dispose();
-    buffer.dispose();
-    final object = await importBytes(name, bytes);
+    ui.ImageDescriptor? descriptor;
+    final double ratio;
+    try {
+      descriptor = await ui.ImageDescriptor.encoded(buffer);
+      ratio = descriptor.height / descriptor.width;
+    } finally {
+      descriptor?.dispose();
+      buffer.dispose();
+    }
+    final object = await importBytes(
+      name,
+      bytes,
+      captureGeneration: generation,
+      captureWorkspace: workspace,
+    );
     if (object == null) return null;
     return CanvasImageReference(
       contentRef: object.properties['contentRef'] as String,
@@ -648,6 +748,8 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   }
 
   Future<CanvasImageReference?> selectCanvasImage() async {
+    final generation = c.workspaceGeneration,
+        workspace = c.repository.workspaceId;
     try {
       final file = await openFile(
         acceptedTypeGroups: [
@@ -659,7 +761,12 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       );
       return file == null
           ? null
-          : await canvasImage(file.name, await readIncomingFile(file));
+          : await canvasImage(
+              file.name,
+              await readIncomingFile(file),
+              captureGeneration: generation,
+              captureWorkspace: workspace,
+            );
     } catch (e) {
       message('Image could not be inserted: $e');
       return null;
@@ -667,13 +774,20 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   }
 
   Future<CanvasImageReference?> pasteCanvasImage() async {
+    final generation = c.workspaceGeneration,
+        workspace = c.repository.workspaceId;
     try {
       final bytes = await Pasteboard.image;
       if (bytes == null) {
         message('No image on the clipboard.');
         return null;
       }
-      return await canvasImage('Screenshot.png', bytes);
+      return await canvasImage(
+        'Screenshot.png',
+        bytes,
+        captureGeneration: generation,
+        captureWorkspace: workspace,
+      );
     } catch (e) {
       message('Image paste is unavailable: $e');
       return null;
@@ -681,6 +795,8 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   }
 
   Future<UniversalObject?> pickAndOpenPdf() async {
+    final generation = c.workspaceGeneration,
+        workspace = c.repository.workspaceId;
     try {
       final file = await openFile(
         acceptedTypeGroups: const [
@@ -689,7 +805,12 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       );
       if (file == null) return null;
       final bytes = await readIncomingFile(file);
-      final object = await importBytes(file.name, bytes);
+      final object = await importBytes(
+        file.name,
+        bytes,
+        captureGeneration: generation,
+        captureWorkspace: workspace,
+      );
       if (object != null) {
         c.openObject(object.id);
         message('Opened ${object.title}');
@@ -702,6 +823,9 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   }
 
   Future<UniversalObject?> pickAndOpenImage() async {
+    final generation = c.workspaceGeneration,
+        workspace = c.repository.workspaceId;
+    final target = c.find(c.session.activeId);
     try {
       final file = await openFile(
         acceptedTypeGroups: const [
@@ -713,12 +837,23 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       );
       if (file == null) return null;
       final bytes = await readIncomingFile(file);
-      final target = c.find(c.session.activeId);
+      if (!_captureStillCurrent(generation, workspace)) return null;
       if (target?.typeId == 'orbit.canvas' &&
           !file.name.toLowerCase().endsWith('.svg')) {
-        final img = await canvasImage(file.name, bytes);
+        final img = await canvasImage(
+          file.name,
+          bytes,
+          captureGeneration: generation,
+          captureWorkspace: workspace,
+        );
         if (img != null) {
-          final latest = c.find(target!.id)!;
+          final latest = c.find(target!.id);
+          if (!_captureStillCurrent(generation, workspace) ||
+              latest == null ||
+              latest.isDeleted ||
+              latest.isReadOnly) {
+            return null;
+          }
           final camera = c.session.cameras[target.id] ?? {};
           c.edit(
             target.id,
@@ -743,7 +878,12 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         }
         return null;
       }
-      final object = await importBytes(file.name, bytes);
+      final object = await importBytes(
+        file.name,
+        bytes,
+        captureGeneration: generation,
+        captureWorkspace: workspace,
+      );
       if (object != null) {
         c.openObject(object.id);
         message('Opened ${object.title}');
@@ -755,22 +895,50 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     }
   }
 
-  Future<UniversalObject?> pickAndImportFile() async {
+  Future<UniversalObject?> pickAndImportFile({
+    List<XTypeGroup> groups = const [],
+  }) async {
+    final generation = c.workspaceGeneration,
+        workspace = c.repository.workspaceId;
     try {
-      final file = await openFile();
-      if (file == null) return null;
+      final file = await openFile(acceptedTypeGroups: groups);
+      if (file == null || !_captureStillCurrent(generation, workspace)) {
+        return null;
+      }
       final bytes = await readIncomingFile(file);
-      final object = await importBytes(file.name, bytes);
-      if (object != null) {
+      final object = await importBytes(
+        file.name,
+        bytes,
+        captureGeneration: generation,
+        captureWorkspace: workspace,
+      );
+      if (object != null && _captureStillCurrent(generation, workspace)) {
         c.openObject(object.id);
         message('Imported ${object.title}');
       }
       return object;
     } catch (e) {
-      message('Could not import file: $e');
+      if (_captureStillCurrent(generation, workspace)) {
+        message('Could not import file: $e');
+      }
       return null;
     }
   }
+
+  Future<UniversalObject?> pickAndOpenCode() => pickAndImportFile(
+    groups: [
+      XTypeGroup(
+        label: 'Source code and text',
+        extensions: codeLanguages.keys.toList(),
+      ),
+    ],
+  );
+
+  Future<UniversalObject?> pickAndOpenModel() => pickAndImportFile(
+    groups: const [
+      XTypeGroup(label: '3D models', extensions: ['obj', 'glb']),
+    ],
+  );
 
   Widget attachmentImage(BuildContext context, String raw) {
     final refPath = Uri.decodeFull(raw).replaceFirst(RegExp(r'^\.\./'), '');
@@ -1120,19 +1288,49 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     c.openObject(reference.id);
   }
 
-  Future<void> openOriginal(UniversalObject object, {bool reveal = false}) =>
-      openOriginalReference(
-        object.properties['contentRef'] as String,
-        object.title,
-        reveal: reveal,
-      );
+  Future<void> openOriginal(
+    UniversalObject object, {
+    bool reveal = false,
+  }) async {
+    final current = c.find(object.id);
+    final reference = current?.properties['contentRef'];
+    if (current == null || current.isDeleted || reference is! String) {
+      message('Original attachment reference is unavailable.');
+      return;
+    }
+    await openOriginalReference(
+      reference,
+      current.title,
+      reveal: reveal,
+      source: current,
+    );
+  }
 
   Future<void> openOriginalReference(
     String path,
     String title, {
     bool reveal = false,
+    UniversalObject? source,
   }) async {
+    final repo = c.repository, generation = c.workspaceGeneration;
+    final attachmentRevision = c.attachmentRevision;
+    final workspace = repo.workspaceId, location = repo.location;
+    bool current() {
+      if (!_captureStillCurrent(generation, workspace) ||
+          !identical(repo, c.repository) ||
+          attachmentRevision != c.attachmentRevision) {
+        return false;
+      }
+      if (source == null) return true;
+      final latest = c.find(source.id);
+      return latest != null &&
+          !latest.isDeleted &&
+          latest.properties['contentRef'] == path &&
+          latest.properties['checksum'] == source.properties['checksum'];
+    }
+
     try {
+      if (!current()) return;
       if (!reveal && attachmentNeedsConfirmation(path)) {
         if (!mounted) return;
         final confirmed = await showDialog<bool>(
@@ -1154,55 +1352,24 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
             ],
           ),
         );
-        if (confirmed != true) return;
+        if (confirmed != true || !current()) return;
       }
       // Folder recovery remains usable for missing or unreadable originals.
-      if (!reveal && await c.repository.readAttachment(path) == null) {
-        message('Original attachment is missing.');
+      if (!reveal && await repo.readAttachment(path) == null) {
+        if (current()) message('Original attachment is missing.');
         return;
       }
-      if (!await openAttachment(c.repository.location, path, reveal: reveal)) {
+      if (!current()) return;
+      if (!await openAttachment(location, path, reveal: reveal) && current()) {
         message('No application is available to open this file.');
       }
     } catch (e) {
-      message('Could not open original: $e');
+      if (current()) message('Could not open original: $e');
     }
   }
 
-  Future<void> renameObject(UniversalObject object) async {
-    final input = TextEditingController(text: object.title);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => OrbitDialog(
-        title: const Text('Rename object'),
-        content: TextField(
-          controller: input,
-          autofocus: true,
-          onSubmitted: (v) {
-            if (v.trim().isNotEmpty) Navigator.pop(context, v.trim());
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (input.text.trim().isNotEmpty) {
-                Navigator.pop(context, input.text.trim());
-              }
-            },
-            child: const Text('Rename'),
-          ),
-        ],
-      ),
-    );
-    // Dialog exit animation may still own the input for a frame.
-    await Future<void>.delayed(const Duration(milliseconds: 250));
-    input.dispose();
-    if (result != null) c.edit(object.id, title: result);
-  }
+  Future<void> renameObject(UniversalObject object) =>
+      showObjectRenameDialog(context, c, object);
 
   Future<void> revealObjectInExplorer(String id) async {
     try {
@@ -1228,7 +1395,8 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     DropDoneDetails details, {
     bool forceToVault = false,
   }) async {
-    final workspaceId = c.repository.workspaceId;
+    final workspaceId = c.repository.workspaceId,
+        generation = c.workspaceGeneration;
     var target = c.find(c.session.activeId);
     if (!forceToVault) {
       for (final entry in _canvasCaptures.entries) {
@@ -1240,13 +1408,24 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       }
     }
 
+    bool targetAvailable() {
+      if (!_captureStillCurrent(generation, workspaceId)) return false;
+      final latest = c.find(target?.id);
+      return latest != null &&
+          !latest.isDeleted &&
+          !latest.isReadOnly &&
+          !c.repository.readOnly &&
+          (latest.typeId != 'orbit.canvas' ||
+              !CanvasScene.fromJson(latest.data).readOnly);
+    }
+
     // If forceToVault or no active note/canvas, import directly into Vault and open the first file.
     if (forceToVault ||
         target == null ||
         !['orbit.note', 'orbit.canvas'].contains(target.typeId)) {
       UniversalObject? firstOpened;
       for (final file in details.files) {
-        if (c.repository.workspaceId != workspaceId) return;
+        if (!_captureStillCurrent(generation, workspaceId)) return;
         final fileName = file.name.trim().isNotEmpty
             ? file.name.trim()
             : (file.path.trim().isNotEmpty
@@ -1254,7 +1433,13 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                   : 'attachment');
         try {
           final bytes = await readIncomingFile(file);
-          final object = await importBytes(fileName, bytes);
+          if (!_captureStillCurrent(generation, workspaceId)) return;
+          final object = await importBytes(
+            fileName,
+            bytes,
+            captureGeneration: generation,
+            captureWorkspace: workspaceId,
+          );
           if (object != null && firstOpened == null) {
             firstOpened = object;
           }
@@ -1262,7 +1447,8 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
           message('Could not import $fileName: $e');
         }
       }
-      if (firstOpened != null) {
+      if (firstOpened != null &&
+          _captureStillCurrent(generation, workspaceId)) {
         c.openObject(firstOpened.id);
         message('Imported ${firstOpened.title} to Vault');
       }
@@ -1280,8 +1466,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         return;
       }
       for (final file in details.files) {
-        if (c.repository.workspaceId != workspaceId ||
-            c.find(target.id) == null) {
+        if (!targetAvailable()) {
           return;
         }
         final fileName = file.name.trim().isNotEmpty
@@ -1290,7 +1475,14 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                   ? p.basename(file.path).trim()
                   : 'attachment');
         final nameLower = fileName.toLowerCase();
-        final bytes = await readIncomingFile(file);
+        final Uint8List bytes;
+        try {
+          bytes = await readIncomingFile(file);
+        } catch (e) {
+          message('Could not read $fileName: $e');
+          continue;
+        }
+        if (!targetAvailable()) return;
 
         // 1. Bitmapped images
         final isBitmapImage = [
@@ -1302,8 +1494,13 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         ].any(nameLower.endsWith);
         if (isBitmapImage) {
           try {
-            final image = await canvasImage(fileName, bytes);
-            if (image != null) {
+            final image = await canvasImage(
+              fileName,
+              bytes,
+              captureGeneration: generation,
+              captureWorkspace: workspaceId,
+            );
+            if (image != null && targetAvailable()) {
               final latest = c.find(target.id)!;
               final camera = c.session.cameras[target.id] ?? {};
               c.edit(
@@ -1391,8 +1588,13 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
 
         // 4. PDF documents and other files: import into Vault and attach as interactive card
         try {
-          final object = await importBytes(fileName, bytes);
-          if (object != null) {
+          final object = await importBytes(
+            fileName,
+            bytes,
+            captureGeneration: generation,
+            captureWorkspace: workspaceId,
+          );
+          if (object != null && targetAvailable()) {
             final latest = c.find(target.id)!;
             final camera = c.session.cameras[target.id] ?? {};
             c.edit(
@@ -1426,8 +1628,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     // Target is Note: insert markdown attachment link / image
     if (target.typeId == 'orbit.note') {
       for (final file in details.files) {
-        if (c.repository.workspaceId != workspaceId ||
-            c.find(target.id) == null) {
+        if (!targetAvailable()) {
           return;
         }
         final fileName = file.name.trim().isNotEmpty
@@ -1437,14 +1638,19 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                   : 'attachment');
         try {
           final bytes = await readIncomingFile(file);
-          final object = await importBytes(fileName, bytes);
+          if (!_captureStillCurrent(generation, workspaceId)) return;
+          final object = await importBytes(
+            fileName,
+            bytes,
+            captureGeneration: generation,
+            captureWorkspace: workspaceId,
+          );
           final latest = c.find(target.id);
-          if (object != null &&
-              latest != null &&
-              c.repository.workspaceId == workspaceId) {
+          if (object != null && latest != null && targetAvailable()) {
             c.edit(
               target.id,
-              body: '${latest.body}\n\n${attachmentMarkdown(object)}\n',
+              body:
+                  '${latest.body}\n\n${attachmentMarkdown(object, noteId: target.id)}\n',
             );
             message('Attached ${object.title} to note');
           }
@@ -1458,6 +1664,8 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   @override
   Widget build(BuildContext context) {
     ref.watch(workspaceProvider);
+    ref.watch(driveSyncStartupProvider);
+    ref.watch(driveScheduleStartupProvider);
     final colors = OrbitColors.of(context);
     if (c.loading) {
       return Scaffold(
@@ -1552,25 +1760,21 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         const SingleActivator(LogicalKeyboardKey.keyS, control: true): () =>
             c.flushAll(),
         const SingleActivator(LogicalKeyboardKey.keyW, control: true): () {
-          if (_secondaryFocused && c.session.secondaryId != null) {
-            c.updateSession((s) => s.secondaryId = null);
-            _secondaryFocused = false;
+          if (_targetSecondary && c.session.secondaryId != null) {
+            _closeSecondaryPane();
           } else if (c.session.activeId != null) {
             c.closeTab(c.session.activeId!);
+            _focusPaneEditor();
           }
         },
         const SingleActivator(LogicalKeyboardKey.tab, control: true): () =>
-            c.cycleTab(
-              secondary: _secondaryFocused && c.session.secondaryId != null,
-            ),
+            _cycleFocusedTab(),
         const SingleActivator(
           LogicalKeyboardKey.tab,
           control: true,
           shift: true,
-        ): () => c.cycleTab(
-          reverse: true,
-          secondary: _secondaryFocused && c.session.secondaryId != null,
-        ),
+        ): () =>
+            _cycleFocusedTab(reverse: true),
         const SingleActivator(
           LogicalKeyboardKey.keyT,
           control: true,
@@ -1660,6 +1864,8 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                               child: Column(
                                 children: [
                                   header(wide: wide, sidebar: sidebar),
+                                  if (!c.session.focusMode)
+                                    ProjectContextBar(controller: c),
                                   if (c.error != null)
                                     errorBanner(
                                       c.error!,
@@ -1984,6 +2190,12 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
           _openBookshelf();
         case 'image':
           pickAndOpenImage();
+        case 'code':
+          pickAndOpenCode();
+        case 'model':
+          pickAndOpenModel();
+        case 'courses':
+          showCourseHub(context, c);
         case 'import':
           pickAndImportFile();
         default:
@@ -2003,6 +2215,9 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
           'Bookshelf & Reading Rooms',
         ),
         ('image', Icons.image_outlined, 'Open image'),
+        ('code', Icons.code_outlined, 'Open code file'),
+        ('model', Icons.view_in_ar_outlined, 'Open 3D model (OBJ / GLB)'),
+        ('courses', Icons.school_outlined, 'Courses & study progress'),
         ('import', Icons.file_upload_outlined, 'Import file'),
       ])
         PopupMenuItem(
@@ -2260,7 +2475,36 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: _newObjectMenu(),
+                  child: Wrap(
+                    spacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      _newObjectMenu(),
+                      IconButton(
+                        tooltip: 'Open code workspace (HTML / Python / C++)',
+                        onPressed: () => showCodeIde(context, controller: c),
+                        icon: const Icon(
+                          Icons.developer_mode_outlined,
+                          size: 19,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Open code file',
+                        onPressed: pickAndOpenCode,
+                        icon: const Icon(Icons.code_outlined, size: 19),
+                      ),
+                      IconButton(
+                        tooltip: 'Open 3D model (OBJ / GLB)',
+                        onPressed: pickAndOpenModel,
+                        icon: const Icon(Icons.view_in_ar_outlined, size: 19),
+                      ),
+                      IconButton(
+                        tooltip: 'Courses & study progress',
+                        onPressed: () => showCourseHub(context, c),
+                        icon: const Icon(Icons.school_outlined, size: 19),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               Padding(
@@ -2343,6 +2587,14 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                         onPressed: objects.isEmpty
                             ? null
                             : () async {
+                                final generation = c.workspaceGeneration,
+                                    workspace = c.repository.workspaceId;
+                                final reviewed = {
+                                  for (final o in objects.where(
+                                    (o) => o.isDeleted,
+                                  ))
+                                    o.id: o,
+                                };
                                 final confirmed = await showDialog<bool>(
                                   context: context,
                                   builder: (context) => OrbitDialog(
@@ -2364,7 +2616,18 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                                     ],
                                   ),
                                 );
-                                if (confirmed == true) {
+                                if (confirmed == true &&
+                                    _captureStillCurrent(
+                                      generation,
+                                      workspace,
+                                    ) &&
+                                    reviewed.values.every(
+                                      (o) => identical(c.find(o.id), o),
+                                    ) &&
+                                    c.objects
+                                            .where((o) => o.isDeleted)
+                                            .length ==
+                                        reviewed.length) {
                                   await c.emptyTrash();
                                 }
                               },
@@ -2709,8 +2972,15 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                                       size: 16,
                                     ),
                                     onSelected: (v) async {
-                                      if (v == 'trash') c.trash(o.id);
-                                      if (v == 'restore') c.restore(o.id);
+                                      if (!identical(c.find(o.id), o)) return;
+                                      final generation = c.workspaceGeneration,
+                                          workspace = c.repository.workspaceId;
+                                      if (v == 'trash') {
+                                        c.trash(o.id, expected: o);
+                                      }
+                                      if (v == 'restore') {
+                                        c.restore(o.id, expected: o);
+                                      }
                                       if (v == 'delete_forever') {
                                         final confirmed = await showDialog<bool>(
                                           context: context,
@@ -2739,8 +3009,15 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                                             ],
                                           ),
                                         );
-                                        if (confirmed == true) {
-                                          await c.deletePermanently(o.id);
+                                        if (confirmed == true &&
+                                            _captureStillCurrent(
+                                              generation,
+                                              workspace,
+                                            )) {
+                                          await c.deletePermanently(
+                                            o.id,
+                                            expected: o,
+                                          );
                                         }
                                       }
                                       if (v == 'rename') {
@@ -3072,6 +3349,15 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                   case 'open_image':
                     await pickAndOpenImage();
                     break;
+                  case 'open_code':
+                    await pickAndOpenCode();
+                    break;
+                  case 'open_model':
+                    await pickAndOpenModel();
+                    break;
+                  case 'courses':
+                    await showCourseHub(context, c);
+                    break;
                   case 'import_file':
                     await pickAndImportFile();
                     break;
@@ -3159,6 +3445,18 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                   ),
                 ),
                 PopupMenuItem(
+                  value: 'open_code',
+                  child: Text('Open code file…'),
+                ),
+                PopupMenuItem(
+                  value: 'open_model',
+                  child: Text('Open 3D model (OBJ / GLB)…'),
+                ),
+                PopupMenuItem(
+                  value: 'courses',
+                  child: Text('Courses & study progress…'),
+                ),
+                PopupMenuItem(
                   value: 'import_file',
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -3175,6 +3473,12 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                 ),
               ],
             ),
+            if (c.editorDraftConflicts.isNotEmpty)
+              IconButton(
+                tooltip: 'Review conflicting editor drafts',
+                onPressed: () => showEditorDraftReview(context, c),
+                icon: const Icon(Icons.warning_amber_outlined),
+              ),
             IconButton(
               tooltip: 'Command palette (Ctrl+P)',
               onPressed: () => showCommandPalette(context, c),
@@ -3513,6 +3817,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                 onActivate: (id) {
                   _secondaryFocused = false;
                   c.openObject(id);
+                  _focusPaneEditor();
                 },
                 onContextMenu: (id, position) =>
                     _showTabContextMenu(context, id, position),
@@ -3619,6 +3924,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   }
 
   Widget content() {
+    _secondaryVisible = false;
     final destination = c.session.destination,
         object = c.find(c.session.activeId);
     if (destination == OrbitDestination.home) return HomeView(controller: c);
@@ -3702,6 +4008,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
             !secondary.isDeleted &&
             (secondary.id != object.id || object.typeId == 'orbit.note') &&
             constraints.maxWidth >= 720) {
+          _secondaryVisible = true;
           final vertical = c.session.splitAxis == 'vertical';
           return Flex(
             direction: vertical ? Axis.vertical : Axis.horizontal,
@@ -3740,8 +4047,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                             alignment: Alignment.centerRight,
                             child: IconButton(
                               tooltip: 'Close split',
-                              onPressed: () =>
-                                  c.updateSession((s) => s.secondaryId = null),
+                              onPressed: _closeSecondaryPane,
                               icon: const Icon(Icons.close, size: 16),
                             ),
                           ),
@@ -3754,6 +4060,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
             ],
           );
         }
+        _secondaryFocused = false;
         return objectView(object);
       },
     );
@@ -3773,21 +4080,29 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         !otherObject.isDeleted &&
         otherObject.typeId == 'orbit.canvas';
     final collaboration = ref.watch(collaborationProvider);
-    final view = switch (object.typeId) {
+    final content = switch (object.typeId) {
       'orbit.note' => ListenableBuilder(
         listenable: collaboration.viewerChanges,
         builder: (context, _) => NoteEditor(
-          viewOnly: collaboration.viewer && collaboration.shares(object.id),
+          viewOnly:
+              object.isReadOnly ||
+              c.repository.readOnly ||
+              collaboration.viewer && collaboration.shares(object.id),
           location: c.locationRequests[object.id]?.reference,
           locationSerial: c.locationRequests[object.id]?.serial ?? 0,
           locationOffset: c.locationRequests[object.id]?.offset,
           locationLength: c.locationRequests[object.id]?.length ?? 0,
           key: ValueKey('$pane:note-${object.id}:${c.studyResumeSerial}'),
           noteId: object.id,
+          focusRequestSerial:
+              _editorFocusGeneration == c.workspaceGeneration &&
+                  _editorFocusPane == pane &&
+                  _editorFocusId == object.id
+              ? _editorFocusSerial
+              : 0,
+          editorDraftId: '$pane:${object.id}',
           controller: c,
-          onClosePane: pane == 'secondary'
-              ? () => c.updateSession((s) => s.secondaryId = null)
-              : null,
+          onClosePane: pane == 'secondary' ? _closeSecondaryPane : null,
           title: object.title,
           body: object.body,
           onTitleChanged: (v) => c.edit(object.id, title: v),
@@ -3925,7 +4240,10 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       'orbit.canvas' => ListenableBuilder(
         listenable: collaboration,
         builder: (context, _) => CanvasEditor(
-          readOnly: collaboration.viewer && collaboration.shares(object.id),
+          readOnly:
+              object.isReadOnly ||
+              c.repository.readOnly ||
+              collaboration.viewer && collaboration.shares(object.id),
           remoteCursors: collaboration.peers
               .where(
                 (p) => p['objectId'] == object.id && p['space'] == 'canvas',
@@ -3949,6 +4267,12 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
               c.locationRequests[object.id]?.reference.anchorType == 'element'
               ? c.locationRequests[object.id]?.reference.anchorId
               : null,
+          focusElementIds:
+              diagramElementIds(
+                c.locationRequests[object.id]?.reference ??
+                    ObjectReference(object.id),
+              ) ??
+              const [],
           locationSerial: c.locationRequests[object.id]?.serial ?? 0,
           fontFamily: c.session.fontFamily,
           defaultBackgroundStyle: c.session.defaultCanvasGrid,
@@ -3966,13 +4290,24 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
           onPasteImage: pasteCanvasImage,
           canvasId: object.id,
           data: {
-            ...object.data,
+            ...(c.editorDraftConflicts['$pane:canvas:${object.id}']?.data ??
+                object.data),
             if (object.properties['canvasPreset'] != null)
               'canvasPreset': object.properties['canvasPreset'],
             if (object.properties['backgroundStyle'] != null)
               'backgroundStyle': object.properties['backgroundStyle'],
           },
           onChanged: (v) => c.edit(object.id, data: v),
+          draftBaseData: object.data,
+          retainConflictingDraft: c.editorDraftConflicts.containsKey(
+            '$pane:canvas:${object.id}',
+          ),
+          onDraftChanged: (base, next) => c.publishCanvasDraft(
+            '$pane:canvas:${object.id}',
+            object.id,
+            base,
+            next,
+          ),
           objects: c.activeObjects
               .where((o) => o.id != object.id)
               .map(
@@ -3997,6 +4332,17 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
               )
               .toList(),
           onOpenObject: openLinkedObject,
+          onPickReference: () async {
+            final picked = await showObjectReferencePicker(
+              context,
+              c,
+              title: 'Place a live object',
+              exclude: object.id,
+            );
+            return picked == null ? null : ObjectReference(picked.id);
+          },
+          onShowObjectConnections: (id) =>
+              showObjectConnections(context, c, id),
           onToggleTask: (taskId) {
             final task = c.find(taskId);
             if (task != null) {
@@ -4017,6 +4363,12 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
           },
           onUpdateObjectProperties: (id, props) {
             c.edit(id, properties: props);
+          },
+          onExportDiagramToNote: (ids) async {
+            final source = c.find(object.id);
+            if (source == null || source.isDeleted) return;
+            final noteId = await showDiagramNoteDialog(context, c, source, ids);
+            if (mounted && noteId != null) openLinkedObject(noteId);
           },
           onExportSelectionToNote: (elements, markdown) async {
             final noteTitle = elements.isNotEmpty
@@ -4166,6 +4518,8 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         },
         linkedNotes: c.pdfLinkedNotes(object.id),
         onOpenLinkedNote: (id) => c.openPdfNote(id, besidePdfId: object.id),
+        onDeleteLinkedNote: (note) => c.deletePdfLinkedNote(note, object.id),
+        onRestoreLinkedNote: (note) => c.restore(note.id, expected: note),
         initialAnnotationId:
             c.session.noteViews['pdf:$pane:${object.id}']?['annotationId']
                 as String?,
@@ -4211,6 +4565,26 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
               style: style,
               resolved: resolved,
             ),
+        onDeleteReview: c.deletePdfReview,
+        onRestoreReview: c.restorePdfReview,
+        onReviewBatch: (items, action, {color, isCancelled, onProgress}) =>
+            c.changePdfReviews(
+              object,
+              items,
+              action,
+              color: color,
+              isCancelled: isCancelled,
+              onProgress: onProgress,
+            ),
+        onUndoReviewBatch: c.undoPdfReviewBatch,
+        onReviewBoard: (items) async {
+          final board = await c.createPdfReviewBoard(object, items);
+          if (board == null) return false;
+          message('Canvas review board created: ${board.title}');
+          c.openObject(board.id);
+          c.openObject(object.id, secondary: true);
+          return true;
+        },
         onPageComment: (page, comment) async =>
             await c.createPdfPageComment(
               object.id,
@@ -4377,6 +4751,14 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
             '$pane:model:${object.id}:${object.properties['contentRef']}:${object.properties['checksum']}',
           ),
           name: object.properties['originalName'] as String? ?? object.title,
+          sourceVersion: (
+            c.repository.workspaceId,
+            c.workspaceGeneration,
+            c.attachmentRevision,
+            object.id,
+            object.properties['contentRef'],
+            object.properties['checksum'],
+          ),
           byteLength: object.properties['byteLength'] is int
               ? object.properties['byteLength'] as int
               : null,
@@ -4419,6 +4801,17 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
             '$pane:code:${object.id}:${object.properties['checksum']}',
           ),
           title: object.title,
+          sourceVersion: (
+            c.repository.workspaceId,
+            c.workspaceGeneration,
+            c.attachmentRevision,
+            object.id,
+            object.properties['contentRef'],
+            object.properties['checksum'],
+          ),
+          byteLength: object.properties['byteLength'] is int
+              ? object.properties['byteLength'] as int
+              : null,
           language: previewLanguage(
             object.properties['originalName'] as String? ?? object.title,
           )!,
@@ -4469,38 +4862,54 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         ],
       ),
     };
-    if (!object.isReadOnly && !c.repository.readOnly) {
-      return Focus(
-        onFocusChange: (focused) {
-          if (focused) _secondaryFocused = pane == 'secondary';
-        },
-        child: Listener(
-          onPointerDown: (_) => _secondaryFocused = pane == 'secondary',
-          child: ['orbit.note', 'orbit.canvas'].contains(object.typeId)
-              ? SharedDocumentSurface(
-                  controller: collaboration,
-                  objectId: object.id,
-                  canvas: object.typeId == 'orbit.canvas',
-                  child: view,
-                )
-              : view,
-        ),
-      );
-    }
-    return Column(
+    final view = Column(
       children: [
-        const Padding(
-          padding: EdgeInsets.all(12),
-          child: Text(
-            'Read-only: this format requires a newer compatible version.',
-          ),
-        ),
-        Expanded(child: AbsorbPointer(child: view)),
+        ObjectBridgeBar(controller: c, object: object),
+        Expanded(child: content),
       ],
+    );
+    final readOnly = object.isReadOnly || c.repository.readOnly;
+    final paneFocus = pane == 'secondary'
+        ? _secondaryPaneFocus
+        : _primaryPaneFocus;
+    return FocusScope(
+      key: ValueKey('workspace-pane:$pane'),
+      node: paneFocus,
+      onFocusChange: (focused) {
+        if (focused) _secondaryFocused = pane == 'secondary';
+      },
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) {
+          _secondaryFocused = pane == 'secondary';
+          if (readOnly) paneFocus.requestFocus();
+        },
+        child: readOnly
+            ? Column(
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Text(
+                      'Read-only: this format requires a newer compatible version.',
+                    ),
+                  ),
+                  Expanded(child: AbsorbPointer(child: view)),
+                ],
+              )
+            : ['orbit.note', 'orbit.canvas'].contains(object.typeId)
+            ? SharedDocumentSurface(
+                controller: collaboration,
+                objectId: object.id,
+                canvas: object.typeId == 'orbit.canvas',
+                child: view,
+              )
+            : view,
+      ),
     );
   }
 
   Widget inspectorView() {
+    if (c.projectPanelPinned) return ProjectContextPanel(controller: c);
     return ObjectInspector(
       controller: c,
       onRename: renameObject,

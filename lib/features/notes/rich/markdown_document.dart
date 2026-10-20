@@ -9,6 +9,7 @@ import '../../../domain/note_composition.dart';
 import '../../../domain/linked_section.dart';
 import '../../../domain/document_review.dart';
 import '../../../domain/document_citations.dart';
+import '../../../domain/publication_layout.dart';
 import 'media_section_source.dart';
 
 /// Lossless, transient editing projection. The original Markdown remains the
@@ -104,7 +105,8 @@ class MarkdownDocument {
     final blocks = <MarkdownBlock>[];
     var i = 0;
     while (i < lines.length) {
-      if (ReviewAnnotation.parse(lines[i]) != null) {
+      if (ReviewAnnotation.parse(lines[i]) != null ||
+          (i == 0 && PublicationSettings.metadataLine(lines[i]))) {
         blocks.add(MarkdownBlock(lines[i], MarkdownBlockKind.raw));
         i++;
         continue;

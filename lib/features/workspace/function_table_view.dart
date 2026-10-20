@@ -7,6 +7,7 @@ import '../../domain/universal_object.dart';
 import '../../domain/reverse_engineering.dart';
 import 'research_record_dialog.dart';
 import 'workspace_views.dart';
+import 'research_comparison_dialog.dart';
 
 class FunctionTableView extends StatefulWidget {
   const FunctionTableView({
@@ -404,6 +405,19 @@ class _FunctionTableViewState extends State<FunctionTableView> {
                 style: TextStyle(color: colors.subtle),
               ),
               // Import button
+              OutlinedButton.icon(
+                onPressed: () => showResearchComparison(
+                  context,
+                  widget.controller,
+                  matchesScope: _matchesScope,
+                  folder:
+                      widget.folderFilter ??
+                      'Reverse Engineering/${widget.scope ?? 'Target'}/Sessions',
+                  target: widget.scope ?? '',
+                ),
+                icon: const Icon(Icons.compare_arrows),
+                label: const Text('Compare builds'),
+              ),
               OutlinedButton.icon(
                 onPressed: _showImportDialog,
                 icon: const Icon(Icons.file_upload_outlined, size: 16),

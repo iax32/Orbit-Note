@@ -65,3 +65,45 @@ retention policy must be agreed before their task ships.
 Start with the minimum note/workspace identity needed for M1. Add organizational
 features as usable slices; do not instantiate all object types or build a generic
 schema designer before a task needs one.
+
+## Bulk workflow quality — 2026-10-19
+
+Existing bulk move/duplicate freezes and deduplicates the original selection.
+Changing selection while a dialog or write is pending cannot silently substitute
+another set. Batch copies stop after a failed copy/context change; completed
+copies remain ordinary independent objects. Explorer uses item counts for mixed
+types, retains unsuccessful Trash selections, and resets stale selections when
+the originating Vault changes. Original object IDs survive moves and restore.
+
+## Metadata dialog quality — 2026-10-19
+
+Rename/property/color edits compare the fields reviewed by their originating
+dialog and preserve unrelated newer metadata/content. A changed field retains
+the entered draft with retry/reopen guidance. Vault reopening, deletion,
+read-only state and panel disposal retire stale callbacks. New property keys
+cannot replace a concurrent addition; numeric forms accept finite numbers only.
+Color/reset edits preserve unknown properties and account for legacy accent
+state. Invalid custom hex cannot apply an earlier valid choice. Folder rename
+checks member/descendant paths before applying; folder color verifies its
+explicit baseline and target. Existing autosave/conflict recovery remains the
+durability boundary; a successful local edit is not an immediate saved promise.
+
+## Assignment and reference workflow quality — 2026-10-19
+
+Tag entry stays attached to its original document and Vault opening. Membership
+checks normalize leading #, spaces and casing without rewriting stored entries;
+unknown list entries and future non-list tag formats are preserved. Deleted and
+read-only objects cannot be edited by these commands.
+
+Project assignment and connection source/target selection use the shared live
+reference picker, including aliases, folders, previews, bounded result pages and
+current membership checks. A disappearing selection cannot make Enter accept a
+different object. Project choice refreshes while open, and pending operations
+cannot report success into another project/Vault context.
+
+Connection forms retain input on conflict/failure. A failed local save can retry
+the same retained relation list without duplicating the edge; a newer relation
+list is never replaced by retry. Unlinked-mention conversion requires the reviewed
+source passage to remain unchanged and its target to exist. Save failures retain
+the local draft and show accurate feedback rather than claiming success. These
+remain ordinary object edits with existing persistence/history and no new schema.

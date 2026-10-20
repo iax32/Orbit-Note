@@ -17,23 +17,25 @@ An open-source, local-first personal knowledge operating system combining linked
 
 ## 📥 Downloads
 
-The current **1.0.0 preview** is available on the [release page](https://github.com/iax32/Orbit-Note/releases/tag/v1.0.0%2B1).
+The current **1.0.1 preview** is available on the [release page](https://github.com/iax32/Orbit-Note/releases/tag/preview-2026-10-20).
 Older stable releases remain available in the [release archive](https://github.com/iax32/Orbit-Note/releases).
 
 | Platform | Download Link | Notes |
 | :--- | :--- | :--- |
-| **🪟 Windows (x64)** | [**Download `OrbitNote-Windows-x64.zip`**](https://github.com/iax32/Orbit-Note/releases/download/v1.0.0%2B1/OrbitNote-Windows-x64.zip) | Standalone portable folder. Unsigned; no installer needed. |
-| **📱 Android preview** | [**Download `OrbitNote-Android-Preview.apk`**](https://github.com/iax32/Orbit-Note/releases/download/v1.0.0%2B1/OrbitNote-Android-Preview.apk) | Release-mode APK, dedicated preview signing key; installs alongside older Orbit Note installations. |
+| **🪟 Windows (x64)** | [**Download `OrbitNote-Windows-x64-Setup.exe`**](https://github.com/iax32/Orbit-Note/releases/download/preview-2026-10-20/OrbitNote-Windows-x64-Setup.exe) | Per-user setup EXE with the complete runtime; no ZIP extraction or administrator account required. Unsigned. |
+| **📱 Android preview** | [**Download `OrbitNote-Android-Preview.apk`**](https://github.com/iax32/Orbit-Note/releases/download/preview-2026-10-20/OrbitNote-Android-Preview.apk) | Release-mode APK, existing preview signing key and package identity; version code 2 updates the previous preview. |
 
 Verify downloads with the release's `SHA256SUMS.txt`. These packages support offline
-core features; Google sign-in is unconfigured until distributor OAuth registration
-is completed. Android device acceptance is still pending.
+core features. The Windows preview includes the registered Google desktop client;
+Google's testing-account restrictions still apply. Android remains local-only
+with Google sign-in unconfigured. Android device acceptance is still pending.
 
 ### 🚀 Running on Windows
-1. Download [**`OrbitNote-Windows-x64.zip`**](https://github.com/iax32/Orbit-Note/releases/download/v1.0.0%2B1/OrbitNote-Windows-x64.zip).
-2. Extract the ZIP archive anywhere on your PC (e.g. `Desktop` or `Program Files`).
-3. Double-click **`orbit_note.exe`** to launch!
-> *Note: Keep all extracted files and the `data/` folder together in the same directory.*
+1. Download [**`OrbitNote-Windows-x64-Setup.exe`**](https://github.com/iax32/Orbit-Note/releases/download/preview-2026-10-20/OrbitNote-Windows-x64-Setup.exe).
+2. Run setup to install for your Windows account.
+3. Open **Orbit Note** from the Start menu, or run **`orbit_note.exe`** in the installation folder.
+> Source builds still run directly from `build/windows/x64/runner/Release/orbit_note.exe`.
+> Keep the EXE, DLLs and `data/` folder together. Setup does not launch the app or delete Vaults.
 
 ### 📱 Android and 🌐 Web status
 

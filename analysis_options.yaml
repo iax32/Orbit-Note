@@ -1,1 +1,10 @@
 include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    # Development probes, the bundled SDK and package cache are not app sources.
+    # Windows can expose the same hidden directory under its 8.3 alias.
+    - .local/**
+    - LOCAL~1/**
+    - .pub-cache/**
+    - PUB-CA~1/**

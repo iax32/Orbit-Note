@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../app/orbit_theme.dart';
+import '../pixel_font_scope.dart';
 import 'equation_editor.dart';
 import 'math_edit_document.dart';
 import 'note_math.dart';
@@ -623,7 +624,10 @@ class EditableMathExpressionState extends State<EditableMathExpression> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      PixelFontScope(enabled: false, child: Builder(builder: _buildExpression));
+
+  Widget _buildExpression(BuildContext context) {
     _document = MathEditDocument(_source);
     _parts.clear();
     _up.clear();

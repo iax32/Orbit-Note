@@ -15,9 +15,13 @@ class ModelAssetViewer extends StatefulWidget {
     required this.onOpenOriginal,
     this.onPlace,
     this.byteLength,
+    this.sourceVersion,
   });
   final String name;
   final int? byteLength;
+
+  /// Immutable attachment/cache version; callback rebuilds alone do not reload it.
+  final Object? sourceVersion;
   final Future<Uint8List?> Function() loadBytes;
   final VoidCallback onOpenOriginal;
   final VoidCallback? onPlace;
@@ -29,19 +33,43 @@ class _ViewerState extends State<ModelAssetViewer> {
   late Future<ModelAsset> asset = load();
   double yaw = -.5, pitch = .3, zoom = 1;
   bool wireframe = false;
+  int request = 0;
+  @override
+  void didUpdateWidget(covariant ModelAssetViewer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.sourceVersion != widget.sourceVersion ||
+        oldWidget.byteLength != widget.byteLength ||
+        oldWidget.name != widget.name ||
+        (widget.sourceVersion == null &&
+            oldWidget.loadBytes != widget.loadBytes)) {
+      yaw = -.5;
+      pitch = .3;
+      zoom = 1;
+      wireframe = false;
+      asset = load();
+    }
+  }
+
   Future<ModelAsset> load() async {
+    final token = ++request;
+    final name = widget.name, loadBytes = widget.loadBytes;
     if ((widget.byteLength ?? 0) > ModelAsset.maxBytes) {
       throw const FormatException(
         'Preview limit is 32 MB. Open the original instead.',
       );
     }
-    final bytes = await widget.loadBytes();
+    final bytes = await loadBytes();
+    if (!mounted || token != request) {
+      throw const FormatException(
+        'A newer model preview replaced this request.',
+      );
+    }
     if (bytes == null) {
       throw const FormatException(
         'Asset is missing. Recover the attachment or open its original.',
       );
     }
-    return compute(_decodeAsset, (bytes, widget.name));
+    return compute(_decodeAsset, (bytes, name));
   }
 
   void reset() => setState(() {
@@ -117,6 +145,9 @@ class _ViewerState extends State<ModelAssetViewer> {
           child: FutureBuilder<ModelAsset>(
             future: asset,
             builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator());
+              }
               if (snapshot.hasError) {
                 return Center(
                   child: SingleChildScrollView(
@@ -132,7 +163,9 @@ class _ViewerState extends State<ModelAssetViewer> {
                             textAlign: TextAlign.center,
                           ),
                           TextButton(
-                            onPressed: () => setState(() => asset = load()),
+                            onPressed: () => setState(() {
+                              asset = load();
+                            }),
                             child: const Text('Retry'),
                           ),
                         ],

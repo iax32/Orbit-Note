@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
+import 'package:path/path.dart' as p;
 import '../../application/backup_bundle.dart';
 import '../../domain/collaboration.dart';
 import '../storage/object_codec.dart';
@@ -12,6 +13,30 @@ String collaborationToken() => base64Url
     .encode(List<int>.generate(32, (_) => Random.secure().nextInt(256)))
     .replaceAll('=', '');
 String _hash(String token) => sha256.convert(utf8.encode(token)).toString();
+
+/// Server grants and journals must never enter a portable Vault or its backups.
+Future<void> validateCollaborationDirectory(Directory directory) async {
+  var current = Directory(p.normalize(directory.absolute.path));
+  while (!await current.exists()) {
+    final parent = current.parent;
+    if (parent.path == current.path) {
+      throw StateError('Choose an accessible private server data directory.');
+    }
+    current = parent;
+  }
+  current = Directory(await current.resolveSymbolicLinks());
+  for (var depth = 0; depth < 256; depth++) {
+    if (await File(p.join(current.path, 'workspace.json')).exists()) {
+      throw StateError(
+        'Server data must be outside every Orbit Vault. No server key or journal was created here.',
+      );
+    }
+    final parent = current.parent;
+    if (parent.path == current.path) return;
+    current = parent;
+  }
+  throw StateError('Choose a shallower private server data directory.');
+}
 
 /// Standalone self-hosted service. Append/flush precedes every acknowledgement;
 /// an incomplete final record is truncated on restart, never replayed.
@@ -30,6 +55,7 @@ class CollaborationServer {
 
   Future<int> start({InternetAddress? address, int port = 47831}) async {
     try {
+      await validateCollaborationDirectory(directory);
       await directory.create(recursive: true);
       _lock = await File(
         '${directory.path}/server.lock',
@@ -200,6 +226,38 @@ class CollaborationServer {
       final token =
           request.headers.value('authorization')?.replaceFirst('Bearer ', '') ??
           '';
+      if (request.method == 'GET' && request.uri.path == '/healthz') {
+        request.response.statusCode = _writeFailed ? 503 : 200;
+        request.response.write(
+          jsonEncode({
+            'service': 'orbit-collaboration',
+            'ready': !_writeFailed,
+          }),
+        );
+        return;
+      }
+      if (request.method == 'GET' && request.uri.path == '/v1/server') {
+        if (_hash(token) != _hash(ownerToken)) {
+          throw const HttpException('Access denied.');
+        }
+        request.response.write(
+          jsonEncode({
+            'service': 'orbit-collaboration',
+            'protocol': 1,
+            'ready': !_writeFailed,
+            'rooms': _rooms.length,
+            'capabilities': [
+              'existing-notes',
+              'canvas',
+              'presence',
+              'durable-journal',
+              'snapshot-attachments',
+            ],
+            'maxSnapshotBytes': BackupBundle.maxEncodedBytes,
+          }),
+        );
+        return;
+      }
       if (request.method == 'POST' && request.uri.path == '/v1/rooms') {
         if (_hash(token) != _hash(ownerToken)) {
           throw const HttpException('Access denied.');

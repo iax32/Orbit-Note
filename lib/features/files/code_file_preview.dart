@@ -11,18 +11,43 @@ class CodeFilePreview extends StatefulWidget {
     required this.language,
     required this.loadBytes,
     required this.onOpenOriginal,
+    this.sourceVersion,
+    this.byteLength,
   });
   final String title, language;
   final Future<Uint8List?> Function() loadBytes;
   final VoidCallback onOpenOriginal;
+
+  /// Immutable attachment/cache version; callback rebuilds alone do not reload it.
+  final Object? sourceVersion;
+  final int? byteLength;
   @override
   State<CodeFilePreview> createState() => _CodeFilePreviewState();
 }
 
 class _CodeFilePreviewState extends State<CodeFilePreview> {
-  late final Future<String> _source = _load();
+  late Future<String> _source = _load();
+  @override
+  void didUpdateWidget(covariant CodeFilePreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.sourceVersion != widget.sourceVersion ||
+        oldWidget.byteLength != widget.byteLength ||
+        (widget.sourceVersion == null &&
+            (oldWidget.title != widget.title ||
+                oldWidget.language != widget.language ||
+                oldWidget.loadBytes != widget.loadBytes))) {
+      _source = _load();
+    }
+  }
+
   Future<String> _load() async {
-    final bytes = await widget.loadBytes();
+    final load = widget.loadBytes, length = widget.byteLength;
+    if (length != null && length > maxCodePreviewBytes) {
+      throw const FormatException(
+        'Preview supports files up to 1 MiB. Open the original for larger files.',
+      );
+    }
+    final bytes = await load();
     if (bytes == null) {
       throw const FormatException(
         'The original file is unavailable. Its reference is preserved.',
@@ -83,11 +108,28 @@ class _CodeFilePreviewState extends State<CodeFilePreview> {
           child: FutureBuilder<String>(
             future: _source,
             builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator());
+              }
               if (snapshot.hasError) {
                 return Center(
                   child: Padding(
                     padding: const EdgeInsets.all(28),
-                    child: SelectableText('${snapshot.error}'),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SelectableText('${snapshot.error}'),
+                          const SizedBox(height: 12),
+                          TextButton(
+                            onPressed: () => setState(() {
+                              _source = _load();
+                            }),
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 );
               }

@@ -1,5 +1,202 @@
 # Markdown and document editing
 
+## Editor transaction ownership — 2026-10-20
+
+Document undo/redo belongs to its note and observed source. Reusing an editor
+for another note or receiving an external source revision retires the previous
+chain. Shared splice history validates the complete current source before replay
+and restores both selection endpoints, including backwards UTF-16 selections.
+The existing bounded history remains shared with code editors.
+
+Find/Replace inputs retain their own text undo/redo. The Find panel also exposes
+explicit document Undo/Redo controls, including for reviewed replacements in
+Read mode. Read-only/view-only sources reject retained mutation callbacks.
+Composition and history commands use the focused editor's ownership rather than
+another split pane's input state.
+
+Delayed Source cut/paste and writing tools check an editor revision as well as
+source and owner: changing text and undoing back to an identical string cannot
+authorize an earlier clipboard or review operation. Replacement review remains
+paged and applies as one undoable edit; preview excerpts preserve surrogate pairs.
+
+Repeated recovery requests for the same retained note/Canvas draft share one
+pending copy operation. Different pane drafts and newer conflicting versions
+remain separate; failures allow retry. Normal repository save/recovery and
+portable originals remain authoritative. No storage or clipboard format changed.
+See [regressions, checks and limits](../tasks/editor-transactions-quality-2026-10-20.md).
+
+## Writing font and zoom clarity — 2026-10-18
+
+Pixel notebook titles, headings, table headers and callout titles use Tiny5's
+regular outlines. Its heavier variable weights expand edges off the original
+pixel-cell grid; increasing the snapped font size alone did not correct that.
+Heading sizes still provide hierarchy, and authored bold/italic markup remains
+intact. Typography previews explicitly request the regular face.
+
+Terminal writing designs now bundle genuine Space Mono regular, bold, italic and
+bold-italic faces for offline use. Their headings request the available bold
+weight. Book/serif headings retain bold and ordinary sans headings retain
+semibold. Shared note fallback lists include symbol/emoji families.
+
+Pixel sizing still composes app zoom, OS text scaling and display density for
+pixel text. Nested non-pixel scopes restore the original continuous scaler;
+code fields and rendered/editable equations use it instead of inheriting pixel
+size steps. Text stays native editable/vector content; no bitmap font enlargement,
+font-size preference rewrite, source mutation or viewport scaling is introduced.
+The book's intentionally square lettering remains part of its design. Native
+renderer/display rasterization is not replaced. See [checks and captures](../tasks/writing-font-quality-2026-10-18.md).
+
+## Writing tools and publishing reliability — 2026-10-17
+
+Footnote and heading forms validate before closing and retain rejected drafts,
+including duplicate identifiers and changed/read-only source contexts. They use
+the shared Orbit dialog layout with scrollable fields and accessible error text.
+Article metadata and print settings ask before discarding unapplied form changes
+through Cancel/Close, Escape, back or outside-click. Unchanged and successfully
+applied forms close immediately. These temporary fields are not durable drafts;
+apply them to the note for normal autosave/history.
+
+Delayed writing commands capture the editor, repository, Vault opening generation,
+note identity and format, then recheck source/writability/deletion. Matching text
+or a reused ID cannot authorize applying an old tool after switching/reopening.
+The writing sheet refreshes text after a build frame when necessary so changes
+in the parent editor cannot rebuild a separate route during that frame.
+
+Publishing blocks route dismissal while a file export is pending. Failed exports
+keep the page preview and settings, with retryable feedback in the style panel.
+Standalone/CMS HTML retains safe code-language classes and table alignment,
+wraps long cell text, emits valid line-break/rule tags, and preserves title
+anchors when removing a repeated leading document title. Other chapter titles
+are retained. PDF and Word continue using their existing publication snapshot.
+
+Behavior and transition coverage: `test/editor_quality_test.dart`; task evidence:
+[editor/document-tool quality pass](../tasks/editor-quality-2026-10-17.md).
+
+## Live Canvas diagram selections — 2026-10-16
+
+Canvas's Shapes and diagrams menu exports selected UML classes to a new or
+existing Markdown note, or copies the live block for paste at the caret.
+The existing object-block grammar carries a precise `elements` fragment with
+placement IDs. Rich and Read render a live vector selection using the shared
+Canvas painter, with internal relationships, expansion/zoom, Open Canvas and
+selectable class details. Editable Rich previews offer Edit diagram through
+the same Canvas editor. Removing a note block preserves its source. Missing/
+hidden sources remain explicit, with no whole-board fallback. Source changes
+refresh Read embeds independently of cached prose without resetting scroll.
+
+Export appends while retaining authored text, line endings and metadata. New
+notes inherit source folder/project/course context. Stale snapshots and competing
+editor drafts refuse writes; failed-save retry flushes the retained draft without
+a second append. Source mode and external Markdown readers show the portable
+source link. Published PDF/HTML/Word still warn that workspace previews are links
+rather than self-contained diagram snapshots.
+
+## Scroll progress chrome — 2026-10-15
+
+Note editors no longer show a scroll/reading-progress stripe above the document.
+Normal document scrolling, line/column status and saved reading/writing positions
+remain available. Removing the stripe also removes its document-wide scroll-driven
+rebuilds; there is no source or preference migration.
+
+## Delayed insertion safety — 2026-10-15
+
+Source equation/table/link dialogs share the attachment insertion boundary. They
+retain the original note, controller/Vault and selection, reject document switches
+(including switch-and-return), and recheck editable/deleted state on completion.
+If the source or insertion position changes, completion offers explicit Insert
+here rather than overwriting newer source; that action rechecks ownership and
+permissions. Successful insertions use normal undo. Rich attachment completions
+share the outer ownership/permission guard. Source clipboard transfers recheck
+current read-only state before deletion/insertion.
+
+Place current block on Canvas captures the original source/title and checks the
+owning note, local and repository source before adding an anchor or live placement.
+Later navigation cannot change which note it references. Equation Studio scrolls
+its controls and bounds its independently scrollable symbol list, retaining Apply
+and Cancel at narrow widths/enlarged text. Automated headless evidence does not
+claim native desktop interoperability or hardware performance.
+
+## More writing surfaces and pixel zoom — 2026-10-14
+
+Writing surface adds Blueprint (blue drafting sheet/ruler/major grids), Field
+journal (sage stitched cover and ruled paper), Typewriter (cream sheet/platen)
+and Amber terminal (warm static phosphor/bezel). Ten designs now share the same
+paper/photo/contrast/quiet controls, previews, Apply/Cancel/Reset and device-local
+preferences. Selecting Blueprint or Field journal from plain paper supplies grid
+or rules; explicitly selected non-plain paper is retained. Paper choices appear
+before the larger design gallery so they remain easy to reach.
+
+Pixel notebook uses display-aligned font sizing after app and OS text scaling:
+Tiny5's 128-unit letter cells in its 1024-unit em render at integer display-pixel
+sizes. Rounding changes the requested em size by at most four physical pixels;
+successive small zoom changes can share a text size. Crisp pixel sizing can be
+disabled for continuous text sizing. The scope covers note title/body and font
+previews, leaving the app toolbar and other writing fonts at regular zoom. Native
+text is laid out again; no image/viewport transform, font-size/source mutation,
+new font or package. Font rasterization still depends on the platform renderer.
+
+## Selection scroll ownership — 2026-10-14
+
+Rich mouse selection can continue while using the wheel, including with the
+pointer held still. Wheel input transfers focus before a lazy paragraph can be
+recycled; after layout the visible endpoint updates while retaining the source
+anchor. Wheel input pauses edge scrolling until the next drag movement. Releasing
+or cancelling the pointer stops endpoint updates; subsequent reading scrolls
+retain the selected range and copying does not reveal the original paragraph.
+
+Paragraph caret-reveal requests are suppressed while document selection owns the
+range, preventing the native drag recognizer from scrolling back to its old
+paragraph. Ordinary caret movement, typing, paste and explicit navigation retain
+their reveal behavior. Drag hit testing and link hover use global coordinates
+exactly once; document selection updates also publish the current range to the
+parent/view state. Existing portable Markdown clipboard and undo boundaries apply.
+Headless short/lazy-note and complete-editor regressions cover forward/upward
+selection, wheel reversal, copy/paste/undo, release/cancel and resumed editing.
+Physical mouse/IME and hardware clipboard acceptance remain unverified.
+
+## Long-note drag selection — 2026-10-12
+
+Mouse text-selection drags auto-scroll within a 48-logical-pixel band at the top
+or bottom of the Rich editor viewport. Speed increases toward the edge and is
+bounded; holding the pointer still continues selection. The original source
+anchor remains fixed while newly mounted paragraphs supply the visible endpoint.
+Virtualized notes use the same selection model, without mounting the whole note.
+Moving away from the band pauses scrolling; reversing direction extends/shrinks
+from the same anchor. Scroll offsets clamp to document boundaries.
+
+Release, pointer cancellation, focus loss, app deactivation, note/source/focused
+section changes and disposal stop scrolling and invalidate pending endpoint
+updates. Ordinary scrolling, touch gestures and structured editor drags retain
+their existing owners. This adds mouse prose/heading/list selection auto-scroll;
+embedded column editors do not yet delegate edge scrolling to their host. No
+content, identity or persistent format changes. Synthetic widget tests exercise
+selection and cleanup; physical mouse/IME acceptance remains unverified.
+
+## Selection and clipboard reliability — 2026-10-12
+
+Rich prose Shift-click extends the text range from the original caret; explicit
+block handles and block-range commands remain available. Selection highlights
+use rendered text boxes without reparenting native text fields or changing their
+geometry. Right-click preserves the document range; unmodified navigation keys
+collapse it to its boundary. Tables/code/media retain structured block feedback.
+
+Keyboard and native-menu copy/cut/paste honor cross-paragraph ranges. Partial
+inline endpoints are balanced to keep unselected formatting valid; document
+range copy remains portable Markdown. Replacement uses the ordinary edit/undo
+boundary. Delayed paste refuses changed notes, text, selection, focus or active
+composition. Formatted inline paste restores the caret using visible text length.
+Ctrl/Cmd+Shift+V pastes plain text; Source and code preserve literal clipboard
+HTML, indentation and whitespace.
+
+Rich and table paste use the existing native HTML adapter when Flutter provides
+only plain text. Windows CF_HTML fragment offsets are UTF-8 byte offsets; malformed
+headers fall back to fragment markers. HTML code blocks retain indentation and
+blank lines, choose safe backtick fences and decode entities once. Unsupported
+HTML/CSS formatting still uses the conservative Markdown conversion. This is not
+complete Word fidelity or native continuous selection through every structured
+widget. Hardware clipboard/IME acceptance remains unverified. Mouse edge drag auto-scroll
+is covered in the newer delivery entry above.
+
 ## Citations and bibliography — 2026-10-11
 
 Writing tools → Citations & bibliography manages manual sources with title,
@@ -712,3 +909,197 @@ repair invokes the normal section picker and validates the host source before
 saving. It never silently changes another reference or removes its underlying
 object. Missing sources retain their readable fallback; unresolved forms stay
 editable in Source.
+
+## Shared live object cards — 2026-10-13
+
+Rich and Read use shared source cards for non-Canvas object embeds: current title,
+kind, available context/status, bounded text/image preview and source actions.
+Task checkboxes edit the original task when interaction is enabled. Supported
+saved views expose current members; Canvas previews keep the existing spatial
+engine. No recursive rich-card renderer or new content owner is introduced.
+
+Copy live card and Use elsewhere retain stable object identity. Optional precise
+URL fragments on object blocks survive note/Canvas clipboard transfers, including
+PDF pages, headings, block IDs and unknown future fragments. Open beside/new tab
+retains the location; Show backlinks opens the referenced object's Connections.
+Missing/ambiguous precise sections show an explicit warning without substituting
+unrelated prose. Opening the source still allows deliberate review. Image reads
+retry and invalidate on attachment-source revision; large images with recorded
+byte length over 16 MiB use source navigation rather than a card thumbnail.
+
+## Document Checks and deliberate link repair — 2026-10-14
+
+Writing tools → Document Checks inspects the current Markdown snapshot and groups
+findings into Links, Footnotes and Structure, with line locations and 30-row pages.
+It identifies missing/ambiguous wiki targets, missing/unused/duplicate footnote
+definitions, repeated heading titles and skipped heading levels. Existing parsers
+keep code/frontmatter/comments literal and preserve CRLF/UTF-16 source offsets.
+Clicking a finding opens Source, reveals and selects the authored range. If the
+note or Vault changed while the inspector was open, navigation refuses stale ranges.
+Standalone editors retain footnote/structure checks and explain unavailable link
+coverage. Findings are review hints, not grammar judgments or complete validation.
+
+Writable Vault notes offer Choose a source for this link. The existing universal
+picker previews candidate objects; applying retains the written label and exact
+page/section-fragment spelling and changes only that mention with normal undo/
+autosave/history. Cancellation changes nothing. Changed source/Vault, active IME
+composition, read-only notes and unavailable targets prevent the edit. The fragment
+is retained rather than guessed to match a different source; inspect that location
+after repairing. No external URL checks, automatic cleanup or storage migration.
+
+## Block formats and BTW callouts — 2026-10-14
+
+Format block formats the current supported block or selected complete blocks as
+paragraphs, six heading levels, bullet/numbered/checklists, quotes or Note/BTW/Tip/
+Warning callouts. The searchable chooser retains inline source, links, checklist
+completion and stable block anchors, uses normal undo/history and rejects stale
+source/Vault changes. Structured/unknown/aligned blocks and nested list/quote levels
+keep their existing editing tools. Multi-line prose cannot silently become several
+headings. Adjacent quote content must be selected together for callout conversion.
+
+Insert and slash commands also offer BTW block, displayed as By the way in Rich.
+Empty BTW blocks provide an editing hint rather than storing a sample sentence.
+Callout options edit the title, switch types, make a callout collapsible or choose
+expanded/collapsed defaults. `> [!BTW]+ Title` starts expanded; `> [!BTW]- Title`
+starts collapsed. Controls preserve body quoting, label/type spelling and CRLF.
+Clicking expand/collapse changes only the view; default controls deliberately
+change the marker with normal undo. Unknown alphabetic callout types retain source.
+Read-mode search temporarily reveals folded bodies so they remain discoverable.
+Unsupported readers/exporters retain ordinary blockquote contents; no content is
+removed because it was folded. Compact command chrome scrolls rather than removing
+actions, and the cursor-position control keeps full details in its tooltip.
+
+## Shared Math Lab — 2026-10-14
+
+Math Lab opens from the note header, Writing tools/Insert, rich LaTeX toolbar and
+Equation Studio. It runs offline: bounded arithmetic with named numeric variables,
+pi/e and real trigonometric/exponential/logarithmic functions; sampled function
+plots with explicit windows; function values, central-difference derivatives,
+Simpson integrals and bracketed roots; 1×1–6×6 real transpose/determinant/inverse/
+product/system solving. Presets cover force, jump height, vector length and plots.
+Twenty new reusable templates cover calculus, linear algebra, probability and game
+geometry, shared by both symbol palettes and the lab. All inputs remain editable.
+
+Insert result deliberately creates ordinary display TeX with named parameter values;
+Markdown also retains the calculation description and approximation details.
+LaTeX rich insertion uses the document insertion boundary before end{document}.
+Equation Studio inserts into the captured formula selection. Calculations alone
+change no document; changing inputs invalidates a previous result. Note/Vault/source/
+mode, read-only and composition guards protect application, with normal undo/history.
+The dialog scrolls at narrow widths and enlarged text; errors and results announce.
+
+These are real floating-point tools, not symbolic algebra or proof. Trig uses radians;
+calculus error figures are refinement estimates, not guaranteed bounds. Roots require
+a sign change and satisfactory residual; singularities/oscillation can defeat samples.
+Expressions are bounded to 4,096 characters/512 nodes/64 recursive parse levels and
+12 variables. Matrix cells must be finite and rectangular; inverse/solve refuse
+singular or severely ill-conditioned matrices. No arbitrary code or network execution.
+Numeric results stay ordinary TeX. Plot insertion is extended by the live recipe
+behavior below; LaTeX keeps equation snapshots and Canvas keeps editable strokes.
+No new attachment or workspace object schema.
+
+The math dialog keeps its content and title scrollable with an on-screen keyboard
+and enlarged text; Copy LaTeX sits beside the result to leave primary footer space
+for Cancel/Insert. Search and math command chrome retain a bounded scroll region
+when Find/Replace is open. Derivatives refuse obvious sampled corners/jumps whose
+one-sided slope disagreement fails to shrink; this remains a numerical diagnostic.
+
+## Live mathematical plots and value tables — 2026-10-14
+
+Math Lab Plot now inserts a readable orbit-plot fenced JSON recipe into Markdown.
+Rich/Read/Split recreate the graph offline from formulas, named parameters and
+ranges. Edit plot opens the shared Math Lab with these settings, preserving unknown
+metadata and fence/line-ending spelling on application. Source editing remains
+available; repairing raw JSON does not hide the code field until Show plot. Read-only
+plots expose inspection/copy/export but no edit actions. Stale note/Vault/source/mode,
+read-only changes and composition prevent application with normal undo/history.
+
+Up to four single-line function expressions can be compared. Legends, axis values,
+pointer/tap inspection and a keyboard-accessible inspector slider expose numeric
+values. A 21-row table is available in each plot, including valid values outside
+the visible y range. Invalid real domains appear as undefined, never zero. Copy
+values uses TSV and full floating-point precision without display-style exponent
+spaces; Math Lab exports CSV/SVG through existing local platform adapters. Table
+operation creates an 11-row ordinary TeX snapshot for notes/LaTeX/Canvas, with
+consistent 11-row data copy/export. Single-expression tools refuse comparison
+input rather than silently multiply the separate lines. Hidden y/title fields do
+not prevent table calculation. Ten additional algebra/geometry/physics templates
+bring the shared new Math Lab template set to 30. Common π/×/÷/− inputs work in
+numeric expressions; authored plot strings remain unchanged. Trig remains radians.
+
+Graph source/samples are cached per unchanged widget; hover and ordinary surrounding
+text edits do not reparse/resample the same graph. Rich find reveals and selects the
+native JSON source range; Read search reveals source transiently and restores the
+graph when closed. Inspecting/searching/expanding tables changes no authored source.
+Other Markdown tools and current publication exports retain the complete fenced
+recipe as readable code; use Export SVG for a standalone vector figure. There is
+no symbolic CAS, external execution, networking or second spatial engine. Samples
+may miss discontinuities/oscillation; outputs remain numerical approximations.
+
+## Writing surfaces — 2026-10-14
+
+The Writing surface button (Alt+T with the editor focused) offers Orbit, Pixel
+notebook, Bound book, CRT terminal, Retro desktop and Command prompt designs.
+Plain, lined, math-grid and dotted paper can be combined with any design; spacing
+is adjustable from 20–64 logical pixels. Vector leather/binding/page-edge/bezel and
+desktop frames surround actual editable text. These are reference-inspired original
+drawings, not bundled screenshots or exact reproductions of another application's
+controls. Retro title bars display the real note title rather than fake buttons.
+
+Themed writing can use bundled Tiny5, Space Mono or Crimson Text typography, or
+retain the user's font by disabling Design typography. Picking a custom font from
+the existing menu disables the design font override. Sizes, line height, native
+caret/selection/clipboard and undo remain existing editor behavior. Colors also
+scope the toolbar, modes, selection and supported content cards, without changing
+the app-wide theme. Rich, Source, Read and Split use the same surface; LaTeX retains
+its existing appearance. Read-only notes allow presentation changes but no content
+writes. Background paper is a viewport decoration, not a paginated document or a
+guarantee that rich blocks align with every rule.
+
+Choosing a themed desk from Orbit starts Quiet writing: appearance/mode controls,
+title and the writing area, with Show editor tools restoring the full interface.
+Quiet writing is also independently configurable. Mode controls take priority in
+the full header so they remain reachable while Find constrains the chrome. Apply
+and Cancel preview choices; Reset restores Orbit/plain/default-font behavior after
+Apply. A picker opened for a different note/Vault cannot apply to its replacement.
+
+Presentation is stored in device-local pane/note view state; no Markdown,
+frontmatter, object properties, relations, history or attachments are rewritten.
+Malformed/future preferences safely display Orbit; their raw data survives unrelated
+view updates. Explicit changes keep unfamiliar preference fields. These preferences
+do not alter printed/exported document styles or share a design across devices.
+Static decorative layers never intercept input; high-contrast mode removes CRT
+scanlines/vignette. There is no flicker, blur over text or background animation.
+Themes are cached while typing; background painting sits in its own repaint boundary.
+
+### Personal photo backgrounds — 2026-10-14
+
+Writing surface can choose/replace a local PNG, JPEG or WebP background, position
+it horizontally/vertically, fill-and-crop or fit the whole picture, and set its
+intensity. A protected Reading sheet is the default: strong imagery can appear
+around a quiet central writing area. Without a sheet, the effective intensity is
+conservatively capped against solid white/black images for the theme's normal,
+secondary and link ink. Existing low-contrast custom colors are not made worse;
+this is a color bound, not per-photo content analysis. Paper patterns still work
+on the sheet. High contrast hides photos and retains the stored choice.
+
+Selection/position changes preview without saving. Apply saves the bounded copy
+before updating the pane recipe; Cancel leaves the prior appearance intact. Failed
+decode/storage/quota or a stale note/Vault keeps a useful error and does not change
+authored source. Remove photo and Reset clear the pane reference, not other panes'
+photos. Missing/corrupt caches show a plain fallback with Retry background and a
+route to replace/remove through Writing surface. Read-only Vaults disable importing
+new photo bytes; existing presentation still renders. No network URLs are loaded.
+
+Inputs are bounded to 16 MiB, 40 megapixels and 10,000 px per dimension. The first
+frame is normalized to a static PNG, at most 1,600 px per side and 2 MiB; progressively
+smaller copies are attempted for detailed images. Embedded source metadata is not
+copied, the original file is untouched, and animations are not played. Bytes live
+separately under existing .orbit/device state; session JSON contains only the recipe.
+They are excluded from authored-content sync, ordinary document exports and new
+Universal Objects. Browser storage can refuse quota; the previous setting remains.
+Unused device copies are retained rather than deleting an image referenced by
+another pane. No automatic retention cleanup or shared-photo portability claim.
+Image loads are cached per photo/Vault; changes during typing do not reread files,
+and late responses from a replaced Vault/selection are refused. Text remains native
+and unblurred; no image layer intercepts input or changes text/undo/history.

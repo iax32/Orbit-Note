@@ -1,4 +1,6 @@
 import '../notes/media_clipboard.dart';
+import '../math/math_lab_dialog.dart';
+import '../../canvas/math_plot_elements.dart';
 import '../../app/orbit_components.dart';
 import '../../app/orbit_theme.dart';
 import 'dart:async';
@@ -33,6 +35,11 @@ import '../../canvas/canvas_search.dart';
 import '../../canvas/reference_capture.dart';
 import 'canvas_search_overlay.dart';
 import 'reference_details_dialog.dart';
+import '../../canvas/uml.dart';
+import '../../canvas/diagram_reference.dart';
+import 'uml_dialog.dart';
+import 'research_diagram_dialog.dart';
+import '../../canvas/research_diagrams.dart';
 import 'audio_player_card.dart';
 
 export '../../domain/pdf_quote_transfer.dart' show PdfQuoteDragData;
@@ -99,6 +106,9 @@ class CanvasEditor extends StatefulWidget {
     this.onTitleChanged,
     required this.data,
     required this.onChanged,
+    this.onDraftChanged,
+    this.draftBaseData,
+    this.retainConflictingDraft = false,
     required this.objects,
     required this.onOpenObject,
     this.camera,
@@ -113,29 +123,40 @@ class CanvasEditor extends StatefulWidget {
     this.onToggleTask,
     this.onUpdateObjectProperties,
     this.onExportSelectionToNote,
+    this.onExportDiagramToNote,
     this.fontFamily = 'Segoe UI',
     this.defaultBackgroundStyle = 'dots',
     this.defaultSnapToGrid = false,
     this.defaultAudioSpeed = 1.0,
     this.focusElementId,
+    this.focusElementIds = const [],
     this.locationSerial = 0,
     this.captureController,
     this.onCaptureReferences,
+    this.onPickReference,
+    this.onShowObjectConnections,
     this.remoteCursors = const [],
     this.onPresence,
   });
+  final Future<ObjectReference?> Function()? onPickReference;
+  final ValueChanged<String>? onShowObjectConnections;
   final String canvasId;
   final CanvasCaptureController? captureController;
   final VoidCallback? onCaptureReferences;
   final List<Map<String, dynamic>> remoteCursors;
   final void Function(double x, double y)? onPresence;
   final String? focusElementId;
+  final List<String> focusElementIds;
   final int locationSerial;
   final String title;
   final bool readOnly;
   final ValueChanged<String>? onTitleChanged;
   final Map<String, dynamic> data;
   final ValueChanged<Map<String, dynamic>> onChanged;
+  final bool Function(Map<String, dynamic> base, Map<String, dynamic> next)?
+  onDraftChanged;
+  final Map<String, dynamic>? draftBaseData;
+  final bool retainConflictingDraft;
   final List<CanvasObjectReference> objects;
   final ValueChanged<String> onOpenObject;
   final Map<String, dynamic>? camera;
@@ -156,6 +177,7 @@ class CanvasEditor extends StatefulWidget {
   onUpdateObjectProperties;
   final void Function(List<CanvasElement> elements, String markdownNote)?
   onExportSelectionToNote;
+  final Future<void> Function(List<String> elementIds)? onExportDiagramToNote;
   final String fontFamily;
   final String defaultBackgroundStyle;
   final bool defaultSnapToGrid;
@@ -207,9 +229,14 @@ class _CanvasEditorState extends State<CanvasEditor> {
         : _camera.toWorld(
             CanvasPoint(_viewport.width / 2, _viewport.height / 2),
           );
-    final canvasId = widget.canvasId;
+    final canvasId = widget.canvasId, epoch = _interactionEpoch, scene = _scene;
     return (ids) {
-      if (!mounted || widget.canvasId != canvasId || _readOnly || ids.isEmpty) {
+      if (!mounted ||
+          widget.canvasId != canvasId ||
+          _readOnly ||
+          ids.isEmpty ||
+          epoch != _interactionEpoch ||
+          !identical(scene, _scene)) {
         return false;
       }
       return _placeCapturedReferences(ids, origin);
@@ -290,6 +317,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
   bool _inMultiTouch = false;
   Size _viewport = Size.zero;
   Map<String, dynamic>? _lastEmitted;
+  late Map<String, dynamic> _acceptedData = widget.draftBaseData ?? widget.data;
   Duration _strokeStart = Duration.zero;
   CanvasImageCache? _images;
   final CanvasTextCache _textCache = CanvasTextCache();
@@ -447,6 +475,9 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   CanvasScene get _scene => _history.scene;
+  int _clipboardPasteRequest = 0;
+  int _interactionEpoch = 0, _clipboardCopyRequest = 0;
+  Set<String>? _gestureSelection;
   bool get _readOnly => widget.readOnly || _scene.readOnly;
   bool get _shift => HardwareKeyboard.instance.isShiftPressed;
   bool get _command =>
@@ -459,6 +490,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
   @override
   void initState() {
     super.initState();
+    _acceptedData = widget.draftBaseData ?? widget.data;
     widget.captureController?._placements[this] = _prepareCapturedReferences;
     _scheduleLocation();
     _searchController.addListener(_onSearchQueryChanged);
@@ -535,11 +567,28 @@ class _CanvasEditorState extends State<CanvasEditor> {
   @override
   void didUpdateWidget(covariant CanvasEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.canvasId != widget.canvasId ||
+        oldWidget.readOnly != widget.readOnly) {
+      _interactionEpoch++;
+      _clipboardPasteRequest++;
+    }
+    final externalSceneChange =
+        !widget.retainConflictingDraft &&
+        !identical(widget.data, _lastEmitted) &&
+        !jsonValuesEqual(widget.data, _lastEmitted ?? oldWidget.data);
+    // Guarded editors retain a competing gesture until it can be published as
+    // a recoverable draft. Unguarded editors must adopt the external revision.
+    if ((widget.readOnly ||
+            (externalSceneChange && widget.onDraftChanged == null)) &&
+        (_pointer != null || _inMultiTouch)) {
+      _rollbackGesture();
+    }
     if (oldWidget.captureController != widget.captureController) {
       oldWidget.captureController?._placements.remove(this);
       widget.captureController?._placements[this] = _prepareCapturedReferences;
     }
     if (oldWidget.locationSerial != widget.locationSerial ||
+        !listEquals(oldWidget.focusElementIds, widget.focusElementIds) ||
         oldWidget.canvasId != widget.canvasId) {
       _scheduleLocation();
     }
@@ -565,16 +614,24 @@ class _CanvasEditorState extends State<CanvasEditor> {
       _editingId = null;
       _clearGesture();
       _lastEmitted = null;
+      _acceptedData = widget.draftBaseData ?? widget.data;
       _titleController.text = widget.title;
     } else if (oldWidget.title != widget.title && !_titleFocus.hasFocus) {
       _titleController.text = widget.title;
-    } else if (!identical(oldWidget.data, widget.data) &&
+    }
+    if (oldWidget.canvasId == widget.canvasId &&
+        !widget.retainConflictingDraft &&
+        (oldWidget.retainConflictingDraft ||
+            !identical(oldWidget.data, widget.data)) &&
         !identical(widget.data, _lastEmitted) &&
         !jsonValuesEqual(widget.data, _lastEmitted ?? oldWidget.data) &&
         !_history.inCommand) {
       // A genuine external revision replaces the scene; stale undo must not overwrite it.
       _history = CanvasHistory(CanvasScene.fromJson(widget.data));
       _selection.removeWhere((id) => _scene[id] == null);
+    }
+    if (!widget.retainConflictingDraft && !_history.inCommand) {
+      _acceptedData = widget.draftBaseData ?? widget.data;
     }
   }
 
@@ -596,15 +653,25 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   void _scheduleLocation() {
-    if (widget.focusElementId == null) return;
+    if (widget.focusElementId == null && widget.focusElementIds.isEmpty) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final element = _scene[widget.focusElementId!];
-      if (element == null || element.hidden) {
+      final ids = {
+        ...widget.focusElementIds,
+        if (widget.focusElementId != null) widget.focusElementId!,
+      };
+      final elements = ids
+          .map((id) => _scene[id])
+          .whereType<CanvasElement>()
+          .where((e) => !e.hidden && e.renderable)
+          .toList();
+      if (elements.isEmpty) {
         _notice('Canvas element is missing or hidden. The board is open.');
         return;
       }
-      final bounds = element.bounds;
+      final bounds = elements
+          .skip(1)
+          .fold(elements.first.bounds, (bounds, e) => bounds.union(e.bounds));
       final zoom = math
           .min(
             (_viewport.width - 96) / math.max(1, bounds.width),
@@ -619,7 +686,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
         );
         _selection
           ..clear()
-          ..add(element.id);
+          ..addAll(elements.map((e) => e.id));
       });
       _cameraChanged();
     });
@@ -633,7 +700,12 @@ class _CanvasEditorState extends State<CanvasEditor> {
       'backgroundStyle': _backgroundStyle,
     };
     _lastEmitted = data;
-    widget.onChanged(data);
+    final guarded = widget.onDraftChanged;
+    if (guarded == null) {
+      widget.onChanged(data);
+    } else if (guarded(_acceptedData, data)) {
+      _acceptedData = data;
+    }
   }
 
   /// Applies the drafting defaults without touching existing scene elements.
@@ -676,6 +748,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
     if (event.kind == PointerDeviceKind.touch) {
       _touchPointers[event.pointer] = event.localPosition;
       if (_touchPointers.length >= 2) {
+        final touches = Map<int, Offset>.of(_touchPointers);
+        _rollbackGesture(restoreCamera: false);
+        _startCamera = _camera;
+        _touchPointers.addAll(touches);
         _inMultiTouch = true;
         if (_preview != null && _preview!.type == 'ink') {
           _preview = null;
@@ -701,6 +777,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
       return;
     }
     _pointer = event.pointer;
+    _gestureSelection = {..._selection};
     _start = _world(event.localPosition);
     _lastScreen = _point(event.localPosition);
     _startCamera = _camera;
@@ -1578,6 +1655,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   void _clearGesture() {
+    _gestureSelection = null;
     _endpointStart = null;
     _pointer = null;
     _start = null;
@@ -1597,15 +1675,45 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _touchPointers.clear();
   }
 
-  void _cancelGesture() {
-    if (_panning && _startCamera != null) _camera = _startCamera!;
+  void _rollbackGesture({bool restoreCamera = true}) {
+    if (restoreCamera && (_panning || _inMultiTouch) && _startCamera != null) {
+      _camera = _startCamera!;
+    }
     _history.cancel();
+    final selection = _gestureSelection;
+    if (selection != null) {
+      _selection
+        ..clear()
+        ..addAll(selection.where((id) => _scene[id] != null));
+    }
     _clearGesture();
+  }
+
+  void _cancelGesture() {
+    _rollbackGesture();
     if (mounted) setState(() {});
+  }
+
+  // A keyboard/menu command must not commit provisional pointer geometry as
+  // part of its own undo entry. Keep its selected target after rolling back.
+  void _settlePlacementCommand() {
+    if (_pointer != null || _inMultiTouch) {
+      final selected = {..._selection};
+      _rollbackGesture();
+      _selection
+        ..clear()
+        ..addAll(selected.where((id) => _scene[id] != null));
+      if (mounted) setState(() {});
+    }
+    _finishText();
   }
 
   void _undo() {
     if (_readOnly) return;
+    if (_pointer != null || _inMultiTouch) {
+      _cancelGesture();
+      return;
+    }
     _finishText();
     if (_history.undo()) {
       _selection.removeWhere((id) => _scene[id] == null);
@@ -1616,6 +1724,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
 
   void _redo() {
     if (_readOnly) return;
+    if (_pointer != null || _inMultiTouch) {
+      _cancelGesture();
+      return;
+    }
     _finishText();
     if (_history.redo()) {
       _selection.removeWhere((id) => _scene[id] == null);
@@ -1626,7 +1738,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
 
   void _delete() {
     if (_readOnly) return;
-    _finishText();
+    _settlePlacementCommand();
     final toDelete = {..._selection};
     for (final id in _selection) {
       if (_scene[id]?.groupId != null) {
@@ -1684,8 +1796,11 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   Future<void> _copy({bool cut = false}) async {
+    if (cut && _readOnly) return;
+    _settlePlacementCommand();
     final originalSelection = {..._selection};
-    final canvasId = widget.canvasId;
+    final canvasId = widget.canvasId, epoch = _interactionEpoch, scene = _scene;
+    final request = ++_clipboardCopyRequest;
     final ids = {..._selection};
     for (final id in _selection) {
       if (_scene[id]?.type == 'column') {
@@ -1707,10 +1822,26 @@ class _CanvasEditorState extends State<CanvasEditor> {
         .map((e) => e.data)
         .toList();
     if (elements.isEmpty) return;
+    // Stored fallbacks can lag behind linked-node movement. Carry the visible
+    // endpoints so a connector remains in place when pasted without its nodes.
+    final clipboardElements = elements.map((data) {
+      final element = CanvasElement(data);
+      if (!isConnectorElement(element)) return data;
+      final detachedStart =
+          element.startId != null && !ids.contains(element.startId);
+      final detachedEnd = element.endId != null && !ids.contains(element.endId);
+      if (!detachedStart && !detachedEnd) return data;
+      final endpoints = resolveConnectorEndpoints(element, _scene);
+      return {
+        ...data,
+        ...connectorEndpointData(endpoints.start, endpoints.end),
+      };
+    }).toList();
     try {
       await Clipboard.setData(
         ClipboardData(
-          text: 'orbit-canvas/1\n${jsonEncode({'elements': elements})}',
+          text:
+              'orbit-canvas/1\n${jsonEncode({'elements': clipboardElements})}',
         ),
       );
     } catch (_) {
@@ -1721,6 +1852,9 @@ class _CanvasEditorState extends State<CanvasEditor> {
     }
     if (cut && mounted && !_readOnly) {
       if (widget.canvasId != canvasId ||
+          epoch != _interactionEpoch ||
+          !identical(scene, _scene) ||
+          request != _clipboardCopyRequest ||
           !setEquals(_selection, originalSelection)) {
         _notice('The selection changed while copying; no items were removed.');
         return;
@@ -1736,32 +1870,70 @@ class _CanvasEditorState extends State<CanvasEditor> {
     }
   }
 
-  Future<void> _paste() async {
+  Future<void> _paste({CanvasPoint? at}) async {
     if (_readOnly) return;
+    _settlePlacementCommand();
     ClipboardData? clipboard;
     final canvasId = widget.canvasId;
+    final epoch = _interactionEpoch;
+    final scene = _scene, revision = _scene.revision;
+    final selection = {..._selection};
+    final request = ++_clipboardPasteRequest;
+    final origin =
+        at ??
+        _camera.toWorld(CanvasPoint(_viewport.width / 2, _viewport.height / 2));
     try {
       clipboard = await Clipboard.getData(Clipboard.kTextPlain);
     } catch (_) {
       if (mounted) _notice('The clipboard is unavailable.');
       return;
     }
-    if (!mounted || _readOnly || widget.canvasId != canvasId) return;
+    if (!mounted ||
+        _readOnly ||
+        widget.canvasId != canvasId ||
+        request != _clipboardPasteRequest ||
+        epoch != _interactionEpoch) {
+      return;
+    }
+    if (!identical(_scene, scene) ||
+        _scene.revision != revision ||
+        !setEquals(_selection, selection)) {
+      _notice(
+        'The Canvas changed while reading the clipboard. Paste again at the intended position.',
+      );
+      return;
+    }
     if ((clipboard?.text ?? '').isEmpty) {
-      if (widget.onPasteImage != null) await _insertImage(widget.onPasteImage!);
+      if (widget.onPasteImage != null) {
+        await _insertImage(
+          widget.onPasteImage!,
+          at: origin,
+          stillCurrent: () =>
+              request == _clipboardPasteRequest && epoch == _interactionEpoch,
+        );
+      }
       return;
     }
     final text = clipboard!.text!;
     if (text.startsWith('orbit-canvas/1\n')) {
       try {
         final decoded = jsonDecode(text.substring('orbit-canvas/1\n'.length));
-        if (decoded is! Map || decoded['elements'] is! List) return;
-        final originals = (decoded['elements'] as List)
-            .whereType<Map>()
-            .map((v) => CanvasElement(Map<String, dynamic>.from(v)))
-            .where((e) => e.renderable)
-            .toList();
-        _selection.clear();
+        if (decoded is! Map || decoded['elements'] is! List) {
+          throw const FormatException('Invalid Canvas clipboard');
+        }
+        final originals = <CanvasElement>[];
+        final originalIds = <String>{};
+        for (final value in decoded['elements'] as List) {
+          if (value is! Map) throw const FormatException('Invalid placement');
+          final element = CanvasElement(Map<String, dynamic>.from(value));
+          if (!element.renderable || !originalIds.add(element.id)) {
+            throw const FormatException('Invalid or duplicate placement');
+          }
+          originals.add(element);
+        }
+        if (originals.isEmpty) return;
+        // Prepare the complete batch before touching selection or undo history.
+        final pasted = <CanvasElement>[];
         final newIds = {for (final original in originals) original.id: _id()};
         final groups = {
           for (final original in originals)
@@ -1780,25 +1952,27 @@ class _CanvasEditorState extends State<CanvasEditor> {
               'endX': (original.data['endX'] as num) + 32,
               'endY': (original.data['endY'] as num) + 32,
             },
-            if (original.points.isNotEmpty)
-              'points': original.points
-                  .map((p) => {'x': p.x + 32, 'y': p.y + 32})
-                  .toList(),
             'x': original.x + 32,
             'y': original.y + 32,
             'locked': false,
           });
+          if (!element.renderable) {
+            throw const FormatException('Invalid placement');
+          }
+          pasted.add(element);
+        }
+        _selection.clear();
+        for (final element in pasted) {
           _history.put(element);
           _selection.add(element.id);
         }
         _commit();
       } on FormatException {
-        _notice('The clipboard does not contain valid Canvas data.');
+        _notice(
+          'The clipboard contains invalid or unsupported Canvas items. Nothing was pasted.',
+        );
       }
     } else if (text.trim().isNotEmpty) {
-      final center = _camera.toWorld(
-        CanvasPoint(_viewport.width / 2, _viewport.height / 2),
-      );
       final items = markdownCanvasItems(text);
       _selection.clear();
       var offset = 0.0;
@@ -1811,8 +1985,8 @@ class _CanvasEditorState extends State<CanvasEditor> {
           ...item,
           'id': _id(),
           if (object != null) 'objectId': object.id,
-          'x': center.x - 160 + offset,
-          'y': center.y - 120 + offset,
+          'x': origin.x - (item['type'] == 'image' ? 160 : 110) + offset,
+          'y': origin.y - (item['type'] == 'image' ? 120 : 90) + offset,
           'width': item['type'] == 'image' ? 320.0 : 220.0,
           'height': item['type'] == 'image' ? 240.0 : 180.0,
           'color': _color,
@@ -1827,6 +2001,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
 
   void _duplicate() {
     if (_readOnly || _selection.isEmpty) return;
+    _settlePlacementCommand();
     final ids = {..._selection};
     for (final id in _selection) {
       if (_scene[id]?.type == 'column') {
@@ -1857,20 +2032,19 @@ class _CanvasEditorState extends State<CanvasEditor> {
 
     _history.begin();
     for (final original in originals) {
-      final shiftedPoints = original.points
-          .map((p) => CanvasPoint(p.x + 20, p.y + 20))
-          .map((p) => {'x': p.x, 'y': p.y})
-          .toList();
       final newGid = original.groupId != null
           ? groupMap[original.groupId!]
           : null;
       final patch = <String, dynamic>{
         'id': newIds[original.id],
+        if (original.startId != null)
+          'startId': newIds[original.startId] ?? original.startId,
+        if (original.endId != null)
+          'endId': newIds[original.endId] ?? original.endId,
         'columnId': newIds[original.data['columnId']],
         'x': original.x + 20,
         'y': original.y + 20,
         'locked': false,
-        if (shiftedPoints.isNotEmpty) 'points': shiftedPoints,
       };
       if (newGid != null) patch['groupId'] = newGid;
       final duplicate = original.copy(patch);
@@ -1915,15 +2089,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
           if (!e.locked) {
             final dx = curX - e.bounds.left;
             if (dx != 0) {
-              if (e.points.isNotEmpty) {
-                final shiftedPoints = e.points
-                    .map((p) => CanvasPoint(p.x + dx, p.y))
-                    .map((p) => {'x': p.x, 'y': p.y})
-                    .toList();
-                _history.put(e.copy({'x': e.x + dx, 'points': shiftedPoints}));
-              } else {
-                _history.put(e.copy({'x': e.x + dx}));
-              }
+              _history.put(e.copy({'x': e.x + dx}));
             }
           }
           curX += e.bounds.width + gap;
@@ -1943,15 +2109,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
           if (!e.locked) {
             final dy = curY - e.bounds.top;
             if (dy != 0) {
-              if (e.points.isNotEmpty) {
-                final shiftedPoints = e.points
-                    .map((p) => CanvasPoint(p.x, p.y + dy))
-                    .map((p) => {'x': p.x, 'y': p.y})
-                    .toList();
-                _history.put(e.copy({'y': e.y + dy, 'points': shiftedPoints}));
-              } else {
-                _history.put(e.copy({'y': e.y + dy}));
-              }
+              _history.put(e.copy({'y': e.y + dy}));
             }
           }
           curY += e.bounds.height + gap;
@@ -1995,15 +2153,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
       final dy = newY - e.y;
       if (dx == 0 && dy == 0) continue;
 
-      if (e.points.isNotEmpty) {
-        final shiftedPoints = e.points
-            .map((p) => CanvasPoint(p.x + dx, p.y + dy))
-            .map((p) => {'x': p.x, 'y': p.y})
-            .toList();
-        _history.put(e.copy({'x': newX, 'y': newY, 'points': shiftedPoints}));
-      } else {
-        _history.put(e.copy({'x': newX, 'y': newY}));
-      }
+      _history.put(e.copy({'x': newX, 'y': newY}));
     }
     _commit();
     setState(() {});
@@ -2171,6 +2321,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   void _edit(CanvasElement element) {
+    if (isUmlClass(element) || element.data['umlRelationship'] is String) {
+      _editUml(element: element);
+      return;
+    }
     if (element.type == 'link') {
       final uri = Uri.tryParse(element.url);
       if (uri != null &&
@@ -2267,7 +2421,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
     if (id == null) return;
     final original = _scene[id];
     _editingId = null;
-    if (original != null) {
+    if (original != null && !_readOnly && !original.locked) {
       final patch = <String, dynamic>{};
       if (original.text != _text.text) {
         patch['text'] = _text.text;
@@ -2698,7 +2852,51 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   Future<void> _chooseObject({CanvasPoint? at}) async {
+    if (_readOnly) return;
     _finishText();
+    final owner = widget.canvasId, scene = _scene, revision = _scene.revision;
+    final epoch = _interactionEpoch;
+    if (widget.onPickReference != null) {
+      final selected = await widget.onPickReference!();
+      if (!mounted ||
+          selected == null ||
+          _readOnly ||
+          widget.canvasId != owner ||
+          epoch != _interactionEpoch ||
+          !identical(_scene, scene) ||
+          _scene.revision != revision) {
+        return;
+      }
+      final target = _objects[selected.id];
+      if (target == null) {
+        _notice('The source is unavailable. No placement was added.');
+        return;
+      }
+      final center =
+          at ??
+          _camera.toWorld(
+            CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+          );
+      final element = CanvasElement({
+        'id': _id(),
+        'type': 'card',
+        'objectId': target.id,
+        'referenceTarget': selected.target,
+        'presentation': 'preview',
+        'x': center.x - 140,
+        'y': center.y - 95,
+        'width': 280.0,
+        'height': 190.0,
+        'color': _color,
+      });
+      _history.put(element);
+      _selection
+        ..clear()
+        ..add(element.id);
+      _commit();
+      _focus.requestFocus();
+      return;
+    }
     final query = TextEditingController();
     final selected = await showDialog<CanvasObjectReference>(
       context: context,
@@ -2799,7 +2997,16 @@ class _CanvasEditorState extends State<CanvasEditor> {
       ),
     );
     // Dialog route transitions may still use the controller after the Future completes.
-    if (!mounted || selected == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => query.dispose());
+    if (!mounted ||
+        selected == null ||
+        _readOnly ||
+        widget.canvasId != owner ||
+        epoch != _interactionEpoch ||
+        !identical(_scene, scene) ||
+        _scene.revision != revision) {
+      return;
+    }
     final center =
         at ??
         _camera.toWorld(CanvasPoint(_viewport.width / 2, _viewport.height / 2));
@@ -3405,6 +3612,13 @@ class _CanvasEditorState extends State<CanvasEditor> {
                       ),
                       const SizedBox(height: 16),
                       if (format == 'mermaid') ...[
+                        if (_scene.elements.any(isUmlClass))
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 12),
+                            child: Text(
+                              'This export produces a flowchart. Use SVG for UML appearance or Canvas JSON for editable class members and relationships.',
+                            ),
+                          ),
                         const Text(
                           'MERMAID OPTIONS',
                           style: TextStyle(
@@ -3663,6 +3877,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                                 _scene,
                                 transparent: transparent,
                                 backgroundColor: colors.surface.toARGB32(),
+                                foregroundColor: colors.onSurface.toARGB32(),
                                 backgroundStyle: _backgroundStyle,
                                 elementIds: targetIds,
                                 scale: svgScale,
@@ -3756,6 +3971,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                                 _scene,
                                 transparent: transparent,
                                 backgroundColor: colors.surface.toARGB32(),
+                                foregroundColor: colors.onSurface.toARGB32(),
                                 backgroundStyle: _backgroundStyle,
                                 elementIds: targetIds,
                                 scale: svgScale,
@@ -3810,6 +4026,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   Future<void> _contextMenu(PointerDownEvent event) async {
+    final epoch = _interactionEpoch, scene = _scene, revision = _scene.revision;
     final worldPos = _world(event.localPosition);
     final hit = _scene.hit(worldPos, tolerance: 6 / _camera.zoom);
     final target =
@@ -3835,6 +4052,13 @@ class _CanvasEditorState extends State<CanvasEditor> {
     final overlay =
         Overlay.of(context).context.findRenderObject()! as RenderBox;
 
+    final selection = {..._selection};
+    bool current() =>
+        mounted &&
+        epoch == _interactionEpoch &&
+        identical(scene, _scene) &&
+        revision == _scene.revision &&
+        setEquals(selection, _selection);
     if (hit == null) {
       final hasSelection = _selection.isNotEmpty;
       final action = await showMenu<String>(
@@ -3859,6 +4083,14 @@ class _CanvasEditorState extends State<CanvasEditor> {
             const PopupMenuDivider(),
           ],
           if (!_readOnly) ...[
+            const PopupMenuItem(
+              value: 'add_uml',
+              child: Text('New UML class…'),
+            ),
+            const PopupMenuItem(
+              value: 'connect_uml',
+              child: Text('Connect UML classes…'),
+            ),
             const PopupMenuItem(
               value: 'add_text',
               child: Row(
@@ -3898,6 +4130,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
                   Expanded(child: Text('Add Formula / Math Note')),
                 ],
               ),
+            ),
+            const PopupMenuItem(
+              value: 'add_math_lab',
+              child: Text('Math Lab · calculate & plot'),
             ),
             const PopupMenuItem(
               value: 'add_section',
@@ -4010,14 +4246,21 @@ class _CanvasEditorState extends State<CanvasEditor> {
           ),
         ],
       );
-      if (!mounted || action == null) return;
+      if (!current() || action == null) return;
       switch (action) {
+        case 'add_uml':
+          _editUml(at: worldPos);
+        case 'connect_uml':
+          _editUml(relationship: true);
         case 'add_text':
           _addText(at: worldPos);
         case 'add_sticky':
           _addSticky(at: worldPos);
         case 'add_checklist':
           _addChecklist(at: worldPos);
+        case 'add_math_lab':
+          _addMathLab(at: worldPos);
+          break;
         case 'add_formula':
           _addFormulaCard(at: worldPos);
         case 'add_section':
@@ -4031,7 +4274,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
         case 'add_dynamic_view':
           _addDynamicView(at: worldPos);
         case 'paste':
-          _paste();
+          _paste(at: worldPos);
         case 'delete':
           _delete();
         case 'fit_all':
@@ -4408,7 +4651,14 @@ class _CanvasEditorState extends State<CanvasEditor> {
           ),
         ],
         if (_selection.isNotEmpty)
-          const PopupMenuItem(value: 'copy', child: Text('Copy placements')),
+          if (widget.onShowObjectConnections != null &&
+              _selection.length == 1 &&
+              _scene[_selection.first]?.objectId != null)
+            const PopupMenuItem(
+              value: 'connections',
+              child: Text('Object connections'),
+            ),
+        const PopupMenuItem(value: 'copy', child: Text('Copy placements')),
         if (_selection.isNotEmpty && !_readOnly)
           const PopupMenuItem(
             value: 'duplicate',
@@ -4681,7 +4931,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
         ),
       ],
     );
-    if (!mounted || action == null) return;
+    if (!current() || action == null) return;
     switch (action) {
       case 'edit':
         if (_selection.length == 1) _edit(_scene[_selection.first]!);
@@ -4815,6 +5065,11 @@ class _CanvasEditorState extends State<CanvasEditor> {
         _setConnectorAnchor('auto', isStart: false);
       case 'reverse_direction':
         _reverseConnector();
+      case 'connections':
+        final source = _selection.length == 1
+            ? _scene[_selection.first]?.objectId
+            : null;
+        if (source != null) widget.onShowObjectConnections?.call(source);
       case 'copy':
         _copy();
       case 'duplicate':
@@ -4888,7 +5143,11 @@ class _CanvasEditorState extends State<CanvasEditor> {
       case 'copy_mermaid':
         final mermaid = exportToMermaid(_scene, elementIds: _selection);
         Clipboard.setData(ClipboardData(text: mermaid));
-        _notice('Mermaid flowchart copied to clipboard');
+        _notice(
+          _selection.any((id) => _scene[id] != null && isUmlClass(_scene[id]!))
+              ? 'Flowchart copied. Use SVG or Canvas JSON to preserve UML compartments and notation.'
+              : 'Mermaid flowchart copied to clipboard',
+        );
       case 'extract_to_note':
         _extractSelectionToNote();
       case 'export_selection':
@@ -4905,6 +5164,11 @@ class _CanvasEditorState extends State<CanvasEditor> {
         .whereType<CanvasElement>()
         .toList();
     if (selectedElements.isEmpty) return;
+    if (selectedElements.any(isUmlClass) &&
+        selectedElements.every((e) => isUmlClass(e) || isConnectorElement(e))) {
+      _exportUmlDiagram();
+      return;
+    }
 
     final markdown = extractSelectionToMarkdown(
       _scene,
@@ -4919,6 +5183,41 @@ class _CanvasEditorState extends State<CanvasEditor> {
       Clipboard.setData(ClipboardData(text: markdown));
       _notice('Extracted note Markdown copied to clipboard');
     }
+  }
+
+  Future<void> _exportUmlDiagram({bool copy = false}) async {
+    _finishText();
+    final ids = diagramExportSelection(_scene, _selection);
+    if (ids.isEmpty) {
+      _notice(
+        'Select diagram shapes, or clear the selection to export all diagram shapes.',
+      );
+      return;
+    }
+    try {
+      final markdown = diagramMarkdown(
+        widget.canvasId,
+        '${widget.title} · ${ids.every((id) => isUmlClass(_scene[id]!)) ? 'Class diagram' : 'Diagram'}',
+        ids,
+      );
+      if (copy || widget.onExportDiagramToNote == null) {
+        await Clipboard.setData(ClipboardData(text: markdown));
+        if (mounted) {
+          _notice(
+            'Live diagram copied. Paste it into a Markdown note in this Vault.',
+          );
+        }
+      } else {
+        await widget.onExportDiagramToNote!(ids);
+      }
+    } on FormatException catch (e) {
+      if (mounted) _notice(e.message);
+    } catch (_) {
+      if (mounted) {
+        _notice('Could not export the diagram. The Canvas is unchanged.');
+      }
+    }
+    if (mounted) _focus.requestFocus();
   }
 
   void _autoCleanSelectedInk() {
@@ -5093,6 +5392,12 @@ class _CanvasEditorState extends State<CanvasEditor> {
         'endId': element.startId,
         'startAnchor': element.endAnchor,
         'endAnchor': element.startAnchor,
+        'startAnchorOffset': element.data['endAnchorOffset'],
+        'endAnchorOffset': element.data['startAnchorOffset'],
+        'startMultiplicity': element.data['endMultiplicity'],
+        'endMultiplicity': element.data['startMultiplicity'],
+        'startRole': element.data['endRole'],
+        'endRole': element.data['startRole'],
         'startMarker': element.endMarker,
         'endMarker': element.startMarker,
         'reverseX': element.data['reverseX'] != true,
@@ -5300,7 +5605,8 @@ class _CanvasEditorState extends State<CanvasEditor> {
                           if (_readOnly) return false;
                           final data = details.data;
                           if (data is ({String path, String? noteId})) {
-                            return data.noteId != null;
+                            return data.noteId != null &&
+                                _objects.containsKey(data.noteId);
                           }
                           if (data is PdfQuoteDragData) return true;
                           return false;
@@ -5645,6 +5951,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                               key: const ValueKey('canvas-element-text-field'),
                               groupId: 'canvas-text-editing',
                               controller: _text,
+                              readOnly: _readOnly || editing.locked,
                               focusNode: _textFocus,
                               maxLines: editing.type == 'section' ? 1 : null,
                               expands: editing.type != 'section',
@@ -5673,8 +5980,9 @@ class _CanvasEditorState extends State<CanvasEditor> {
                               ),
                               onTapOutside: (_) => _finishText(),
                               onChanged: (value) {
+                                if (_readOnly || _editingId == null) return;
                                 final element = _scene[_editingId!];
-                                if (element != null) {
+                                if (element != null && !element.locked) {
                                   _history.put(element.copy({'text': value}));
                                   _emit();
                                 }
@@ -5736,6 +6044,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                             child: OrbitFadeScale(
                               duration: OrbitMotion.control,
                               child: CanvasCardPreviewTooltip(
+                                onOpenLinkedObject: widget.onOpenObject,
                                 key: const ValueKey(
                                   'canvas-card-preview-tooltip',
                                 ),
@@ -6286,22 +6595,26 @@ class _CanvasEditorState extends State<CanvasEditor> {
                     if (_selection.isNotEmpty)
                       Positioned(
                         left: 16,
+                        right: 16,
                         bottom: 18,
-                        child: OrbitFadeScale(
-                          duration: OrbitMotion.control,
-                          child: Material(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.surfaceContainerHigh,
-                            borderRadius: BorderRadius.circular(10),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 7,
-                              ),
-                              child: Text(
-                                '${_selection.length} selected · Delete removes placements',
-                                style: Theme.of(context).textTheme.labelSmall,
+                        child: Align(
+                          alignment: Alignment.bottomLeft,
+                          child: OrbitFadeScale(
+                            duration: OrbitMotion.control,
+                            child: Material(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.surfaceContainerHigh,
+                              borderRadius: BorderRadius.circular(10),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 7,
+                                ),
+                                child: Text(
+                                  '${_selection.length} selected · Delete removes placements',
+                                  style: Theme.of(context).textTheme.labelSmall,
+                                ),
                               ),
                             ),
                           ),
@@ -6346,15 +6659,51 @@ class _CanvasEditorState extends State<CanvasEditor> {
   double _trackpadScale = 1;
 
   Future<void> _insertImage(
-    Future<CanvasImageReference?> Function() load,
-  ) async {
+    Future<CanvasImageReference?> Function() load, {
+    CanvasPoint? at,
+    bool Function()? stillCurrent,
+  }) async {
     if (_readOnly) return;
     _finishText();
-    final image = await load();
-    if (!mounted || image == null) return;
-    final center = _camera.toWorld(
-      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
-    );
+    final owner = widget.canvasId, scene = _scene;
+    final revision = scene.revision;
+    final epoch = _interactionEpoch, selection = {..._selection};
+    final center =
+        at ??
+        _camera.toWorld(CanvasPoint(_viewport.width / 2, _viewport.height / 2));
+    CanvasImageReference? image;
+    try {
+      image = await load();
+    } catch (_) {
+      if (mounted) _notice('Could not load the image. No placement was added.');
+      return;
+    }
+    if (!mounted ||
+        image == null ||
+        _readOnly ||
+        widget.canvasId != owner ||
+        epoch != _interactionEpoch ||
+        stillCurrent?.call() == false) {
+      return;
+    }
+    if (!identical(_scene, scene) ||
+        _scene.revision != revision ||
+        !setEquals(selection, _selection)) {
+      _notice(
+        'The Canvas changed while loading the image. Insert it again at the intended position.',
+      );
+      return;
+    }
+    if (image.contentRef.trim().isEmpty ||
+        !image.width.isFinite ||
+        !image.height.isFinite ||
+        image.width <= 0 ||
+        image.height <= 0) {
+      _notice(
+        'The image has no valid source or dimensions. No placement was added.',
+      );
+      return;
+    }
     final element = CanvasElement({
       'id': _id(),
       'type': 'image',
@@ -6376,36 +6725,37 @@ class _CanvasEditorState extends State<CanvasEditor> {
     if (_readOnly) return;
     _finishText();
     final obj = _objects[objectId];
-    String title = (obj != null && obj.title.isNotEmpty) ? obj.title : 'Object';
+    if (obj == null) {
+      _notice('The source is unavailable. No placement was added.');
+      return;
+    }
+    String title = obj.title.isNotEmpty ? obj.title : 'Object';
     int cardColor = _color;
 
-    if (obj != null) {
-      final category = obj.properties['category'] as String?;
-      if (category == 'Function' || obj.properties.containsKey('address')) {
-        final addr = obj.properties['address'] ?? obj.properties['rva'] ?? '';
-        final mod = obj.properties['module'] ?? 'target.exe';
-        final conf = obj.properties['confidence'] ?? 'Medium';
-        final purpose = obj.properties['purpose'] ?? '';
-        title = '${obj.title}\n$addr ($mod)\nConf: $conf\n$purpose';
-        cardColor = 0xff6366f1;
-      } else if (category == 'Structure') {
-        final size = obj.properties['size'] ?? 'Unknown';
-        title = 'struct ${obj.title}\nSize: $size';
-        cardColor = 0xff3b82f6;
-      } else if (category == 'Indicator' ||
-          obj.properties.containsKey('iocType')) {
-        final iocType = obj.properties['iocType'] ?? 'IOC';
-        final val = obj.properties['value'] ?? obj.title;
-        final conf = obj.properties['confidence'] ?? 'High';
-        title = '[$iocType]\n$val\nConf: $conf';
-        cardColor = 0xfff59e0b;
-      } else if (category == 'Hypothesis') {
-        final status = obj.properties['status'] ?? 'Open';
-        title = 'Hypothesis: ${obj.title}\nStatus: $status';
-        cardColor = 0xff8b5cf6;
-      }
+    final category = obj.properties['category'];
+    if (category == 'Function' || obj.properties.containsKey('address')) {
+      final addr = obj.properties['address'] ?? obj.properties['rva'] ?? '';
+      final mod = obj.properties['module'] ?? 'target.exe';
+      final conf = obj.properties['confidence'] ?? 'Medium';
+      final purpose = obj.properties['purpose'] ?? '';
+      title = '${obj.title}\n$addr ($mod)\nConf: $conf\n$purpose';
+      cardColor = 0xff6366f1;
+    } else if (category == 'Structure') {
+      final size = obj.properties['size'] ?? 'Unknown';
+      title = 'struct ${obj.title}\nSize: $size';
+      cardColor = 0xff3b82f6;
+    } else if (category == 'Indicator' ||
+        obj.properties.containsKey('iocType')) {
+      final iocType = obj.properties['iocType'] ?? 'IOC';
+      final val = obj.properties['value'] ?? obj.title;
+      final conf = obj.properties['confidence'] ?? 'High';
+      title = '[$iocType]\n$val\nConf: $conf';
+      cardColor = 0xfff59e0b;
+    } else if (category == 'Hypothesis') {
+      final status = obj.properties['status'] ?? 'Open';
+      title = 'Hypothesis: ${obj.title}\nStatus: $status';
+      cardColor = 0xff8b5cf6;
     }
-
     final element = CanvasElement({
       'id': _id(),
       'type': 'card',
@@ -7841,6 +8191,125 @@ class _CanvasEditorState extends State<CanvasEditor> {
 
   bool _presentationMode = false;
 
+  Future<void> _editUml({
+    CanvasElement? element,
+    bool relationship = false,
+    CanvasPoint? at,
+  }) async {
+    if (_readOnly || element?.locked == true) return;
+    _finishText();
+    final scene = _scene, revision = _scene.revision, owner = widget.canvasId;
+    final classes = _scene.elementsInOrder
+        .where(isUmlClass)
+        .where((e) => !e.hidden)
+        .toList();
+    if (relationship && element == null && classes.length < 2) {
+      _notice('Add at least two UML classes, then connect them.');
+      return;
+    }
+    final position =
+        at ??
+        _camera.toWorld(CanvasPoint(_viewport.width / 2, _viewport.height / 2));
+    final selectedClasses = classes
+        .where((e) => _selection.contains(e.id))
+        .toList();
+    final original =
+        element ??
+        (relationship
+            ? CanvasElement({
+                'id': _id(),
+                'type': 'connector',
+                'startId': (selectedClasses.firstOrNull ?? classes.first).id,
+                'endId': selectedClasses.length > 1
+                    ? selectedClasses[1].id
+                    : null,
+                'color': 0xffa6b0bf,
+                'strokeWidth': 1.5,
+                ...UmlRelationship.association.style,
+              })
+            : newUmlClass(_id(), position));
+    final patch = await showUmlEditor(
+      context,
+      original,
+      classes,
+      creating: element == null,
+    );
+    if (!mounted || patch == null) return;
+    if (_readOnly ||
+        owner != widget.canvasId ||
+        !identical(scene, _scene) ||
+        _scene.revision != revision ||
+        (element != null && !identical(element, _scene[element.id]))) {
+      _notice(
+        'The canvas changed while editing. Reopen the UML editor to keep the latest changes.',
+      );
+      return;
+    }
+    var result = original.copy(patch);
+    if (isConnectorElement(result)) {
+      final endpoints = resolveConnectorEndpoints(result, _scene);
+      result = result.copy(
+        connectorEndpointData(endpoints.start, endpoints.end),
+      );
+    }
+    _history.put(result);
+    _selection
+      ..clear()
+      ..add(result.id);
+    _commit();
+    _focus.requestFocus();
+  }
+
+  void _addUmlExample() {
+    if (_readOnly) return;
+    _finishText();
+    final at = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final elements = umlExample(_id, at);
+    for (final e in elements) {
+      _history.put(e);
+    }
+    _selection
+      ..clear()
+      ..addAll(elements.map((e) => e.id));
+    _commit();
+    _fit(selectionOnly: true);
+    _focus.requestFocus();
+  }
+
+  Future<void> _addResearchDiagram() async {
+    if (_readOnly) return;
+    _finishText();
+    final owner = widget.canvasId, before = _scene.toJson();
+    final result = await showResearchDiagramDialog(context);
+    if (!mounted || result == null) return;
+    if (_readOnly ||
+        owner != widget.canvasId ||
+        !jsonValuesEqual(before, _scene.toJson())) {
+      _notice(
+        'The Canvas changed. Reopen the diagram preset before inserting.',
+      );
+      return;
+    }
+    final elements = researchDiagram(
+      result.kind,
+      _id,
+      at: _camera.toWorld(
+        CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+      ),
+    );
+    for (final e in elements) {
+      _history.put(e);
+    }
+    _selection
+      ..clear()
+      ..addAll(elements.map((e) => e.id));
+    _commit();
+    _fit(selectionOnly: true);
+    _focus.requestFocus();
+  }
+
   void _addText({CanvasPoint? at}) {
     final pos =
         at ??
@@ -7905,6 +8374,36 @@ class _CanvasEditorState extends State<CanvasEditor> {
       ..add(element.id);
     _commit();
     _edit(element);
+  }
+
+  Future<void> _addMathLab({CanvasPoint? at}) async {
+    if (widget.readOnly || _scene.readOnly) return;
+    _finishText();
+    _cancelGesture();
+    final owner = widget.canvasId;
+    final original = jsonEncode(_scene.toJson());
+    final pos =
+        at ??
+        _camera.toWorld(CanvasPoint(_viewport.width / 2, _viewport.height / 2));
+    final result = await showMathLab(context);
+    if (!mounted || result == null) return;
+    if (owner != widget.canvasId ||
+        widget.readOnly ||
+        _scene.readOnly ||
+        jsonEncode(_scene.toJson()) != original) {
+      _notice('The Canvas changed. Reopen Math Lab before inserting.');
+      return;
+    }
+    final elements = mathResultElements(result, pos, _color, _id);
+    _selection.clear();
+    for (final element in elements) {
+      _history.put(element);
+      _selection.add(element.id);
+    }
+    _commit();
+    if (result.plotDefinition != null || result.tableDefinition != null) {
+      _fit(selectionOnly: true);
+    }
   }
 
   void _addFormulaCard({CanvasPoint? at}) {
@@ -8382,9 +8881,8 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 ),
                 const SizedBox(width: 4),
               ],
-              PopupMenuButton<_Tool>(
+              PopupMenuButton<String>(
                 tooltip: 'Shapes and diagrams',
-                onSelected: _setTool,
                 enabled: !_readOnly,
                 icon: const Icon(Icons.category_outlined, size: 21),
                 itemBuilder: (_) => [
@@ -8397,7 +8895,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                     (_Tool.frame, Icons.filter_frames_outlined, 'Frame'),
                   ])
                     PopupMenuItem(
-                      value: item.$1,
+                      value: item.$1.name,
                       child: Row(
                         children: [
                           Icon(item.$2, size: 20),
@@ -8406,7 +8904,63 @@ class _CanvasEditorState extends State<CanvasEditor> {
                         ],
                       ),
                     ),
+                  const PopupMenuDivider(),
+                  const PopupMenuItem(
+                    value: 'class',
+                    child: Text('New UML class…'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'relationship',
+                    child: Text('Connect UML classes…'),
+                  ),
+                  if (_selection.length == 1 &&
+                      (isUmlClass(_scene[_selection.single]!) ||
+                          _scene[_selection.single]!.data['umlRelationship']
+                              is String))
+                    const PopupMenuItem(
+                      value: 'edit',
+                      child: Text('Edit selected UML item…'),
+                    ),
+                  const PopupMenuDivider(),
+                  const PopupMenuItem(
+                    value: 'example',
+                    child: Text('Insert UML example'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'research',
+                    child: Text('Memory & research diagram…'),
+                  ),
+                  const PopupMenuDivider(),
+                  if (widget.onExportDiagramToNote != null)
+                    const PopupMenuItem(
+                      value: 'exportDiagram',
+                      child: Text('Export diagram to Markdown…'),
+                    ),
+                  const PopupMenuItem(
+                    value: 'copyDiagram',
+                    child: Text('Copy live diagram for Markdown'),
+                  ),
                 ],
+                onSelected: (action) {
+                  switch (action) {
+                    case 'class':
+                      _editUml();
+                    case 'relationship':
+                      _editUml(relationship: true);
+                    case 'edit':
+                      _editUml(element: _scene[_selection.single]);
+                    case 'example':
+                      _addUmlExample();
+                    case 'research':
+                      _addResearchDiagram();
+                    case 'exportDiagram':
+                      _exportUmlDiagram();
+                    case 'copyDiagram':
+                      _exportUmlDiagram(copy: true);
+                    default:
+                      _setTool(_Tool.values.byName(action));
+                  }
+                },
               ),
               IconButton(
                 key: const ValueKey('canvas-search-button'),
@@ -8482,6 +9036,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
                   const PopupMenuItem(
                     value: 'checklist',
                     child: Text('New checklist / tasklist'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'mathLab',
+                    child: Text('Math Lab · calculate & plot'),
                   ),
                   const PopupMenuItem(
                     value: 'formula',
@@ -8592,6 +9150,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                   if (action == 'checklist') {
                     _addChecklist();
                   }
+                  if (action == 'mathLab') _addMathLab();
                   if (action == 'formula') {
                     _addFormulaCard();
                   }
@@ -8648,7 +9207,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                         children: [
                           Icon(Icons.align_horizontal_left, size: 16),
                           SizedBox(width: 8),
-                          Text('Align Left'),
+                          Expanded(child: Text('Align Left')),
                         ],
                       ),
                     ),
@@ -8658,7 +9217,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                         children: [
                           Icon(Icons.align_horizontal_center, size: 16),
                           SizedBox(width: 8),
-                          Text('Horizontal Center'),
+                          Expanded(child: Text('Horizontal Center')),
                         ],
                       ),
                     ),
@@ -8668,7 +9227,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                         children: [
                           Icon(Icons.align_horizontal_right, size: 16),
                           SizedBox(width: 8),
-                          Text('Align Right'),
+                          Expanded(child: Text('Align Right')),
                         ],
                       ),
                     ),
@@ -8679,7 +9238,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                         children: [
                           Icon(Icons.align_vertical_top, size: 16),
                           SizedBox(width: 8),
-                          Text('Align Top'),
+                          Expanded(child: Text('Align Top')),
                         ],
                       ),
                     ),
@@ -8689,7 +9248,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                         children: [
                           Icon(Icons.align_vertical_center, size: 16),
                           SizedBox(width: 8),
-                          Text('Vertical Middle'),
+                          Expanded(child: Text('Vertical Middle')),
                         ],
                       ),
                     ),
@@ -8699,7 +9258,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                         children: [
                           Icon(Icons.align_vertical_bottom, size: 16),
                           SizedBox(width: 8),
-                          Text('Align Bottom'),
+                          Expanded(child: Text('Align Bottom')),
                         ],
                       ),
                     ),
@@ -8711,7 +9270,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                           children: [
                             Icon(Icons.horizontal_distribute, size: 16),
                             SizedBox(width: 8),
-                            Text('Distribute Horizontally'),
+                            Expanded(child: Text('Distribute Horizontally')),
                           ],
                         ),
                       ),
@@ -8721,7 +9280,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                           children: [
                             Icon(Icons.vertical_distribute, size: 16),
                             SizedBox(width: 8),
-                            Text('Distribute Vertically'),
+                            Expanded(child: Text('Distribute Vertically')),
                           ],
                         ),
                       ),
@@ -9855,6 +10414,7 @@ class CanvasCardPreviewTooltip extends StatelessWidget {
     required this.onExitTooltip,
     this.onCopyQuote,
     this.onOpenSource,
+    this.onOpenLinkedObject,
   });
 
   final CanvasElement element;
@@ -9868,6 +10428,7 @@ class CanvasCardPreviewTooltip extends StatelessWidget {
   final VoidCallback onExitTooltip;
   final Future<void> Function()? onCopyQuote;
   final VoidCallback? onOpenSource;
+  final ValueChanged<String>? onOpenLinkedObject;
 
   @override
   Widget build(BuildContext context) {
@@ -9932,6 +10493,8 @@ class CanvasCardPreviewTooltip extends StatelessWidget {
     final isImage = object?.isImage ?? (element.data['contentRef'] != null);
     final viewConfig = element.viewConfig;
     final isDynamicView = viewConfig != null;
+    final savedView =
+        objects[(viewConfig?['view'] ?? viewConfig?['viewId'])?.toString()];
 
     final title = (isPdfQuote && rawSourceTitle.isNotEmpty)
         ? rawSourceTitle
@@ -10362,6 +10925,33 @@ class CanvasCardPreviewTooltip extends StatelessWidget {
                           // Dynamic view live preview (CAN-09)
                           if (isDynamicView) ...[
                             () {
+                              if (savedView?.viewMemberIds != null ||
+                                  savedView?.viewQueryIssue != null) {
+                                final ids =
+                                    savedView?.viewMemberIds ??
+                                    const <String>[];
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      savedView?.viewQueryIssue ??
+                                          '${ids.length} matching objects',
+                                    ),
+                                    for (final id in ids.take(5))
+                                      if (objects[id] != null)
+                                        TextButton(
+                                          onPressed: onOpenLinkedObject == null
+                                              ? null
+                                              : () => onOpenLinkedObject!(id),
+                                          child: Text(
+                                            objects[id]!.title,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                  ],
+                                );
+                              }
                               final vType = viewConfig['type'] ?? 'tasks';
                               if (vType == 'tasks') {
                                 var tasks = objects.values

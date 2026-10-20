@@ -8,6 +8,8 @@ import 'package:flutter/foundation.dart';
 import '../../canvas/geometry.dart';
 import '../../canvas/scene.dart';
 import '../../canvas/connectors.dart';
+import '../../canvas/uml.dart';
+import '../../app/orbit_theme.dart';
 import '../../canvas/groups.dart';
 import '../../domain/object_reference.dart';
 import '../../domain/document_anchors.dart';
@@ -200,6 +202,7 @@ class OrbitCanvasPainter extends CustomPainter {
     this.fontFamily = 'Segoe UI',
     this.searchMatchIds = const {},
     this.activeSearchMatchId,
+    this.forceUmlDetails = false,
   }) : sceneRevision = scene.revision;
   final CanvasTextCache textCache;
   final int sceneRevision;
@@ -222,6 +225,7 @@ class OrbitCanvasPainter extends CustomPainter {
   final String fontFamily;
   final Set<String> searchMatchIds;
   final String? activeSearchMatchId;
+  final bool forceUmlDetails;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1017,6 +1021,116 @@ class OrbitCanvasPainter extends CustomPainter {
       ..strokeWidth = element.strokeWidth
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
+    if (isUmlClass(element)) {
+      final model = UmlClass(element);
+      final palette = UmlPalette(
+        colors.surface.toARGB32(),
+        foreground: colors.onSurface.toARGB32(),
+      );
+      final outline = Paint()
+        ..color = Color(palette.border)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = element.strokeWidth;
+      final shape = RRect.fromRectAndRadius(
+        bounds,
+        const Radius.circular(OrbitRadius.control),
+      );
+      canvas.save();
+      canvas.clipRRect(shape);
+      canvas.drawRect(bounds, Paint()..color = Color(palette.body));
+      final headerBottom = bounds.top + model.headerHeight;
+      final membersBottom = headerBottom + model.attributeHeight;
+      canvas.drawRect(
+        Rect.fromLTRB(bounds.left, bounds.top, bounds.right, headerBottom),
+        Paint()..color = Color(palette.header),
+      );
+      for (final y in [headerBottom, membersBottom]) {
+        canvas.drawLine(
+          Offset(bounds.left, y),
+          Offset(bounds.right, y),
+          Paint()
+            ..color = Color(palette.divider)
+            ..strokeWidth = 1,
+        );
+      }
+      canvas.drawLine(
+        Offset(bounds.left + 14, headerBottom - 1),
+        Offset(bounds.left + 44, headerBottom - 1),
+        Paint()
+          ..color = accent.withValues(alpha: .75)
+          ..strokeWidth = 2,
+      );
+      if (camera.zoom > .25 || forceUmlDetails) {
+        void centered(String value, double top, {bool title = false}) {
+          final tp = textCache.layout(
+            value,
+            TextStyle(
+              color: colors.onSurface,
+              fontFamily: fontFamily,
+              fontSize: title ? 16 : 12,
+              fontWeight: title ? FontWeight.w600 : FontWeight.w400,
+              fontStyle: title && model.abstractClass
+                  ? FontStyle.italic
+                  : FontStyle.normal,
+            ),
+            math.max(1, bounds.width - 24),
+            1,
+          );
+          tp.paint(canvas, Offset(bounds.center.dx - tp.width / 2, top));
+        }
+
+        if (model.stereotype.isNotEmpty) {
+          centered('«${model.stereotype}»', bounds.top + 10);
+        }
+        centered(
+          model.name,
+          bounds.top + (model.stereotype.isEmpty ? 14 : 36),
+          title: true,
+        );
+        void members(List<String> lines, double top, double bottom) {
+          canvas.save();
+          canvas.clipRect(
+            Rect.fromLTRB(
+              bounds.left,
+              top,
+              bounds.right,
+              math.max(top, bottom),
+            ),
+          );
+          for (var i = 0; i < lines.length; i++) {
+            if (top + 10 + i * 22 >= bottom) break;
+            _text(
+              canvas,
+              lines[i],
+              Rect.fromLTWH(
+                bounds.left + 14,
+                top + 10 + i * 22,
+                math.max(0, bounds.width - 28),
+                22,
+              ),
+              color: colors.onSurface,
+              size: 15,
+              maxLines: 1,
+            );
+          }
+          canvas.restore();
+        }
+
+        members(
+          model.attributes,
+          headerBottom,
+          math.min(membersBottom, bounds.bottom),
+        );
+        members(
+          model.operations,
+          membersBottom,
+          math.max(membersBottom, bounds.bottom),
+        );
+      }
+      canvas.restore();
+      canvas.drawRRect(shape, outline);
+      return;
+    }
     switch (element.type) {
       case 'column':
         canvas.drawRRect(
@@ -1407,17 +1521,29 @@ class OrbitCanvasPainter extends CustomPainter {
 
         // Start marker
         if (startMarker != ConnectorMarker.none) {
-          final firstTarget = endpoints.controlPoints.isNotEmpty
-              ? Offset(
-                  endpoints.controlPoints.first.x,
-                  endpoints.controlPoints.first.y,
-                )
-              : end;
+          final target = endpoints.tangentTarget(atStart: true);
+          final firstTarget = Offset(target.x, target.y);
           final startAngle = math.atan2(
             start.dy - firstTarget.dy,
             start.dx - firstTarget.dx,
           );
-          if (startMarker == ConnectorMarker.arrow) {
+          final polygon = umlMarkerPolygon(
+            startMarker,
+            endpoints.start,
+            target,
+          );
+          if (polygon.isNotEmpty) {
+            final markerPath = Path()
+              ..addPolygon(polygon.map((p) => Offset(p.x, p.y)).toList(), true);
+            canvas.drawPath(
+              markerPath,
+              Paint()
+                ..color = startMarker == ConnectorMarker.filledDiamond
+                    ? stroke.color
+                    : colors.surface,
+            );
+            canvas.drawPath(markerPath, stroke);
+          } else if (startMarker == ConnectorMarker.arrow) {
             final head = math.min(16.0, (firstTarget - start).distance / 3);
             canvas.drawPath(
               Path()
@@ -1461,17 +1587,25 @@ class OrbitCanvasPainter extends CustomPainter {
 
         // End marker
         if (endMarker != ConnectorMarker.none) {
-          final lastTarget = endpoints.controlPoints.isNotEmpty
-              ? Offset(
-                  endpoints.controlPoints.last.x,
-                  endpoints.controlPoints.last.y,
-                )
-              : start;
+          final target = endpoints.tangentTarget(atStart: false);
+          final lastTarget = Offset(target.x, target.y);
           final endAngle = math.atan2(
             end.dy - lastTarget.dy,
             end.dx - lastTarget.dx,
           );
-          if (endMarker == ConnectorMarker.arrow) {
+          final polygon = umlMarkerPolygon(endMarker, endpoints.end, target);
+          if (polygon.isNotEmpty) {
+            final markerPath = Path()
+              ..addPolygon(polygon.map((p) => Offset(p.x, p.y)).toList(), true);
+            canvas.drawPath(
+              markerPath,
+              Paint()
+                ..color = endMarker == ConnectorMarker.filledDiamond
+                    ? stroke.color
+                    : colors.surface,
+            );
+            canvas.drawPath(markerPath, stroke);
+          } else if (endMarker == ConnectorMarker.arrow) {
             final head = math.min(16.0, (end - lastTarget).distance / 3);
             canvas.drawPath(
               Path()
@@ -1511,6 +1645,19 @@ class OrbitCanvasPainter extends CustomPainter {
               ..close();
             canvas.drawPath(dPath, Paint()..color = stroke.color);
           }
+        }
+
+        for (final label in connectorEndLabels(element, endpoints)) {
+          final rect = _rect(label.bounds);
+          canvas.drawRect(rect, Paint()..color = colors.surface);
+          _text(
+            canvas,
+            label.text,
+            rect.deflate(2),
+            color: colors.onSurface,
+            size: 12,
+            maxLines: 2,
+          );
         }
 
         // Label pill
@@ -3074,6 +3221,7 @@ class OrbitCanvasPainter extends CustomPainter {
       camera.x != oldDelegate.camera.x ||
       camera.y != oldDelegate.camera.y ||
       camera.zoom != oldDelegate.camera.zoom ||
+      forceUmlDetails != oldDelegate.forceUmlDetails ||
       fontFamily != oldDelegate.fontFamily ||
       !setEquals(selection, oldDelegate.selection) ||
       !mapEquals(objects, oldDelegate.objects) ||

@@ -1,5 +1,12 @@
 # Development setup and validation
 
+## Configured Windows release
+
+Use `./tool/build_windows.ps1 -Flutter 'C:/path/to/flutter/bin/flutter.bat'` to retain
+ignored local Google registration when rebuilding. It validates the platform
+configuration before compilation; `-LocalOnly` explicitly omits it. See
+[Google activation](google-drive-activation.md) for current scope and limits.
+
 ## Post-reset Windows toolchain — 2026-09-16
 
 The active Desktop checkout uses pinned Flutter 3.44.8 / Dart 3.12.2 restored to
@@ -69,6 +76,25 @@ setup. iOS must be compiled/tested on macOS with Xcode; Windows cannot validate 
 Commit `pubspec.lock`. Keep `.dart_tool`, build outputs, SDK/package caches,
 Android `local.properties`, signing files, credentials and personal workspaces out
 of Git. Do not regenerate runners over manual changes just to add a package.
+
+## Windows preview setup packaging — 2026-10-20
+
+The separately dispatched `windows-preview.yml` workflow builds the configured
+desktop app and standalone server, then uses the runner's existing Inno Setup 6
+compiler with `tool/package_windows.ps1`. Set the distributor desktop client ID
+repository variable and native-client secret using the existing encrypted secret
+boundary. No user account tokens or local Vaults enter source or release assets.
+The output is `OrbitNote-Windows-x64-Setup.exe`, plus checksums and a runtime
+manifest tied to the workflow's source commit. Setup installs per user under
+LocalAppData/Programs, adds a Start-menu shortcut and does not launch the app,
+register autostart or remove user Vaults. It is unsigned. The complete runtime
+folder remains directly runnable for local builds.
+
+For a local compiler already installed, run:
+
+```powershell
+./tool/package_windows.ps1 -Compiler 'C:/path/to/ISCC.exe' -SourceCommit (git rev-parse HEAD)
+```
 
 ## Android release signing (post-1.0 track)
 

@@ -5,6 +5,47 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../../../domain/document_publication.dart';
+import '../../../domain/publication_layout.dart';
+import '../../../domain/technical_article.dart';
+
+PublicationBlockLayout publicationBlockLayout(md.Element node) =>
+    PublicationBlockLayout.fromJson({
+      'width': int.tryParse(node.attributes['orbit-width'] ?? '') ?? 100,
+      'alignment': node.attributes['orbit-alignment'] ?? 'left',
+      'caption': node.attributes['orbit-caption'] ?? '',
+      'pageBreakBefore': node.attributes['orbit-pageBreakBefore'] == 'true',
+      'repeatHeader': node.attributes['orbit-repeatHeader'] != 'false',
+    });
+
+class _PublicationAnchor extends pw.Anchor {
+  _PublicationAnchor({
+    required super.name,
+    required super.child,
+    required this.pages,
+  });
+  final Map<String, int> pages;
+  @override
+  void paint(pw.Context context) {
+    pages[name] = context.pageNumber;
+    super.paint(context);
+  }
+}
+
+double _imageHeight(Uint8List bytes, double width, double maxHeight) {
+  final png = bytes.length >= 24 && bytes[0] == 137
+      ? ByteData.sublistView(bytes)
+      : null;
+  final ratio = (png?.getUint32(20) ?? 250) / (png?.getUint32(16) ?? 400);
+  return (width * ratio).clamp(1, maxHeight).toDouble();
+}
+
+double _imageWidth(Uint8List bytes, double width, double maxHeight) {
+  final png = bytes.length >= 24 && bytes[0] == 137
+      ? ByteData.sublistView(bytes)
+      : null;
+  final ratio = (png?.getUint32(20) ?? 250) / (png?.getUint32(16) ?? 400);
+  return width.clamp(1, maxHeight / ratio).toDouble();
+}
 
 String publicationEscape(String text) => const HtmlEscape().convert(text);
 String publicationFileName(String title) {
@@ -53,10 +94,15 @@ class PublicationExport {
     warn(
       'HTML print headers and page numbers depend on browser print settings.',
     );
+    warn(
+      'PDF page positions are exact for this preview. Word font substitution and browser pagination can change page positions; refresh the Word contents field after opening.',
+    );
   }
   final PublicationDocument document;
   final Map<String, Uint8List> images, equations;
   final List<String> warnings;
+  final headingPages = <String, int>{};
+  int pageCount = 0;
   final _footnoteIds = <String, int>{};
   int footnoteNumber(String id) =>
       _footnoteIds.putIfAbsent(id, () => _footnoteIds.length + 1);
@@ -79,11 +125,21 @@ class PublicationExport {
     if (!warnings.contains(text)) warnings.add(text);
   }
 
-  String html() {
+  String html({bool articleFragment = false}) {
     final style = document.style;
-    String node(md.Node n) {
+    String node(md.Node n, {bool layout = true}) {
       if (n is md.Text) return publicationEscape(n.text);
       final e = n as md.Element;
+      if (layout && publicationLayoutTarget(e)) {
+        final options = publicationBlockLayout(e);
+        final margin = options.alignment == 'center'
+            ? 'auto'
+            : options.alignment == 'right'
+            ? '0 0 0 auto'
+            : '0';
+        final tag = e.tag == 'table' ? 'div' : 'figure';
+        return '<$tag class="print-layout ${options.repeatHeader ? '' : 'no-repeat'}" style="width:${options.width}%;margin:$margin;${options.pageBreakBefore ? 'break-before:page;' : ''}">${node(e, layout: false)}${options.caption.isEmpty ? '' : '<${tag == 'figure' ? 'figcaption' : 'p'} class="layout-caption">${publicationEscape(options.caption)}</${tag == 'figure' ? 'figcaption' : 'p'}>'}</$tag>';
+      }
       if (e.tag == 'pagebreak') return '<div class="pagebreak"></div>';
       if (e.tag == 'input') {
         return e.attributes.containsKey('checked') ? '☑ ' : '☐ ';
@@ -94,6 +150,9 @@ class PublicationExport {
       }
       if (e.tag == 'img' || e.tag.startsWith('math')) {
         final src = e.tag == 'img' ? e.attributes['src']! : e.textContent;
+        if (articleFragment && e.tag == 'img' && ArticleMetadata.webUrl(src)) {
+          return '<img src="${publicationEscape(src)}" alt="${publicationEscape(e.attributes['alt'] ?? '')}">';
+        }
         final bytes = e.tag == 'img' ? images[src] : equations[src];
         if (bytes == null) {
           return '<span class="fallback">${publicationEscape(e.tag == 'img' ? '[Image: ${e.attributes['alt'] ?? src}]' : src)}</span>';
@@ -138,30 +197,88 @@ class PublicationExport {
       if (!tags.contains(e.tag)) return content;
       final id = e.attributes['id'];
       final start = e.tag == 'ol' ? e.attributes['start'] : null;
-      return '<${e.tag}${id == null ? '' : ' id="$id"'}${start == null ? '' : ' start="${publicationEscape(start)}"'}>$content</${e.tag}>';
+      final language = e.tag == 'code' ? e.attributes['class'] : null;
+      final alignment = e.tag == 'th' || e.tag == 'td'
+          ? e.attributes['align']
+          : null;
+      final attributes =
+          '${id == null ? '' : ' id="${publicationEscape(id)}"'}'
+          '${start == null ? '' : ' start="${publicationEscape(start)}"'}'
+          '${language != null && RegExp(r'^language-[A-Za-z0-9_+.-]{1,40}$').hasMatch(language) ? ' class="${publicationEscape(language)}"' : ''}'
+          '${const ['left', 'right', 'center'].contains(alignment) ? ' style="text-align:$alignment"' : ''}';
+      if (e.tag == 'hr' || e.tag == 'br') return '<${e.tag}$attributes>';
+      return '<${e.tag}$attributes>$content</${e.tag}>';
     }
 
-    final body = document.nodes.map(node).join('\n');
+    final article = document.article;
+    final title = article?.text('title').isNotEmpty == true
+        ? article!.text('title')
+        : document.title;
+    final leading = document.nodes.firstOrNull;
+    final leadingTitle =
+        leading is md.Element &&
+        leading.tag == 'h1' &&
+        (leading.textContent == document.title ||
+            articleFragment && leading.textContent == title);
+    final titleId = leadingTitle ? leading.attributes['id'] : null;
+    final titleAnchor = titleId == null
+        ? ''
+        : ' id="${publicationEscape(titleId)}"';
+    final body = document.nodes.indexed
+        .where((entry) => !(entry.$1 == 0 && leadingTitle))
+        .map((entry) => node(entry.$2))
+        .join('\n');
     final footnotes = document.footnotes.entries
         .map(
           (e) =>
               '<li id="fn-${footnoteNumber(e.key)}" value="${footnoteNumber(e.key)}">${publicationEscape(e.value)}</li>',
         )
         .join();
-    return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+    final endnotes = footnotes.isEmpty
+        ? ''
+        : '<section><h2>Footnotes</h2><ol>$footnotes</ol></section>';
+    final byline = article == null
+        ? ''
+        : '<p class="article-byline">${publicationEscape(article.text('author'))}'
+              '${article.text('published').isEmpty ? '' : ' · Published <time datetime="${article.text('published')}">${article.text('published')}</time>'}'
+              '${article.text('modified').isEmpty ? '' : ' · Updated <time datetime="${article.text('modified')}">${article.text('modified')}</time>'}</p>';
+    if (articleFragment) {
+      return '<article$titleAnchor>$byline$body$endnotes</article>';
+    }
+    final metadata = article == null
+        ? ''
+        : [
+            if (article.text('description').isNotEmpty)
+              '<meta name="description" content="${publicationEscape(article.text('description'))}">',
+            if (article.text('canonicalUrl').isNotEmpty)
+              '<link rel="canonical" href="${publicationEscape(article.text('canonicalUrl'))}">',
+            if (!article.indexable)
+              '<meta name="robots" content="noindex,nofollow">',
+            '<meta property="og:type" content="article">',
+            '<meta property="og:title" content="${publicationEscape(title)}">',
+            if (article.text('description').isNotEmpty)
+              '<meta property="og:description" content="${publicationEscape(article.text('description'))}">',
+            if (article.text('imageUrl').isNotEmpty)
+              '<meta property="og:image" content="${publicationEscape(article.text('imageUrl'))}">',
+            '<script type="application/ld+json">${article.schemaJson(document.title)}</script>',
+          ].join();
+    return '<!doctype html><html lang="${publicationEscape(article?.text('language').isNotEmpty == true ? article!.text('language') : 'en')}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
         '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; style-src \'unsafe-inline\'; base-uri \'none\'; form-action \'none\'">'
-        '<title>${publicationEscape(document.title)}</title><style>'
+        '<title>${publicationEscape(title)}</title>$metadata<style>'
         '@page{size:${style.letter ? 'Letter' : 'A4'};margin:${style.margin}pt}'
         'body{max-width:${style.width - 2 * style.margin}pt;margin:40px auto;padding:20px;background:white;color:#202124;font:${style.fontSize}pt ${style.serif ? 'Georgia,serif' : 'Arial,sans-serif'};line-height:1.5}'
-        'h1,h2,h3,h4,h5,h6{break-after:avoid}p{orphans:3;widows:3}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:6px}pre{white-space:pre-wrap;background:#f3f3f3;padding:12px;overflow-wrap:anywhere}'
-        '.figure{max-width:100%;max-height:500pt;object-fit:contain}.equation{max-width:100%;max-height:48pt;vertical-align:middle}.pagebreak{break-before:page}.title-page{break-after:page;padding-top:30%}blockquote{border-left:3px solid #bbb;padding-left:14px}a{color:#35538c}.fallback{color:#744}header{color:#666} @media print{body{margin:0;padding:0}}'
+        'h1,h2,h3,h4,h5,h6{break-after:avoid}p{orphans:3;widows:3}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:6px;overflow-wrap:anywhere}pre{white-space:pre-wrap;background:#f3f3f3;padding:12px;overflow-wrap:anywhere}'
+        '.print-layout .figure{width:100%}.figure{max-width:100%;max-height:${style.height - 2 * style.margin - 100}pt;object-fit:contain}.equation{max-width:100%;max-height:48pt;vertical-align:middle}.pagebreak{break-before:page}.title-page{break-after:page;padding-top:30%}blockquote{border-left:3px solid #bbb;padding-left:14px}a{color:#35538c}.fallback{color:#744}header{color:#666}.layout-caption{font-size:90%;color:#555}figure{break-inside:avoid}thead{display:table-header-group}.no-repeat thead{display:table-row-group} @media print{body{margin:0;padding:0}}'
         '</style></head><body><header>${publicationEscape(style.header)}</header>'
-        '<section class="${style.titlePage ? 'title-page' : ''}"><h1>${publicationEscape(document.title)}</h1><p>${publicationEscape(style.author)}</p></section>'
-        '${style.contents && document.headings.isNotEmpty ? '<nav aria-label="Contents"><h2>Contents</h2><ul>${document.headings.map((h) => '<li><a href="#${h.id}">${publicationEscape(h.text)}</a></li>').join()}</ul></nav>' : ''}'
-        '$body${footnotes.isEmpty ? '' : '<section><h2>Footnotes</h2><ol>$footnotes</ol></section>'}</body></html>';
+        '<section class="${style.titlePage ? 'title-page' : ''}"><h1$titleAnchor>${publicationEscape(document.title)}</h1>${article == null ? '<p>${publicationEscape(style.author)}</p>' : byline}</section>'
+        '${style.contents && document.headings.isNotEmpty ? '<nav aria-label="Contents" style="break-after:page"><h2>Contents</h2><ul>${document.headings.map((h) => '<li><a href="#${h.id}">${publicationEscape(h.text)}</a>${headingPages[h.id] == null ? '' : ' <small>PDF page ${headingPages[h.id]}</small>'}</li>').join()}</ul></nav>' : ''}'
+        '$body$endnotes</body></html>';
   }
 
-  Future<Uint8List> pdf() async {
+  Future<Uint8List> pdf() => _pdf(false);
+  Future<Uint8List> _pdf(bool finalPass) async {
+    final tocPages = Map<String, int>.of(headingPages);
+    if (!finalPass) headingPages.clear();
     final s = document.style;
     final family = s.serif ? 'CrimsonText' : 'Lato';
     final base = pw.Font.ttf(
@@ -284,7 +401,8 @@ class PublicationExport {
         }
         if (RegExp(r'^h[1-6]$').hasMatch(e.tag)) {
           result.add(
-            pw.Anchor(
+            _PublicationAnchor(
+              pages: headingPages,
               name: e.attributes['id']!,
               child: pw.Header(
                 level: int.parse(e.tag[1]) - 1,
@@ -296,6 +414,8 @@ class PublicationExport {
           continue;
         }
         if (e.tag == 'table') {
+          final options = publicationBlockLayout(e);
+          if (options.pageBreakBefore) result.add(pw.NewPage());
           final rows = <pw.TableRow>[];
           void collect(md.Node child) {
             if (child is md.Element) {
@@ -303,7 +423,9 @@ class PublicationExport {
                 final cells = child.children ?? [];
                 rows.add(
                   pw.TableRow(
-                    repeat: cells.any((c) => c is md.Element && c.tag == 'th'),
+                    repeat:
+                        options.repeatHeader &&
+                        cells.any((c) => c is md.Element && c.tag == 'th'),
                     children: cells
                         .map(
                           (c) => pw.Padding(
@@ -323,10 +445,101 @@ class PublicationExport {
           }
 
           collect(e);
+          final spare = (s.width - 2 * s.margin) * (100 - options.width) / 100;
           result.add(
-            pw.Table(
-              border: pw.TableBorder.all(color: PdfColors.grey400),
-              children: rows,
+            pw.Padding(
+              padding: pw.EdgeInsets.only(
+                left: options.alignment == 'right'
+                    ? spare
+                    : options.alignment == 'center'
+                    ? spare / 2
+                    : 0,
+                right: options.alignment == 'left'
+                    ? spare
+                    : options.alignment == 'center'
+                    ? spare / 2
+                    : 0,
+              ),
+              child: pw.Table(
+                border: pw.TableBorder.all(color: PdfColors.grey400),
+                children: rows,
+              ),
+            ),
+          );
+          if (options.caption.isNotEmpty) {
+            result.add(
+              pw.Padding(
+                padding: pw.EdgeInsets.only(
+                  left: options.alignment == 'right'
+                      ? spare
+                      : options.alignment == 'center'
+                      ? spare / 2
+                      : 0,
+                  right: options.alignment == 'left'
+                      ? spare
+                      : options.alignment == 'center'
+                      ? spare / 2
+                      : 0,
+                ),
+                child: pw.Paragraph(
+                  text: options.caption,
+                  style: pw.TextStyle(fontSize: s.fontSize - 1),
+                ),
+              ),
+            );
+          }
+          continue;
+        }
+        if (publicationLayoutTarget(e)) {
+          final options = publicationBlockLayout(e);
+          if (options.pageBreakBefore) result.add(pw.NewPage());
+          final image = e.children!.single as md.Element;
+          final bytes = images[image.attributes['src']];
+          final desiredWidth = (s.width - 2 * s.margin) * options.width / 100;
+          final fittedWidth = bytes == null
+              ? desiredWidth
+              : _imageWidth(bytes, desiredWidth, s.height - 2 * s.margin - 100);
+          final alignment = options.alignment == 'center'
+              ? pw.Alignment.center
+              : options.alignment == 'right'
+              ? pw.Alignment.centerRight
+              : pw.Alignment.centerLeft;
+          result.add(
+            pw.Align(
+              alignment: alignment,
+              child: pw.SizedBox(
+                width: fittedWidth,
+                child: pw.Column(
+                  mainAxisSize: pw.MainAxisSize.min,
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    if (bytes == null)
+                      pw.Paragraph(
+                        text:
+                            '[Image: ${image.attributes['alt'] ?? image.attributes['src']}]',
+                      )
+                    else
+                      pw.Image(
+                        pw.MemoryImage(bytes),
+                        width: fittedWidth,
+                        height: _imageHeight(
+                          bytes,
+                          fittedWidth,
+                          s.height - 2 * s.margin - 100,
+                        ),
+                        fit: pw.BoxFit.contain,
+                      ),
+                    if (options.caption.isNotEmpty)
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.only(top: 5),
+                        child: pw.Text(
+                          options.caption,
+                          style: pw.TextStyle(fontSize: s.fontSize - 1),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           );
           continue;
@@ -462,7 +675,19 @@ class PublicationExport {
                 ),
                 child: pw.Link(
                   destination: heading.id,
-                  child: pw.Text(heading.text),
+                  child: pw.Row(
+                    children: [
+                      pw.Expanded(child: pw.Text(heading.text)),
+                      pw.SizedBox(width: 8),
+                      pw.SizedBox(
+                        width: 28,
+                        child: pw.Text(
+                          '${tocPages[heading.id] ?? ''}',
+                          textAlign: pw.TextAlign.right,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             pw.NewPage(),
@@ -481,7 +706,11 @@ class PublicationExport {
         ],
       ),
     );
-    return pdf.save();
+    final bytes = await pdf.save();
+    pageCount = pdf.document.pdfPageList.pages.length;
+    return !finalPass && s.contents && document.headings.isNotEmpty
+        ? _pdf(true)
+        : bytes;
   }
 
   Uint8List docx() => _WordExport(this).build();
@@ -500,9 +729,21 @@ class _WordExport {
       archive.addFile(ArchiveFile.string(path, value));
   String paragraph(String value, {String properties = ''}) =>
       '<w:p><w:pPr>$properties</w:pPr>$value</w:p>';
+  String captionIndent(PublicationBlockLayout options, {double? width}) {
+    final available =
+        export.document.style.width - 2 * export.document.style.margin;
+    final spare = available - (width ?? available * options.width / 100);
+    final left = options.alignment == 'right'
+        ? spare
+        : options.alignment == 'center'
+        ? spare / 2
+        : 0.0;
+    return '<w:ind w:left="${(left * 20).round()}" w:right="${((spare - left) * 20).round()}"/><w:jc w:val="left"/>';
+  }
+
   String run(String text, {String properties = ''}) =>
       '<w:r><w:rPr>$properties</w:rPr>${text.split(RegExp(r'\r\n|\n|\r')).map((line) => '<w:t xml:space="preserve">${x(line)}</w:t>').join('<w:br/>')}</w:r>';
-  String drawing(Uint8List bytes, String alt, bool math) {
+  String drawing(Uint8List bytes, String alt, bool math, {int percent = 100}) {
     final n = ++imageNumber;
     final ext = bytes[0] == 0xff ? 'jpg' : 'png';
     archive.addFile(ArchiveFile.bytes('word/media/image$n.$ext', bytes));
@@ -520,12 +761,12 @@ class _WordExport {
             .round();
     var width = math
         ? ((pxWidth / 2) * 9144).round().clamp(1, maxWidth)
-        : maxWidth;
+        : (maxWidth * percent / 100).round();
     var height = (width * pxHeight / pxWidth).round();
     final maxHeight =
         ((export.document.style.height -
                     2 * export.document.style.margin -
-                    40) *
+                    100) *
                 12700)
             .round();
     if (height > maxHeight) {
@@ -585,12 +826,13 @@ class _WordExport {
       return paragraph('<w:r><w:br w:type="page"/></w:r>');
     }
     if (e.tag == 'table') {
+      final options = publicationBlockLayout(e);
       final rows = <String>[];
       void collect(md.Node node) {
         if (node is! md.Element) return;
         if (node.tag == 'tr') {
           rows.add(
-            '<w:tr>${(node.children ?? []).map((cell) => '<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr>${paragraph(inline(cell))}</w:tc>').join()}</w:tr>',
+            '<w:tr><w:trPr>${options.repeatHeader && (node.children ?? []).any((cell) => cell is md.Element && cell.tag == 'th') ? '<w:tblHeader/>' : ''}</w:trPr>${(node.children ?? []).map((cell) => '<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr>${paragraph(inline(cell))}</w:tc>').join()}</w:tr>',
           );
         } else {
           for (final child in node.children ?? []) {
@@ -600,7 +842,21 @@ class _WordExport {
       }
 
       collect(e);
-      return '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders>${['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map((edge) => '<w:$edge w:val="single" w:sz="4" w:color="CCCCCC"/>').join()}</w:tblBorders></w:tblPr>${rows.join()}</w:tbl>';
+      return '${options.pageBreakBefore ? paragraph('<w:r><w:br w:type="page"/></w:r>') : ''}<w:tbl><w:tblPr><w:tblW w:w="${options.width * 50}" w:type="pct"/><w:jc w:val="${options.alignment}"/><w:tblBorders>${['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map((edge) => '<w:$edge w:val="single" w:sz="4" w:color="CCCCCC"/>').join()}</w:tblBorders></w:tblPr>${rows.join()}</w:tbl>${options.caption.isEmpty ? '' : paragraph(run(options.caption), properties: captionIndent(options))}';
+    }
+    if (publicationLayoutTarget(e)) {
+      final options = publicationBlockLayout(e);
+      final image = e.children!.single as md.Element;
+      final bytes = export.images[image.attributes['src']];
+      final s = export.document.style;
+      final width = bytes == null
+          ? null
+          : _imageWidth(
+              bytes,
+              (s.width - 2 * s.margin) * options.width / 100,
+              s.height - 2 * s.margin - 100,
+            );
+      return '${options.pageBreakBefore ? paragraph('<w:r><w:br w:type="page"/></w:r>') : ''}${paragraph(bytes == null ? run('[Image: ${image.attributes['alt'] ?? image.attributes['src']}]') : drawing(bytes, image.attributes['alt'] ?? '', false, percent: options.width), properties: '<w:jc w:val="${options.alignment}"/>${options.caption.isEmpty ? '' : '<w:keepNext/>'}')}${options.caption.isEmpty ? '' : paragraph(run(options.caption), properties: captionIndent(options, width: width))}';
     }
     if (e.tag == 'ul' || e.tag == 'ol') {
       var i = int.tryParse(e.attributes['start'] ?? '') ?? 1;
@@ -648,12 +904,13 @@ class _WordExport {
           '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> TOC \\o "1-6" \\h \\z \\u </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r></w:p>';
       for (final h in d.headings) {
         body += paragraph(
-          '<w:hyperlink w:anchor="${h.id.replaceAll('-', '_')}">${run(h.text)}</w:hyperlink>',
+          '<w:hyperlink w:anchor="${h.id.replaceAll('-', '_')}">${run(h.text)}</w:hyperlink>${run('  ')}<w:fldSimple w:instr="PAGEREF ${h.id.replaceAll('-', '_')} \\h">${run('${export.headingPages[h.id] ?? ''}')}</w:fldSimple>',
         );
       }
     }
     if (s.contents && d.headings.isNotEmpty) {
       body += '<w:p><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>';
+      body += paragraph('<w:r><w:br w:type="page"/></w:r>');
     }
     body += d.nodes.map(block).join();
     final footnotes = d.footnotes.entries

@@ -116,6 +116,7 @@ extension WorkspaceCalendarPlanning on WorkspaceController {
     required String body,
     required String kind,
     required String course,
+    String? courseId,
     required Map<String, dynamic> dates,
     int estimateMinutes = 60,
     List<String> resources = const [],
@@ -160,10 +161,31 @@ extension WorkspaceCalendarPlanning on WorkspaceController {
           );
         }
       }
+      final courseRecord = courseId == null ? null : find(courseId);
+      if (courseId != null &&
+          (courseRecord == null ||
+              courseRecord.isDeleted ||
+              courseRecord.properties['isCourseOverview'] != true ||
+              courseRecord.isReadOnly ||
+              courseRecord.properties['course'] != course.trim())) {
+        throw const FormatException(
+          'Course changed. Reopen planning from its course hub.',
+        );
+      }
       final props = <String, dynamic>{
         ...?original?.properties,
         ...dates,
         'course': course.trim(),
+        if (courseRecord != null) ...{
+          'courseId': courseRecord.id,
+          'folder': courseRecord.properties['folder'],
+          if (original == null) 'project': '',
+          if (original == null) 'context': '',
+        },
+        if (courseRecord == null &&
+            original != null &&
+            course.trim() != original.properties['course'])
+          'courseId': '',
         'calendarPlan': plan,
         if (kind == 'assignment') 'priority': priority,
         if (original == null && kind == 'assignment') 'completed': false,

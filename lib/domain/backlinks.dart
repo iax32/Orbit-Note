@@ -5,6 +5,7 @@ import 'object_reference.dart';
 import 'study_card.dart';
 import 'calendar_planning.dart';
 import 'research_workspace.dart';
+import 'project_context.dart';
 
 /// Connection type for an inbound link.
 enum LinkedMentionType {
@@ -16,6 +17,7 @@ enum LinkedMentionType {
   studyReference,
   planningResource,
   researchRelation,
+  objectReference,
 }
 
 /// A rich inbound reference to a target object.
@@ -275,6 +277,21 @@ List<LinkedMention> findLinkedMentions({
       );
     }
 
+    for (final link in ProjectConnection.read(
+      o.properties['orbitConnections'],
+    ).where((r) => r.target.id == targetId)) {
+      results.add(
+        LinkedMention(
+          source: o,
+          targetId: targetId,
+          targetTitle: targetTitle,
+          snippet: '${link.kind}: ${link.note}',
+          type: LinkedMentionType.researchRelation,
+          label: link.kind,
+          targetLocation: link.target,
+        ),
+      );
+    }
     // 5. Check PDF note reference
     if (o.properties['pdfSource'] is Map &&
         (o.properties['pdfSource'] as Map)['objectId'] == targetId) {

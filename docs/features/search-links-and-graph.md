@@ -132,3 +132,66 @@ implementation decisions to evaluate in their tasks.
 ## Incremental delivery (2026-09-10)
 
 Native FTS5 literal substring search and bounded large-graph layout are implemented subsets. See [ADR-0012](../adr/0012-fts5-derived-search.md) and the [current batch](../planning/audit-polish-batch.md); saved/typed relation graphs remain future work.
+
+## Explicit project connections — 2026-10-12
+
+Project workspace adds source-owned supports, implements, blocks and verified-by
+relationships with rationale, stable UUID target and optional existing precise
+fragment. Add/review/remove go through the normal save boundary and offer field-only
+undo that refuses to overwrite later connection changes. Source-version checks
+show changed or unavailable targets for review. Mark reviewed acknowledges current
+source bytes/metadata without claiming evidence is true. Connections participate
+in inbound backlinks/outbound inspection; existing wiki links remain authored text.
+The shared search projection honors selected project before result pagination,
+and changing project refreshes a mounted Search view. These relationships do not
+create automatic semantic Canvas connectors or dependency propagation.
+
+## Universal reference bridges — 2026-10-13
+
+Every open object has Connections and Use elsewhere controls. A shared picker
+searches titles, aliases, courses and folders across active objects, previews
+current content and retains the selected UUID even for equal titles. It supports
+keyboard navigation and paginated results after filtering. Choose a writable
+Markdown note to embed a live object card, or a supported Canvas to place the same
+source object. These commands reject stale targets, competing editor drafts,
+read-only sources and late selections after a Vault switch. Normal save/history
+remains authoritative; a failed write retains the dirty draft.
+
+Connections exposes precise incoming uses, outbound references, explanations for
+authored relationships and source-version review. Supported authored kinds also
+include references, part of, depends on and inspired by. Remove changes only the
+connection metadata; original objects remain. Existing field-only connection undo
+remains available. Saved views shows current supported query membership separately
+from authored references; it does not turn a matching query into a durable edge.
+Research collection entries participate through their explicit reference metadata.
+
+The shared derived reference index includes wiki mentions, live object/section
+blocks, canonical attachment paths, Canvas placements, course/project ownership,
+planning/gameplay resources, PDF/Study provenance and explicit research/project
+relations. Exact note source offsets and Canvas element IDs retain navigation
+context. Ambiguous attachment ownership is not guessed, code examples stay
+literal, missing UUID sources retain their references, and unknown metadata is
+untouched. Cache reuse reparses only changed objects while the title/alias/path
+registry is unchanged. Backlinks, outbound inspection, Connections and Graph now
+use the same index. Graph includes Files/Views filters; it aggregates object pairs
+and remains a visual overview, not a full typed-relation dependency engine.
+
+## Vault Insights — 2026-10-14
+
+Graph → Vault Insights opens a whole-Vault snapshot, independent of graph filters:
+active/trash object counts and type distribution, supported reference occurrences,
+unique connected object pairs, undirected connected components, task completion,
+isolated notes, repeated-title groups, busiest objects and seven-day updated objects.
+The shared connection index supplies placements, mentions and metadata links;
+missing recorded source IDs retain navigation to their referring objects. Isolated
+objects count as components. Degree counts distinct neighbors, not repeated links.
+
+Lists paginate in groups of 30 and open original objects after revalidating the
+Vault and source identity. Refresh explicitly updates the snapshot. Local diagnostics
+show unsaved objects, save failures, repository-warning counts and PDF index phases.
+Copy diagnostic counts copies aggregate JSON only, without titles, IDs, paths,
+content or account details. This is neither disk-health certification nor a sync
+status guarantee. Updated objects are not an activity history/productivity score;
+repeated titles do not prove duplicated content and isolated notes may be intentional.
+Wiki link problems are available through the Markdown Document Checks inspector.
+This is a deterministic AI-09 subset; no AI service or new durable data format.

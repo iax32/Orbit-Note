@@ -105,7 +105,7 @@ void main() {
 
         final updated = controller.find(canvas.id);
         expect(updated, isNotNull);
-        final scene = CanvasScene.fromJson(updated!.properties);
+        final scene = CanvasScene.fromJson(updated!.data);
         expect(scene.elements.length, 1);
         final card = scene.elements.first;
 

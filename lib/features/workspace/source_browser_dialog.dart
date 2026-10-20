@@ -1,23 +1,51 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../domain/source_browser.dart';
+import '../../application/source_search.dart';
+import '../../app/workspace_controller.dart';
+import '../../domain/universal_object.dart';
 import '../../platform/source_folder.dart';
 import '../notes/rich/code_block.dart';
+import 'source_search_dialog.dart';
 
-Future<void> showSourceBrowser(BuildContext context) => showDialog<void>(
-  context: context,
-  builder: (_) => const SourceBrowserDialog(),
-);
+Future<void> showSourceBrowser(
+  BuildContext context, {
+  WorkspaceController? controller,
+  UniversalObject? owner,
+  String folder = 'Notes',
+}) {
+  final generation = controller?.workspaceGeneration;
+  return showDialog<void>(
+    context: context,
+    builder: (_) => SourceBrowserDialog(
+      onSaveExcerpt: controller == null
+          ? null
+          : (excerpt) async {
+              if (controller.workspaceGeneration != generation) return false;
+              return await controller.createSourceEvidence(
+                    excerpt,
+                    folder: folder,
+                    ownerId: owner?.id,
+                  ) !=
+                  null;
+            },
+    ),
+  );
+}
 
 class SourceBrowserDialog extends StatefulWidget {
   const SourceBrowserDialog({
     super.key,
     this.initialFolder,
     this.capture = false,
+    this.onSaveExcerpt,
   });
   final SourceFolder? initialFolder;
   final bool capture;
+  final Future<bool> Function(SourceExcerpt)? onSaveExcerpt;
   @override
   State<SourceBrowserDialog> createState() => _SourceBrowserDialogState();
 }
@@ -41,6 +69,8 @@ class _SourceBrowserDialogState extends State<SourceBrowserDialog> {
   final lastInput = TextEditingController(text: '1');
   List<List<TextSpan>>? cachedLines;
   Brightness? cachedBrightness;
+  bool savingExcerpt = false;
+  int longestLine = 0;
   @override
   void initState() {
     super.initState();
@@ -85,6 +115,7 @@ class _SourceBrowserDialogState extends State<SourceBrowserDialog> {
       code?.dispose();
       code = null;
       cachedLines = null;
+      longestLine = 0;
       matches = [];
       match = -1;
     });
@@ -102,7 +133,7 @@ class _SourceBrowserDialogState extends State<SourceBrowserDialog> {
     }
   }
 
-  Future<void> read(SourceFileEntry file) async {
+  Future<void> read(SourceFileEntry file, {SourceSearchHit? hit}) async {
     final token = ++request;
     setState(() {
       busy = true;
@@ -119,12 +150,31 @@ class _SourceBrowserDialogState extends State<SourceBrowserDialog> {
       if (!mounted || token != request) return;
       setState(() {
         code = CodeController(text: text, language: file.language);
+        longestLine = text
+            .split(RegExp(r'\r\n|\r|\n'))
+            .fold<int>(0, (m, line) => m > line.length ? m : line.length);
         firstLine = lastLine = 1;
-        firstInput.text = lastInput.text = '1';
+        if (hit != null) {
+          if (sha256.convert(utf8.encode(text)).toString() ==
+              hit.sourceSha256) {
+            firstLine = lastLine = hit.line;
+            query.text = hit.query;
+          } else {
+            message =
+                'This file changed since the search. Review its current contents; the old line was not selected.';
+          }
+        }
+        firstInput.text = lastInput.text = '$firstLine';
         updateMatches();
         showFiles = false;
       });
-      if (scroll.hasClients) scroll.jumpTo(0);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || token != request || !scroll.hasClients) return;
+        final height = MediaQuery.textScalerOf(context).scale(14) * 1.8;
+        scroll.jumpTo(
+          ((firstLine - 1) * height).clamp(0, scroll.position.maxScrollExtent),
+        );
+      });
     } on Object catch (e) {
       if (mounted && token == request) setState(() => message = '$e');
     } finally {
@@ -148,14 +198,57 @@ class _SourceBrowserDialogState extends State<SourceBrowserDialog> {
     lastLine,
     sourceLineExcerpt(code!.text, firstLine, lastLine),
     selected!.language,
+    sourceSha256: sha256.convert(utf8.encode(code!.text)).toString(),
   );
 
+  Future<void> searchFolder() async {
+    final current = folder;
+    if (current == null || busy) return;
+    final token = request;
+    final hit = await showDialog<SourceSearchHit>(
+      context: context,
+      builder: (_) => SourceSearchDialog(
+        folder: current,
+        files: List.of(files),
+        incompleteListing: incomplete,
+      ),
+    );
+    if (!mounted || hit == null || token != request || folder != current) {
+      return;
+    }
+    await read(hit.file, hit: hit);
+  }
+
+  Future<void> saveExcerpt() async {
+    if (savingExcerpt || widget.onSaveExcerpt == null || code == null) return;
+    final token = request;
+    setState(() => savingExcerpt = true);
+    try {
+      final value = excerpt();
+      final saved = await widget.onSaveExcerpt!(value);
+      if (mounted && token == request) {
+        setState(
+          () => message = saved
+              ? 'Source evidence saved as a linked project note.'
+              : 'Source evidence could not be saved. Your source file is unchanged.',
+        );
+      }
+    } on Object catch (e) {
+      if (mounted && token == request) setState(() => message = '$e');
+    } finally {
+      if (mounted) setState(() => savingExcerpt = false);
+    }
+  }
+
   Future<void> copy(String text) async {
+    final token = request;
     try {
       await Clipboard.setData(ClipboardData(text: text));
-      if (mounted) setState(() => message = 'Source copied.');
+      if (mounted && token == request) {
+        setState(() => message = 'Source copied.');
+      }
     } on Object {
-      if (mounted) {
+      if (mounted && token == request) {
         setState(() => message = 'Could not copy. Source remains unchanged.');
       }
     }
@@ -286,10 +379,7 @@ class _SourceBrowserDialogState extends State<SourceBrowserDialog> {
           : LayoutBuilder(
               builder: (context, constraints) {
                 final spans = lines(context);
-                final longest = code!.text
-                    .split(RegExp(r'\r\n|\r|\n'))
-                    .fold<int>(0, (m, s) => m > s.length ? m : s.length);
-                final width = (longest * textSize * .8 + 90).clamp(
+                final width = (longestLine * textSize * .8 + 90).clamp(
                   constraints.maxWidth,
                   double.infinity,
                 );
@@ -411,6 +501,13 @@ class _SourceBrowserDialogState extends State<SourceBrowserDialog> {
                           onPressed: folder == null || busy ? null : scan,
                           child: const Text('Refresh files'),
                         ),
+                        OutlinedButton.icon(
+                          onPressed: folder == null || busy
+                              ? null
+                              : searchFolder,
+                          icon: const Icon(Icons.manage_search),
+                          label: const Text('Search all files'),
+                        ),
                         TextButton(
                           onPressed: selected == null || busy
                               ? null
@@ -463,6 +560,16 @@ class _SourceBrowserDialogState extends State<SourceBrowserDialog> {
                             FilledButton(
                               onPressed: () => rangeAction(true, false),
                               child: const Text('Use excerpt'),
+                            ),
+                          if (widget.onSaveExcerpt != null)
+                            FilledButton.tonalIcon(
+                              onPressed: savingExcerpt ? null : saveExcerpt,
+                              icon: const Icon(Icons.note_add_outlined),
+                              label: Text(
+                                savingExcerpt
+                                    ? 'Saving evidence…'
+                                    : 'Save evidence note',
+                              ),
                             ),
                           const Text(
                             'Click a line number; Shift-click to extend. Source files are read-only.',

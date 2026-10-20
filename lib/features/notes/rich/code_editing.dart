@@ -349,14 +349,20 @@ int codeLineAt(List<({int start, int contentEnd, int end})> lines, int offset) {
   return low;
 }
 
-TextEditingValue newlineCode(TextEditingValue v, {String unit = '  '}) {
+TextEditingValue newlineCode(
+  TextEditingValue v, {
+  String unit = '  ',
+  String language = '',
+}) {
   if (!_editable(v)) return v;
   final at = v.selection.start;
   final line = codeLines(v.text).lastWhere((l) => l.start <= at);
   final before = v.text.substring(line.start, at);
   final indent = RegExp(r'^[ \t]*').firstMatch(before)!.group(0)!;
   final eol = RegExp(r'\r\n|\n|\r').firstMatch(v.text)?.group(0) ?? '\n';
-  final open = before.trimRight().endsWith('{');
+  final open =
+      before.trimRight().endsWith('{') ||
+      (language == 'python' && before.trimRight().endsWith(':'));
   final paired = open && v.text.substring(v.selection.end).startsWith('}');
   final insert = '$eol$indent${open ? unit : ''}${paired ? '$eol$indent' : ''}';
   return TextEditingValue(

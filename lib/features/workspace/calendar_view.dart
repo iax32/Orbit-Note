@@ -51,7 +51,8 @@ class _CalendarViewState extends State<CalendarView> {
   List<UniversalObject> _calendarObjects = [];
 
   List<UniversalObject> get _scopedObjects {
-    if (widget.viewObject?.properties['smartQuery'] != null) {
+    if (widget.viewObject?.properties['smartQuery'] != null ||
+        widget.viewObject?.properties['courseId'] != null) {
       try {
         return widget.controller.queryViewObjects(widget.viewObject!);
       } on Object {
@@ -213,23 +214,33 @@ class _CalendarViewState extends State<CalendarView> {
           isWide: wide,
         );
 
-        if (wide) {
-          return Row(
-            children: [
-              Expanded(flex: 3, child: calendarPane),
-              VerticalDivider(width: 1, color: colors.border),
-              SizedBox(width: 320, child: agendaPane),
-            ],
-          );
-        } else {
-          return Column(
-            children: [
-              Expanded(flex: 5, child: calendarPane),
-              Divider(height: 1, color: colors.border),
-              Expanded(flex: 4, child: agendaPane),
-            ],
-          );
-        }
+        final layout = wide
+            ? Row(
+                children: [
+                  Expanded(flex: 3, child: calendarPane),
+                  VerticalDivider(width: 1, color: colors.border),
+                  SizedBox(width: 320, child: agendaPane),
+                ],
+              )
+            : Column(
+                children: [
+                  Expanded(flex: 5, child: calendarPane),
+                  Divider(height: 1, color: colors.border),
+                  Expanded(flex: 4, child: agendaPane),
+                ],
+              );
+        // Keep the month controls and agenda readable when shell bars or enlarged
+        // text leave little vertical space. Scroll the bounded complete layout.
+        final scale = (MediaQuery.textScalerOf(context).scale(14) / 14).clamp(
+          1.0,
+          2.0,
+        );
+        final minimumHeight = (wide ? 360.0 : 600.0) * scale;
+        return constraints.maxHeight < minimumHeight
+            ? SingleChildScrollView(
+                child: SizedBox(height: minimumHeight, child: layout),
+              )
+            : layout;
       },
     );
   }
@@ -531,9 +542,11 @@ class _CalendarViewState extends State<CalendarView> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       child: GridView.builder(
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 7,
-          mainAxisExtent: 64,
+          mainAxisExtent:
+              64 *
+              (MediaQuery.textScalerOf(context).scale(14) / 14).clamp(1.0, 2.0),
           crossAxisSpacing: 4,
           mainAxisSpacing: 4,
         ),
@@ -597,8 +610,8 @@ class _CalendarViewState extends State<CalendarView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
                       children: [
                         Container(
                           padding: const EdgeInsets.symmetric(

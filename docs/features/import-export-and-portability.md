@@ -1,5 +1,35 @@
 # Import, export and portability
 
+## Image/table layouts and page-aware contents — 2026-10-12
+
+Publish document now offers per-block print width (25–100%), left/center/right
+placement, a print caption and Start on a new page for standalone images and
+top-level pipe tables. Table header repetition is configurable. Long tables span
+PDF pages without dropping rows; caption placement follows the block width.
+Inline images and nested tables retain their existing flow instead of receiving
+an ambiguous block layout. The Markdown Export as PDF button opens this workspace.
+LaTeX retains its separate exporter.
+
+The searchable contents panel shows actual PDF heading pages and navigates the
+preview. Page positions regenerate with document/layout settings; stale positions
+are disabled while generating. Lists paginate in groups of 20. PDF contents also
+include page numbers. HTML shows clearly labelled PDF page references; Word uses
+refreshable PAGEREF/TOC fields. Browser pagination and Word font substitution can
+change positions; these differences appear in Export details.
+
+Save settings to note retains the document style and block layouts in a bounded,
+versioned Markdown comment through the existing note undo/save/history path.
+Reopening restores settings. Changed notes, owners, Vaults, read-only state and
+composition refuse stale saves. Missing or duplicate content keys never silently
+receive another block's layout; unmatched settings remain recoverable and produce
+warnings. Unknown fields remain preserved. Source exposes the record; Rich/Read
+hide recognized leading metadata. Publishing still previews a captured source
+snapshot, not an editable Word page surface. All three formats share the same
+style/layout options; identical pagination across different renderers is not claimed.
+Saving preserves the current Source/Rich writing selection; the metadata change
+is one existing undo operation. Frontmatter remains omitted from exports even
+when the saved print-settings line precedes it.
+
 ## Reviewed BibTeX interchange — 2026-10-11
 
 Citation tools import pasted/UTF-8 `.bib` data with source selection and explicit

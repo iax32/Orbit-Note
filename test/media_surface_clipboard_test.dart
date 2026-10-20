@@ -16,6 +16,11 @@ void main() {
   bool fail = false;
   Completer<void>? pending;
   setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('pasteboard'),
+          (_) async => null,
+        );
     clipboard = '';
     fail = false;
     pending = null;
@@ -272,7 +277,12 @@ void main() {
   );
   test('note object links create linked cards, not duplicated objects', () {
     expect(markdownCanvasItems('[[task-1|Task]]'), [
-      {'type': 'card', 'objectId': 'task-1', 'text': 'Task'},
+      {
+        'type': 'card',
+        'objectId': 'task-1',
+        'referenceTarget': 'task-1',
+        'text': 'Task',
+      },
     ]);
     expect(
       markdownCanvasItems('A sentence with [[task-1]]').single['type'],

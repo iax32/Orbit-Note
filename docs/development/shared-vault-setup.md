@@ -23,29 +23,26 @@ server data folder. Paste its contents into Orbit's owner-key field; never send
 that server key to collaborators. Leave this process running while collaborating.
 Ctrl+C shuts it down. No server process starts with Orbit automatically.
 
-A Windows server executable was built at
-`.local/collaboration/orbit_collaboration_server.exe`. This task started it hidden
-on `http://127.0.0.1:47831`, with private data in
-`C:/Users/isa/AppData/Local/OrbitNote/CollaborationPreview`. The owner key is
-`owner-key.secret` inside that folder. Its contents were not printed or uploaded.
-This is a local process, not an installed Windows service or public endpoint.
-Its PID/startup logs are in `.local/collaboration/`; do not rely on it surviving
-a reboot. The Windows app was subsequently rebuilt and packaged at
-`release-assets/OrbitNote-Windows-x64.zip`, including the standalone server under
-`collaboration/OrbitNote-Server.exe` and a setup README. No private keys/server data
-are packaged. Google sign-in is still unconfigured; it is separate from this server.
+The normal Windows release includes `collaboration/OrbitNote-Server.exe` and
+**Start Orbit Server.cmd** alongside its README. Double-click the launcher on the
+host computer; it uses `%LOCALAPPDATA%/OrbitNote/Server` as private data storage.
+Keep its console open while collaborating and press Ctrl+C to stop. No Dart SDK,
+ZIP extraction, installed Windows service or automatic app startup is required
+for the packaged server. Server keys/data are never packaged. Google sign-in is
+independent of this self-hosted service. The application still runs normally from
+the release directory's `orbit_note.exe`.
 
-To stop the hidden instance started by this task, verify its executable before
-stopping the recorded process (a saved PID can be reused after exit):
+Repository maintainers can rebuild just the standalone host:
 
 ```powershell
-$orbitServerPid = [int](Get-Content .local/collaboration/server.pid)
-$orbitServer = Get-Process -Id $orbitServerPid -ErrorAction SilentlyContinue
-$orbitServerExe = (Resolve-Path .local/collaboration/orbit_collaboration_server.exe).Path
-if ($orbitServer -and $orbitServer.Path -eq $orbitServerExe) {
-    Stop-Process -Id $orbitServer.Id
-}
+./tool/build_server.ps1 -Dart 'C:/path/to/flutter/bin/cache/dart-sdk/bin/dart.exe'
 ```
+
+`tool/build_windows.ps1` builds both the app and standalone host. Creating server
+data inside a directory containing, or nested within, an Orbit `workspace.json`
+is rejected before creating the key/journal. Stop the service before copying its
+whole private directory for recovery. Preserve the owner key and journal together;
+do not replace a lost key or delete journal records to work around a failure.
 
 To host remotely, put an authenticated-to-this-service **HTTPS reverse proxy**
 in front of the loopback service. A Caddy configuration, for an actual domain you
@@ -65,11 +62,17 @@ port-forward or background service is installed by this task.
 ## In Orbit
 
 1. Open Settings → Sync → Shared Vault · self-hosted.
-2. Enter the HTTPS server address (or localhost for a same-machine test), server
-   owner key and your display name. **Share this Vault** uploads an explicit copy.
-3. Use **Copy my connection** and save it privately for restarting/rejoining.
-   Losing this connection currently requires recovering server data or creating
-   a new shared room; the UI does not store invitations in a Vault.
+2. Enter the HTTPS server address (or localhost for a same-machine test) and server
+   owner key. **Test server connection** checks protocol/readiness without uploading
+   a Vault. Enter your display name; **Share this Vault** uploads an explicit copy.
+   Localhost always means the current device, not another person's host computer.
+3. **Remember connection on this device** stores only this room capability in
+   OS-protected local storage. **Reconnect saved server** explicitly rejoins after
+   restart; it still checks current server roles, revocation and local divergence.
+   **Forget saved connection** removes this device's saved capability without
+   deleting local/cloud files or revoking other people. **Copy my connection**
+   remains available for private manual recovery. The server owner key is never
+   remembered. No saved capability enters the portable Vault or its backups.
 4. Enter the other person's display name, choose Editor or Viewer, and create a
    private invitation. Send the copied invitation yourself through a private channel.
 5. They open the same Settings dialog and paste it into **Join shared Vault**.
@@ -85,6 +88,23 @@ does not stop local editing. Independent edits merge; overlapping changes or
 divergence on rejoin appear in Shared Vault settings. Keep the local version or
 explicitly adopt server content with the previous source retained in file history.
 
+Connection interruptions now back off automatically up to 30 seconds between
+attempts. **Retry now** is available in Settings and the shared-document strip.
+Denied/revoked access pauses automatic requests: check your invitation/server
+permissions before retrying. Pending-document counts include shared drafts that
+have not saved locally or whose server acknowledgement is uncertain. They exclude
+new objects, which this preview does not stream. Disconnecting invalidates pending
+connection replies; it does not erase local work. Credentials remain in memory
+unless explicitly remembered. Drive sync pauses during connection setup as well
+as while connected, so the two authorities cannot apply competing updates.
+
+`GET /healthz` returns only service/readiness (HTTP 200 or 503) without an owner
+key. `GET /v1/server` requires the owner bearer key and exposes protocol, readiness,
+room count and current capabilities. It never returns keys or Vault content.
+Browser-origin requests are still refused. A journal write failure makes the
+server unready; stop it and recover storage before reconnecting. These diagnostics
+do not configure TLS or prove another device can reach the host.
+
 ## Bounds and evidence
 
 Initial backup: existing portable 80 MiB decoded/128 MiB encoded limit. Each live
@@ -92,6 +112,7 @@ document: 2 MiB JSON. Server retains bounded recent editing bases; older bases
 require review. At most 128 active presence sessions per room. Access is a private
 invitation capability with server-bound display names, not verified Google identity.
 Desktop/native clients only; browser-origin requests are refused. Deployment over
-the public Internet, TLS, multiple real devices and Google account acceptance need
-separate checks. Automated two-client and server-restart tests are in
-`test/collaboration_test.dart`; see current task for results.
+the public Internet, TLS and multiple real devices need separate checks. Automated
+two-client/server-restart and device-continuity tests are in
+`test/collaboration_test.dart` and `test/device_sync_continuity_test.dart`; see
+current task for actual results. No persistent server is started by these checks.

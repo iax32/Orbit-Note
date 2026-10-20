@@ -11,9 +11,13 @@ class SourceExcerpt {
     this.start,
     this.end,
     this.text,
-    this.language,
-  );
+    this.language, {
+    this.sourceSha256 = '',
+  });
   final String repository, path, text, language;
+
+  /// Hash of the complete UTF-8 source snapshot, never a Git revision claim.
+  final String sourceSha256;
   final int start, end;
 
   String get markdown {
@@ -89,6 +93,9 @@ String? sourceLanguage(String path) {
     'gdshader': 'glsl',
     'luau': 'lua',
     'ini': 'ini',
+    'asm': 'x86asm',
+    's': 'x86asm',
+    'log': '',
   }[extension];
 }
 

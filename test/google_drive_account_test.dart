@@ -313,7 +313,7 @@ void main() {
       expect(find.text('student@example.test'), findsOneWidget);
       expect(find.textContaining('No storage limit reported'), findsOneWidget);
       expect(find.byIcon(Icons.account_circle_outlined), findsOneWidget);
-      expect(find.text('Local only'), findsOneWidget);
+      expect(find.text('Local-first'), findsOneWidget);
       await tester.tap(find.text('Sign out'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Cancel'));

@@ -1,14 +1,137 @@
 # Google Drive developer setup
 
-2026-10-11 update: owner requested Google setup help and supplied an email they may
-use as support contact. OAuth remains unconfigured; no policy or console changes
-were accepted on their behalf. See [activation steps](google-drive-activation.md).
-Independent manual backup/restore now exists; automatic Vault sync remains pending.
+## Automatic native sync preview — 2026-10-15
 
-Status: 2026-09-13. Windows/Android account authorization, secure restoration,
-quota and Drive root/discovery are implemented. **Vault transfers and automatic
-sync remain incomplete.** Builds consume the configuration below. Real OAuth/Drive
-acceptance still needs your Google project and test account.
+1. Open a native Vault, then Settings → Sync → Continue with Google. Signing in
+   restores account access; only previously saved per-Vault opt-in resumes sync.
+2. Choose **Enable automatic sync** and review the exact account/Vault and scope.
+   This includes authored objects, Archive/Trash content, attachments and explicit
+   deletions. It excludes caches, device settings/history and empty folders.
+3. Local work debounces for two seconds; remote checks run about every 30 seconds
+   while Orbit remains open. **Sync now** bypasses retry delay. No Windows service
+   continues after closing. Temporary network failures back off; permission/token,
+   quota/configuration failures require attention before automatic requests resume.
+4. **Pause sync** keeps both local files and immutable Drive revisions. Resume
+   retains the same account/folder/common bases. Changing accounts cannot silently
+   rebind existing sync history; use a separate local copy for another account.
+5. On another device, open Settings in a native Vault and **Browse synced Vaults**.
+   **Open in a new local folder** verifies the canonical manifest, asks for a parent
+   folder and creates a separate local copy before downloading. Matching names
+   never merge identities. Multiple matching remote folders need an explicit pick.
+6. Conflicts list local/remote divergence and concurrent branches. **Compare and
+   resolve** previews text (up to 256 KiB) or binary/deletion metadata. Edit the
+   local note first to combine wording, then review again. **Keep this device** or
+   **Use cloud version** appends a resolution; a newer local edit invalidates the
+   review. **Recovery files** can export retained originals. Permanent-delete
+   restores/mismatched deletion bases require explicit local recovery rather than
+   bypassing the repository's delete safety.
+
+### Transfer several Vaults together
+
+In **Settings → Sync**, connect Google, then choose **Upload multiple Vaults**.
+The picker lists the current and recent Vaults. **Add Vault folder** adds one;
+**Find Vaults in a folder** checks a chosen folder and its immediate children
+(for example, Desktop). It does not recursively crawl the computer. Nothing is
+selected by default. Choose individual checkboxes or **Select all**, then
+**Upload and sync selected Vaults**. The displayed account receives the selected
+notes, boards, attachments, Archive/Trash and deletion records. Existing cloud
+changes can download too; actual conflicts remain for explicit review.
+
+The batch processes one Vault at a time through the normal sync engine. Each row
+shows waiting, transferring, up to date, needs review, failed or cancelled status.
+A locked/missing/unsupported Vault fails independently. **Cancel transfers** stops
+further work without deleting completed files; **Retry unfinished Vaults** reuses
+durable upload plans and already-created download folders. Account/Vault changes
+invalidate the batch. Copied folders retaining the same Vault UUID require choosing
+only one copy; matching display names with different identities are independent.
+
+On another device, use **Download multiple Vaults**, select the desired cloud
+Vaults, and choose one parent folder. Each gets a separate new local folder and is
+added to the recent Vault list without switching or merging the active Vault.
+The Vault switcher uses the saved Vault name. Incomplete folders remain available
+for recovery/retry; no existing local folder is replaced. The native recent list
+retains up to 50 locations so larger downloads remain discoverable.
+
+Successful transfers retain per-Vault account/folder bindings. Automatic sync runs
+when that Vault is open. The optional **Keep these Vaults updated while Orbit is
+open** checkbox adds only completed transfers to a device-local schedule. In
+**Manage scheduled Vault checks**, inspect the selection/results, check now,
+choose 1/5/15 minutes (default 5), pause/resume, remove locations or forget the
+schedule without deleting local/cloud files. The schedule is bound to the selected
+Google account and survives app restart; it never silently switches accounts.
+It opens one inactive Vault at a time under its normal OS lock and closes it
+afterward. Missing/locked locations are reported independently. Individually
+paused or unbound Vaults stay paused; the active Vault uses its existing controller.
+Checks wait while Shared Vault is connecting/connected, transfers are busy or
+the Google account needs attention. Network failures back off; reconnect then
+explicitly retry account errors. No service continues after Orbit closes.
+Without the checkbox, run the batch again for inactive Vaults. A cancelled first transfer
+does not newly enable automatic sync. Previous automatic-sync opt-ins remain in
+effect. Open a Vault individually to compare conflicts or repair unsupported
+content. History, caches, device settings and empty folders still stay local.
+
+Personal sync pauses while Shared Vault is connecting or connected. Cloud revisions are never
+automatically purged: changed content consumes additional Drive storage. Native
+limits are 2 GiB/blob, 32 MiB/structured source, 10,000 retained revisions, 64
+parents per resolution and existing 16 MiB checkpoint files. Empty folders are not
+replicated; folder Archive metadata blocks setup until a portable migration exists.
+Some non-Notes physical moves remain unsupported. Unexpected cloud removal,
+changed immutable bytes, unsafe paths/newer formats and dirty drafts stop apply
+instead of deleting or overwriting user work. Initial incomplete downloads are
+retryable in their separate folder; do not delete retained Drive revision files.
+
+This is a native preview, not public Google/mobile rollout acceptance. Existing
+owner-testing desktop registration and narrow drive.file scopes are unchanged.
+Real-account acceptance passed on 2026-10-15 with two isolated native clients on
+one PC: exact note/Canvas/attachment transfers, conflicts and explicit resolution,
+interrupted uploads, lost responses, tombstones and restart checkpoints. The owner
+completed Google consent. Physical two-device and application UI/secure-store
+acceptance remain unperformed; actual evidence is in
+[current task](../tasks/current.md). The following dated registration/foundation
+entries are historical and superseded for this slice.
+
+### Opt-in real-account acceptance
+
+`test/google_drive_live_acceptance_test.dart` is skipped by default, including CI
+and the normal full suite. On Windows, run it explicitly from the repository root:
+
+```powershell
+flutter test --no-pub --reporter expanded --dart-define=ORBIT_LIVE_DRIVE=true test/google_drive_live_acceptance_test.dart
+```
+
+This requires the existing ignored `config/google-drive.local.json` Desktop app
+registration. The system browser opens for the owner's Google consent; the
+harness does not control the browser, read the app's stored account, or save
+tokens to disk. Use an approved test user while Google registration is in Testing.
+No new OAuth scope is requested. A fresh consent is required on every run.
+
+The run creates a uniquely named **Orbit Sync Acceptance …** cloud Vault and two
+separate native Vaults under `.local/drive-live-vaults/`. All uploaded content is
+synthetic. Production auth, Drive, repository, staging and engine code handle the
+transfers. Only the test transport injects an offline period, an interrupted
+acknowledged chunk and a lost revision response. It checks exact Markdown and
+attachment hashes, Canvas unknown-data preservation, bidirectional creation,
+conflict copies/resolution, resumable restart, deletion tombstones and clean
+restart checkpoints. Credentials, request headers and session URLs are not logged.
+
+`.local/drive-live-result.json` records sanitized phases and the fixture name;
+the cloud folder and local fixtures are retained for inspection, including after
+failure. Remove only that run's clearly identified synthetic data when finished.
+The run uses two independent native repositories/HTTP clients **on one PC**. It is
+real-account transfer evidence, not physical two-device, application UI scheduling,
+Android sign-in, or secure credential-store acceptance. A second machine must
+separately sign into the app, browse the synthetic cloud Vault, open a new local
+folder, verify a change in each direction, and check attachment availability and
+offline conflict recovery before recording physical two-device acceptance.
+
+2026-10-13: Windows Desktop registration, owner test user, narrow scopes and Drive
+API are active in `orbit-note-511512`. Real OAuth, identity, quota and Vault/backup
+listing passed. The Windows release includes the client. Manual backup/restore is
+implemented; automatic Vault sync and Android activation remain unfinished. See
+[current activation and usage](google-drive-activation.md).
+
+Earlier milestones below are historical; consumer automatic-sync requirements
+remain acceptance gates, not a claim that they are delivered.
 
 ## Consumer experience (required release behavior)
 
@@ -40,7 +163,7 @@ duplicate folders from simultaneous setup calls.
 See Google's [ownership fields](https://developers.google.com/workspace/drive/api/reference/rest/v3/files)
 and [owner search filters](https://developers.google.com/workspace/drive/api/guides/search-files).
 
-## Registration progress — 2026-09-13
+## Historical registration progress — 2026-09-13 (superseded)
 
 Created the distributor project `orbit-note-508518` (Orbit Note) and submitted
 Drive API activation. The owner declined the proposed policy acceptance and use
@@ -105,8 +228,8 @@ Windows build remains unconfigured. Verify activation before live acceptance.
 Public build configuration is in
 [`google-drive.example.json`](../../config/google-drive.example.json). Use separate
 development and release configuration files outside source control. These client
-IDs are public application identifiers, not access/refresh tokens. The runtime
-disables unconfigured Google login with an explanation while local use works.
+IDs are public application identifiers, not access/refresh tokens. Configured releases expose direct sign-in. Unconfigured Windows previews offer
+validated Desktop JSON import into device secure storage; local use still works.
 
 Copy the example to ignored `config/google-drive.local.json`, or, after
 downloading the Desktop client JSON, run
@@ -152,7 +275,10 @@ or placeholder app IDs fail before compilation. Release notes state the mode and
 that automatic Vault synchronization is unfinished. This gate checks configuration
 shape, not Google registration validity or live sign-in acceptance.
 
-For a local Windows preview build after importing the developer configuration:
+For a local Windows preview after importing developer configuration, prefer
+`./tool/build_windows.ps1 -Flutter 'C:/path/to/flutter/bin/flutter.bat'`.
+It automatically preserves the ignored client configuration. `-LocalOnly` is an
+explicit opt-out. The equivalent low-level commands are:
 
 ```powershell
 $env:ORBIT_GOOGLE_BUILD_MODE = 'google-account-preview'

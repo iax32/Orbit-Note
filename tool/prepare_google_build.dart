@@ -96,7 +96,7 @@ Future<void> main(List<String> arguments) async {
     stdout.writeln(
       configuration.isEmpty
           ? 'Local-only build: Google sign-in is disabled.'
-          : 'Google account preview configured for manual backups and restore. Automatic sync is not enabled.',
+          : 'Google account preview configured. Vault uploads require explicit backup or automatic sync opt-in.',
     );
   } on FormatException catch (error) {
     // JSON parse exceptions may contain input excerpts; use a generic message.

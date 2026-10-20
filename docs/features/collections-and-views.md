@@ -77,6 +77,65 @@ collection folder when no project is recorded). It is not filtered by the refere
 search controls. This is a manual local research workflow, not citation scraping,
 semantic comparison, an automatic board-membership query or remote monitoring.
 
+## Collection quality refinement — 2026-10-18
+
+Legacy tables, timeline membership and saved-view task progress resolve the same
+canonical collection query. Explicit manual collections without member IDs are
+empty; duplicate/missing IDs do not duplicate objects. Membership lookup builds
+one ID set per evaluation. Optional presentation scopes have separate cached
+results, invalidated after object changes. Existing folder-before-scope semantics
+remain unchanged. Unsupported membership/scope formats show a preserved-data
+state instead of falling back to unrelated Vault content.
+
+Table sorting saves both direction and column together; supported property edits
+merge current data, retaining unknown settings and concurrent unrelated changes.
+Text forms keep drafts on validation failure or competing renames. Dialogs and
+popup choices retain their originating collection/workspace; an old popup cannot
+apply to a different collection after switching. Delayed creation attaches to the
+original manual collection, preserving newer members. If that definition becomes
+unavailable, the created source remains recoverable and a notice explains why it
+was not attached.
+
+Folder cells use the existing validated file-move command and require an existing
+destination, rather than only changing a display property. Read-only sources and
+definitions disable editing. Empty status values and unknown column settings
+remain readable without rewriting imported data. Tables retain lazy vertical rows
+and horizontal navigation at narrow widths/enlarged text; long paths and tags are
+bounded. These refinements do not add schema, full property editing or query-based
+creation defaults. [Checks and limits](../tasks/collection-quality-2026-10-18.md).
+
+## Kanban quality refinement — 2026-10-19
+
+Legacy collection boards now share canonical query membership with tables and
+progress. Manual membership takes precedence over derived course membership;
+unsupported grouping/preset/query definitions retain their data and show a useful
+state. Actual project/folder names such as `none` and `root` are distinct from the
+unassigned columns; only private presentation keys change.
+
+Drops recheck the originating board/workspace, current membership and source
+availability/read-only state. Completion merges current properties, and unchanged
+drops avoid redundant saves. Folder drops use durable validated file moves instead
+of changing only metadata. Object type remains immutable through dragging.
+
+Inline creation rejects repeated submissions, keeps titles on save failure and
+retains original collection ownership through delayed completion. Concurrent
+members and unknown entries survive. External regrouping retains an unfinished
+title and requires choosing a new column. Read-only definitions disable mutation.
+Columns as well as cards are lazy; narrow/enlarged-text layouts bound the toolbar
+and preview to the actual pane. Escape closes the focused preview. These changes
+do not introduce new storage or automatic query-based creation defaults.
+[Actual checks and limitations](../tasks/kanban-quality-2026-10-19.md).
+
+## Creation edge cases — 2026-10-19
+
+Type-grouped boards offer inline creation only for Note, Task and Canvas. The
+heterogeneous Other bucket directs users to New/Import instead of silently
+creating a task in another column. Tasks-only type boards disable creation of
+hidden note/Canvas types until that filter is removed. Retained Add, keyboard
+submit and Cancel callbacks check their original board/workspace before touching
+the shared draft, including after switching or disposing the presentation.
+[Checks and limits](../tasks/file-workflow-quality-2026-10-19.md).
+
 ## Requirements
 
 Implemented readability refinement, 2026-10-03: generic collection boards explicitly

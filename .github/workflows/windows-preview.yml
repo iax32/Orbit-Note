@@ -1,0 +1,46 @@
+name: Build Windows preview setup
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025
+    env:
+      ORBIT_GOOGLE_BUILD_MODE: google-account-preview
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Configure registered desktop client
+        env:
+          ORBIT_GOOGLE_DESKTOP_CLIENT_ID: ${{ vars.ORBIT_GOOGLE_DESKTOP_CLIENT_ID }}
+          ORBIT_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.ORBIT_GOOGLE_DESKTOP_CLIENT_SECRET }}
+        run: dart --packages=.dart_tool/package_config.json tool/prepare_google_build.dart --platform=windows --output=.local/google-build.windows.json
+      - name: Build configured Windows app and server
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:ORBIT_GOOGLE_BUILD_MODE = 'google-account-preview'
+          flutter build windows --release --no-pub --dart-define-from-file=.local/google-build.windows.json
+          if ($LASTEXITCODE -ne 0) { throw 'Windows build failed.' }
+          ./tool/build_server.ps1 -Dart (Get-Command dart).Source
+      - name: Package per-user setup EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'
+          if (-not (Test-Path -LiteralPath $compiler)) { throw 'Runner Inno Setup compiler is missing.' }
+          ./tool/package_windows.ps1 -Compiler $compiler -SourceCommit $env:GITHUB_SHA
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-preview-setup
+          path: release-assets/windows-preview/*
+          retention-days: 14

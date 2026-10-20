@@ -344,6 +344,10 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await tester.pumpAndSettle();
+    // Undo in Find belongs to that input; document Undo is an explicit action.
+    expect(body, '**dog** [dog](target)');
+    await tester.tap(find.byKey(const ValueKey('note-document-undo')));
+    await tester.pumpAndSettle();
     expect(body, '**cat** [cat](target)');
   });
   testWidgets('reopening Find retains captured scope and query', (

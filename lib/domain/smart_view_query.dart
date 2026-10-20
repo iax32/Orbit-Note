@@ -1,3 +1,4 @@
+import 'course_progress.dart';
 import 'universal_object.dart';
 import 'calendar_event.dart';
 
@@ -179,20 +180,42 @@ List<UniversalObject> resolveSmartView(
 }) {
   final p = view.properties;
   final members = p['memberIds'];
-  final folder = p['folder'] as String?;
-  final scope = p['scope'] as String?;
+  if (members != null && members is! List) {
+    throw const FormatException(
+      'Unsupported collection membership. Its definition is preserved.',
+    );
+  }
+  final memberIds = members is List
+      ? members.whereType<String>().toSet()
+      : null;
+  final manual = p['manual'] == true || memberIds != null;
+  final folder = p['folder'];
+  final scope = p['scope'];
+  if (folder != null && folder is! String ||
+      scope != null && scope is! String) {
+    throw const FormatException(
+      'Unsupported collection scope. Its definition is preserved.',
+    );
+  }
+  final courseId = p['courseId'];
+  final course = courseId is String
+      ? objects.where((o) => o.id == courseId && !o.isDeleted).firstOrNull
+      : null;
   final candidates = objects.where((o) {
     if (o.isDeleted || o.typeId == 'orbit.view') return false;
-    if (members is List) return members.contains(o.id);
-    if (folder != null && folder.isNotEmpty) {
+    if (manual) return memberIds?.contains(o.id) ?? false;
+    if (courseId is String && courseId.isNotEmpty) {
+      return course != null && belongsToCourse(o, course);
+    }
+    if (folder is String && folder.isNotEmpty) {
       final f = o.properties['folder'];
       final path = pathFor?.call(o.id);
       return f == folder ||
           f is String && f.startsWith('$folder/') ||
           path != null && path.startsWith('$folder/');
     }
-    if (scope != null && scope.isNotEmpty) {
-      return ['project', 'course', 'context', 'target'].any(
+    if (scope is String && scope.isNotEmpty) {
+      return ['project', 'courseId', 'course', 'context', 'target'].any(
         (key) =>
             '${o.properties[key] ?? ''}'.toLowerCase() == scope.toLowerCase(),
       );

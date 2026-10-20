@@ -1,3 +1,5 @@
+import 'object_reference.dart';
+
 /// Readable Markdown layout extensions. Unsupported or incomplete structures
 /// stay literal; layouts never own copies of linked workspace objects.
 class NoteLayoutFence {
@@ -107,23 +109,29 @@ class NoteColumns {
 }
 
 class NoteObjectBlock {
-  const NoteObjectBlock(this.id, this.label);
+  const NoteObjectBlock(this.id, this.label, {this.fragment});
+  final String? fragment;
+  ObjectReference get reference =>
+      ObjectReference.parse('$id${fragment == null ? "" : "#$fragment"}');
   final String id, label;
   static final opening = RegExp(r'^<!-- orbit:object v=1 -->$');
   static const closing = '<!-- /orbit:object -->';
   static NoteObjectBlock? parse(String source) {
     final m = RegExp(
-      r'^<!-- orbit:object v=1 -->\r?\n\[([^\]\r\n]*)\]\(orbit-object:([A-Za-z0-9_-]{1,100})\)\r?\n<!-- /orbit:object -->(?:\r?\n)?$',
+      r'^<!-- orbit:object v=1 -->\r?\n\[([^\]\r\n]*)\]\(orbit-object:([A-Za-z0-9_-]{1,100})(?:#([^()<> \r\n]+))?\)\r?\n<!-- /orbit:object -->(?:\r?\n)?$',
     ).firstMatch(source);
-    return m == null ? null : NoteObjectBlock(m[2]!, m[1]!);
+    return m == null ? null : NoteObjectBlock(m[2]!, m[1]!, fragment: m[3]);
   }
 
   String encode({String eol = '\n'}) {
     if (!RegExp(r'^[A-Za-z0-9_-]{1,100}$').hasMatch(id)) {
       throw const FormatException('Invalid object reference.');
     }
+    if (fragment != null && !RegExp(r'^[^()<> \r\n]+$').hasMatch(fragment!)) {
+      throw const FormatException('Invalid precise location.');
+    }
     final title = label.replaceAll(RegExp(r'[\[\]\r\n]'), ' ').trim();
-    return '<!-- orbit:object v=1 -->$eol[${title.isEmpty ? 'Linked object' : title}](orbit-object:$id)$eol$closing$eol';
+    return '<!-- orbit:object v=1 -->$eol[${title.isEmpty ? 'Linked object' : title}](orbit-object:${reference.target})$eol$closing$eol';
   }
 }
 

@@ -10,6 +10,7 @@ class SourceFolder {
   static const supported = true;
   static const ignored = {
     '.git',
+    '.orbit-ide',
     '.dart_tool',
     'node_modules',
     'build',

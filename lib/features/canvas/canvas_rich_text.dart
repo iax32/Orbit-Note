@@ -59,9 +59,80 @@ class CanvasRichText {
       s = s.substring(1, s.length - 1).trim();
     }
 
+    // Bounded readable matrix previews; authored TeX remains on the card.
+    // Keep unsupported/nested environments on the existing source fallback.
+    s = s.replaceAllMapped(
+      RegExp(
+        r'\\begin\{(pmatrix|bmatrix|matrix|array)\}(\{[rcl|]+\})?([\s\S]*?)\\end\{\1\}',
+      ),
+      (m) {
+        final array = m[1] == 'array';
+        if (array && m[2] == null) return m[0]!;
+        final body = array ? m[3]! : '${m[2] ?? ''}${m[3]}';
+        if (body.length > (array ? 65536 : 4096) || body.contains(r'\begin')) {
+          return m[0]!;
+        }
+        final rows = body
+            .split(r'\\')
+            .map(
+              (row) => row
+                  .split('&')
+                  .map((cell) => formatMathToUnicode(cell.trim()))
+                  .toList(),
+            )
+            .toList();
+        if (rows.isEmpty ||
+            rows.length > (array ? 102 : 6) ||
+            rows.first.isEmpty ||
+            rows.first.length > 6 ||
+            rows.any(
+              (row) =>
+                  row.length != rows.first.length ||
+                  row.any((cell) => cell.isEmpty || cell.length > 200),
+            )) {
+          return m[0]!;
+        }
+        final widths = List.generate(
+          rows.first.length,
+          (c) => rows.map((row) => row[c].length).reduce(math.max),
+        );
+        String rowText(int r) => List.generate(
+          widths.length,
+          (c) => rows[r][c].padLeft(widths[c]),
+        ).join('  ');
+        final round = m[1] == 'pmatrix';
+        if (rows.length == 1) {
+          return '${round ? '(' : '['} ${rowText(0)} ${round ? ')' : ']'}';
+        }
+        return List.generate(rows.length, (r) {
+          final left = r == 0
+              ? (round ? '⎛' : '⎡')
+              : r == rows.length - 1
+              ? (round ? '⎝' : '⎣')
+              : (round ? '⎜' : '⎢');
+          final right = r == 0
+              ? (round ? '⎞' : '⎤')
+              : r == rows.length - 1
+              ? (round ? '⎠' : '⎦')
+              : (round ? '⎟' : '⎥');
+          return '$left ${rowText(r)} $right';
+        }).join('\n');
+      },
+    );
+
+    s = s.replaceAllMapped(
+      RegExp(r'\\begin\{(aligned|gathered)\}([\s\S]*?)\\end\{\1\}'),
+      (m) {
+        if (m[2]!.length > 4096 || m[2]!.contains(r'\begin')) return m[0]!;
+        return m[2]!.replaceAll('&', '').replaceAll(r'\\', '\n');
+      },
+    );
+
     // Replace text formatting wrappers: \text{...}, \mathrm{...}, \mathbf{...}, etc.
     s = s.replaceAllMapped(
-      RegExp(r'\\(?:text|mathrm|mathbf|mathit|textbf|textrm)\{([^}]*)\}'),
+      RegExp(
+        r'\\(?:text|mathrm|mathbf|mathit|textbf|textrm|operatorname)\{([^}]*)\}',
+      ),
       (m) => m.group(1)!,
     );
 
@@ -277,6 +348,8 @@ class CanvasRichText {
     s = s.replaceAll(r'\left(', '(').replaceAll(r'\right)', ')');
     s = s.replaceAll(r'\left[', '[').replaceAll(r'\right]', ']');
     s = s.replaceAll(r'\left\{', '{').replaceAll(r'\right\}', '}');
+    s = s.replaceAll(r'\left.', '').replaceAll(r'\right.', '');
+    s = s.replaceAll(r'\left|', '|').replaceAll(r'\right|', '|');
     s = s
         .replaceAll(r'\,', ' ')
         .replaceAll(r'\;', ' ')
@@ -863,7 +936,10 @@ class CanvasRichText {
         case CanvasRichLineType.displayMath:
           currentY += 4.0;
           final mathStyle = TextStyle(
-            fontFamily: fontFamily,
+            fontFamily:
+                line.contentText.contains('⎛') || line.contentText.contains('⎡')
+                ? 'Consolas'
+                : fontFamily,
             fontSize: defaultFontSize + 1.5,
             fontStyle: FontStyle.italic,
             color: colors.onSurface,
@@ -1139,7 +1215,10 @@ class CanvasRichText {
         case CanvasRichLineType.displayMath:
           currentY += 4.0;
           final mathStyle = TextStyle(
-            fontFamily: fontFamily,
+            fontFamily:
+                line.contentText.contains('⎛') || line.contentText.contains('⎡')
+                ? 'Consolas'
+                : fontFamily,
             fontSize: defaultFontSize + 1.5,
             fontStyle: FontStyle.italic,
             height: 1.35,

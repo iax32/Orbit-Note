@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+part 'technical_article_templates.dart';
+
 /// A reusable starter template for Markdown documents in Orbit Note.
 class NoteTemplate {
   const NoteTemplate({
@@ -411,6 +413,7 @@ What do the observations support, contradict, or leave uncertain?
     cppCode,
     javascriptCode,
     ...storyTemplates,
+    ...TechnicalArticleTemplates.all,
     blank,
   ];
 

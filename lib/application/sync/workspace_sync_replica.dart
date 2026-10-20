@@ -6,12 +6,14 @@ class WorkspaceSyncReplica implements SyncReplica {
   WorkspaceSyncReplica(
     this.repository, {
     required this.canApply,
+    this.isCurrent,
     this.onApplied,
   }) : workspaceId = repository.workspaceId,
        _generation = repository._syncGeneration;
 
   final WorkspaceRepository repository;
   final bool Function() canApply;
+  final bool Function()? isCurrent;
   final void Function()? onApplied;
   final int _generation;
   @override
@@ -22,10 +24,21 @@ class WorkspaceSyncReplica implements SyncReplica {
   /// Use this state wrapper with the replica. It serializes writes with Vault
   /// switches, so a late provider acknowledgement cannot write another Vault.
   SyncStateStore createStateStore() => _ReplicaStateStore(this);
+  SyncStateStore createDriveSettingsStore() => _ReplicaStateStore(
+    this,
+    path: '.orbit/device/sync/drive-settings-v1.json',
+  );
+  SyncStateStore createDriveJournalStore() => _ReplicaStateStore(
+    this,
+    path: '.orbit/device/sync/drive-uploads-v1.json',
+  );
+  Future<WorkspaceStage> stageTransfer(Stream<List<int>> bytes, String hash) =>
+      _staging.stage(bytes, expectedHash: hash, maxBytes: maxBlobBytes);
 
   void _check({bool applying = false}) {
     repository._requireWritable();
-    if (repository._syncGeneration != _generation ||
+    if (isCurrent?.call() == false ||
+        repository._syncGeneration != _generation ||
         repository.workspaceId != workspaceId) {
       throw const WorkspaceConflict(
         'Sync belongs to a different Vault opening.',
@@ -278,15 +291,15 @@ class WorkspaceSyncReplica implements SyncReplica {
   @override
   Future<void> preserveConflict(
     String conflictId,
-    SyncEntry local,
+    SyncEntry? local,
     RemoteSyncEntry remote,
     Stream<List<int>> remoteBytes,
   ) async {
     _check();
-    if (local.key != remote.entry.key) {
+    if (local != null && local.key != remote.entry.key) {
       throw const WorkspaceConflict('Conflict identities differ.');
     }
-    validateSyncEntries({local.key: local});
+    if (local != null) validateSyncEntries({local.key: local});
     validateSyncEntries({remote.entry.key: remote.entry});
     final remoteStage = await _staging.stage(
       remoteBytes,
@@ -295,11 +308,9 @@ class WorkspaceSyncReplica implements SyncReplica {
     );
     WorkspaceStage? localStage;
     try {
-      localStage = await _snapshot(local);
+      if (local != null) localStage = await _snapshot(local);
       final identity = sha256
-          .convert(
-            utf8.encode(jsonEncode([local.toJson(), remote.entry.toJson()])),
-          )
+          .convert(utf8.encode(jsonEncode([local?.toJson(), remote.toJson()])))
           .toString();
       final folder = '.orbit/sync-conflicts/$identity';
       await repository._serial(() async {
@@ -320,14 +331,14 @@ class WorkspaceSyncReplica implements SyncReplica {
           }
         }
 
-        await preserve('local', localStage!);
+        if (localStage != null) await preserve('local', localStage);
         await preserve('remote', remoteStage);
         final descriptor = repository._bytes(
           jsonEncode({
             'format': 'orbit-note-sync-conflict',
             'version': 1,
             'workspaceId': workspaceId,
-            'local': local.toJson(),
+            'local': local?.toJson(),
             'remote': remote.toJson(),
           }),
         );
@@ -344,8 +355,11 @@ class WorkspaceSyncReplica implements SyncReplica {
 }
 
 class _ReplicaStateStore implements SyncStateStore {
-  _ReplicaStateStore(this.replica)
-    : delegate = WorkspaceSyncStateStore(replica.repository._store);
+  _ReplicaStateStore(this.replica, {String path = WorkspaceSyncStateStore.path})
+    : delegate = WorkspaceSyncStateStore(
+        replica.repository._store,
+        storagePath: path,
+      );
   final WorkspaceSyncReplica replica;
   final WorkspaceSyncStateStore delegate;
   @override

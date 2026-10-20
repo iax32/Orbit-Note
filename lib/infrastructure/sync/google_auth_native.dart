@@ -18,6 +18,9 @@ GoogleAccountAuth createGoogleAuth() {
       'ORBIT_GOOGLE_DESKTOP_CLIENT_SECRET',
     ),
     credentials: const SecureGoogleCredentials('orbit.google.desktop.v1'),
+    configurationStore: const SecureGoogleCredentials(
+      'orbit.google.desktop-client.v1',
+    ),
     client: http.Client(),
     openBrowser: (uri) => launchUrl(uri, mode: LaunchMode.externalApplication),
     receive: LoopbackGoogleReceiver.bind,

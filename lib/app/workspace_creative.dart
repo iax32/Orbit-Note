@@ -15,34 +15,49 @@ extension CreativeProjects on WorkspaceController {
         CanvasScene.fromJson(board.data).readOnly) {
       throw StateError('Choose an editable reference board.');
     }
-    final workspace = repository.workspaceId;
+    final workspace = repository.workspaceId, generation = workspaceGeneration;
     final source = await repository.importAttachment(name: name, bytes: bytes);
-    if (repository.workspaceId != workspace) {
+    if (repository.workspaceId != workspace ||
+        workspaceGeneration != generation) {
       throw StateError('The workspace changed during capture.');
     }
     try {
       final latest = find(canvasId);
+      final hasOwner = [
+        'project',
+        'course',
+        'context',
+      ].any(source.properties.containsKey);
       final object = await repository.save(
         source.copyWith(
           properties: {
             ...source.properties,
             if (latest != null && !latest.isDeleted) ...{
-              if (latest.properties['folder'] is String)
+              if (!source.properties.containsKey('folder') &&
+                  latest.properties['folder'] is String)
                 'folder': latest.properties['folder'],
-              if (latest.properties['project'] is String)
+              if (!hasOwner && latest.properties['project'] is String)
                 'project': latest.properties['project'],
-              if (latest.properties['projectName'] is String)
+              if (!hasOwner && latest.properties['projectName'] is String)
                 'projectName': latest.properties['projectName'],
             },
-            'referenceBoardId': canvasId,
+            if (!source.properties.containsKey('referenceBoardId'))
+              'referenceBoardId': canvasId,
           },
         ),
       );
+      if (repository.workspaceId != workspace ||
+          workspaceGeneration != generation) {
+        throw StateError('The workspace changed during capture.');
+      }
       return object;
     } finally {
       // An imported source remains discoverable even if metadata enrichment fails.
-      mergeRepositoryObjects();
-      notify();
+      if (repository.workspaceId == workspace &&
+          workspaceGeneration == generation) {
+        mergeRepositoryObjects();
+        notify();
+      }
     }
   }
 

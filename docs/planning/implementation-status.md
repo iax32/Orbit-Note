@@ -1,3 +1,486 @@
+## Editor transaction and recovery quality — 2026-10-20
+
+EDT-02/04/06/07/10 and HIST-01/03 refinement: source-validated bounded history,
+selection restoration, input/document undo ownership, revision-guarded delayed
+clipboard/review commands, read-only guards, Unicode-safe replacement previews
+and coalesced same-draft recovery. 34 new headless regressions exercise split
+panes, 1,000-match replacement, long native notes and failed/interleaved saves.
+No new dependency, storage format or architecture change.
+Final focused matrix 214 passed; full suite 2,628 passed with 2 existing skips;
+formatting and analysis clean. Configured Windows/server and standard web
+releases verified; existing web SDK/font warnings remain.
+[Validation and remaining limits](../tasks/editor-transactions-quality-2026-10-20.md).
+
+## Split-pane navigation and focus quality — 2026-10-20
+
+NAV-03/04/08/10 refinement: visible/read-only pane shortcut ownership, live tab
+cycling, pane focus scopes and explicit editor activation with guarded deferred
+requests. Long documents retain independent view state through rapid switching;
+no source, schema or dependency changes. [Checks and limits](../tasks/split-focus-quality-2026-10-20.md).
+
+## Assignment and reference workflow quality — 2026-10-19
+
+ORG-03/05/08/11 refinement: original-document tag entry, normalized membership with
+unknown-data retention, live project/reference choices, guarded assignment/save
+ownership, accurate unlinked-mention conversion and shared retryable connection
+forms. Existing identity, local persistence and history remain authoritative;
+no schema/dependency change. [Checks and limits](../tasks/assignment-relation-quality-2026-10-19.md).
+
+## Metadata dialog quality — 2026-10-19
+
+ORG-01/03/05/07 and DES-08 refinement: field-level metadata preconditions preserve
+unrelated edits; shared rename route and property/color dialogs retain conflicting
+drafts. Guarded disposed/Vault callbacks, folder rename/member checks, concurrent
+new-key protection, finite numbers, strict hex and enlarged preview layouts.
+Normal autosave/recovery remains authoritative; no schema or dependency change.
+[Actual checks and release evidence](../tasks/metadata-dialog-quality-2026-10-19.md).
+
+## Bulk lifecycle quality — 2026-10-19
+
+ORG-01/05/07 and HIST-01/03/09 refinement: frozen/deduplicated move/copy selections,
+Vault-opening ownership for queued commands, partial cleanup reconciliation,
+failed-save/conflict guards, original-selection confirmation handling and accurate
+mixed-type Trash counts. Existing journals retain recovery authority; no new data
+format, dependencies or grouped Undo claim. 19 new regressions; full suite 2,540
+passed, 2 existing skips. [Actual checks and release evidence](../tasks/bulk-lifecycle-quality-2026-10-19.md).
+
+## Creation and source/file workflow quality — 2026-10-19
+
+VIEW-03/04, FILE-01/06/09 and DEV-01/03 refinement: correct supported creation
+targets, retired inline callbacks, retryable versioned source/model previews,
+attachment-invalidation bridges, stable preview selection/camera, cached source
+line width, scoped evidence feedback and original-context external opens. Existing
+repository/platform boundaries and portable bytes remain authoritative; no schema
+or dependency changes. [Actual checks and release evidence](../tasks/file-workflow-quality-2026-10-19.md).
+
+## Kanban and project-board quality — 2026-10-19
+
+VIEW-01/02/04/06 refinement: canonical membership, collision-free private group
+keys, captured drop/option ownership, current-data completion, durable folder
+moves, guarded retryable inline creation and lazy columns/cards. Read-only and
+unsupported definitions retain their data; narrow/large-text previews retain
+reachable controls and Escape focus. No schema/dependency changes.
+[Validation and release evidence](../tasks/kanban-quality-2026-10-19.md).
+
+## Large-project collection quality — 2026-10-18
+
+VIEW-01/02/03/05/06 and TASK-08 refinement: shared table/timeline/progress
+membership, indexed manual membership, independent scoped-query caches, atomic
+current-data property saves, stale popup/dialog/creation ownership, validated
+durable folder moves, read-only/imported-data handling and lazy large-text tables.
+Unknown data and legacy scope precedence remain intact; no schema/dependency
+changes. [Behavior](../features/collections-and-views.md#collection-quality-refinement--2026-10-18)
+and [actual validation/build evidence](../tasks/collection-quality-2026-10-18.md).
+
+## Writing font and zoom clarity — 2026-10-18
+
+Pixel notebook headings retain their grid-aligned regular outlines; terminal
+fonts have real offline bold/italic faces. Specialist code/math restores
+continuous app/OS scaling within pixel designs. Native text, source, preferences
+and retained input remain authoritative. [Validation and limits](../tasks/writing-font-quality-2026-10-18.md).
+
+## Canvas selection and transfer quality — 2026-10-18
+
+CAN-05/06/08/14 and DES-01/03/05/06 receive stale-context guards, cancelled gesture
+and camera rollback, independent command undo, captured paste positions and
+lossless ink sample/unsupported drawing transfers. Existing scene, portable JSON,
+references and import adapters remain authoritative. No dependencies or schema
+changes. [Checks and platform acceptance limits](../tasks/canvas-transfer-quality-2026-10-17.md).
+
+## Editor/document-tool quality — 2026-10-17
+
+EDT-09/12, FILE-12 and PORT-05/09 quality refinement: protected temporary authoring
+forms, pre-close footnote/heading validation, captured editor/repository/Vault
+generation guards, frame-safe writing-sheet updates and preview-preserving export
+failures. HTML retains code-language/table alignment and valid title anchors.
+No schema/dependency or offline/storage boundary changes. Validation/build
+evidence: [task record](../tasks/editor-quality-2026-10-17.md).
+
+## Technical articles and CMS handoff — 2026-10-17
+
+EDT-09, REV-02/03/04, CAN-07/13 and PORT-05/06 gain configurable research articles,
+editable memory/pointer/call/evidence diagrams, recorded address arithmetic and
+offline article metadata/checks/CMS handoff. Existing editor, shared scene,
+portable publication record, live references and HTML exporter are reused.
+This is not a debugger, CMS connection, Google indexing/penalty audit or ranking
+guarantee. [Workflow and boundaries](../features/technical-article-publishing.md);
+[actual task evidence](../tasks/technical-articles-2026-10-17.md).
+
+## PDF review workspace — 2026-10-17
+
+FILE-04/05/11/12/13/14 and CAN-13/15 gain an expanded review view, keyboard and
+range selection, 50-item result pages, selected-only exports/linked summaries,
+linked Canvas evidence boards and bounded bulk review changes. Existing note
+identity, Canvas placements, PDF region format and repository history are reused.
+Per-note progress, cancellation, partial-failure details and guarded batch Undo
+retain later edits and completed work. Original PDF bytes remain unchanged.
+Batch receipts are in memory; note history/Trash are durable recovery. No global
+multi-note transaction or embedded PDF annotation import is claimed. Current
+task owns actual validation/build evidence and the requested completion shutdown.
+
+## PDF note deletion and extraction reliability — 2026-10-16
+
+FILE-04/05/11/12/13: plain PDF quote/page notes gain recoverable deletion from
+connected notes and the note source banner. Shared session list ownership fixes
+an immutable-default exception in deletion, close, pin and archive paths. Trash
+cleans presentations without another close snapshot, returns to the adjacent PDF,
+reports failed saves and retains newer drafts. Revision-checked Undo refuses a
+changed Trash note. Extracted quotes use canonical Canvas scene data and retain
+existing board/unknown metadata; note insertion preserves authored whitespace.
+Failed extraction no longer reports success, and old-Vault creation results cannot
+pollute another Vault. Current task records actual tests/build evidence. This
+does not claim all PDF issues or full Acrobat parity are complete.
+
+## Orbit UML styling and live Markdown diagrams — 2026-10-16
+
+CAN-07/13/15/16 and EDT-05/08 include Orbit-themed neutral class surfaces
+and bounded live diagram references. Selected classes and internal relationships
+can be sent to new/existing Markdown notes or copied as a live block. Rich and
+Read reuse the shared vector painter with expand/zoom, source navigation,
+selectable details and guarded Rich source editing. Missing sources retain
+references without showing unrelated content. Read source refresh no longer
+depends on reparsing prose. New notes inherit source context; existing note
+appends preserve authored content, line endings and metadata, and failed saves
+retry without duplicate blocks. Native restart retains exact references and
+unknown Canvas data. Current task records validation/build evidence.
+External readers/publication exports currently retain a source link; offline
+self-contained vector publication snapshots remain a separate task.
+
+## Editable UML class diagrams — 2026-10-16
+
+CAN-04/05/07/14/15/16 now include a class-diagram presentation of ordinary Canvas
+rectangles and connectors: separate name/member/operation compartments, optional
+stereotype/abstract name, six relationship presets, multiplicities/roles,
+attachment positions and orthogonal routing lanes. The supplied four-class
+example is insertable and reversible. Search covers members; copy/paste remaps
+bound placement IDs; JSON preserves editable/unknown data and SVG/PNG retain
+appearance. Dialog edits reject locked/read-only/stale scenes. No alternate
+engine or authored schema migration. Mermaid classDiagram round-tripping and
+self-associations remain outside this subset. Validation is in current task.
+
+## PDF highlight performance and deletion — 2026-10-15
+
+Reader-only immutable geometry caching and per-page lookup replace full-document
+region decoding during paints/hit tests. Unchanged object snapshots are reused
+when marks change. Ordinary highlights preview pending saves without opening a
+panel/refitting the page, preserve selected text on failure and clear it only
+after success. In-page right-click/details and review rows expose recoverable
+Delete; guarded Undo restores the same note from Trash. Source replacement,
+read-only changes, stale/dirty/competing drafts and clipboard failures retain
+knowledge. Native storage restart and actual PDF selection/render tests cover
+the workflow. Original bytes, Canvas region format, UUIDs and history contracts
+are unchanged. Actual validation/build evidence is in current task; full Acrobat
+parity and manual device frame-rate acceptance are not claimed.
+
+## Device sync continuity — 2026-10-15
+
+Completed bulk transfers can explicitly opt into 1/5/15-minute inactive-Vault
+checks while Orbit is open. Existing account bindings, native locks, individual
+pauses, batch cancellation, conflict recovery and the active controller are reused.
+Settings expose selection/status/pause/check-now/forget. Shared connection setup
+suspends Drive. Self-host settings add owner-authenticated readiness testing and
+secure-device Remember/Reconnect/Forget for room capabilities, never owner keys.
+The Windows build includes a standalone server/console launcher and rejects
+private server data under Vault roots. No installed service, public hosting/TLS,
+physical-device acceptance or new live shared-object protocol is claimed.
+See current task for actual validation/build evidence and ADR-0031 for boundaries.
+
+## Bulk Drive Vault transfers — 2026-10-15
+
+Native Settings now provides upload/connect and download pickers for multiple
+Vaults. Explicit selection, shallow folder discovery, sequential guarded sync,
+per-Vault results, cancellation/retry and identity-preserving new folders reuse
+the existing sync engine and durable bindings. Active editing/locks/account guards
+remain enforced. Downloaded Vaults enter recents without changing the current
+Vault. Automatic inactive-Vault background sync is not introduced. Current task
+records actual checks and platform builds; no personal Vaults were uploaded by
+agent tools for this feature.
+
+## Automatic personal Drive sync — 2026-10-15
+
+Native opt-in automatic Drive synchronization now composes SyncEngine and
+WorkspaceSyncReplica with durable account/Vault/folder binding, generated upload
+IDs/resumable sessions, foreground scheduling, pause, retry and safe new-device
+opening. Exact authored files, attachments and tombstones participate. Immutable
+revision graphs retain races as branches; local alternatives and explicit reviewed
+resolution preserve history and reject stale local selections. Local-only startup
+does not construct account adapters without saved opt-in. Shared-session activity
+temporarily suspends this personal authority. ADR-0030 extends the provider gate;
+ordinary mutable providers still require atomic conditional publication.
+
+No new dependency or authored migration. Empty folders/device state remain local,
+folder Archive metadata blocks setup, and some native move/permanent-delete restore
+transitions need manual recovery. Cloud retention is append-only with explicit
+capacity bounds, not a GC policy. Real Google-account transfers passed with two
+isolated native clients on one PC on 2026-10-15: exact note/Canvas/files,
+bidirectional creation, offline conflicts/explicit resolution, resumable restart,
+lost acknowledgements, tombstones and clean persisted checkpoints. Fresh browser
+consent was owner-completed; tokens stayed in memory and only synthetic data was
+uploaded. Physical two-device, installed-app UI/secure-store acceptance, public
+OAuth distribution, Android activation and multiplayer live new-object/attachment
+streaming remain separate. Current task records actual checks/builds.
+
+## Drive and shared-session recovery — 2026-10-15
+
+Manual Drive backups add account/Vault-scoped browsing, name search, cancellation
+and opening-generation guards, and accurate verified-upload status when listing
+fails. Resumable uploads recover through bounded status probes without starting a
+second upload session; token expiry, quota, rate and disabled-API errors are
+distinguished. Existing-note/Canvas multiplayer adds bounded reconnect backoff,
+explicit retry, revoked-access pause, pending-save status and late-reply guards.
+Replay retains the same operation identity while preserving newer local edits.
+No schema migration/new package; repository saves, history and server journal
+remain the durability boundaries. Current task records validation and Windows
+release evidence. Automatic personal Drive sync, new/deleted shared objects and
+live attachments, text-caret synchronization, public OAuth rollout and real
+two-device acceptance remain unfinished.
+
+## Editor scroll-progress chrome — 2026-10-15
+
+Removed the note editor's scroll/reading-progress stripe and its indicator-only
+scroll rebuilds at the owner's request. Normal scrolling, saved view positions
+and line/column status retain their existing boundaries. No migration or new
+settings; current task records checks and Windows release evidence.
+
+## Browser paragraph-list paste — 2026-10-15
+
+Fixed empty-bullet artifacts from browser/ChatGPT HTML list items that wrap their
+text in paragraphs/divs. Rich import now retains first paragraph text on its
+bullet, formatting and ordinary undo, while keeping intentionally empty items and
+plain-source whitespace. Existing notes are not automatically cleaned up. Current
+task records failing fixtures, real headless Ctrl+V checks and final validation.
+
+## Feature reliability audit — 2026-10-15
+
+Fixed table rectangle keyboard/menu paste, TSV/CSV quoting and blank-row alignment,
+single-line caret prose paste, single-snapshot fallback, and failed/stale cell/range
+cuts. Note epochs reject delayed table transfers across identical note switches
+and return; composition, source and undo survive. Connected Canvas duplication
+retargets copied nodes; detached connector copies snapshot visible endpoints while
+connected copies retain authored fallback coordinates. Unfamiliar connector field
+types render/hit-test safely with original JSON retained. Existing headless feature
+and temporary-Vault/Canvas stress suites exercise failure boundaries. No new
+package/schema/object types. Current task records final checks and limits.
+
+The continuing audit also fixes delayed Source equation/table/link/attachment
+insertion and note-block Canvas placement across document switches, changed text,
+and read-only transitions. Explicit insertion relocation rechecks ownership and
+permissions; ordinary insertion remains undoable. Source clipboard cuts/pastes
+recheck current permissions. Equation Studio scrolls in short/narrow windows with
+large text instead of squeezing its controls. Headless tests include switch-return,
+newer source preservation, placement identity, successful undo and narrow math UI.
+
+## Extended writing designs and pixel zoom — 2026-10-14
+
+Added Blueprint, Field journal, Typewriter and Amber terminal to the six existing
+writing surfaces. Existing paper/photos/high-contrast controls and recovery paths
+apply. Display-pixel-aligned Tiny5 sizes compose app/OS zoom for title/body/font
+previews, with continuous sizing opt-out. Other fonts and app chrome retain normal
+zoom. Native selection/controller identity and source remain intact; no package,
+font or workspace format migration. Current task records checks and visual evidence.
+
+## Markdown selection scrolling — 2026-10-14
+
+Fixed reproduced scroll-back during mouse selection plus wheel scrolling in short
+and lazy Rich notes. Document selection owns stale paragraph caret-reveal requests;
+wheel input keeps focus before recycling and updates stationary endpoints after
+layout. Global hit coordinates are no longer converted twice; selection changes
+publish the actual parent/view range. Forward/upward/reverse wheel, exact copy,
+paste/undo, release/cancel, ordinary editing and existing search/clipboard checks
+use headless fixtures. No source format or storage changes. Current task records
+full checks and physical-input limitations.
+
+## Personal photo backgrounds — 2026-10-14
+
+Delivered bounded offline photo copies for writing surfaces, position/fill/fit and
+intensity controls, protected reading sheets and automatic contrast limits.
+Preview/apply/cancel/remove/reset, stale identity and storage failures retain the
+prior source/appearance; missing photos have fallback/retry. Existing device paths
+hold hash-addressed PNGs and view JSON holds small recipes. High contrast hides
+photos. No authored object, network load, shared-photo sync, automatic cache cleanup
+or new package. Current task records validation and limits.
+
+## Writing surfaces — 2026-10-14
+
+Delivered six original reference-inspired Markdown writing designs, four paper
+backgrounds, adjustable spacing, bundled offline fonts, scoped semantic colors and
+quiet/full-editor recovery. Preview/apply/cancel/reset and existing session
+persistence leave knowledge/source/history untouched; unknown preferences have a
+safe fallback. Native editing and Rich/Source/Read/Split remain. CRT details are
+static, removable and suppressed in high-contrast mode. Not an exact third-party
+UI copy, live pagination or a print-style override. Current task records validation.
+
+## Live mathematical plots — 2026-10-14
+
+Delivered persistent readable plot recipes with Rich/Read/Split rendering, settings
+editing and exact undo/source safety; four-function comparisons, coordinate/keyboard
+inspection, value tables, TSV/CSV and escaped SVG export. Math Lab shares comparison
+and table tools with LaTeX and Canvas; Canvas retains editable primitive snapshots.
+Added ten templates (30 shared new templates total) and common Unicode arithmetic
+input. Malformed/future recipes remain editable code. Unknown metadata, CRLF, safe
+number boundaries, read-only actions and source search are covered. No dependencies,
+new workspace identity/schema, cloud, symbolic algebra or desktop-control testing.
+Publication formats retain fenced recipe fallback, and plot sampling can miss gaps.
+See current task for validation evidence and editor/format specs for boundaries.
+
+## Shared Math Lab — 2026-10-14
+
+Markdown, LaTeX, Equation Studio and Canvas share offline calculators/variables,
+function plots and numerical calculus, bounded real matrix operations and 20
+new mathematical templates. Results retain named inputs as ordinary display TeX;
+Canvas adds grouped editable plot snapshots through existing ink/line primitives.
+Source, identity, composition/read-only guards and ordinary undo apply. No schema,
+package, credential, cloud or symbolic CAS. The original batch inserted function
+and window descriptions; live Markdown recipes are now delivered above. LaTeX
+and Canvas continue using equation/primitive snapshots. Numerical
+estimates are explicitly approximate; samples can miss discontinuities. See the
+current task for final validation and the editor/board specs for behavior limits.
+
+## Block formats and BTW callouts — 2026-10-14
+
+Markdown adds a searchable current/selected-block format chooser, BTW preset in
+Insert/slash/type selection, exact-source callout title edits and collapsible
+callout defaults with transient view folding. Read search reveals folded text.
+Supported prose/heading/list conversions retain inline source, links, checked
+items and anchors; structured/unknown/nested content stays with existing tools.
+Stale source/Vault changes are refused and normal history handles formatting.
+Narrow command chrome and cursor-status recovery prevent crowding the editor at
+large text sizes. No workspace migration, new object type or remote service.
+See current task for validation and editor/format docs for boundaries.
+
+## Vault Insights and Document Checks — 2026-10-14
+
+Delivered deterministic Vault counts/connection analysis, navigable review lists,
+current local save/index diagnostics and aggregate-only clipboard reporting from
+Graph. Markdown Writing tools now groups source-linked wiki/footnote/heading
+checks, opens exact Source ranges and lets users choose a replacement object for
+one unresolved/ambiguous mention with label/fragment preservation and ordinary
+undo. Snapshots and mutations revalidate current source/Vault identity. No AI,
+automatic cleanup, disk-health certification, schema migration or complete lint
+claim. See current task for acceptance evidence and the graph/editor feature docs
+for precise counting and repair boundaries.
+
+## Launch profiles and static web preview — 2026-10-13
+
+Delivered saved project profiles with editable argument arrays/scoped working
+folders, multi-step run/build sequences, pending-start cancellation, expected-hash
+configuration/history and basic multi-source C++ commands. Explicit native web
+preview serves modules/assets on loopback, authorizes requests per server, refuses
+hidden/unsupported/outside paths and reloads saved/external changes with stop and
+address controls. This extends the Code workspace subset below. No bundler, package
+manager, backend router, public hosting, graphical debugger or build-system discovery
+claim. Current task records native fixtures, compact layouts, full-suite and build
+evidence; setup and limitations are in the Code workspace guide.
+
+## Code workspace — 2026-10-13
+
+Implemented the owner's editable desktop project scope for small scripts/web
+projects: tabbed UTF-8 editing/creation/search; per-tab undo/caret and recovery;
+SHA-checked, lock-serialized saves with retained before/after checkpoints; reviewed
+external conflicts; HTML/Python/C++ snippets and optional local LSP capabilities;
+explicit Python check/run/pdb, C++ single-file build/run/configured console debugger,
+HTML browser preview and bounded live console/input/stop. Entry points connect
+Explorer, command palette, Game and Analysis dashboards; evidence capture uses
+normal Vault objects and original dashboard identity. Private device tool paths
+and conditional platform adapters preserve existing Vault/web compatibility.
+
+This is a local DEV-01/03/05 subset. Graphical DAP, build-system discovery, environment
+management, bundler/backend preview, workspace-wide rename/refactoring and Git
+adapter parity remain. Tool installation and configured C++ semantic/debugger
+acceptance remain device-specific. See [setup](../development/code-workspace-setup.md)
+and current task for evidence; no full professional-IDE parity claim.
+
+## Technical source and build investigations — 2026-10-13
+
+Implemented bounded/cancellable folder-wide source search, stale-file-aware exact
+line navigation and portable source-evidence capture through existing dashboard
+browsers. Research function-map comparison chooses explicit binary/build contexts,
+flags duplicates/incomplete data, distinguishes rebasing from recorded RVA changes
+and creates linked report notes/investigation tasks. These are local DEV/REV/GAME
+knowledge subsets, not binary diffing, engine execution, repository writes or live
+debugger integration. See current task for validation and platform evidence.
+
+## Windows Google activation — 2026-10-13
+
+Registered owner-testing Desktop client and Drive API; real production-adapter
+OAuth, identity, quota and Vault/backup listing verified without uploading a Vault.
+Windows release includes registration; future local builds use build_windows.ps1.
+First sign-in prepares an empty Orbit folder. Unconfigured previews can import
+validated registration into device secure storage. Configured clients cannot be
+overridden; provider configuration errors no longer trigger pointless reauth.
+Automatic Vault sync, public rollout, Android activation and installed-app/live
+transfer acceptance remain open. See current-task evidence and activation guide.
+
+## Universal reference integration — 2026-10-13
+
+Implemented shared reference picking/preview, Connections on all object surfaces,
+source-aware note/Canvas placement commands, precise clipboard/navigation, live
+task/view cards, canonical course context and a shared backlink/graph projection.
+Source identity remains universal; portable Markdown/JSON owns references. This
+connects existing features without adding a backend or claiming full commercial
+parity. Dynamic saved-query membership is presented separately from authored
+relationships. Missing/ambiguous sources are reported rather than retargeted.
+Validation and platform evidence are recorded in the current task.
+
+## Automated stress and import safety — 2026-10-13
+
+Fixed duplicate Canvas stacking positions exposed by randomized history checks,
+queued imports crossing Vault switches, caller-buffer mutation changing attachment
+bytes, late file-picker/drop imports, relative links computed from the wrong active
+note, failed Canvas reads aborting a batch, and deduplicated attachment capture
+rewriting explicit ownership/provenance. Existing shared engine, ordinary files,
+repository save/history and platform adapters remain. No durable schema migration,
+new package or desktop-control testing. Seeded/native and full-suite evidence is
+recorded in the current task; no issue-free, FPS or power-loss hardware claim.
+
+## Clipboard and Canvas data-safety audit — 2026-10-12
+
+Guarded Rich prose/Source native cut actions now wait for clipboard success and
+check note ownership, revision and selection before deleting. Document cuts/paste
+invalidate across note switches, including switch-away-and-back. Plain document
+paste leaves Orbit clipboard payloads literal. Canvas rejects stale/reordered
+paste, duplicate or unsupported placement batches without partial mutation, and
+late/failed image loads without adding a wrong-board placement. Canvas typography
+and section stroke getters bound unsafe rendering values while preserving raw
+fields. Existing identity/undo/persistence and platform boundaries remain intact.
+No claim of exhaustive app correctness or hardware clipboard acceptance; evidence
+and remaining limits are recorded in the current task.
+
+## Long-note drag selection — 2026-10-12
+
+Rich mouse prose selection scrolls proportionally near vertical viewport edges,
+retains a source anchor, resolves endpoints after lazy layout and keeps keyboard
+focus in the editor while the originating field is recycled. The idle editor has
+no active scrolling ticker. Release/cancel, focus/app deactivation, note/source
+changes and disposal stop scrolling; queued frames are invalidated. Native
+structured editor/touch gestures remain owned by their existing controls. No
+package or durable schema changes. Embedded column host scrolling and physical
+input acceptance remain outside this delivery. See current-task validation.
+
+## Selection and clipboard reliability — 2026-10-12
+
+Delivered stable native field mounting, precise prose range highlighting,
+Shift-click extension, right-click preservation and arrow collapse. Document-range
+paste and native context menus now use the actual selected range with guarded
+asynchronous reads and normal undo. Partial inline endpoints retain valid
+formatting; formatted inline paste uses visible caret length. Source/raw code
+paste stays literal. Native HTML fallback, UTF-8 CF_HTML fragment extraction,
+code whitespace and single-pass entity decoding improve browser/table transfers.
+No package, durable schema or platform boundary changes. Portable Markdown range
+copy and conservative HTML conversion remain; full Word/CSS fidelity, native
+selection through structured widgets and physical clipboard/IME validation are
+not claimed. Validation evidence is in the current task.
+
+## Connected project workspace — 2026-10-12
+
+Delivered project scope across shell/search/explorer and ordinary creation/capture,
+pinned work panel, canonical object assignment, precise typed source connections,
+changed-source review flags, bounded opt-in action history and device-local
+continuation/view restoration. Normal mutation/flush boundaries and guarded undo
+preserve unrelated later edits. No AI relevance inference, automatic dependency
+propagation, shared personal cursor state or complete specialized-operation activity
+coverage. Validation evidence is in the current task.
+
 ## Shared Vault preview and Drive backups — 2026-10-11
 
 SYNC-02/03/04/05/09/10 subset: self-hosted existing-note/Canvas sessions with
@@ -1377,6 +1860,17 @@ pass. Repeated framed sections and research metric cards were reduced while
 content, object links, actions and status meaning remain. 1,209 tests pass;
 analyzer and strict formatting are clean; the Windows release built in 56.6s.
 See [the focused report](../tasks/product-coherence-2026-10-04.md).
+## Page-aware document publishing — 2026-10-12
+
+Standalone image/table print widths, alignment, captions, page starts and table
+header repetition now share the PDF/HTML/Word export settings. Searchable paginated
+contents show actual PDF heading pages and navigate the preview. PDF contents have
+page numbers; Word includes refreshable page-reference fields; HTML labels cached
+PDF positions. Save settings uses portable note metadata and ordinary undo/save,
+with reopening, stale-save refusal and conservative duplicate/changed-content
+handling. This is an improved snapshot publishing workspace, not full live page
+editing or identical pagination across renderers. Current task records validation.
+
 ## Markdown composition and connected blocks — 2026-10-11
 
 Responsive two/three columns with nested Rich editing/Read presentation, column
@@ -1387,3 +1881,16 @@ prose/list conversion and linked Canvas placements are implemented. Existing
 Markdown/Canvas JSON authority, stable IDs and recoverable commands remain.
 No nested column layouts, arbitrary database widgets or live-object publication
 snapshots are claimed. Full validation is tracked in docs/tasks/current.md.
+
+### Connected university batch — 2026-10-13
+
+Delivered a discoverable course hub with editable metadata/fractional ECTS,
+active/passed/archive filters, independent task/practice/concept metrics, linked
+material and canonical-ID-scoped planning, review and continuity. Study boards
+reuse Canvas columns/object references and ordinary live queries. Code and OBJ/GLB
+opening controls reuse existing platform imports/viewers. Note-body/Canvas-scene
+conflicts retain a session draft with explicit recovered-copy/discard choices;
+normal exit/Vault switching waits for resolution. Queued creation ownership and
+mutable-input isolation are guarded. Full commercial Milanote/Notion parity,
+crash-durable competing drafts and automatic three-way merges remain unclaimed.
+Validation is recorded in docs/tasks/current.md.

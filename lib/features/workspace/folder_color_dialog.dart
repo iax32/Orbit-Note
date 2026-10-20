@@ -11,7 +11,8 @@ Future<Color?> showFolderColorDialog(
   required String folderName,
   bool isNote = false,
   Color? currentColor,
-  required void Function(Color? color) onColorSelected,
+  void Function(Color? color)? onColorSelected,
+  bool Function(Color? color)? onCommit,
 }) async {
   return showDialog<Color?>(
     context: context,
@@ -20,6 +21,7 @@ Future<Color?> showFolderColorDialog(
       isNote: isNote,
       currentColor: currentColor,
       onColorSelected: onColorSelected,
+      onCommit: onCommit,
     ),
   );
 }
@@ -30,12 +32,14 @@ class _FolderColorDialogContent extends StatefulWidget {
     required this.isNote,
     required this.currentColor,
     required this.onColorSelected,
+    required this.onCommit,
   });
 
   final String folderName;
   final bool isNote;
   final Color? currentColor;
-  final void Function(Color? color) onColorSelected;
+  final void Function(Color? color)? onColorSelected;
+  final bool Function(Color? color)? onCommit;
 
   @override
   State<_FolderColorDialogContent> createState() =>
@@ -61,6 +65,22 @@ class _FolderColorDialogContentState extends State<_FolderColorDialogContent> {
   late Color? _selectedColor;
   late final TextEditingController _hexController;
   String? _hexError;
+  String? _commitIssue;
+  bool _submitted = false;
+
+  void _commit(Color? color) {
+    if (!mounted || _submitted) return;
+    if (widget.onCommit?.call(color) == false) {
+      setState(
+        () => _commitIssue =
+            'This item changed or is no longer editable. Your color choice is retained; cancel and reopen to review it.',
+      );
+      return;
+    }
+    widget.onColorSelected?.call(color);
+    _submitted = true;
+    Navigator.of(context).pop(color);
+  }
 
   @override
   void initState() {
@@ -84,7 +104,8 @@ class _FolderColorDialogContentState extends State<_FolderColorDialogContent> {
   }
 
   void _onHexChanged(String value) {
-    final clean = value.replaceAll('#', '').trim();
+    final trimmed = value.trim();
+    final clean = trimmed.startsWith('#') ? trimmed.substring(1) : trimmed;
     if (clean.isEmpty) {
       setState(() {
         _hexError = null;
@@ -92,7 +113,7 @@ class _FolderColorDialogContentState extends State<_FolderColorDialogContent> {
       });
       return;
     }
-    if (clean.length == 6) {
+    if (RegExp(r'^[0-9a-fA-F]{6}$').hasMatch(clean)) {
       final parsed = int.tryParse('FF$clean', radix: 16);
       if (parsed != null) {
         setState(() {
@@ -340,7 +361,10 @@ class _FolderColorDialogContentState extends State<_FolderColorDialogContent> {
                   children: [
                     // Target Row Preview
                     Container(
-                      height: density.controlHeight,
+                      height:
+                          density.controlHeight +
+                          (MediaQuery.textScalerOf(context).scale(13) - 13)
+                              .clamp(0, 100),
                       decoration: BoxDecoration(
                         color: _selectedColor != null
                             ? Color.alphaBlend(
@@ -407,7 +431,11 @@ class _FolderColorDialogContentState extends State<_FolderColorDialogContent> {
                       Padding(
                         padding: const EdgeInsets.only(left: 14),
                         child: Container(
-                          height: density.controlHeight - 2,
+                          height:
+                              density.controlHeight -
+                              2 +
+                              (MediaQuery.textScalerOf(context).scale(12) - 12)
+                                  .clamp(0, 100),
                           decoration: BoxDecoration(
                             color: Colors.transparent,
                             borderRadius: BorderRadius.circular(
@@ -471,6 +499,14 @@ class _FolderColorDialogContentState extends State<_FolderColorDialogContent> {
                   color: colors.muted,
                 ),
               ),
+              if (_commitIssue != null)
+                Semantics(
+                  liveRegion: true,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text(_commitIssue!),
+                  ),
+                ),
             ],
           ),
         ),
@@ -479,10 +515,7 @@ class _FolderColorDialogContentState extends State<_FolderColorDialogContent> {
         if (widget.currentColor != null || _selectedColor != null)
           TextButton.icon(
             key: const ValueKey('folder-color-clear-button'),
-            onPressed: () {
-              widget.onColorSelected(null);
-              Navigator.of(context).pop(null);
-            },
+            onPressed: () => _commit(null),
             icon: const Icon(Icons.format_color_reset_outlined, size: 16),
             label: const Text('Reset color'),
           ),
@@ -493,10 +526,7 @@ class _FolderColorDialogContentState extends State<_FolderColorDialogContent> {
         ),
         FilledButton(
           key: const ValueKey('folder-color-apply-button'),
-          onPressed: () {
-            widget.onColorSelected(_selectedColor);
-            Navigator.of(context).pop(_selectedColor);
-          },
+          onPressed: _hexError != null ? null : () => _commit(_selectedColor),
           child: const Text('Apply Color'),
         ),
       ],

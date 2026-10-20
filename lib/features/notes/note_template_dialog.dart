@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../app/orbit_theme.dart';
 import 'note_templates.dart';
 import 'creative_brief_dialog.dart';
+import 'technical_article_template_dialog.dart';
 
 /// Modal dialog allowing users to choose or preview a structured Markdown note template.
 class NoteTemplateDialog extends StatefulWidget {
@@ -34,6 +35,14 @@ class _NoteTemplateDialogState extends State<NoteTemplateDialog> {
         ? await showDialog<NoteTemplate>(
             context: context,
             builder: (_) => const CreativeBriefDialog(),
+          )
+        : template.id.startsWith('article_')
+        ? await showDialog<NoteTemplate>(
+            context: context,
+            builder: (_) => TechnicalArticleTemplateDialog(
+              template: template,
+              insertMode: widget.insertMode,
+            ),
           )
         : template;
     if (mounted && result != null) Navigator.of(context).pop(result);

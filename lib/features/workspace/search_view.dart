@@ -27,6 +27,7 @@ class _SearchViewState extends State<SearchView> {
   Timer? _debounce;
   int _generation = 0, _selected = 0;
   int _page = 0, _pdfRevision = 0;
+  String? _projectScope;
   static const _pageSize = 50;
   StreamSubscription<void>? _indexSubscription;
   Timer? _indexRefresh;
@@ -90,6 +91,7 @@ class _SearchViewState extends State<SearchView> {
   @override
   void initState() {
     super.initState();
+    _projectScope = widget.controller.selectedProjectId;
     _listenIndex();
   }
 
@@ -117,7 +119,9 @@ class _SearchViewState extends State<SearchView> {
   @override
   void didUpdateWidget(SearchView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller != widget.controller) {
+    final changedProject = _projectScope != widget.controller.selectedProjectId;
+    _projectScope = widget.controller.selectedProjectId;
+    if (oldWidget.controller != widget.controller || changedProject) {
       _listenIndex();
       _search(_query.text);
     }

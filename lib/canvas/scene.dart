@@ -88,8 +88,12 @@ class CanvasElement {
   bool get hidden => data['hidden'] == true;
   int get color => data['color'] is int ? data['color'] as int : 0xff8b7cf6;
   double get strokeWidth => finiteNumber(data['strokeWidth'], 3).clamp(.1, 100);
-  double? get fontSize =>
-      data['fontSize'] is num ? (data['fontSize'] as num).toDouble() : null;
+  double? get fontSize {
+    final value = data['fontSize'];
+    return value is num && value.isFinite
+        ? value.toDouble().clamp(1, 1000)
+        : null;
+  }
 
   /// Resolves effective font size for a section header, respecting explicit
   /// `fontSize`, `headerSize` preset, Markdown heading prefixes, or element height.
@@ -115,11 +119,10 @@ class CanvasElement {
 
   /// Resolves effective stroke width for a section header line.
   double get sectionStrokeWidth {
-    if (data['strokeWidth'] is num) {
-      return (data['strokeWidth'] as num).toDouble();
-    }
-    if (data['lineThickness'] is num) {
-      return (data['lineThickness'] as num).toDouble();
+    for (final value in [data['strokeWidth'], data['lineThickness']]) {
+      if (value is num && value.isFinite) {
+        return value.toDouble().clamp(0, 100);
+      }
     }
     final hs = data['headerSize'];
     if (hs == 'huge') return 6.0;
@@ -306,6 +309,19 @@ class CanvasScene {
   }
 
   CanvasBounds _effectiveBounds(CanvasElement element) {
+    if (isConnectorElement(element) &&
+        ['startMultiplicity', 'endMultiplicity', 'startRole', 'endRole'].any(
+          (key) =>
+              element.data[key] is String &&
+              (element.data[key] as String).isNotEmpty,
+        )) {
+      final endpoints = resolveConnectorEndpoints(element, this);
+      var bounds = endpoints.bounds.inflate(24);
+      for (final label in connectorEndLabels(element, endpoints)) {
+        bounds = bounds.union(label.bounds);
+      }
+      return bounds;
+    }
     if ((element.type == 'connector' ||
             element.type == 'arrow' ||
             element.type == 'line') &&
@@ -410,7 +426,9 @@ class CanvasScene {
   void bringToFront(String id) {
     if (readOnly || !_elements.containsKey(id)) return;
     revision++;
-    _order[id] = ++_nextOrder;
+    // Reserve the next free order, just as put() does. Pre-incrementing left
+    // this order available to a new placement and made undo tie their stacking.
+    _order[id] = _nextOrder++;
   }
 
   void sendToBack(String id) {

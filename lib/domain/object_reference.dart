@@ -19,7 +19,7 @@ class ObjectReference {
         anchorId: fragment.substring(1),
       );
     }
-    for (final type in ['element', 'label', 'annotation']) {
+    for (final type in ['element', 'elements', 'label', 'annotation']) {
       if (fragment.startsWith('$type=') && fragment.length > type.length + 1) {
         try {
           return ObjectReference(
@@ -51,9 +51,8 @@ class ObjectReference {
       : switch (anchorType) {
           'block' => '^$anchorId',
           'heading' => Uri.encodeComponent(anchorId ?? ''),
-          'element' ||
-          'label' ||
-          'annotation' => '$anchorType=${Uri.encodeComponent(anchorId ?? '')}',
+          'element' || 'elements' || 'label' || 'annotation' =>
+            '$anchorType=${Uri.encodeComponent(anchorId ?? '').replaceAll('(', '%28').replaceAll(')', '%29')}',
           'unknown' => anchorId ?? '',
           _ => '',
         };

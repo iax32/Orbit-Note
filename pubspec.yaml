@@ -1,7 +1,7 @@
 name: orbit_note
 description: "Orbit Note, an open-source local-first personal knowledge operating system."
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.1+2
 
 environment:
   sdk: ^3.12.2
@@ -47,3 +47,28 @@ flutter:
   assets:
     - assets/
     - assets/publishing/
+    - assets/writing/
+  fonts:
+    - family: OrbitPixel
+      fonts:
+        - asset: assets/writing/Tiny5.ttf
+    - family: OrbitTerminal
+      fonts:
+        - asset: assets/writing/SpaceMono-Regular.ttf
+        - asset: assets/writing/SpaceMono-Bold.ttf
+          weight: 700
+        - asset: assets/writing/SpaceMono-Italic.ttf
+          style: italic
+        - asset: assets/writing/SpaceMono-BoldItalic.ttf
+          weight: 700
+          style: italic
+    - family: OrbitBook
+      fonts:
+        - asset: assets/publishing/CrimsonText-Regular.ttf
+        - asset: assets/publishing/CrimsonText-Bold.ttf
+          weight: 700
+        - asset: assets/publishing/CrimsonText-Italic.ttf
+          style: italic
+        - asset: assets/publishing/CrimsonText-BoldItalic.ttf
+          weight: 700
+          style: italic

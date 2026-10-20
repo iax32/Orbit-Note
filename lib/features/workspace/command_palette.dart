@@ -1,3 +1,7 @@
+import 'object_tag_dialog.dart';
+import 'course_hub.dart';
+import 'code_ide_workspace.dart';
+import '../notes/editor_draft_review.dart';
 import 'dart:async';
 import 'package:flutter/services.dart';
 import '../../app/orbit_components.dart';
@@ -178,6 +182,22 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
         )
         .firstOrNull;
     final commands = <({String title, IconData icon, VoidCallback run})>[
+      (
+        title: 'Open code workspace · HTML / Python / C++',
+        icon: Icons.developer_mode,
+        run: () => showCodeIde(context, controller: c),
+      ),
+      (
+        title: 'Open courses & study progress',
+        icon: Icons.school_outlined,
+        run: () => showCourseHub(context, c),
+      ),
+      if (c.editorDraftConflicts.isNotEmpty)
+        (
+          title: 'Review conflicting editor drafts',
+          icon: Icons.warning_amber_outlined,
+          run: () => showEditorDraftReview(context, c),
+        ),
       if (recentNote != null)
         (
           title:
@@ -250,34 +270,7 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
           title: 'Add tag to current document…',
           icon: Icons.new_label_outlined,
           run: () async {
-            final textCtrl = TextEditingController();
-            final tag = await showDialog<String>(
-              context: context,
-              builder: (ctx) => OrbitDialog(
-                title: const Text('Add Tag'),
-                content: TextField(
-                  controller: textCtrl,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    hintText: 'e.g. research, ideas, draft',
-                    prefixText: '#',
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('Cancel'),
-                  ),
-                  FilledButton(
-                    onPressed: () => Navigator.pop(ctx, textCtrl.text),
-                    child: const Text('Add'),
-                  ),
-                ],
-              ),
-            );
-            if (tag != null && tag.trim().isNotEmpty) {
-              await c.addTagToObject(c.session.activeId!, tag.trim());
-            }
+            await showObjectTagDialog(context, c);
           },
         ),
         (

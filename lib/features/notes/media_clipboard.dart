@@ -1,5 +1,7 @@
 import 'dart:convert';
 import '../../domain/object_reference.dart';
+import '../../domain/note_composition.dart';
+import '../../domain/linked_section.dart';
 import 'rich/markdown_document.dart';
 import 'rich/media_section_source.dart';
 
@@ -17,16 +19,31 @@ List<Map<String, dynamic>> markdownCanvasItems(String source) {
   }
 
   for (final block in MarkdownDocument.parse(source).blocks) {
+    final live = NoteObjectBlock.parse(block.source);
+    final section = LinkedSection.parse(block.source);
+    if (live != null || section != null) {
+      flush();
+      final reference = live?.reference ?? section!.target;
+      result.add({
+        'type': 'card',
+        'objectId': reference.id,
+        'referenceTarget': reference.target,
+        'presentation': section == null ? 'preview' : 'transclusion',
+        'text': live?.label ?? section!.fallback.split('\n').first,
+      });
+      continue;
+    }
     final objectLink = block.kind == MarkdownBlockKind.text
         ? RegExp(
-            r'^\[\[([^\]|#\r\n]+)(?:\|([^\]\r\n]*))?\]\]$',
+            r'^\[\[([^\]|\r\n]+)(?:\|([^\]\r\n]*))?\]\]$',
           ).firstMatch(block.content.trim())
         : null;
     if (objectLink != null) {
       flush();
       result.add({
         'type': 'card',
-        'objectId': objectLink[1]!,
+        'objectId': ObjectReference.parse(objectLink[1]!).id,
+        'referenceTarget': ObjectReference.parse(objectLink[1]!).target,
         'text': objectLink[2] ?? objectLink[1]!,
       });
       continue;
@@ -108,10 +125,17 @@ String? canvasClipboardMarkdown(String source) {
           '![${title.replaceAll(RegExp(r'[\[\]\\\r\n]'), ' ')}](<$ref>)',
         );
       } else if (id is String &&
+          const {'card', 'image', 'link'}.contains(value['type']) &&
           id.isNotEmpty &&
           !id.contains(RegExp(r'[\[\]\r\n]'))) {
-        blocks.add(ObjectReference(id).markdown(title));
-      } else if (title.isNotEmpty) {
+        final precise = value['referenceTarget'];
+        final reference =
+            precise is String && ObjectReference.parse(precise).id == id
+            ? ObjectReference.parse(precise)
+            : ObjectReference(id);
+        blocks.add(reference.markdown(title));
+      } else if (title.isNotEmpty &&
+          const {'text', 'sticky', 'section'}.contains(value['type'])) {
         blocks.add(title);
       } else {
         // Drawings have no Markdown representation: retain the literal payload.

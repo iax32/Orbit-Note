@@ -128,8 +128,21 @@ class _MatchPreview extends StatelessWidget {
     final text = index.segmentText(match);
     final start = match.from.clamp(0, text.length),
         end = match.to.clamp(0, text.length);
-    final left = text.substring((start - 100).clamp(0, text.length), start);
-    final right = text.substring(end, (end + 100).clamp(0, text.length));
+    int boundary(int offset, {required bool end}) {
+      offset = offset.clamp(0, text.length);
+      if (offset > 0 &&
+          offset < text.length &&
+          text.codeUnitAt(offset - 1) >= 0xd800 &&
+          text.codeUnitAt(offset - 1) <= 0xdbff &&
+          text.codeUnitAt(offset) >= 0xdc00 &&
+          text.codeUnitAt(offset) <= 0xdfff) {
+        return offset + (end ? 1 : -1);
+      }
+      return offset;
+    }
+
+    final left = text.substring(boundary(start - 100, end: false), start);
+    final right = text.substring(end, boundary(end + 100, end: true));
     final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -13,6 +13,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/scheduler.dart';
 import '../../../domain/wiki_links.dart';
 import '../../../domain/object_reference.dart';
 import '../../../domain/universal_object.dart';
@@ -29,6 +30,9 @@ import 'markdown_block_index.dart';
 import 'markdown_block_editing.dart';
 import 'note_math.dart';
 import 'code_block.dart';
+import '../../../domain/math_plot_definition.dart';
+import '../../math/math_plot_source_block.dart';
+import '../../math/math_lab_dialog.dart';
 import 'fenced_code_source.dart';
 import 'rich_table_editor.dart';
 import 'rich_math_block.dart';
@@ -37,6 +41,7 @@ import 'hover_chrome.dart';
 import 'math_grid_editor.dart';
 import 'dynamic_view_block.dart';
 import 'snapshot_block.dart';
+import '../../../domain/publication_layout.dart';
 import 'media_section_source.dart';
 import '../../../domain/note_composition.dart';
 import '../note_composition.dart';
@@ -94,6 +99,8 @@ class RichMarkdownEditor extends StatefulWidget {
     this.onInsertLinkedSection,
     this.objectBlockBuilder,
     this.onCompositionCommand,
+    this.onEditMathPlot,
+    this.mathPlotsReadOnly = false,
     this.attachmentRevision = 0,
     this.inheritedDefinitions = const {},
     this.onOpenFootnote,
@@ -133,6 +140,9 @@ class RichMarkdownEditor extends StatefulWidget {
   final Future<String?> Function()? onInsertLinkedSection;
   final Widget Function(NoteObjectBlock, bool)? objectBlockBuilder;
   final Future<void> Function(String)? onCompositionCommand;
+  final Future<MathPlotDefinition?> Function(MathPlotDefinition)?
+  onEditMathPlot;
+  final bool mathPlotsReadOnly;
   final int attachmentRevision;
   final Map<String, String> inheritedDefinitions;
   final ValueChanged<String>? onOpenFootnote;
@@ -144,7 +154,8 @@ class RichMarkdownEditor extends StatefulWidget {
   State<RichMarkdownEditor> createState() => RichMarkdownEditorState();
 }
 
-class RichMarkdownEditorState extends State<RichMarkdownEditor> {
+class RichMarkdownEditorState extends State<RichMarkdownEditor>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final _columnKeys =
       <(MarkdownBlock, int), GlobalKey<RichMarkdownEditorState>>{};
   (MarkdownBlock, int, TextSelection)? _columnSelection;
@@ -277,6 +288,257 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
   TextSelection? _crossDocumentSelection;
   int? _dragSelectionAnchor;
   bool _dragSelecting = false;
+  int? _selectionPointer;
+  bool _selectionCanAutoScroll = false;
+  Offset? _selectionPointerPosition;
+  final _selectionViewportKey = GlobalKey();
+  late final Ticker _selectionScrollTicker;
+  Duration _selectionScrollElapsed = Duration.zero;
+  int _selectionScrollEpoch = 0;
+  bool _scrolledSelectionPending = false;
+
+  Rect? get _selectionViewport {
+    final render = _selectionViewportKey.currentContext?.findRenderObject();
+    if (render is! RenderBox || !render.attached || !render.hasSize) {
+      return null;
+    }
+    return render.localToGlobal(Offset.zero) & render.size;
+  }
+
+  double get _selectionScrollVelocity {
+    final point = _selectionPointerPosition;
+    final rect = _selectionViewport;
+    if (!_dragSelecting ||
+        !_selectionCanAutoScroll ||
+        point == null ||
+        rect == null ||
+        widget.embedded ||
+        point.dx < rect.left ||
+        point.dx > rect.right) {
+      return 0;
+    }
+    final band = math.min(48.0, rect.height / 4);
+    if (band <= 0) return 0;
+    final depth = point.dy < rect.top + band
+        ? (point.dy - rect.top - band) / band
+        : point.dy > rect.bottom - band
+        ? (point.dy - rect.bottom + band) / band
+        : 0.0;
+    return depth.clamp(-1.0, 1.0) * 720;
+  }
+
+  void _stopSelectionScroll() {
+    _selectionScrollEpoch++;
+    _selectionScrollTicker.stop();
+    _selectionScrollElapsed = Duration.zero;
+  }
+
+  void _scrollSelection(Duration elapsed) {
+    if (!mounted ||
+        !_dragSelecting ||
+        !scroll.hasClients ||
+        _selectionScrollVelocity == 0) {
+      _stopSelectionScroll();
+      return;
+    }
+    final seconds =
+        (elapsed - _selectionScrollElapsed).inMicroseconds.clamp(0, 50000) /
+        Duration.microsecondsPerSecond;
+    _selectionScrollElapsed = elapsed;
+    final position = scroll.position;
+    final next = (position.pixels + _selectionScrollVelocity * seconds).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if (seconds > 0 && next == position.pixels) {
+      _stopSelectionScroll();
+      return;
+    }
+    if (next == position.pixels) return;
+    scroll.jumpTo(next);
+  }
+
+  void _recordScroll() {
+    record();
+    if (!_dragSelecting ||
+        !_selectionCanAutoScroll ||
+        _scrolledSelectionPending) {
+      return;
+    }
+    _scrolledSelectionPending = true;
+    // Lazy blocks are mounted by layout after scrolling. Resolve the endpoint
+    // then, using source offsets; never retain a field that has scrolled away.
+    final epoch = _selectionScrollEpoch;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrolledSelectionPending = false;
+      if (!mounted || !_dragSelecting || epoch != _selectionScrollEpoch) return;
+      final point = _selectionPointerPosition;
+      final rect = _selectionViewport;
+      if (point == null || rect == null) return;
+      _updatePointerSelection(
+        Offset(
+          point.dx.clamp(rect.left + 1, rect.right - 1),
+          point.dy.clamp(rect.top + 1, rect.bottom - 1),
+        ),
+        autoScroll: true,
+      );
+    });
+  }
+
+  int _documentPasteRequest = 0;
+  int _documentClipboardEpoch = 0;
+  int _selectionSpliceCaret = 0;
+
+  bool _textEndpoint(MarkdownBlock block) => {
+    MarkdownBlockKind.text,
+    MarkdownBlockKind.heading,
+    MarkdownBlockKind.list,
+  }.contains(block.kind);
+
+  String _spliceDocumentSelection(int start, int end, String replacement) {
+    _selectionSpliceCaret = start + replacement.length;
+    final firstIndex = _positions.blockAt(start),
+        lastIndex = _positions.blockAt(end);
+    final first = document.blocks[firstIndex],
+        last = document.blocks[lastIndex];
+    final leftStart = _positions.offsetOf(firstIndex) + first.prefix.length;
+    final rightStart = _positions.offsetOf(lastIndex) + last.prefix.length;
+    if (_textEndpoint(first) &&
+        _textEndpoint(last) &&
+        start >= leftStart &&
+        start <= leftStart + first.content.length &&
+        end >= rightStart &&
+        end <= rightStart + last.content.length) {
+      final a = InlineProjection(
+        first.content,
+        referenceDefinitions: document.referenceDefinitions,
+      );
+      final b = InlineProjection(
+        last.content,
+        referenceDefinitions: document.referenceDefinitions,
+      );
+      final left = a.fragment(0, a.visibleOffset(start - leftStart));
+      final right = b.fragment(
+        b.visibleOffset(end - rightStart),
+        b.text.length,
+      );
+      _selectionSpliceCaret = leftStart + left.length + replacement.length;
+      return _positions.source.replaceRange(
+        leftStart,
+        rightStart + last.content.length,
+        '$left$replacement$right',
+      );
+    }
+    return _positions.source.replaceRange(start, end, replacement);
+  }
+
+  String _documentClipboardText(int start, int end) {
+    final firstIndex = _positions.blockAt(start),
+        lastIndex = _positions.blockAt(end);
+    final first = document.blocks[firstIndex],
+        last = document.blocks[lastIndex];
+    final a = _positions.offsetOf(firstIndex) + first.prefix.length;
+    final b = _positions.offsetOf(lastIndex) + last.prefix.length;
+    if (_textEndpoint(first) &&
+        _textEndpoint(last) &&
+        firstIndex != lastIndex &&
+        start >= a &&
+        start <= a + first.content.length &&
+        end >= b &&
+        end <= b + last.content.length) {
+      final left = InlineProjection(
+        first.content,
+        referenceDefinitions: document.referenceDefinitions,
+      );
+      final right = InlineProjection(
+        last.content,
+        referenceDefinitions: document.referenceDefinitions,
+      );
+      return left.fragment(left.visibleOffset(start - a), left.text.length) +
+          _positions.source.substring(a + first.content.length, b) +
+          right.fragment(0, right.visibleOffset(end - b));
+    }
+    return _positions.source.substring(start, end);
+  }
+
+  List<Rect> _selectionBoxes(MarkdownBlock block, TextSelection selection) {
+    final index = _positions.indexOf(block);
+    if (index < 0) return const [];
+    final owner = anchors[block]?.currentContext?.findRenderObject();
+    if (!_textEndpoint(block)) {
+      return owner is RenderBox && owner.hasSize
+          ? [Offset.zero & owner.size]
+          : const [];
+    }
+    final editable = _editableFor(block);
+    if (owner is! RenderBox || editable == null || !editable.hasSize) {
+      return const [];
+    }
+    final start = _positions.offsetOf(index) + block.prefix.length;
+    final p = InlineProjection(
+      block.content,
+      referenceDefinitions: document.referenceDefinitions,
+    );
+    final a = p.visibleOffset(
+      (selection.start - start).clamp(0, block.content.length),
+    );
+    final b = p.visibleOffset(
+      (selection.end - start).clamp(0, block.content.length),
+    );
+    if (a == b) return const [];
+    final offset = owner.globalToLocal(editable.localToGlobal(Offset.zero));
+    return editable
+        .getBoxesForSelection(TextSelection(baseOffset: a, extentOffset: b))
+        .map((box) => box.toRect().shift(offset))
+        .toList();
+  }
+
+  void collapseDocumentSelection(bool end) {
+    final range = _crossDocumentSelection;
+    if (range == null) return;
+    final offset = end ? range.end : range.start;
+    clearCrossDocumentSelection();
+    _focusOffset(offset);
+  }
+
+  Future<void> pasteDocumentSelection({bool plain = false}) async {
+    if (!hasCrossDocumentSelection && !hasMultiBlockSelection) return;
+    if (keys.values.any(
+      (key) =>
+          key.currentState?.controller.value.composing.isCollapsed == false,
+    )) {
+      return;
+    }
+    final before = _positions.source, note = widget.noteId;
+    final selection = currentDocumentSelection,
+        request = ++_documentPasteRequest,
+        epoch = _documentClipboardEpoch;
+    final text = await readMarkdownClipboard(
+      preferHtml: !plain,
+      interpretOrbitData: !plain,
+    );
+    if (!mounted ||
+        !_editorFocusNode.hasFocus ||
+        widget.noteId != note ||
+        epoch != _documentClipboardEpoch ||
+        _positions.source != before ||
+        currentDocumentSelection != selection ||
+        request != _documentPasteRequest ||
+        text == null ||
+        text.isEmpty) {
+      return;
+    }
+    final replacement = text.replaceAll(
+      RegExp(r'\r\n|\r|\n'),
+      MarkdownBlockEditing.eol(document),
+    );
+    if (hasCrossDocumentSelection) {
+      replaceCrossDocumentSelection(replacement);
+    } else if (hasMultiBlockSelection) {
+      replaceSelectedBlocksWithText(replacement);
+    }
+  }
+
   bool _insertingAttachment = false;
   late final FocusNode _editorFocusNode = FocusNode(
     debugLabel: 'RichMarkdownEditor',
@@ -352,6 +614,19 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
       _crossDocumentSelection = null;
       _dragSelectionAnchor = null;
     });
+  }
+
+  /// Restore typing focus without changing the selection or scrolling to it.
+  void restoreEditingFocus() {
+    if (!mounted || document.blocks.isEmpty) return;
+    final editor =
+        keys[document.blocks[active.clamp(0, document.blocks.length - 1)]]
+            ?.currentState;
+    if (editor != null) {
+      editor.focus.requestFocus();
+    } else {
+      _editorFocusNode.requestFocus();
+    }
   }
 
   void selectBlockRange(int start, int end) {
@@ -468,18 +743,21 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     final end = selection.end.clamp(start, _positions.source.length);
     return _writeClipboard(
       portableClipboardMarkdown(
-        _positions.source.substring(start, end),
+        _documentClipboardText(start, end),
         widget.resolveClipboardImage,
       ),
     );
   }
 
   Future<void> cutCrossDocumentSelection() async {
+    final note = widget.noteId, epoch = _documentClipboardEpoch;
     final source = _positions.source;
     final selection = _crossDocumentSelection;
     try {
       if (!await _copyCrossDocumentSelection()) return;
       if (mounted &&
+          widget.noteId == note &&
+          epoch == _documentClipboardEpoch &&
           _positions.source == source &&
           _crossDocumentSelection == selection) {
         deleteCrossDocumentSelection();
@@ -494,11 +772,11 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     if (selection == null || selection.isCollapsed) return false;
     final start = selection.start.clamp(0, _positions.source.length);
     final end = selection.end.clamp(start, _positions.source.length);
-    final nextBody = _positions.source.replaceRange(start, end, '');
+    final nextBody = _spliceDocumentSelection(start, end, '');
     clearCrossDocumentSelection();
     _load(nextBody);
     widget.onChanged(nextBody);
-    _focusOffset(start.clamp(0, nextBody.length));
+    _focusOffset(_selectionSpliceCaret.clamp(0, nextBody.length));
     setState(() {});
     return true;
   }
@@ -508,22 +786,25 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     if (selection == null || selection.isCollapsed) return false;
     final start = selection.start.clamp(0, _positions.source.length);
     final end = selection.end.clamp(start, _positions.source.length);
-    final nextBody = _positions.source.replaceRange(start, end, replacement);
+    final nextBody = _spliceDocumentSelection(start, end, replacement);
     clearCrossDocumentSelection();
     _load(nextBody);
     widget.onChanged(nextBody);
-    _focusOffset((start + replacement.length).clamp(0, nextBody.length));
+    _focusOffset(_selectionSpliceCaret.clamp(0, nextBody.length));
     setState(() {});
     return true;
   }
 
   Future<void> cutSelectedBlocks() async {
     if (!hasMultiBlockSelection) return;
+    final note = widget.noteId, epoch = _documentClipboardEpoch;
     final source = _positions.source;
     final start = _selectedBlockStart, end = _selectedBlockEnd;
     try {
       if (!await copySelectedBlocks()) return;
       if (mounted &&
+          widget.noteId == note &&
+          epoch == _documentClipboardEpoch &&
           _positions.source == source &&
           _selectedBlockStart == start &&
           _selectedBlockEnd == end) {
@@ -624,6 +905,10 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     final isCommand = keyboard.isControlPressed || keyboard.isMetaPressed;
 
     if (hasCrossDocumentSelection) {
+      if (isCommand && event.logicalKey == LogicalKeyboardKey.keyV) {
+        pasteDocumentSelection(plain: keyboard.isShiftPressed);
+        return KeyEventResult.handled;
+      }
       if (isCommand && event.logicalKey == LogicalKeyboardKey.keyC) {
         copyCrossDocumentSelection();
         return KeyEventResult.handled;
@@ -652,17 +937,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
         return KeyEventResult.handled;
       }
       if (isCommand && event.logicalKey == LogicalKeyboardKey.keyV) {
-        final before = _positions.source;
-        final selection = currentDocumentSelection;
-        readMarkdownClipboard().then((text) {
-          if (mounted &&
-              text != null &&
-              text.isNotEmpty &&
-              _positions.source == before &&
-              currentDocumentSelection == selection) {
-            replaceSelectedBlocksWithText(text);
-          }
-        });
+        pasteDocumentSelection(plain: keyboard.isShiftPressed);
         return KeyEventResult.handled;
       }
       if (isCommand && event.logicalKey == LogicalKeyboardKey.keyD) {
@@ -775,6 +1050,8 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
   @override
   void initState() {
     super.initState();
+    _selectionScrollTicker = createTicker(_scrollSelection);
+    WidgetsBinding.instance.addObserver(this);
     final mathOffsets = widget.initialState['continuousMath'];
     if (mathOffsets is List &&
         widget.initialState['headingDocument'] == _documentFingerprint) {
@@ -820,7 +1097,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
         }
       }
     }
-    scroll.addListener(record);
+    scroll.addListener(_recordScroll);
   }
 
   String get _documentFingerprint {
@@ -962,7 +1239,14 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) _endPointerSelection();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _selectionScrollTicker.dispose();
     _editorFocusNode.dispose();
     scroll.dispose();
     super.dispose();
@@ -971,6 +1255,18 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
   @override
   void didUpdateWidget(RichMarkdownEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.noteId != oldWidget.noteId) {
+      _documentClipboardEpoch++;
+      _documentPasteRequest++;
+      _crossDocumentSelection = null;
+      _selectedBlockStart = _selectedBlockEnd = null;
+    }
+    if (widget.noteId != oldWidget.noteId ||
+        widget.body != oldWidget.body ||
+        widget.focusedStart != oldWidget.focusedStart ||
+        widget.focusedEnd != oldWidget.focusedEnd) {
+      _endPointerSelection();
+    }
     if (!mapEquals(
       widget.inheritedDefinitions,
       oldWidget.inheritedDefinitions,
@@ -1063,6 +1359,9 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
   }
 
   void _load(String source) {
+    _documentClipboardEpoch++;
+    _documentPasteRequest++;
+    _endPointerSelection();
     final next = MarkdownDocument.parse(
       source,
       inheritedDefinitions: widget.inheritedDefinitions,
@@ -1288,6 +1587,8 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
             } else if (state is CalloutBlockState) {
               specializedSelection = state.selectSource(raw, length: length);
             } else if (state is NoteCodeBlockState) {
+              specializedSelection = state.selectSource(raw, length: length);
+            } else if (state is MathPlotSourceBlockState) {
               specializedSelection = state.selectSource(raw, length: length);
             }
           }
@@ -1646,6 +1947,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     'Checklist',
     'Quote',
     'Callout',
+    'BTW block',
     'Highlight',
     'Underline',
     'Footnote',
@@ -1682,7 +1984,9 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     'Current Timestamp',
   ];
   Future<void> command(String name, {bool fromSlash = false}) async {
-    if (name == 'Inline drawing' || name == 'Live object') {
+    if (name == 'Inline drawing' ||
+        name == 'Live object' ||
+        name == 'Format block') {
       await widget.onCompositionCommand?.call(name);
       return;
     }
@@ -1702,6 +2006,8 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     }
     final block = current;
     final content = fromSlash ? '' : block.content;
+    String callout(String type, String fallback) =>
+        '> [!$type]\n${(content.isEmpty ? fallback : content).split(RegExp(r'\r?\n')).map((line) => line.isEmpty ? '>' : '> $line').join('\n')}\n';
     if (name == 'Two columns' || name == 'Three columns') {
       try {
         final value = NoteColumns.create([
@@ -1900,8 +2206,8 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     var syntax = switch (name) {
       'Code block' => '```text\n${content.isEmpty ? 'code' : content}\n```\n',
       'Horizontal rule' => '---\n',
-      'Callout' =>
-        '> [!NOTE]\n> ${content.isEmpty ? 'A useful observation.' : content}\n',
+      'Callout' => callout('NOTE', 'A useful observation.'),
+      'BTW block' => callout('BTW', ''),
       'Definition' =>
         '> [!DEFINITION]\n> ${content.isEmpty ? 'A definition statement.' : content}\n',
       'Theorem' =>
@@ -2009,6 +2315,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
         name.contains('Tasks') ||
         name == 'Code block' ||
         name == 'Callout' ||
+        name == 'BTW block' ||
         name == 'Definition' ||
         name == 'Theorem' ||
         name == 'Lemma' ||
@@ -2146,6 +2453,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     ];
     const knowledgeCommands = [
       'Callout',
+      'BTW block',
       'Definition',
       'Theorem',
       'Lemma',
@@ -2441,6 +2749,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     }
     if (block.kind == MarkdownBlockKind.table) {
       return RichTableEditor(
+        clipboardEpoch: () => _documentClipboardEpoch,
         source: block.source,
         textStyle: NoteTypography(
           fontFamily: widget.fontFamily,
@@ -2498,6 +2807,51 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
       // before the next frame still edits the current code block instead of
       // being discarded by an obsolete block identity.
       final codeBlockIndex = _positions.indexOf(block);
+      if (block.language == 'orbit-plot') {
+        return MathPlotSourceBlock(
+          key: ValueKey((widget.noteId, block)),
+          source: block.content,
+          onFocused: () => _activateStructured(block),
+          onUndo: widget.onUndo,
+          onRedo: widget.onRedo,
+          onEdit: widget.mathPlotsReadOnly
+              ? null
+              : (definition) async {
+                  _activateStructured(block);
+                  final owner = widget.noteId, original = _positions.source;
+                  final result = widget.onEditMathPlot != null
+                      ? await widget.onEditMathPlot!(definition)
+                      : (await showMathLab(
+                          context,
+                          initialPlot: definition,
+                        ))?.plotDefinition;
+                  if (!mounted ||
+                      widget.noteId != owner ||
+                      _positions.source != original ||
+                      !document.blocks.contains(block)) {
+                    return null;
+                  }
+                  return result;
+                },
+          onSourceChanged: widget.mathPlotsReadOnly
+              ? null
+              : (json) {
+                  if (!document.blocks.contains(block)) return;
+                  final eol = block.source.contains('\r\n') ? '\r\n' : '\n';
+                  final changed = replaceFencedCodeContent(
+                    block,
+                    json.replaceAll(RegExp(r'\r?\n'), eol),
+                  );
+                  _replace(
+                    block,
+                    changed.source,
+                    structural:
+                        changed.prefix != block.prefix ||
+                        changed.suffix != block.suffix,
+                  );
+                },
+        );
+      }
       if (DynamicViewBlock.isDynamicView(block.language, block.content)) {
         return DynamicViewBlock(
           source: block.source,
@@ -2550,8 +2904,9 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
         children: [
           widget.objectBlockBuilder?.call(linkedObject, true) ??
               TextButton(
-                onPressed: () =>
-                    widget.onOpenLink('orbit-object:${linkedObject.id}'),
+                onPressed: () => widget.onOpenLink(
+                  'orbit-object:${linkedObject.reference.target}',
+                ),
                 child: Text(linkedObject.label),
               ),
           Align(
@@ -2617,6 +2972,8 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
         onInsertAttachment: widget.onInsertAttachment,
         objectBlockBuilder: widget.objectBlockBuilder,
         onCompositionCommand: widget.onCompositionCommand,
+        onEditMathPlot: widget.onEditMathPlot,
+        mathPlotsReadOnly: widget.mathPlotsReadOnly,
         attachmentRevision: widget.attachmentRevision,
         spellCheckEnabled: widget.spellCheckEnabled,
         userDictionary: widget.userDictionary,
@@ -2812,6 +3169,8 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
               onInsertAttachment: widget.onInsertAttachment,
               objectBlockBuilder: widget.objectBlockBuilder,
               onCompositionCommand: widget.onCompositionCommand,
+              onEditMathPlot: widget.onEditMathPlot,
+              mathPlotsReadOnly: widget.mathPlotsReadOnly,
               attachmentRevision: widget.attachmentRevision,
               spellCheckEnabled: widget.spellCheckEnabled,
               userDictionary: widget.userDictionary,
@@ -3044,6 +3403,9 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
       onCopyDocumentSelection: copyCrossDocumentSelection,
       onCutDocumentSelection: cutCrossDocumentSelection,
       onDeleteDocumentSelection: deleteCrossDocumentSelection,
+      onPasteDocumentSelection: (plain) => pasteDocumentSelection(plain: plain),
+      onCollapseDocumentSelection: collapseDocumentSelection,
+      clipboardEpoch: () => _documentClipboardEpoch,
     );
     if (raw) {
       return Container(
@@ -4051,7 +4413,33 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     return result;
   }
 
-  int? _sourceOffsetAtGlobal(Offset global) {
+  int? _sourceOffsetAtGlobal(Offset global, {bool nearest = false}) {
+    if (nearest) {
+      Rect? closest;
+      var distance = double.infinity;
+      for (final block in _visibleBlocks) {
+        final render = anchors[block]?.currentContext?.findRenderObject();
+        if (render is! RenderBox || !render.attached || !render.hasSize) {
+          continue;
+        }
+        final rect = render.localToGlobal(Offset.zero) & render.size;
+        if (rect.isEmpty) continue;
+        final gap = global.dy < rect.top
+            ? rect.top - global.dy
+            : global.dy > rect.bottom
+            ? global.dy - rect.bottom
+            : 0.0;
+        if (gap < distance) {
+          closest = rect;
+          distance = gap;
+        }
+      }
+      if (closest == null) return null;
+      global = Offset(
+        global.dx.clamp(closest.left + .1, closest.right - .1),
+        global.dy.clamp(closest.top + .1, closest.bottom - .1),
+      );
+    }
     for (var i = 0; i < _visibleBlocks.length; i++) {
       final block = _visibleBlocks[i];
       final render = anchors[block]?.currentContext?.findRenderObject();
@@ -4075,7 +4463,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
       final blockOffset = _positions.offsetOf(_positions.indexOf(block));
       if (editable == null) return blockOffset + block.source.length;
       final position = editable
-          .getPositionForPoint(editable.globalToLocal(global))
+          .getPositionForPoint(global)
           .offset
           .clamp(0, editable.text?.toPlainText().length ?? block.content.length)
           .toInt();
@@ -4095,27 +4483,69 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
 
   void _beginPointerSelection(MarkdownBlock block, PointerDownEvent event) {
     final offset = _sourceOffsetAtGlobal(event.position);
-    _dragSelectionAnchor =
-        offset ?? _positions.offsetOf(_positions.indexOf(block));
-    _dragSelecting = true;
+    _dragSelectionAnchor = HardwareKeyboard.instance.isShiftPressed
+        ? currentDocumentSelection.baseOffset
+        : offset ?? _positions.offsetOf(_positions.indexOf(block));
+    _stopSelectionScroll();
+    _selectionPointer = event.pointer;
+    _selectionCanAutoScroll = event.kind == PointerDeviceKind.mouse;
+    _selectionPointerPosition = event.position;
+    // Table cells, code editors and block handles own their drag gestures.
+    _dragSelecting = _textEndpoint(block);
     if (!HardwareKeyboard.instance.isShiftPressed) {
-      _crossDocumentSelection = null;
+      if (_crossDocumentSelection != null) {
+        setState(() => _crossDocumentSelection = null);
+      }
     }
   }
 
   void _continuePointerSelection(PointerMoveEvent event) {
+    if (!_dragSelecting || event.pointer != _selectionPointer) return;
+    if (event.buttons & kPrimaryMouseButton == 0) {
+      _endPointerSelection();
+      return;
+    }
+    _selectionPointerPosition = event.position;
+    if (_selectionScrollVelocity != 0 && scroll.hasClients) {
+      if (!_selectionScrollTicker.isActive) _selectionScrollTicker.start();
+    } else {
+      _stopSelectionScroll();
+    }
+    _updatePointerSelection(event.position);
+  }
+
+  void _scrollPointerSelection(PointerSignalEvent event) {
+    if (!_dragSelecting ||
+        !_selectionCanAutoScroll ||
+        event is! PointerScrollEvent ||
+        event.scrollDelta.dy == 0) {
+      return;
+    }
+    _selectionPointerPosition = event.position;
+    _stopSelectionScroll();
+    // Transfer focus before a wheel scroll can recycle the originating lazy
+    // paragraph. The scroll listener resolves the new endpoint after layout.
+    _editorFocusNode.requestFocus();
+  }
+
+  void _updatePointerSelection(Offset point, {bool autoScroll = false}) {
     if (!_dragSelecting || _dragSelectionAnchor == null) return;
-    final offset = _sourceOffsetAtGlobal(event.position);
+    final offset = _sourceOffsetAtGlobal(point, nearest: autoScroll);
     if (offset == null || offset == _dragSelectionAnchor) return;
     // Native text/cell selection owns gestures inside one block. Replacing its
     // subtree with document-selection chrome mid-drag destroys the editor state.
-    if (_positions.blockAt(offset) ==
-        _positions.blockAt(_dragSelectionAnchor!)) {
+    if (!autoScroll &&
+        _positions.blockAt(offset) ==
+            _positions.blockAt(_dragSelectionAnchor!)) {
       if (_crossDocumentSelection != null) {
         setState(() => _crossDocumentSelection = null);
+        record();
       }
       return;
     }
+    // Keep keyboard focus in the editor when the originating virtualized field
+    // is recycled. The source anchor, rather than that field, owns this range.
+    _editorFocusNode.requestFocus();
     setState(() {
       _crossDocumentSelection = TextSelection(
         baseOffset: _dragSelectionAnchor!,
@@ -4124,10 +4554,17 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
       _selectedBlockStart = null;
       _selectedBlockEnd = null;
     });
+    record();
   }
 
-  void _endPointerSelection([PointerEvent? _]) {
+  void _endPointerSelection([PointerEvent? event]) {
+    if (event != null && event.pointer != _selectionPointer) return;
     _dragSelecting = false;
+    _selectionPointer = null;
+    _selectionCanAutoScroll = false;
+    _selectionPointerPosition = null;
+    _dragSelectionAnchor = null;
+    _stopSelectionScroll();
   }
 
   void _insertPdfQuote(PdfQuoteDragData quote) {
@@ -4163,39 +4600,70 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
             crossSelection != null &&
             crossSelection.start < blockEnd &&
             crossSelection.end > blockStart;
-        final selectedContent = isSelected || isCrossSelected
-            ? Container(
-                key: ValueKey(
-                  isSelected
-                      ? 'selected-block-${_positions.indexOf(block)}'
-                      : 'cross-selected-block-${_positions.indexOf(block)}',
-                ),
-                decoration: BoxDecoration(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.primary.withValues(alpha: 0.35),
-                    width: 1.5,
+        final selectedContent = Stack(
+          children: [
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  key: ValueKey(
+                    isSelected
+                        ? 'selected-block-${_positions.indexOf(block)}'
+                        : isCrossSelected
+                        ? 'cross-selected-block-${_positions.indexOf(block)}'
+                        : 'unselected-block-${_positions.indexOf(block)}',
+                  ),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Theme.of(
+                            context,
+                          ).colorScheme.primary.withValues(alpha: .12)
+                        : null,
+                    borderRadius: BorderRadius.circular(6),
+                    border: isSelected
+                        ? Border.all(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.primary.withValues(alpha: .35),
+                          )
+                        : null,
                   ),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: blockContent,
-              )
-            : blockContent;
+              ),
+            ),
+            blockContent,
+            if (isCrossSelected)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _RangeSelectionPainter(
+                      () => _selectionBoxes(block, crossSelection),
+                      Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: .22),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
         // Prose clicks enter text editing. Handles must
         // retain the range they operate on or drag.
         final wrappedContent = Listener(
           onPointerDown: (event) {
+            if (event.buttons & kPrimaryMouseButton == 0) return;
             _beginPointerSelection(block, event);
             _focusRequest++;
             final index = _positions.indexOf(block);
             if (HardwareKeyboard.instance.isShiftPressed) {
-              final anchor = _selectedBlockStart ?? active;
-              selectBlockRange(anchor, index);
+              if (hasMultiBlockSelection) {
+                selectBlockRange(_selectedBlockStart!, index);
+              } else {
+                selectDocumentRange(
+                  _dragSelectionAnchor!,
+                  _sourceOffsetAtGlobal(event.position) ??
+                      _positions.offsetOf(index),
+                );
+              }
             } else {
               if (hasMultiBlockSelection &&
                   block.kind != MarkdownBlockKind.image) {
@@ -4205,9 +4673,9 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
               record();
             }
           },
-          onPointerMove: _continuePointerSelection,
-          onPointerUp: _endPointerSelection,
-          onPointerCancel: _endPointerSelection,
+          onPointerMove: widget.embedded ? _continuePointerSelection : null,
+          onPointerUp: widget.embedded ? _endPointerSelection : null,
+          onPointerCancel: widget.embedded ? _endPointerSelection : null,
           child: selectedContent,
         );
 
@@ -4309,6 +4777,8 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
                       _positions.offsetOf(_positions.indexOf(block)) <
                           (widget.focusedEnd ?? _positions.source.length)) &&
               ReviewAnnotation.parse(block.source) == null &&
+              !(PublicationSettings.metadataLine(block.source) &&
+                  _positions.offsetOf(_positions.indexOf(block)) == 0) &&
               !DocumentCitations.metadataLine(block.source),
         )
         .toList(growable: false);
@@ -4326,6 +4796,9 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
     return Focus(
       focusNode: _editorFocusNode,
       autofocus: false,
+      onFocusChange: (focused) {
+        if (!focused) _endPointerSelection();
+      },
       child: DragTarget<PdfQuoteDragData>(
         onWillAcceptWithDetails: (_) => true,
         onAcceptWithDetails: (details) => _insertPdfQuote(details.data),
@@ -4340,106 +4813,133 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor> {
                     ),
                   )
                 : null,
-            child: Scrollbar(
-              controller: scroll,
-              child: document.blocks.length > _virtualizationThreshold
-                  ? ListView.builder(
-                      controller: scroll,
-                      padding: const EdgeInsets.fromLTRB(28, 8, 28, 80),
-                      itemCount: visibleBlocks.length + 1,
-                      findChildIndexCallback: (key) {
-                        if (key is! ObjectKey || key.value is! MarkdownBlock) {
-                          return null;
-                        }
-                        final index = visibleBlocks.indexOf(
-                          key.value as MarkdownBlock,
-                        );
-                        return index < 0 ? null : index;
-                      },
-                      itemBuilder: (context, index) {
-                        if (index == visibleBlocks.length) {
+            child: Listener(
+              key: _selectionViewportKey,
+              onPointerMove: _continuePointerSelection,
+              onPointerUp: _endPointerSelection,
+              onPointerCancel: _endPointerSelection,
+              onPointerSignal: _scrollPointerSelection,
+              child: Scrollbar(
+                controller: scroll,
+                child: document.blocks.length > _virtualizationThreshold
+                    ? ListView.builder(
+                        controller: scroll,
+                        padding: const EdgeInsets.fromLTRB(28, 8, 28, 80),
+                        itemCount: visibleBlocks.length + 1,
+                        findChildIndexCallback: (key) {
+                          if (key is! ObjectKey ||
+                              key.value is! MarkdownBlock) {
+                            return null;
+                          }
+                          final index = visibleBlocks.indexOf(
+                            key.value as MarkdownBlock,
+                          );
+                          return index < 0 ? null : index;
+                        },
+                        itemBuilder: (context, index) {
+                          if (index == visibleBlocks.length) {
+                            return Center(
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: widget.contentWidth,
+                                ),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: HoverChrome(
+                                    child: TextButton.icon(
+                                      onPressed: () {
+                                        final last = document.blocks.last;
+                                        _replace(
+                                          last,
+                                          '${last.source}${last.source.endsWith('\n') ? '\n' : '\n\n'}',
+                                          structural: true,
+                                          focusOffset: last.source.length + 2,
+                                        );
+                                      },
+                                      icon: const Icon(Icons.add, size: 16),
+                                      label: const Text('New paragraph'),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
                           return Center(
+                            key: ObjectKey(visibleBlocks[index]),
                             child: ConstrainedBox(
                               constraints: BoxConstraints(
                                 maxWidth: widget.contentWidth,
                               ),
-                              child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: HoverChrome(
-                                  child: TextButton.icon(
-                                    onPressed: () {
-                                      final last = document.blocks.last;
-                                      _replace(
-                                        last,
-                                        '${last.source}${last.source.endsWith('\n') ? '\n' : '\n\n'}',
-                                        structural: true,
-                                        focusOffset: last.source.length + 2,
-                                      );
-                                    },
-                                    icon: const Icon(Icons.add, size: 16),
-                                    label: const Text('New paragraph'),
-                                  ),
-                                ),
+                              child: _buildBlockEntry(
+                                context,
+                                visibleBlocks[index],
                               ),
                             ),
                           );
-                        }
-                        return Center(
-                          key: ObjectKey(visibleBlocks[index]),
+                        },
+                      )
+                    : SingleChildScrollView(
+                        controller: scroll,
+                        padding: const EdgeInsets.fromLTRB(28, 8, 28, 80),
+                        child: Center(
                           child: ConstrainedBox(
                             constraints: BoxConstraints(
                               maxWidth: widget.contentWidth,
                             ),
-                            child: _buildBlockEntry(
-                              context,
-                              visibleBlocks[index],
-                            ),
-                          ),
-                        );
-                      },
-                    )
-                  : SingleChildScrollView(
-                      controller: scroll,
-                      padding: const EdgeInsets.fromLTRB(28, 8, 28, 80),
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxWidth: widget.contentWidth,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              for (final block in visibleBlocks)
-                                _buildBlockEntry(context, block),
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: HoverChrome(
-                                  child: TextButton.icon(
-                                    onPressed: () {
-                                      final last = document.blocks.last;
-                                      _replace(
-                                        last,
-                                        '${last.source}${last.source.endsWith('\n') ? '\n' : '\n\n'}',
-                                        structural: true,
-                                        focusOffset: last.source.length + 2,
-                                      );
-                                    },
-                                    icon: const Icon(Icons.add, size: 16),
-                                    label: const Text('New paragraph'),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                for (final block in visibleBlocks)
+                                  _buildBlockEntry(context, block),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: HoverChrome(
+                                    child: TextButton.icon(
+                                      onPressed: () {
+                                        final last = document.blocks.last;
+                                        _replace(
+                                          last,
+                                          '${last.source}${last.source.endsWith('\n') ? '\n' : '\n\n'}',
+                                          structural: true,
+                                          focusOffset: last.source.length + 2,
+                                        );
+                                      },
+                                      icon: const Icon(Icons.add, size: 16),
+                                      label: const Text('New paragraph'),
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
+              ),
             ),
           );
         },
       ),
     );
   }
+}
+
+class _RangeSelectionPainter extends CustomPainter {
+  _RangeSelectionPainter(this.boxes, this.color);
+  final List<Rect> Function() boxes;
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = color;
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
+    for (final rect in boxes()) {
+      canvas.drawRect(rect, paint);
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_RangeSelectionPainter oldDelegate) => true;
 }
 
 class _StyledController extends TextEditingController {
@@ -4741,6 +5241,51 @@ class _RichImageBlockState extends State<_RichImageBlock> {
   }
 }
 
+// Native drag gestures keep sending caret-reveal requests to their originating
+// field, even after focus moves to the document. Evaluate ownership at the
+// request, rather than waiting for a rebuild, so those requests cannot undo a
+// wheel scroll or the document's edge scrolling.
+class _SelectionRevealGate extends SingleChildRenderObjectWidget {
+  const _SelectionRevealGate({
+    required this.suppressReveal,
+    required super.child,
+  });
+  final bool Function() suppressReveal;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _SelectionRevealRenderBox(suppressReveal);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _SelectionRevealRenderBox renderObject,
+  ) {
+    renderObject.suppressReveal = suppressReveal;
+  }
+}
+
+class _SelectionRevealRenderBox extends RenderProxyBox {
+  _SelectionRevealRenderBox(this.suppressReveal);
+  bool Function() suppressReveal;
+
+  @override
+  void showOnScreen({
+    RenderObject? descendant,
+    Rect? rect,
+    Duration duration = Duration.zero,
+    Curve curve = Curves.ease,
+  }) {
+    if (suppressReveal()) return;
+    super.showOnScreen(
+      descendant: descendant,
+      rect: rect,
+      duration: duration,
+      curve: curve,
+    );
+  }
+}
+
 class _RichTextBlock extends StatefulWidget {
   const _RichTextBlock({
     super.key,
@@ -4783,6 +5328,9 @@ class _RichTextBlock extends StatefulWidget {
     this.onCopyDocumentSelection,
     this.onCutDocumentSelection,
     this.onDeleteDocumentSelection,
+    this.onPasteDocumentSelection,
+    this.onCollapseDocumentSelection,
+    this.clipboardEpoch,
     this.grammarEngine,
     this.spellCheckEnabled = true,
     this.onAddToDictionary,
@@ -4826,6 +5374,9 @@ class _RichTextBlock extends StatefulWidget {
   final Future<void> Function()? onCopyDocumentSelection;
   final Future<void> Function()? onCutDocumentSelection;
   final bool Function()? onDeleteDocumentSelection;
+  final Future<void> Function(bool)? onPasteDocumentSelection;
+  final void Function(bool)? onCollapseDocumentSelection;
+  final int Function()? clipboardEpoch;
   final EnglishSpellGrammarEngine? grammarEngine;
   final bool spellCheckEnabled;
   final ValueChanged<String>? onAddToDictionary;
@@ -5091,13 +5642,63 @@ class _RichTextBlockState extends State<_RichTextBlock> {
     controller.refreshStyle();
   }
 
+  Future<void> _transferSelection({required bool cut}) async {
+    if (widget.hasDocumentSelection?.call() == true) {
+      if (cut) {
+        await widget.onCutDocumentSelection?.call();
+      } else {
+        await widget.onCopyDocumentSelection?.call();
+      }
+      return;
+    }
+    final value = controller.value, before = source;
+    final epoch = widget.clipboardEpoch?.call(), revision = _editRevision;
+    final sel = value.selection;
+    if (!sel.isValid || sel.isCollapsed || !value.composing.isCollapsed) return;
+    try {
+      await Clipboard.setData(ClipboardData(text: sel.textInside(value.text)));
+      if (!cut ||
+          !mounted ||
+          widget.clipboardEpoch?.call() != epoch ||
+          source != before ||
+          _editRevision != revision ||
+          controller.value != value) {
+        return;
+      }
+      controller.value = TextEditingValue(
+        text: value.text.replaceRange(sel.start, sel.end, ''),
+        selection: TextSelection.collapsed(offset: sel.start),
+      );
+      _beforeSelection = sel;
+      _changed(controller.text);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not copy the selection. Your note is unchanged.',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _paste({bool plain = false}) async {
+    if (widget.hasDocumentSelection?.call() == true) {
+      await widget.onPasteDocumentSelection?.call(plain);
+      return;
+    }
     final value = controller.value, before = source;
     if (!value.composing.isCollapsed) return;
     final revision = _editRevision, request = ++_pasteRequest;
+    final epoch = widget.clipboardEpoch?.call();
     ClipboardData? data;
     try {
-      final pasted = await readMarkdownClipboard(preferHtml: !plain);
+      final pasted = await readMarkdownClipboard(
+        preferHtml: !plain && !widget.raw,
+        interpretOrbitData: !plain && !widget.raw,
+      );
       data = pasted == null ? null : ClipboardData(text: pasted);
     } catch (_) {
       if (mounted) {
@@ -5113,6 +5714,7 @@ class _RichTextBlockState extends State<_RichTextBlock> {
     }
     if (!mounted ||
         !focus.hasFocus ||
+        widget.clipboardEpoch?.call() != epoch ||
         controller.value != value ||
         source != before ||
         revision != _editRevision ||
@@ -5140,7 +5742,16 @@ class _RichTextBlockState extends State<_RichTextBlock> {
           : TextSelection.collapsed(offset: controller.text.length);
       controller.value = TextEditingValue(
         text: controller.text.replaceRange(range.start, range.end, pasted),
-        selection: TextSelection.collapsed(offset: range.start + pasted.length),
+        selection: TextSelection.collapsed(
+          offset:
+              range.start +
+              (widget.raw
+                  ? pasted.length
+                  : InlineProjection(
+                      pasted,
+                      referenceDefinitions: widget.referenceDefinitions,
+                    ).text.length),
+        ),
       );
       // Use the typing path so inherited/pending marks and deliberate formatting
       // exits behave identically for typing and paste.
@@ -5219,6 +5830,22 @@ class _RichTextBlockState extends State<_RichTextBlock> {
     }
 
     for (final item in editableTextState.contextMenuButtonItems) {
+      if ({
+        ContextMenuButtonType.copy,
+        ContextMenuButtonType.cut,
+      }.contains(item.type)) {
+        items.add(
+          ContextMenuButtonItem(
+            type: item.type,
+            label: item.label,
+            onPressed: () {
+              editableTextState.hideToolbar();
+              _transferSelection(cut: item.type == ContextMenuButtonType.cut);
+            },
+          ),
+        );
+        continue;
+      }
       items.add(
         item.type == ContextMenuButtonType.paste
             ? ContextMenuButtonItem(
@@ -5315,6 +5942,30 @@ class _RichTextBlockState extends State<_RichTextBlock> {
     final keyboard = HardwareKeyboard.instance;
     final isCommand = keyboard.isControlPressed || keyboard.isMetaPressed;
     final hasDocumentSelection = widget.hasDocumentSelection?.call() == true;
+    if (hasDocumentSelection &&
+        isCommand &&
+        event.logicalKey == LogicalKeyboardKey.keyV) {
+      if (controller.value.composing.isCollapsed) {
+        widget.onPasteDocumentSelection?.call(keyboard.isShiftPressed);
+      }
+      return KeyEventResult.handled;
+    }
+    if (hasDocumentSelection &&
+        !isCommand &&
+        !keyboard.isAltPressed &&
+        !keyboard.isShiftPressed &&
+        {
+          LogicalKeyboardKey.arrowLeft,
+          LogicalKeyboardKey.arrowRight,
+          LogicalKeyboardKey.home,
+          LogicalKeyboardKey.end,
+        }.contains(event.logicalKey)) {
+      widget.onCollapseDocumentSelection?.call(
+        event.logicalKey == LogicalKeyboardKey.arrowRight ||
+            event.logicalKey == LogicalKeyboardKey.end,
+      );
+      return KeyEventResult.handled;
+    }
     if (hasDocumentSelection &&
         isCommand &&
         event.logicalKey == LogicalKeyboardKey.keyC) {
@@ -5634,7 +6285,7 @@ class _RichTextBlockState extends State<_RichTextBlock> {
     final render = _findRenderEditable();
     if (render == null) return;
     final localOffset = render.globalToLocal(event.position);
-    final textPos = render.getPositionForPoint(localOffset);
+    final textPos = render.getPositionForPoint(event.position);
     final link = controller.projection.linkAtVisibleOffset(textPos.offset);
 
     bool isOver = false;
@@ -5913,23 +6564,42 @@ class _RichTextBlockState extends State<_RichTextBlock> {
     onExit: _onExit,
     child: Listener(
       onPointerDown: _onPointerDown,
-      child: TextField(
-        controller: controller,
-        focusNode: focus,
-        maxLines: null,
-        textAlign: widget.textAlign,
-        style: widget.style,
-        contextMenuBuilder: _buildContextMenu,
-        decoration: InputDecoration(
-          hintText: widget.hintText,
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-          filled: false,
-          isDense: true,
-          contentPadding: EdgeInsets.zero,
+      child: Actions(
+        actions: {
+          CopySelectionTextIntent: CallbackAction<CopySelectionTextIntent>(
+            onInvoke: (intent) {
+              _transferSelection(cut: intent.collapseSelection);
+              return null;
+            },
+          ),
+          PasteTextIntent: CallbackAction<PasteTextIntent>(
+            onInvoke: (_) {
+              _paste(plain: HardwareKeyboard.instance.isShiftPressed);
+              return null;
+            },
+          ),
+        },
+        child: _SelectionRevealGate(
+          suppressReveal: () => widget.hasDocumentSelection?.call() == true,
+          child: TextField(
+            controller: controller,
+            focusNode: focus,
+            maxLines: null,
+            textAlign: widget.textAlign,
+            style: widget.style,
+            contextMenuBuilder: _buildContextMenu,
+            decoration: InputDecoration(
+              hintText: widget.hintText,
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              filled: false,
+              isDense: true,
+              contentPadding: EdgeInsets.zero,
+            ),
+            onChanged: _changed,
+          ),
         ),
-        onChanged: _changed,
       ),
     ),
   );

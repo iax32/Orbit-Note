@@ -1,3 +1,4 @@
+import '../../domain/course_progress.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -3386,6 +3387,13 @@ class _TasksViewState extends State<TasksView> {
         widget.scope ?? (widget.viewObject?.properties['scope'] as String?);
 
     bool matchesScope(UniversalObject t) {
+      final courseId = widget.viewObject?.properties['courseId'];
+      if (courseId is String && courseId.isNotEmpty) {
+        final course = c.find(courseId);
+        return course != null &&
+            !course.isDeleted &&
+            belongsToCourse(t, course);
+      }
       if (effectiveFolder != null && effectiveFolder.isNotEmpty) {
         final f = t.properties['folder'];
         if (f is String &&

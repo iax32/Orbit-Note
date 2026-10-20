@@ -28,14 +28,18 @@ Future<void> prepareCapture(WidgetTester tester) async {
   });
 }
 
-Future<void> captureUi(WidgetTester tester, String name) async {
+Future<void> captureUi(
+  WidgetTester tester,
+  String name, {
+  double pixelRatio = 1,
+}) async {
   if (!const bool.fromEnvironment('ORBIT_CAPTURE_UI')) return;
   await tester.pumpAndSettle();
   final boundary = tester.renderObject<RenderRepaintBoundary>(
     find.byType(RepaintBoundary).first,
   );
   await tester.runAsync(() async {
-    final image = await boundary.toImage();
+    final image = await boundary.toImage(pixelRatio: pixelRatio);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     image.dispose();
     await Directory('work/ui').create(recursive: true);

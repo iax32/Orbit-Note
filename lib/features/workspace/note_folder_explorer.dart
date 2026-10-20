@@ -14,6 +14,7 @@ import '../../domain/object_sort.dart';
 import 'orbit_explorer_row.dart';
 import 'research_record_dialog.dart';
 import 'folder_color_dialog.dart';
+import 'object_rename_dialog.dart';
 import '../../application/workspace_repository.dart';
 import '../../infrastructure/storage/path_safety.dart';
 import '../notes/creative_brief_dialog.dart';
@@ -298,6 +299,24 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
   final FocusNode _focusNode = FocusNode();
   int _focusedIndex = 0;
   bool _showArchived = false;
+  bool _batchBusy = false;
+  Object? _selectionOwner;
+
+  (WorkspaceController, WorkspaceRepository, int, String) _capture() {
+    final c = widget.controller;
+    return (c, c.repository, c.workspaceGeneration, c.repository.workspaceId);
+  }
+
+  bool _owns((WorkspaceController, WorkspaceRepository, int, String) owner) =>
+      mounted &&
+      identical(widget.controller, owner.$1) &&
+      identical(widget.controller.repository, owner.$2) &&
+      widget.controller.workspaceGeneration == owner.$3 &&
+      widget.controller.repository.workspaceId == owner.$4;
+
+  bool _sameSelection(Set<String> selection) =>
+      _selectedNoteIds.length == selection.length &&
+      _selectedNoteIds.containsAll(selection);
 
   @override
   void dispose() {
@@ -356,6 +375,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
     String initial = '',
     bool? isFolder,
   }) async {
+    final owner = _capture();
     final input = TextEditingController(text: initial);
     final form = GlobalKey<FormState>();
     final folderName =
@@ -411,7 +431,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
     );
     await Future<void>.delayed(const Duration(milliseconds: 250));
     input.dispose();
-    return result;
+    return _owns(owner) ? result : null;
   }
 
   Future<String?> _destination(BuildContext context, {String? exclude}) =>
@@ -436,6 +456,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
     String folder,
     String action,
   ) async {
+    final owner = _capture();
     if (action.startsWith('new') || action == 'new') {
       widget.controller.updateSession(
         (s) => s.collapsedFolders = s.collapsedFolders
@@ -847,12 +868,38 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         );
       }
     } else if (action == 'rename') {
+      Set<String> members() => {
+        for (final object in widget.controller.objects)
+          if (widget.controller.repository.objectFolder(object.id) == folder ||
+              widget.controller.repository
+                  .objectFolder(object.id)
+                  .startsWith('$folder/'))
+            '${object.id}:${widget.controller.repository.objectPath(object.id)}',
+      };
+      final before = members();
+      final folders = widget.controller.allKnownFolders
+          .where((f) => f == folder || f.startsWith('$folder/'))
+          .toSet();
       final name = await _name(
         context,
         'Rename folder',
         initial: p.posix.basename(folder),
       );
       if (name != null && name != p.posix.basename(folder)) {
+        final after = members();
+        final currentFolders = widget.controller.allKnownFolders
+            .where((f) => f == folder || f.startsWith('$folder/'))
+            .toSet();
+        if (!_owns(owner) ||
+            before.length != after.length ||
+            !before.containsAll(after) ||
+            folders.length != currentFolders.length ||
+            !folders.containsAll(currentFolders)) {
+          widget.controller.error =
+              'This folder changed while Rename was open. Its contents are retained; reopen Rename to review them.';
+          widget.controller.notify();
+          return;
+        }
         await widget.controller.moveFolder(
           folder,
           '${p.posix.dirname(folder)}/$name',
@@ -878,7 +925,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
           ],
         ),
       );
-      if (confirmed == true) {
+      if (confirmed == true && _owns(owner)) {
         await widget.controller.deleteFolder(folder);
       }
     } else if (action == 'reveal') {
@@ -889,7 +936,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
       );
     } else if (action == 'move') {
       final parent = await _destination(context, exclude: folder);
-      if (parent != null && parent != p.posix.dirname(folder)) {
+      if (_owns(owner) && parent != null && parent != p.posix.dirname(folder)) {
         await widget.controller.moveFolder(
           folder,
           '$parent/${p.posix.basename(folder)}',
@@ -897,13 +944,20 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
       }
     } else if (action == 'set_folder_color') {
       final currentVal = widget.controller.folderColorValue(folder);
+      final explicit = widget.controller.session.folderColors[folder];
       final currentColor = currentVal != null ? Color(currentVal) : null;
       await showFolderColorDialog(
         context,
         folderName: p.posix.basename(folder),
         currentColor: currentColor,
-        onColorSelected: (color) {
+        onCommit: (color) {
+          if (!_owns(owner) ||
+              !widget.controller.allKnownFolders.contains(folder) ||
+              widget.controller.session.folderColors[folder] != explicit) {
+            return false;
+          }
           widget.controller.setFolderColor(folder, color?.toARGB32());
+          return true;
         },
       );
     } else if (action == 'clear_folder_color') {
@@ -944,77 +998,103 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
   }
 
   Future<void> _batchMoveToFolder() async {
-    if (_selectedNoteIds.isEmpty) return;
-    final target = await _destination(context);
-    if (target != null) {
-      final moved = await widget.controller.moveObjectsToFolder(
-        List.of(_selectedNoteIds),
-        target,
-      );
-      if (mounted && moved) setState(() => _selectedNoteIds.clear());
+    if (_selectedNoteIds.isEmpty || _batchBusy) return;
+    final owner = _capture(), selection = Set.of(_selectedNoteIds);
+    _batchBusy = true;
+    try {
+      final target = await _destination(context);
+      if (target == null || !_owns(owner)) return;
+      final moved = await owner.$1.moveObjectsToFolder(selection, target);
+      if (_owns(owner) && moved && _sameSelection(selection)) {
+        setState(() => _selectedNoteIds.clear());
+      }
+    } finally {
+      if (_owns(owner)) _batchBusy = false;
     }
   }
 
   Future<void> _batchCopyReferences() async {
     if (_selectedNoteIds.isEmpty) return;
-    final refs = _selectedNoteIds
+    final owner = _capture();
+    final selected = _selectedNoteIds
         .map(widget.controller.find)
         .whereType<UniversalObject>()
+        .where((o) => !o.isDeleted)
+        .toList();
+    final refs = selected
         .map((o) => ObjectReference(o.id).markdown(o.title))
         .join('\n');
     await Clipboard.setData(ClipboardData(text: refs));
-    if (mounted) {
+    if (mounted && _owns(owner)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Copied ${_selectedNoteIds.length} note references'),
-        ),
+        SnackBar(content: Text('Copied ${selected.length} object references')),
       );
     }
   }
 
   Future<void> _batchMoveToTrash() async {
-    if (_selectedNoteIds.isEmpty) return;
-    final count = _selectedNoteIds.length;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => OrbitDialog(
-        title: const Text('Move to Trash'),
-        content: Text('Move $count notes to Trash?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Move to Trash'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      int moved = 0;
-      try {
-        for (final id in List.of(_selectedNoteIds)) {
-          await widget.controller.trash(id);
-          moved++;
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Moved $moved of $count notes before error: $e'),
+    if (_selectedNoteIds.isEmpty || _batchBusy) return;
+    final owner = _capture(), selection = Set.of(_selectedNoteIds);
+    final selected = selection
+        .map(owner.$1.find)
+        .whereType<UniversalObject>()
+        .toList();
+    final count = selected.length;
+    if (count == 0) return;
+    _batchBusy = true;
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => OrbitDialog(
+          title: const Text('Move to Trash'),
+          content: Text('Move $count items to Trash?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
             ),
-          );
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Move to Trash'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !_owns(owner)) return;
+      final moved = <String>{};
+      for (final object in selected) {
+        if (!_owns(owner)) return;
+        if (await owner.$1.trash(object.id, expected: object)) {
+          moved.add(object.id);
         }
       }
-      setState(() => _selectedNoteIds.clear());
+      if (!mounted || !_owns(owner)) return;
+      if (_sameSelection(selection)) {
+        setState(() => _selectedNoteIds.removeAll(moved));
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Moved ${moved.length} of $count items to Trash.${moved.length == count ? '' : ' Remaining items are retained; check their save or read-only status.'}',
+          ),
+        ),
+      );
+    } finally {
+      if (_owns(owner)) _batchBusy = false;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final repo = widget.controller.repository;
+    final owner = _capture();
+    if (_selectionOwner != owner) {
+      _selectionOwner = owner;
+      _selectedNoteIds.clear();
+      _anchorNoteId = null;
+      _focusedIndex = 0;
+      _batchBusy = false;
+    }
     final rows = <Widget>[];
 
     final visibleEntries = <({bool isFolder, String id, String folderPath})>[];
@@ -1197,8 +1277,9 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                 menu: PopupMenuButton<String>(
                   tooltip: 'Folder actions',
                   icon: const Icon(Icons.more_horiz, size: 16),
-                  onSelected: (action) =>
-                      _folderAction(context, folder, action),
+                  onSelected: (action) => _owns(owner)
+                      ? _folderAction(context, folder, action)
+                      : null,
                   itemBuilder: (_) {
                     final isGameFolder =
                         folder.startsWith('Games') ||
@@ -1598,6 +1679,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                   tooltip: 'Object actions',
                   icon: const Icon(Icons.more_horiz, size: 16),
                   onSelected: (action) async {
+                    if (!_owns(owner)) return;
                     if (action == 'batch_move') {
                       await _batchMoveToFolder();
                     } else if (action == 'batch_copy') {
@@ -1606,16 +1688,11 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                       await _batchMoveToTrash();
                     } else if (action == 'rename') {
                       if (!context.mounted) return;
-                      final name = await _name(
+                      await showObjectRenameDialog(
                         context,
-                        'Rename',
-                        initial: note.title,
+                        widget.controller,
+                        note,
                       );
-                      if (name != null &&
-                          name.trim().isNotEmpty &&
-                          name != note.title) {
-                        widget.controller.edit(note.id, title: name.trim());
-                      }
                     } else if (action == 'copy') {
                       await Clipboard.setData(
                         ClipboardData(
@@ -1654,30 +1731,27 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                             : note.title,
                         isNote: true,
                         currentColor: noteExplicitColor,
-                        onColorSelected: (color) {
-                          if (color != null) {
-                            widget.controller.edit(
-                              note.id,
-                              properties: {
-                                ...note.properties,
-                                'color': color.toARGB32(),
-                              },
-                            );
-                          } else {
-                            final props = Map<String, dynamic>.from(
-                              note.properties,
-                            );
-                            props.remove('color');
-                            props.remove('accent');
-                            widget.controller.edit(note.id, properties: props);
-                          }
+                        onCommit: (color) {
+                          if (!_owns(owner)) return false;
+                          return widget.controller.editObjectMetadata(
+                            note,
+                            generation: owner.$3,
+                            changes: color == null
+                                ? const {}
+                                : {'color': color.toARGB32()},
+                            remove: color == null
+                                ? {'color', 'accent'}
+                                : const {},
+                            unchanged: {'accent'},
+                          );
                         },
                       );
                     } else if (action == 'clear_note_color') {
-                      final props = Map<String, dynamic>.from(note.properties);
-                      props.remove('color');
-                      props.remove('accent');
-                      widget.controller.edit(note.id, properties: props);
+                      widget.controller.editObjectMetadata(
+                        note,
+                        generation: owner.$3,
+                        remove: {'color', 'accent'},
+                      );
                     } else if (action == 'batch_move') {
                       await _batchMoveToFolder();
                     } else if (action == 'batch_copy') {
@@ -1847,8 +1921,9 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                 menu: PopupMenuButton<String>(
                   tooltip: 'Archived folder actions',
                   icon: const Icon(Icons.more_horiz, size: 16),
-                  onSelected: (action) =>
-                      _folderAction(context, archFolder, action),
+                  onSelected: (action) => _owns(owner)
+                      ? _folderAction(context, archFolder, action)
+                      : null,
                   itemBuilder: (_) => [
                     const PopupMenuItem(
                       value: 'restore',
@@ -1875,6 +1950,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
     return Focus(
       focusNode: _focusNode,
       onKeyEvent: (node, event) {
+        if (!_owns(owner)) return KeyEventResult.ignored;
         if (event is! KeyDownEvent) return KeyEventResult.ignored;
         final isCtrl =
             HardwareKeyboard.instance.isControlPressed ||
@@ -2082,7 +2158,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
               child: Row(
                 children: [
                   Text(
-                    '${_selectedNoteIds.length} notes selected',
+                    '${_selectedNoteIds.length} items selected',
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -2092,7 +2168,9 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                   IconButton(
                     tooltip: 'Move to folder…',
                     icon: const Icon(Icons.drive_file_move_outlined, size: 16),
-                    onPressed: _batchMoveToFolder,
+                    onPressed: () {
+                      if (_owns(owner)) _batchMoveToFolder();
+                    },
                     splashRadius: 14,
                     constraints: const BoxConstraints.tightFor(
                       width: 28,
@@ -2102,7 +2180,9 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                   IconButton(
                     tooltip: 'Copy references',
                     icon: const Icon(Icons.link, size: 16),
-                    onPressed: _batchCopyReferences,
+                    onPressed: () {
+                      if (_owns(owner)) _batchCopyReferences();
+                    },
                     splashRadius: 14,
                     constraints: const BoxConstraints.tightFor(
                       width: 28,
@@ -2112,7 +2192,9 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                   IconButton(
                     tooltip: 'Move to Trash',
                     icon: const Icon(Icons.delete_outline, size: 16),
-                    onPressed: _batchMoveToTrash,
+                    onPressed: () {
+                      if (_owns(owner)) _batchMoveToTrash();
+                    },
                     splashRadius: 14,
                     constraints: const BoxConstraints.tightFor(
                       width: 28,
@@ -2122,7 +2204,11 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                   IconButton(
                     tooltip: 'Clear selection',
                     icon: const Icon(Icons.close, size: 16),
-                    onPressed: () => setState(() => _selectedNoteIds.clear()),
+                    onPressed: () {
+                      if (_owns(owner)) {
+                        setState(() => _selectedNoteIds.clear());
+                      }
+                    },
                     splashRadius: 14,
                     constraints: const BoxConstraints.tightFor(
                       width: 28,

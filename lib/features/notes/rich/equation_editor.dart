@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../app/orbit_theme.dart';
 import 'latex_catalog.dart';
+import '../../math/math_lab_dialog.dart';
 import 'latex_symbol_catalog.dart';
 import 'note_math.dart';
 import 'visual_math_model.dart';
@@ -102,6 +103,7 @@ class _EquationEditorState extends State<EquationEditor> {
     final colors = OrbitColors.of(context);
     final model = VisualMathModel(input.text);
     return AlertDialog(
+      scrollable: true,
       title: Row(
         children: [
           Icon(Icons.functions, color: colors.accent, size: 20),
@@ -115,6 +117,17 @@ class _EquationEditorState extends State<EquationEditor> {
             ),
           ),
           IconButton(
+            tooltip: 'Math Lab',
+            icon: const Icon(Icons.calculate_outlined, size: 18),
+            onPressed: () async {
+              if (!input.value.composing.isCollapsed) return;
+              final original = input.value;
+              final result = await showMathLab(context);
+              if (!mounted || result == null || input.value != original) return;
+              insert(LatexEntry('Math Lab result', result.tex, 'Math Lab'));
+            },
+          ),
+          IconButton(
             tooltip: showSource ? 'Hide LaTeX Source' : 'Show LaTeX Source',
             icon: Icon(showSource ? Icons.code_off : Icons.code, size: 18),
             onPressed: () => setState(() => showSource = !showSource),
@@ -123,8 +136,8 @@ class _EquationEditorState extends State<EquationEditor> {
       ),
       content: SizedBox(
         width: 720,
-        height: (MediaQuery.sizeOf(context).height * 0.75).clamp(480.0, 800.0),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // 1. Live Rendered Preview Card
@@ -215,7 +228,13 @@ class _EquationEditorState extends State<EquationEditor> {
               const SizedBox(height: 6),
             ],
 
-            Expanded(child: LatexSymbolCatalog(onInsert: insert)),
+            SizedBox(
+              height: (MediaQuery.sizeOf(context).height * .4).clamp(
+                240.0,
+                380.0,
+              ),
+              child: LatexSymbolCatalog(onInsert: insert),
+            ),
           ],
         ),
       ),

@@ -8,6 +8,7 @@ extension WorkspaceStudy on WorkspaceController {
     required String question,
     required String answer,
     String course = '',
+    String? courseId,
     UniversalObject? source,
     String passage = '',
     int? page,
@@ -78,6 +79,15 @@ extension WorkspaceStudy on WorkspaceController {
         }
       }
       final sourceCourse = source?.properties['course'];
+      final selectedCourse = courseId == null ? null : find(courseId);
+      if (courseId != null &&
+          (selectedCourse == null ||
+              selectedCourse.isDeleted ||
+              selectedCourse.properties['isCourseOverview'] != true ||
+              selectedCourse.isReadOnly ||
+              selectedCourse.properties['course'] != course.trim())) {
+        throw const FormatException('Course changed. Reopen the card editor.');
+      }
       return await create(
         'orbit.note',
         title: question.trim(),
@@ -87,6 +97,10 @@ extension WorkspaceStudy on WorkspaceController {
           'course': course.trim().isNotEmpty
               ? course.trim()
               : sourceCourse ?? '',
+          if (source?.properties['courseId'] is String &&
+              (course.trim().isEmpty || course.trim() == sourceCourse))
+            'courseId': source!.properties['courseId'],
+          if (selectedCourse != null) 'courseId': selectedCourse.id,
           'studyCard': record,
           if (pdf is Map) 'pdfSource': {...pdf},
           if (source?.typeId == 'orbit.file' &&
@@ -164,7 +178,10 @@ extension WorkspaceStudy on WorkspaceController {
     }
     return _commitProductivity(
       expected,
-      {'course': course.trim()},
+      {
+        'course': course.trim(),
+        if (course.trim() != expected.properties['course']) 'courseId': '',
+      },
       title: question.trim(),
       body: answer.trim(),
     );

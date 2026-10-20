@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_selector/file_selector.dart';
 import '../../app/collaboration_controller.dart';
+import '../../app/orbit_components.dart';
 import '../../application/backup_bundle.dart';
 import '../../platform/import_backup.dart';
 import 'backup_import_dialog.dart';
@@ -35,7 +36,18 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
   String inviteRole = 'editor';
   String? error;
   bool busy = false;
+  String? serverStatus;
   CollaborationController get c => widget.controller;
+  @override
+  void initState() {
+    super.initState();
+    if (c.secrets != null) {
+      scheduleMicrotask(() {
+        if (mounted) run(c.loadSavedConnection);
+      });
+    }
+  }
+
   @override
   void dispose() {
     server.dispose();
@@ -53,7 +65,13 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
     try {
       await action();
     } on Object catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) {
+        setState(
+          () => error = e is StateError
+              ? e.message
+              : 'The connection could not complete. Check the server address, invitation and access permissions. Your local files are safe.',
+        );
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -73,12 +91,15 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
     );
   });
   Future<void> join() => run(() async {
+    final opening = c.workspace.workspaceGeneration;
+    bool owns() => mounted && c.workspace.workspaceGeneration == opening;
     final data = jsonDecode(invitation.text) as Map;
     final endpoint = CollaborationController.validateEndpoint(
       data['server'] as String,
     );
     final room = data['room'] as String, token = data['token'] as String;
     final state = await c.inspectRoom(endpoint, room, token);
+    if (!owns()) return;
     if (state['workspaceId'] != c.workspace.repository.workspaceId) {
       if (c.workspace.repository.isBrowser) {
         throw StateError(
@@ -88,25 +109,47 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
       final bundle = BackupBundle.parse(
         await c.downloadRoom(endpoint, room, token),
       );
-      if (!mounted ||
-          await showDialog<bool>(
-                context: context,
-                builder: (_) => BackupImportDialog(bundle: bundle),
-              ) !=
-              true) {
+      if (!mounted || !owns()) return;
+      if (await showDialog<bool>(
+            context: context,
+            builder: (_) => BackupImportDialog(bundle: bundle),
+          ) !=
+          true) {
         return;
       }
+      if (!owns()) return;
       final parent = await getDirectoryPath(
         confirmButtonText: 'Import shared Vault here',
       );
-      if (parent == null || !await c.workspace.flushAll()) return;
+      if (parent == null ||
+          !owns() ||
+          !await c.workspace.flushAll() ||
+          !owns()) {
+        return;
+      }
       final path = await importBackup(bundle, parent);
+      if (!owns()) {
+        throw StateError(
+          'The downloaded folder was created, but your active Vault changed; it was not opened.',
+        );
+      }
       await c.workspace.initialize(path: path);
+      if (!mounted ||
+          c.workspace.repository.location != path ||
+          c.workspace.repository.workspaceId != state['workspaceId']) {
+        return;
+      }
     }
     await c.connect(endpoint, room, token);
   });
   Future<void> invite() => run(() async {
+    final room = c.room, opening = c.workspace.workspaceGeneration;
     final token = await c.invite(name.text, inviteRole);
+    if (!mounted ||
+        c.room != room ||
+        c.workspace.workspaceGeneration != opening) {
+      return;
+    }
     await Clipboard.setData(
       ClipboardData(
         text: jsonEncode({
@@ -128,7 +171,7 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: c,
-    builder: (context, _) => AlertDialog(
+    builder: (context, _) => OrbitDialog(
       title: const Text('Shared Vault'),
       content: SizedBox(
         width: 560,
@@ -141,6 +184,31 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
                 'Share a copy of this entire Vault with your self-hosted server. Existing notes and Canvas boards support live edits. Attachments are included in the initial copy; new attachments and newly created objects need a new shared snapshot. Keep invitations private.',
               ),
               const SizedBox(height: 16),
+              if (c.hasSavedConnection) ...[
+                Text('Saved on this device: ${c.savedServer}'),
+                const Text(
+                  'Reconnect restores this Vault’s server access. It does not upload a new snapshot or switch Vaults.',
+                ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton(
+                      onPressed: busy || c.profileBusy || c.connecting
+                          ? null
+                          : () => run(c.reconnectSaved),
+                      child: const Text('Reconnect saved server'),
+                    ),
+                    TextButton(
+                      onPressed: busy || c.profileBusy
+                          ? null
+                          : () => run(c.forgetSavedConnection),
+                      child: const Text('Forget saved connection'),
+                    ),
+                  ],
+                ),
+                const Divider(height: 24),
+              ],
               if (!c.connected) ...[
                 TextField(
                   controller: server,
@@ -165,8 +233,41 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
                     labelText: 'Your display name',
                   ),
                 ),
+                OutlinedButton(
+                  onPressed: busy || c.connecting
+                      ? null
+                      : () => run(() async {
+                          final address = server.text;
+                          final endpoint =
+                              CollaborationController.validateEndpoint(address);
+                          final info = await c.testServer(
+                            endpoint,
+                            ownerKey.text.trim(),
+                          );
+                          if (mounted && server.text == address) {
+                            setState(
+                              () => serverStatus =
+                                  'Server ready · protocol ${info['protocol']} · ${info['rooms']} shared Vault(s). No Vault uploaded.',
+                            );
+                          }
+                        }),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.network_check),
+                      SizedBox(width: 8),
+                      Flexible(child: Text('Test server connection')),
+                    ],
+                  ),
+                ),
+                if (serverStatus != null) Text(serverStatus!),
+                const Text(
+                  'Run collaboration/Start Orbit Server.cmd on the host, then enter the private owner key from its data folder. Other devices need an HTTPS address that reaches that host; localhost refers to this device.',
+                ),
                 FilledButton(
-                  onPressed: busy ? null : host,
+                  onPressed: busy || c.connecting || !c.workspace.hasWorkspace
+                      ? null
+                      : host,
                   child: const Text('Share this Vault'),
                 ),
                 const Divider(height: 32),
@@ -179,12 +280,21 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
                   ),
                 ),
                 OutlinedButton(
-                  onPressed: busy ? null : join,
+                  onPressed: busy || c.connecting || !c.workspace.hasWorkspace
+                      ? null
+                      : join,
                   child: const Text('Join shared Vault'),
                 ),
               ] else ...[
                 Text(c.status),
                 Text('Access: ${c.role}'),
+                Text('${c.pendingChanges} shared document(s) pending'),
+                if (c.retryAt != null || c.accessBlocked)
+                  OutlinedButton.icon(
+                    onPressed: busy || c.busy ? null : () => run(c.retryNow),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry now'),
+                  ),
                 const Text(
                   'Save your own connection privately so you can reconnect after restarting. It grants your current access.',
                 ),
@@ -195,6 +305,25 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
                           ClipboardData(text: c.connectionInvitation),
                         ),
                   child: const Text('Copy my connection'),
+                ),
+                if (c.canRememberConnection)
+                  OutlinedButton(
+                    onPressed: busy || c.profileBusy
+                        ? null
+                        : () => run(c.rememberConnection),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.lock_outline),
+                        SizedBox(width: 8),
+                        Flexible(
+                          child: Text('Remember connection on this device'),
+                        ),
+                      ],
+                    ),
+                  ),
+                const Text(
+                  'Remembering saves only your private room connection in device secure storage. It is never written into the Vault or exported. Disconnect keeps the saved connection; Forget removes it. Reconnect is an explicit action.',
                 ),
                 if (c.role == 'owner') ...[
                   TextField(
@@ -263,6 +392,16 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
                   error!,
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
+              if (error != null &&
+                  !c.hasSavedConnection &&
+                  c.secrets != null &&
+                  c.workspace.hasWorkspace)
+                TextButton(
+                  onPressed: busy || c.profileBusy
+                      ? null
+                      : () => run(c.forgetSavedConnection),
+                  child: const Text('Forget saved connection'),
+                ),
             ],
           ),
         ),
@@ -313,6 +452,12 @@ class SharedDocumentSurface extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                if (controller.retryAt != null || controller.accessBlocked)
+                  IconButton(
+                    tooltip: 'Retry shared connection now',
+                    onPressed: controller.busy ? null : controller.retryNow,
+                    icon: const Icon(Icons.refresh, size: 18),
+                  ),
                 IconButton(
                   tooltip: 'Shared Vault settings',
                   onPressed: () =>

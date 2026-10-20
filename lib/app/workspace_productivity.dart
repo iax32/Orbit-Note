@@ -1,7 +1,11 @@
 part of 'workspace_controller.dart';
 
 extension WorkspaceProductivity on WorkspaceController {
-  List<UniversalObject> queryViewObjects(UniversalObject view) {
+  List<UniversalObject> queryViewObjects(
+    UniversalObject view, {
+    String? folderFilter,
+    String? scope,
+  }) {
     final day = calendarDate(DateTime.now());
     if (!identical(_querySnapshot, objects) || day != _queryDay) {
       _querySnapshot = objects;
@@ -9,10 +13,20 @@ extension WorkspaceProductivity on WorkspaceController {
       _viewQueryCache.clear();
     }
     final current = find(view.id) ?? view;
+    if (current.isDeleted) return const [];
+    final effective = folderFilter == null && scope == null
+        ? current
+        : current.copyWith(
+            properties: {
+              ...current.properties,
+              'folder': ?folderFilter,
+              'scope': ?scope,
+            },
+          );
     return _viewQueryCache.putIfAbsent(
-      current.id,
+      (current.id, folderFilter, scope),
       () => List.unmodifiable(
-        resolveSmartView(current, objects, pathFor: repository.objectPath),
+        resolveSmartView(effective, objects, pathFor: repository.objectPath),
       ),
     );
   }
@@ -308,6 +322,12 @@ extension WorkspaceProductivity on WorkspaceController {
   }
 
   bool inActiveSpace(UniversalObject object) {
+    final chosenProject = selectedProjectId;
+    if (chosenProject != null &&
+        object.id != chosenProject &&
+        objectProject(object) != chosenProject) {
+      return false;
+    }
     final space = activeSpace;
     final project = space?['project'], folder = space?['folder'];
     if (project is String &&

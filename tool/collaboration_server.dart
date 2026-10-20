@@ -9,6 +9,7 @@ Future<void> main(List<String> args) async {
     return;
   }
   final directory = Directory(args[0]).absolute;
+  await validateCollaborationDirectory(directory);
   await directory.create(recursive: true);
   final secret = File('${directory.path}/owner-key.secret');
   if (!await secret.exists()) {

@@ -1,9 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart';
 import '../../../domain/document_publication.dart';
+import '../../../domain/json_values.dart';
+import '../../../app/orbit_draft_guard.dart';
+import '../../../domain/publication_layout.dart';
+import 'package:markdown/markdown.dart' as md;
 import '../../../domain/universal_object.dart';
 import '../../../platform/export_file.dart';
 import 'publication_export.dart';
@@ -16,6 +21,7 @@ Future<void> showPublicationWorkspace(
   required String ownerId,
   List<UniversalObject> objects = const [],
   Future<Uint8List?> Function(String)? readImage,
+  bool Function(String, String)? onApply,
 }) => showDialog<void>(
   context: context,
   builder: (_) => PublicationWorkspace(
@@ -24,6 +30,7 @@ Future<void> showPublicationWorkspace(
     ownerId: ownerId,
     objects: objects,
     readImage: readImage,
+    onApply: onApply,
   ),
 );
 
@@ -36,11 +43,15 @@ class PublicationWorkspace extends StatefulWidget {
     this.objects = const [],
     this.readImage,
     this.previewBuilder,
+    this.onApply,
+    this.onNavigatePage,
   });
   final String title, source, ownerId;
   final List<UniversalObject> objects;
   final Future<Uint8List?> Function(String)? readImage;
   final Widget Function(Uint8List)? previewBuilder;
+  final bool Function(String before, String next)? onApply;
+  final ValueChanged<int>? onNavigatePage;
   @override
   State<PublicationWorkspace> createState() => _PublicationWorkspaceState();
 }
@@ -58,15 +69,62 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
   final author = TextEditingController(), header = TextEditingController();
   Timer? debounce;
   int revision = 0;
-  String? error;
+  String? error, exportError;
+  late Object appliedSettings;
+  Map<String, dynamic> get currentSettings => {
+    'style': style.toJson(),
+    'blocks': layouts,
+  };
+  void rememberSettings() {
+    appliedSettings = jsonDecode(jsonEncode(currentSettings));
+  }
+
   Uint8List? preview;
   PublicationExport? ready;
   Map<String, Uint8List>? images, equations;
   Future<void>? resourceFuture;
   final resourceWarnings = <String>[];
+  late String source;
+  final layouts = <String, Map<String, dynamic>>{};
+  final layoutResetSerial = <String, int>{};
+  final contentsFind = TextEditingController();
+  int contentsPage = 0, layoutsPage = 0;
+  final viewerController = PdfViewerController();
+  String? settingsWarning;
+  bool saved = false;
   @override
   void initState() {
     super.initState();
+    source = widget.source;
+    final existing = PublicationSettings.parse(source);
+    try {
+      if (source.startsWith(PublicationSettings.prefix) && existing == null) {
+        throw const FormatException(
+          'Unrecognized publishing settings are preserved. Use Source to repair them before saving new settings.',
+        );
+      }
+      if (existing != null) {
+        final initial = PublicationStyle.fromJson(
+          Map<String, dynamic>.from(existing.data['style'] as Map),
+        );
+        letter = initial.letter;
+        serif = initial.serif;
+        numbering = initial.numberHeadings;
+        titlePage = initial.titlePage;
+        contents = initial.contents;
+        pageNumbers = initial.pageNumbers;
+        margin = initial.margin;
+        fontSize = initial.fontSize;
+        author.text = initial.author;
+        header.text = initial.header;
+        for (final e in (existing.data['blocks'] as Map).entries) {
+          layouts[e.key as String] = Map<String, dynamic>.from(e.value as Map);
+        }
+      }
+    } catch (failure) {
+      settingsWarning = '$failure';
+    }
+    rememberSettings();
     generate();
   }
 
@@ -76,6 +134,7 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
     debounce?.cancel();
     author.dispose();
     header.dispose();
+    contentsFind.dispose();
     super.dispose();
   }
 
@@ -95,8 +154,8 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
     setState(() {
       action();
       busy = true;
-      ready = null;
       error = null;
+      saved = false;
     });
     revision++;
     debounce?.cancel();
@@ -221,10 +280,11 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
     try {
       final document = PublicationDocument.parse(
         widget.title,
-        widget.source,
+        source,
         style,
         objects: widget.objects,
         ownerId: widget.ownerId,
+        layouts: layouts,
       );
       final initial = PublicationExport(document);
       await resources(initial);
@@ -265,10 +325,16 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
 
   Future<void> save(String format) async {
     final snapshot = ready, bytes = preview;
-    if (snapshot == null || (format == 'pdf' && bytes == null) || exporting) {
+    if (snapshot == null ||
+        (format == 'pdf' && bytes == null) ||
+        exporting ||
+        busy) {
       return;
     }
-    setState(() => exporting = true);
+    setState(() {
+      exporting = true;
+      exportError = null;
+    });
     try {
       final name = publicationFileName(widget.title);
       final saved = format == 'html'
@@ -292,7 +358,8 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
     } catch (failure) {
       if (mounted) {
         setState(
-          () => error = 'Export failed; your note is unchanged. $failure',
+          () => exportError =
+              'Export failed; your preview and settings are retained. Try exporting again. $failure',
         );
       }
     } finally {
@@ -300,274 +367,527 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
     }
   }
 
-  Widget settings() => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          PopupMenuButton<String>(
-            tooltip: 'Document style presets',
-            onSelected: exporting
-                ? null
-                : (value) => change(() {
-                    serif = value == 'Academic';
-                    fontSize = serif ? 12 : 11;
-                    margin = serif
-                        ? 72
-                        : value == 'Design brief'
-                        ? 48
-                        : 54;
-                    numbering = serif;
-                    titlePage = serif;
-                    contents = true;
-                    pageNumbers = true;
-                  }),
-            itemBuilder: (_) => [
-              for (final name in ['Report', 'Academic', 'Design brief'])
-                PopupMenuItem(value: name, child: Text(name)),
-            ],
-            child: const Padding(
-              padding: EdgeInsets.all(8),
-              child: Text('Style presets ▾'),
+  Widget settings(BuildContext controlsContext) {
+    final headings =
+        ready?.document.headings
+            .where(
+              (h) => h.text.toLowerCase().contains(
+                contentsFind.text.toLowerCase(),
+              ),
+            )
+            .toList() ??
+        <PublicationHeading>[];
+    final targets =
+        ready?.document.nodes.indexed
+            .where((entry) => publicationLayoutTarget(entry.$2))
+            .toList() ??
+        <(int, md.Node)>[];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (exportError != null)
+          Semantics(
+            liveRegion: true,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                exportError!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
             ),
           ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            PopupMenuButton<String>(
+              tooltip: 'Document style presets',
+              onSelected: exporting
+                  ? null
+                  : (value) => change(() {
+                      serif = value == 'Academic';
+                      fontSize = serif ? 12 : 11;
+                      margin = serif
+                          ? 72
+                          : value == 'Design brief'
+                          ? 48
+                          : 54;
+                      numbering = serif;
+                      titlePage = serif;
+                      contents = true;
+                      pageNumbers = true;
+                    }),
+              itemBuilder: (_) => [
+                for (final name in ['Report', 'Academic', 'Design brief'])
+                  PopupMenuItem(value: name, child: Text(name)),
+              ],
+              child: const Padding(
+                padding: EdgeInsets.all(8),
+                child: Text('Style presets ▾'),
+              ),
+            ),
+            TextButton(
+              onPressed: exporting
+                  ? null
+                  : () => change(() {
+                      letter = false;
+                      serif = false;
+                      fontSize = 11;
+                      margin = 54;
+                      numbering = false;
+                      titlePage = false;
+                      contents = true;
+                      pageNumbers = true;
+                    }),
+              child: const Text('Reset style'),
+            ),
+          ],
+        ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            ChoiceChip(
+              label: const Text('A4'),
+              selected: !letter,
+              onSelected: exporting
+                  ? null
+                  : (_) => change(() => letter = false),
+            ),
+            ChoiceChip(
+              label: const Text('Letter'),
+              selected: letter,
+              onSelected: exporting ? null : (_) => change(() => letter = true),
+            ),
+            ChoiceChip(
+              label: const Text('Sans'),
+              selected: !serif,
+              onSelected: exporting ? null : (_) => change(() => serif = false),
+            ),
+            ChoiceChip(
+              label: const Text('Serif'),
+              selected: serif,
+              onSelected: exporting ? null : (_) => change(() => serif = true),
+            ),
+          ],
+        ),
+        Text('Margins · ${margin.round()} pt'),
+        Slider(
+          value: margin,
+          min: 24,
+          max: 90,
+          divisions: 11,
+          label: '${margin.round()} pt',
+          onChanged: exporting ? null : (v) => change(() => margin = v),
+        ),
+        Text('Body text · ${fontSize.round()} pt'),
+        Slider(
+          value: fontSize,
+          min: 9,
+          max: 18,
+          divisions: 9,
+          label: '${fontSize.round()} pt',
+          onChanged: exporting ? null : (v) => change(() => fontSize = v),
+        ),
+        TextField(
+          controller: author,
+          enabled: !exporting,
+          maxLength: 500,
+          decoration: const InputDecoration(
+            labelText: 'Author',
+            counterText: '',
+          ),
+          onChanged: (_) => change(() {}),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: header,
+          enabled: !exporting,
+          maxLength: 500,
+          decoration: const InputDecoration(
+            labelText: 'Running header',
+            counterText: '',
+          ),
+          onChanged: (_) => change(() {}),
+        ),
+        for (final item in <(String, bool, void Function(bool))>[
+          ('Title page', titlePage, (v) => titlePage = v),
+          ('Contents', contents, (v) => contents = v),
+          ('Number headings', numbering, (v) => numbering = v),
+          ('Page numbers', pageNumbers, (v) => pageNumbers = v),
+        ])
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(item.$1),
+            value: item.$2,
+            onChanged: exporting ? null : (v) => change(() => item.$3(v!)),
+          ),
+        const Text(
+          'All exports use these document settings. Images and tables have print layout controls below. Save settings to retain them with this note.',
+        ),
+        if (settingsWarning != null)
+          Text(
+            settingsWarning!,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        if (ready != null) ...[
+          const SizedBox(height: 16),
+          Text(
+            'Contents · ${ready!.pageCount} pages',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          TextField(
+            controller: contentsFind,
+            decoration: const InputDecoration(
+              labelText: 'Find a chapter',
+              prefixIcon: Icon(Icons.search),
+            ),
+            onChanged: (_) => setState(() => contentsPage = 0),
+          ),
+          for (final heading in headings.skip(contentsPage * 20).take(20))
+            ListTile(
+              contentPadding: EdgeInsets.only(left: (heading.level - 1) * 8),
+              title: Text(heading.text),
+              subtitle: Text(
+                busy
+                    ? 'Updating pages…'
+                    : ready!.headingPages[heading.id] == null
+                    ? 'Page unavailable'
+                    : 'Page ${ready!.headingPages[heading.id]}',
+              ),
+              enabled: !busy && ready!.headingPages.containsKey(heading.id),
+              onTap: () {
+                final page = ready!.headingPages[heading.id];
+                if (page == null) return;
+                if (widget.onNavigatePage != null) {
+                  widget.onNavigatePage!(page);
+                } else if (viewerController.isReady) {
+                  unawaited(viewerController.goToPage(pageNumber: page));
+                }
+                DefaultTabController.maybeOf(controlsContext)?.animateTo(0);
+              },
+            ),
+          if (headings.length > 20)
+            _paging(
+              'Contents',
+              contentsPage,
+              headings.length,
+              (page) => setState(() => contentsPage = page),
+            ),
+          const SizedBox(height: 16),
+          const Text(
+            'Images & tables',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const Text(
+            'Print layout for standalone images and tables. Inline images retain their text-flow layout.',
+          ),
+          for (final entry in targets.skip(layoutsPage * 20).take(20))
+            _layoutControl(entry.$2 as md.Element, entry.$1),
+          if (targets.length > 20)
+            _paging(
+              'Layouts',
+              layoutsPage,
+              targets.length,
+              (page) => setState(() => layoutsPage = page),
+            ),
+        ],
+        if (ready != null && ready!.warnings.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          const Text(
+            'Export details',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          for (final warning in ready!.warnings.toSet())
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(warning),
+            ),
+        ],
+      ],
+    );
+  }
+
+  Widget _paging(
+    String label,
+    int page,
+    int count,
+    ValueChanged<int> changed,
+  ) => Wrap(
+    crossAxisAlignment: WrapCrossAlignment.center,
+    spacing: 8,
+    children: [
+      Text(
+        '$label · ${page * 20 + 1}–${((page + 1) * 20).clamp(0, count)} of $count',
+      ),
+      IconButton(
+        tooltip: 'Previous $label',
+        onPressed: page > 0 ? () => changed(page - 1) : null,
+        icon: const Icon(Icons.chevron_left),
+      ),
+      IconButton(
+        tooltip: 'Next $label',
+        onPressed: (page + 1) * 20 < count ? () => changed(page + 1) : null,
+        icon: const Icon(Icons.chevron_right),
+      ),
+    ],
+  );
+
+  Widget _layoutControl(md.Element node, int index) {
+    final key = node.attributes['orbit-key']!;
+    final value = layouts[key] ?? const <String, dynamic>{};
+    final options = PublicationBlockLayout.fromJson(value);
+    final ambiguous = node.attributes['orbit-ambiguous'] == 'true';
+    final isTable = node.tag == 'table';
+    final label = isTable
+        ? 'Table · ${node.textContent}'
+        : 'Image · ${(node.children!.single as md.Element).attributes['alt'] ?? 'Untitled'}';
+    void edit(String field, Object v) =>
+        change(() => layouts[key] = {...value, field: v});
+    return ExpansionTile(
+      key: ValueKey('layout-$key-$index'),
+      title: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis),
+      subtitle: Text(
+        ambiguous
+            ? 'Identical content — layout cannot be assigned safely'
+            : '${options.width}% · ${options.alignment}',
+      ),
+      children: [
+        if (!ambiguous) ...[
+          Text('Print width · ${options.width}%'),
+          Slider(
+            value: options.width.toDouble(),
+            min: 25,
+            max: 100,
+            divisions: 15,
+            label: '${options.width}%',
+            onChanged: exporting ? null : (v) => edit('width', v.round()),
+          ),
+          Wrap(
+            spacing: 6,
+            children: [
+              for (final alignment in ['left', 'center', 'right'])
+                ChoiceChip(
+                  label: Text(alignment),
+                  selected: options.alignment == alignment,
+                  onSelected: exporting
+                      ? null
+                      : (_) => edit('alignment', alignment),
+                ),
+            ],
+          ),
+          TextFormField(
+            key: ValueKey('caption-$key-${layoutResetSerial[key] ?? 0}'),
+            initialValue: options.caption,
+            maxLength: 2000,
+            enabled: !exporting,
+            decoration: const InputDecoration(labelText: 'Print caption'),
+            onChanged: (v) => edit('caption', v),
+          ),
+          CheckboxListTile(
+            title: const Text('Start on a new page'),
+            value: options.pageBreakBefore,
+            onChanged: exporting ? null : (v) => edit('pageBreakBefore', v!),
+          ),
+          if (isTable)
+            CheckboxListTile(
+              title: const Text('Repeat table header on each page'),
+              value: options.repeatHeader,
+              onChanged: exporting ? null : (v) => edit('repeatHeader', v!),
+            ),
           TextButton(
             onPressed: exporting
                 ? null
                 : () => change(() {
-                    letter = false;
-                    serif = false;
-                    fontSize = 11;
-                    margin = 54;
-                    numbering = false;
-                    titlePage = false;
-                    contents = true;
-                    pageNumbers = true;
+                    final remaining = Map<String, dynamic>.of(value);
+                    for (final field
+                        in const PublicationBlockLayout().toJson().keys) {
+                      remaining.remove(field);
+                    }
+                    if (remaining.isEmpty) {
+                      layouts.remove(key);
+                    } else {
+                      layouts[key] = remaining;
+                    }
+                    layoutResetSerial[key] = (layoutResetSerial[key] ?? 0) + 1;
                   }),
-            child: const Text('Reset style'),
+            child: const Text('Reset this layout'),
           ),
         ],
-      ),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          ChoiceChip(
-            label: const Text('A4'),
-            selected: !letter,
-            onSelected: exporting ? null : (_) => change(() => letter = false),
-          ),
-          ChoiceChip(
-            label: const Text('Letter'),
-            selected: letter,
-            onSelected: exporting ? null : (_) => change(() => letter = true),
-          ),
-          ChoiceChip(
-            label: const Text('Sans'),
-            selected: !serif,
-            onSelected: exporting ? null : (_) => change(() => serif = false),
-          ),
-          ChoiceChip(
-            label: const Text('Serif'),
-            selected: serif,
-            onSelected: exporting ? null : (_) => change(() => serif = true),
-          ),
-        ],
-      ),
-      Text('Margins · ${margin.round()} pt'),
-      Slider(
-        value: margin,
-        min: 24,
-        max: 90,
-        divisions: 11,
-        label: '${margin.round()} pt',
-        onChanged: exporting ? null : (v) => change(() => margin = v),
-      ),
-      Text('Body text · ${fontSize.round()} pt'),
-      Slider(
-        value: fontSize,
-        min: 9,
-        max: 18,
-        divisions: 9,
-        label: '${fontSize.round()} pt',
-        onChanged: exporting ? null : (v) => change(() => fontSize = v),
-      ),
-      TextField(
-        controller: author,
-        enabled: !exporting,
-        maxLength: 500,
-        decoration: const InputDecoration(labelText: 'Author', counterText: ''),
-        onChanged: (_) => change(() {}),
-      ),
-      const SizedBox(height: 12),
-      TextField(
-        controller: header,
-        enabled: !exporting,
-        maxLength: 500,
-        decoration: const InputDecoration(
-          labelText: 'Running header',
-          counterText: '',
-        ),
-        onChanged: (_) => change(() {}),
-      ),
-      for (final item in <(String, bool, void Function(bool))>[
-        ('Title page', titlePage, (v) => titlePage = v),
-        ('Contents', contents, (v) => contents = v),
-        ('Number headings', numbering, (v) => numbering = v),
-        ('Page numbers', pageNumbers, (v) => pageNumbers = v),
-      ])
-        CheckboxListTile(
-          contentPadding: EdgeInsets.zero,
-          title: Text(item.$1),
-          value: item.$2,
-          onChanged: exporting ? null : (v) => change(() => item.$3(v!)),
-        ),
-      const Text(
-        'Insert a page break from Writing tools before opening this preview. Exports use the note snapshot captured when you open Publish.',
-      ),
-      if (ready != null && ready!.warnings.isNotEmpty) ...[
-        const SizedBox(height: 16),
-        const Text(
-          'Export details',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        for (final warning in ready!.warnings.toSet())
-          Padding(padding: const EdgeInsets.only(top: 8), child: Text(warning)),
       ],
-    ],
-  );
+    );
+  }
+
+  void saveSettings() {
+    try {
+      final next = PublicationSettings.update(source, style.toJson(), layouts);
+      if (widget.onApply?.call(source, next) != true) {
+        setState(
+          () => settingsWarning =
+              'The note changed or is read-only. Reopen Publish before saving settings.',
+        );
+        return;
+      }
+      setState(() {
+        source = next;
+        rememberSettings();
+        saved = true;
+        settingsWarning = null;
+      });
+    } catch (failure) {
+      setState(() => settingsWarning = '$failure');
+    }
+  }
+
   @override
-  Widget build(BuildContext context) => Dialog(
-    insetPadding: const EdgeInsets.all(16),
-    child: SizedBox(
-      width: 1200,
-      height: MediaQuery.sizeOf(context).height * .9,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                const Icon(Icons.auto_stories_outlined),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Publish · ${widget.title}',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleLarge,
+  Widget build(BuildContext context) => OrbitDraftGuard(
+    busy: exporting,
+    dirty: !jsonValuesEqual(currentSettings, appliedSettings),
+    builder: (context, requestClose) => Dialog(
+      insetPadding: const EdgeInsets.all(16),
+      child: SizedBox(
+        width: 1200,
+        height: MediaQuery.sizeOf(context).height * .9,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const Icon(Icons.auto_stories_outlined),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Publish · ${widget.title}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
                   ),
-                ),
-                IconButton(
-                  tooltip: 'Close publishing',
-                  onPressed: exporting ? null : () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
-                ),
-              ],
+                  IconButton(
+                    tooltip: 'Close publishing',
+                    onPressed: exporting ? null : requestClose,
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, bounds) {
-                final narrow =
-                    bounds.maxWidth <
-                    760 * (MediaQuery.textScalerOf(context).scale(14) / 14);
-                final previewPane = Stack(
-                  children: [
-                    Positioned.fill(
-                      child: error != null
-                          ? Center(
-                              child: SingleChildScrollView(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(20),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(error!),
-                                      TextButton(
-                                        onPressed: generate,
-                                        child: const Text('Retry'),
-                                      ),
-                                    ],
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, bounds) {
+                  final narrow =
+                      bounds.maxWidth <
+                      760 * (MediaQuery.textScalerOf(context).scale(14) / 14);
+                  final previewPane = Stack(
+                    children: [
+                      Positioned.fill(
+                        child: error != null
+                            ? Center(
+                                child: SingleChildScrollView(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(20),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(error!),
+                                        TextButton(
+                                          onPressed: generate,
+                                          child: const Text('Retry'),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
-                              ),
-                            )
-                          : preview == null
-                          ? const Center(child: Text('Preparing pages…'))
-                          : widget.previewBuilder?.call(preview!) ??
-                                PdfViewer.data(
-                                  preview!,
-                                  sourceName:
-                                      'publication-${identityHashCode(preview)}',
-                                ),
-                    ),
-                    if (busy)
-                      const Align(
-                        alignment: Alignment.topCenter,
-                        child: LinearProgressIndicator(),
+                              )
+                            : preview == null
+                            ? const Center(child: Text('Preparing pages…'))
+                            : widget.previewBuilder?.call(preview!) ??
+                                  PdfViewer.data(
+                                    preview!,
+                                    controller: viewerController,
+                                    sourceName:
+                                        'publication-${identityHashCode(preview)}',
+                                  ),
                       ),
-                  ],
-                );
-                final controls = SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: settings(),
-                );
-                if (narrow) {
-                  return DefaultTabController(
-                    length: 2,
-                    child: Column(
-                      children: [
-                        const TabBar(
-                          tabs: [
-                            Tab(text: 'Pages'),
-                            Tab(text: 'Document style'),
-                          ],
+                      if (busy)
+                        const Align(
+                          alignment: Alignment.topCenter,
+                          child: LinearProgressIndicator(),
                         ),
-                        Expanded(
-                          child: TabBarView(children: [previewPane, controls]),
-                        ),
-                      ],
+                    ],
+                  );
+                  final controls = Builder(
+                    builder: (controlsContext) => SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: settings(controlsContext),
                     ),
                   );
-                }
-                return Row(
-                  children: [
-                    SizedBox(width: 300, child: controls),
-                    const VerticalDivider(width: 1),
-                    Expanded(child: previewPane),
-                  ],
-                );
-              },
+                  if (narrow) {
+                    return DefaultTabController(
+                      length: 2,
+                      child: Column(
+                        children: [
+                          const TabBar(
+                            tabs: [
+                              Tab(text: 'Pages'),
+                              Tab(text: 'Document style'),
+                            ],
+                          ),
+                          Expanded(
+                            child: TabBarView(
+                              children: [previewPane, controls],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  return Row(
+                    children: [
+                      SizedBox(width: 300, child: controls),
+                      const VerticalDivider(width: 1),
+                      Expanded(child: previewPane),
+                    ],
+                  );
+                },
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 8,
-              children: [
-                for (final format in ['pdf', 'html', 'docx'])
-                  FilledButton.tonal(
-                    onPressed:
-                        busy ||
-                            exporting ||
-                            ready == null ||
-                            (format == 'pdf' && preview == null)
-                        ? null
-                        : () => save(format),
-                    child: Text(
-                      format == 'docx'
-                          ? 'Export Word'
-                          : 'Export ${format.toUpperCase()}',
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                children: [
+                  if (widget.onApply != null)
+                    OutlinedButton.icon(
+                      onPressed: exporting || busy || settingsWarning != null
+                          ? null
+                          : saveSettings,
+                      icon: Icon(saved ? Icons.check : Icons.save_outlined),
+                      label: Text(
+                        saved ? 'Settings saved' : 'Save settings to note',
+                      ),
                     ),
-                  ),
-              ],
+                  for (final format in ['pdf', 'html', 'docx'])
+                    FilledButton.tonal(
+                      onPressed:
+                          busy ||
+                              exporting ||
+                              ready == null ||
+                              (format == 'pdf' && preview == null)
+                          ? null
+                          : () => save(format),
+                      child: Text(
+                        format == 'docx'
+                            ? 'Export Word'
+                            : 'Export ${format.toUpperCase()}',
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     ),
   );

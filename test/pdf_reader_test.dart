@@ -393,11 +393,16 @@ void main() async {
       await tester.pump();
       expect(find.text('unmatched phrase'), findsOneWidget);
       await tester.enterText(filter, '');
-      await tester.pump();
+      await tester.pumpAndSettle();
+      // Let earlier copy/save feedback expire before tapping the bottom row.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
       await captureUi(tester, 'pdf-highlights');
-      await tester.ensureVisible(
-        find.byTooltip('Open highlight note and comments'),
+      await Scrollable.ensureVisible(
+        tester.element(find.byTooltip('Open highlight note and comments')),
+        alignment: .5,
       );
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Open highlight note and comments'));
       expect(openedAnnotation, 'highlight');
       refreshReader(() => checksum = 'replacement');

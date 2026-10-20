@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../markdown_clipboard.dart';
+import '../note_typography.dart';
 import 'markdown_document.dart';
 import 'rich_clipboard.dart';
 import 'structured_text_projection.dart';
@@ -17,12 +18,14 @@ class RichTableEditor extends StatefulWidget {
     required this.onRedo,
     this.onFocused,
     this.textStyle,
+    this.clipboardEpoch,
   });
   final String source;
   final ValueChanged<String> onChanged;
   final VoidCallback onUndo, onRedo;
   final VoidCallback? onFocused;
   final TextStyle? textStyle;
+  final int Function()? clipboardEpoch;
   @override
   State<RichTableEditor> createState() => RichTableEditorState();
 }
@@ -357,7 +360,6 @@ class RichTableEditorState extends State<RichTableEditor> {
     // fields. A tab inside a quoted CSV value must not turn comma data into TSV.
     var quoted = false;
     var tabs = 0;
-    var commas = 0;
     for (var i = 0; i < normalized.length; i++) {
       final character = normalized[i];
       if (character == '"') {
@@ -370,11 +372,9 @@ class RichTableEditorState extends State<RichTableEditor> {
         break;
       } else if (!quoted && character == '\t') {
         tabs++;
-      } else if (!quoted && character == ',') {
-        commas++;
       }
     }
-    final delimiter = tabs > 0 && tabs >= commas ? '\t' : ',';
+    final delimiter = tabs > 0 ? '\t' : ',';
     final rows = <List<String>>[];
     var cells = <String>[];
     var current = StringBuffer();
@@ -383,8 +383,9 @@ class RichTableEditorState extends State<RichTableEditor> {
     var sawValue = false;
     void finishRow() {
       cells.add(current.toString());
-      final hasContent = sawValue || cells.length > 1 || cells.first.isNotEmpty;
-      if (hasContent) rows.add(cells);
+      // An empty physical row is a cell, not a row to skip: otherwise values
+      // after it paste into the wrong destination row.
+      rows.add(cells);
       cells = <String>[];
       current = StringBuffer();
       fieldStart = true;
@@ -441,10 +442,16 @@ class RichTableEditorState extends State<RichTableEditor> {
         .toList(growable: false);
   }
 
-  Future<List<List<String>>?> _readGridClipboard() async {
+  Future<List<List<String>>?> _readGridClipboard({bool atCaret = false}) async {
+    String? plain;
     try {
-      final html = await Clipboard.getData('text/html');
-      final value = html?.text;
+      plain = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+    } catch (_) {
+      _clipboardError();
+      return null;
+    }
+    try {
+      final value = await readClipboardHtml(plainText: plain);
       if (value != null &&
           RegExp(r'<table(?:\s|>)', caseSensitive: false).hasMatch(value)) {
         final grid = _parseHtmlTable(value);
@@ -453,14 +460,15 @@ class RichTableEditorState extends State<RichTableEditor> {
     } catch (_) {
       // Providers may expose text/plain but reject text/html.
     }
-    try {
-      final plain = await Clipboard.getData(Clipboard.kTextPlain);
-      final value = plain?.text;
-      return value == null || value.isEmpty ? null : _parseCsv(value);
-    } catch (_) {
-      _clipboardError();
-      return null;
+    if (plain == null || plain.isEmpty) return null;
+    // Single-line prose belongs at the caret. Explicit Paste cells still
+    // imports CSV; tabs, multiple rows and native HTML tables remain grids.
+    if (atCaret && !plain.contains(RegExp('[\t\r\n]'))) {
+      return [
+        [plain],
+      ];
     }
+    return _parseCsv(plain);
   }
 
   String _gridText({bool csv = false}) {
@@ -471,7 +479,9 @@ class RichTableEditorState extends State<RichTableEditor> {
     final maxColumn = range?.$4 ?? col;
     final delimiter = csv ? ',' : '\t';
     String encode(String value) =>
-        csv ? '"${value.replaceAll('"', '""')}"' : value;
+        csv || value.isEmpty || value.contains(RegExp('[,"\t\r\n]'))
+        ? '"${value.replaceAll('"', '""')}"'
+        : value;
     return List.generate(
       maxRow - minRow + 1,
       (r) => List.generate(
@@ -548,17 +558,111 @@ class RichTableEditorState extends State<RichTableEditor> {
     if (!accepted) _clipboardError();
   }
 
+  Future<void> _transferCellText(int r, int c, {required bool cut}) async {
+    if (hasRectangleSelection) {
+      if (cut) {
+        await _cutRectangle();
+      } else {
+        await copySelection();
+      }
+      return;
+    }
+    final controller = controllers[(r, c)];
+    if (controller == null) return;
+    final value = controller.value, selection = value.selection;
+    if (!selection.isValid ||
+        selection.isCollapsed ||
+        !value.composing.isCollapsed) {
+      return;
+    }
+    final source = widget.source, revision = _revision;
+    final epoch = widget.clipboardEpoch?.call(), request = ++_clipboardRequest;
+    try {
+      await Clipboard.setData(
+        ClipboardData(text: selection.textInside(value.text)),
+      );
+    } catch (_) {
+      _clipboardError();
+      return;
+    }
+    if (!cut ||
+        !mounted ||
+        widget.source != source ||
+        _revision != revision ||
+        widget.clipboardEpoch?.call() != epoch ||
+        _clipboardRequest != request ||
+        controllers[(r, c)] != controller ||
+        controller.value != value ||
+        nodes[(r, c)]?.hasFocus != true ||
+        hasRectangleSelection) {
+      return;
+    }
+    final next = value.text.replaceRange(selection.start, selection.end, '');
+    controller.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: selection.start),
+    );
+    table.rows[r][c] = MarkdownTable.cellText(next);
+    changed();
+  }
+
+  Future<void> _cutRectangle() async {
+    if (!hasRectangleSelection) return;
+    final range = selectedRectangle!;
+    if (controllers.entries.any(
+      (entry) =>
+          entry.key.$1 >= range.$1 &&
+          entry.key.$1 <= range.$2 &&
+          entry.key.$2 >= range.$3 &&
+          entry.key.$2 <= range.$4 &&
+          !entry.value.value.composing.isCollapsed,
+    )) {
+      return;
+    }
+    final anchor = _selectionAnchor, focus = _selectionFocus;
+    final source = widget.source, revision = _revision;
+    final epoch = widget.clipboardEpoch?.call(), request = ++_clipboardRequest;
+    final keyboardFocus = FocusManager.instance.primaryFocus;
+    try {
+      await Clipboard.setData(ClipboardData(text: _gridText()));
+    } catch (_) {
+      _clipboardError();
+      return;
+    }
+    if (!mounted ||
+        widget.source != source ||
+        _revision != revision ||
+        widget.clipboardEpoch?.call() != epoch ||
+        _clipboardRequest != request ||
+        _selectionAnchor != anchor ||
+        _selectionFocus != focus ||
+        FocusManager.instance.primaryFocus != keyboardFocus) {
+      return;
+    }
+    for (var r = range.$1; r <= range.$2; r++) {
+      for (var c = range.$3; c <= range.$4; c++) {
+        table.rows[r][c] = '';
+      }
+    }
+    _sync();
+    changed();
+  }
+
   Future<void> pasteGrid({bool atCaret = false}) async {
     final selected = selectedRectangle;
+    final selectedAnchor = _selectionAnchor, selectedFocus = _selectionFocus;
+    final activeRow = row, activeColumn = col;
+    final epoch = widget.clipboardEpoch?.call();
     final atRow = !atCaret && selected != null ? selected.$1 : row;
     final atCol = !atCaret && selected != null ? selected.$3 : col;
     final before = widget.source;
     final revision = _revision, request = ++_clipboardRequest;
     final controller = controllers[(atRow, atCol)];
     final value = controller?.value;
+    if (value != null && !value.composing.isCollapsed) return;
     List<List<String>>? rows;
     try {
-      rows = await _readGridClipboard();
+      rows = await _readGridClipboard(atCaret: atCaret);
     } catch (_) {
       _clipboardError();
       return;
@@ -568,8 +672,11 @@ class RichTableEditorState extends State<RichTableEditor> {
         widget.source != before ||
         _revision != revision ||
         _clipboardRequest != request ||
-        row != atRow ||
-        col != atCol ||
+        widget.clipboardEpoch?.call() != epoch ||
+        row != activeRow ||
+        col != activeColumn ||
+        _selectionAnchor != selectedAnchor ||
+        _selectionFocus != selectedFocus ||
         controller?.value != value ||
         atCaret && nodes[(atRow, atCol)]?.hasFocus != true) {
       return;
@@ -673,6 +780,16 @@ class RichTableEditorState extends State<RichTableEditor> {
       if (event.logicalKey == LogicalKeyboardKey.keyC &&
           hasRectangleSelection) {
         unawaited(copySelection());
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.keyV &&
+          hasRectangleSelection) {
+        unawaited(pasteGrid());
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.keyX &&
+          hasRectangleSelection) {
+        unawaited(_cutRectangle());
         return KeyEventResult.handled;
       }
       if (event.logicalKey == LogicalKeyboardKey.keyA) {
@@ -848,69 +965,127 @@ class RichTableEditorState extends State<RichTableEditor> {
                             });
                             return node;
                           });
-                          final field = TextField(
-                            key: ValueKey('rich-cell-$r-$c'),
-                            controller: controller,
-                            focusNode: focus,
-                            maxLines: null,
-                            style: (widget.textStyle ?? const TextStyle())
-                                .copyWith(
-                                  fontWeight: r == 0
-                                      ? FontWeight.w700
-                                      : FontWeight.normal,
-                                ),
-                            textAlign:
-                                table.alignments[c].startsWith(':') &&
-                                    table.alignments[c].endsWith(':')
-                                ? TextAlign.center
-                                : table.alignments[c].endsWith(':')
-                                ? TextAlign.right
-                                : TextAlign.left,
-                            decoration: const InputDecoration(
-                              border: InputBorder.none,
-                              filled: false,
-                              isDense: true,
-                              contentPadding: EdgeInsets.all(10),
-                            ),
-                            onTap: () {
-                              _tapCell(r, c);
+                          final field = Actions(
+                            actions: {
+                              CopySelectionTextIntent:
+                                  CallbackAction<CopySelectionTextIntent>(
+                                    onInvoke: (intent) {
+                                      unawaited(
+                                        _transferCellText(
+                                          r,
+                                          c,
+                                          cut: intent.collapseSelection,
+                                        ),
+                                      );
+                                      return null;
+                                    },
+                                  ),
+                              PasteTextIntent: CallbackAction<PasteTextIntent>(
+                                onInvoke: (_) {
+                                  if (hasRectangleSelection) {
+                                    unawaited(pasteGrid());
+                                  } else {
+                                    row = r;
+                                    col = c;
+                                    unawaited(pasteGrid(atCaret: true));
+                                  }
+                                  return null;
+                                },
+                              ),
                             },
-                            onChanged: (value) {
-                              row = r;
-                              col = c;
-                              table.rows[r][c] = MarkdownTable.cellText(value);
-                              changed();
-                            },
-                            contextMenuBuilder: (context, state) =>
-                                AdaptiveTextSelectionToolbar.buttonItems(
-                                  anchors: state.contextMenuAnchors,
-                                  buttonItems: [
-                                    for (final item
-                                        in state.contextMenuButtonItems)
-                                      if (item.type ==
-                                          ContextMenuButtonType.paste)
+                            child: TextField(
+                              key: ValueKey('rich-cell-$r-$c'),
+                              controller: controller,
+                              focusNode: focus,
+                              maxLines: null,
+                              style: (widget.textStyle ?? const TextStyle())
+                                  .copyWith(
+                                    fontWeight: r == 0
+                                        ? NoteTypography(
+                                            fontFamily:
+                                                widget.textStyle?.fontFamily,
+                                          ).headingWeight
+                                        : FontWeight.normal,
+                                  ),
+                              textAlign:
+                                  table.alignments[c].startsWith(':') &&
+                                      table.alignments[c].endsWith(':')
+                                  ? TextAlign.center
+                                  : table.alignments[c].endsWith(':')
+                                  ? TextAlign.right
+                                  : TextAlign.left,
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                                filled: false,
+                                isDense: true,
+                                contentPadding: EdgeInsets.all(10),
+                              ),
+                              onTap: () {
+                                _tapCell(r, c);
+                              },
+                              onChanged: (value) {
+                                row = r;
+                                col = c;
+                                table.rows[r][c] = MarkdownTable.cellText(
+                                  value,
+                                );
+                                changed();
+                              },
+                              contextMenuBuilder: (context, state) =>
+                                  AdaptiveTextSelectionToolbar.buttonItems(
+                                    anchors: state.contextMenuAnchors,
+                                    buttonItems: [
+                                      for (final item
+                                          in state.contextMenuButtonItems)
+                                        if (item.type ==
+                                                ContextMenuButtonType.copy ||
+                                            item.type ==
+                                                ContextMenuButtonType.cut)
+                                          ContextMenuButtonItem(
+                                            type: item.type,
+                                            label: item.label,
+                                            onPressed: () {
+                                              state.hideToolbar();
+                                              unawaited(
+                                                _transferCellText(
+                                                  r,
+                                                  c,
+                                                  cut:
+                                                      item.type ==
+                                                      ContextMenuButtonType.cut,
+                                                ),
+                                              );
+                                            },
+                                          )
+                                        else if (item.type ==
+                                            ContextMenuButtonType.paste)
+                                          ContextMenuButtonItem(
+                                            type: item.type,
+                                            label: item.label,
+                                            onPressed: () {
+                                              state.hideToolbar();
+                                              if (hasRectangleSelection) {
+                                                pasteGrid();
+                                              } else {
+                                                _tapCell(r, c);
+                                                pasteGrid(atCaret: true);
+                                              }
+                                            },
+                                          )
+                                        else
+                                          item,
+                                      for (final action in actions.entries)
                                         ContextMenuButtonItem(
-                                          type: item.type,
-                                          label: item.label,
+                                          label: action.value,
                                           onPressed: () {
                                             state.hideToolbar();
                                             _tapCell(r, c);
-                                            pasteGrid(atCaret: true);
+                                            operation(action.key);
                                           },
-                                        )
-                                      else
-                                        item,
-                                    for (final action in actions.entries)
-                                      ContextMenuButtonItem(
-                                        label: action.value,
-                                        onPressed: () {
-                                          state.hideToolbar();
-                                          _tapCell(r, c);
-                                          operation(action.key);
-                                        },
-                                      ),
-                                  ],
-                                ),
+                                        ),
+                                    ],
+                                  ),
+                            ),
                           );
                           return DecoratedBox(
                             decoration: BoxDecoration(

@@ -1,5 +1,68 @@
 # Spatial boards
 
+## Selection and transfer quality — 2026-10-18
+
+Gesture cancellation restores prior selection/geometry and cancelled navigation
+restores the camera. Read-only changes, unguarded external revisions and
+two-finger handoff cancel provisional drags. Guarded workspace editors preserve
+competing gestures for recoverable draft review without overwriting shared data.
+Clipboard commands have separate undo boundaries and refuse stale
+board/read-only/menu completions. Ink duplicate/paste/align/distribute preserves
+local coordinates and all authored sample data; only the placement origin
+moves. Slow supported text/image paste retains its
+captured world position. See the [desktop behavior and evidence](desktop-interactions.md).
+
+## Editable UML class diagrams — 2026-10-16
+
+Canvas's Shapes and diagrams menu (also available on empty-space right-click)
+creates three-compartment class boxes and relationships. Double-click a class
+or UML connector, or choose Edit selected UML item, to edit it. Classes support
+names, optional stereotypes/abstract names, attributes and operations, one member
+per line with authored visibility/type text. Empty compartments remain visible.
+Classes use Orbit's theme surface and foreground, restrained separators, rounded
+corners and a small accent beneath the name. Class accent color follows the
+ordinary Canvas color control; existing stored colors remain intact. Canvas,
+note previews and SVG share the same palette. Text remains vector-rendered.
+
+Connect UML classes offers association, dependency, generalization, realization,
+aggregation and composition, with plain/open-arrow/hollow-triangle/hollow- or
+filled-diamond markers. The editor explains parent/whole direction and provides
+endpoint roles, multiplicities, attachment sides/positions and routing lanes.
+Connectors follow class movement/resizing through the existing engine. These
+are visual UML relationships, not new universal objects or knowledge relations.
+
+Insert UML example adds the four supplied medical-domain classes and attached
+associations in one undo step. All shapes retain ordinary selection, transforms,
+remove, undo and copy/paste behavior. Pasting the whole diagram remaps placement
+IDs and bound endpoints. Class members/roles are searchable. Dialogs guard
+against read-only, locked and externally replaced scenes; cancellation adds no
+half-created class. Geometry, members and unknown fields persist in Canvas JSON;
+SVG/PNG preserve the diagram appearance. Older readers retain named-rectangle
+fallback and unknown UML data. No scene migration or alternate canvas engine.
+
+Export diagram to Markdown in Shapes and diagrams sends the selected UML
+classes (or all visible UML classes when nothing is selected) to a new note or
+appends them to a searchable existing Markdown note. Copy live diagram for
+Markdown supports pasting at the caret instead. The precise reference retains
+placement IDs, not duplicated content or a screenshot. Relationships between
+the selected classes update live, including newly added internal relationships.
+Rich and Read show the shared Canvas vector renderer, expansion/zoom, source
+navigation and selectable class details; Rich can edit through the existing
+Canvas editor. Removing the embed preserves its source. Missing/hidden items
+show an explicit retained-reference warning and never fall back to unrelated
+board content. Guarded saves reject stale/competing drafts; failed appends can
+be retried without duplicating the embed.
+
+The Markdown block remains a source link in other readers. Published PDF/HTML/
+Word currently retain that link and the existing unsupported-preview warning;
+they do not contain a self-contained diagram snapshot.
+
+Mermaid remains the existing flowchart exporter: its UI warns that it does not
+preserve class compartments or UML notation. UML classDiagram import/export,
+self-associations, automatic obstacle avoidance, code generation and semantic
+validation of free-form signatures/multiplicities are not part of this task.
+Evidence and build results are recorded in the current task.
+
 ## Linked model assets — 2026-10-11
 
 OBJ/GLB attachments can be placed as ordinary object cards with their canonical
@@ -166,3 +229,48 @@ Create linked reference summary produces an ordinary Markdown snapshot of select
 references, or all references when nothing is selected. It includes canonical
 source/board UUID links, captions, source URLs, states and tags. Creative-project
 summaries retain project/folder context. Later caption edits do not rewrite snapshots.
+
+## Course boards and draft safety — 2026-10-13
+
+Courses & study progress creates linked study boards with lecture/reference,
+practice/assignment and exam-review columns. Material placements reference their
+original objects; two ordinary Smart Views keep all material/open assignments
+current. Selected saved-query card previews now use the same scoped member IDs
+as painted previews, with source navigation rather than unfiltered Vault tasks.
+Overlapping pane gestures retain a conflicting scene for explicit recovery;
+the shared scene is not overwritten. Resolving/discarding a conflict reloads the
+shared scene and invalidates stale local scene undo as for external revisions.
+
+## Math Lab and editable plot snapshots — 2026-10-14
+
+Add / organize board content and the context menu open the same offline Math Lab
+as notes. Calculations/templates become ordinary formula sticky cards. A function
+plot creates a formula/parameter/window card, bounded grid and axes, sampled ink
+segments and labels as one grouped insertion with one undo. Existing Canvas line,
+ink, text and sticky primitives own the snapshot; no second spatial engine or
+custom plot schema. White blueprint pen and current drawing colors are honored.
+Ungroup to edit individual strokes; moving/deleting the group uses normal placement
+controls. SVG and documented Canvas JSON preserve the ordinary editable primitives.
+Changed Canvas identity/source, read-only scenes and cancelled dialogs refuse
+insertion. Plots are explicit snapshots, not live symbolic graphs. Domain errors,
+out-of-window samples and large jumps split curves; 257 samples may still miss
+singularities or fine oscillations. Original expression, parameters and windows stay
+on the formula card so a user can recalculate deliberately. No user Vault migration.
+
+Math cards allow ordinary resize/editing and initially grow to fit matrix rows.
+Simple matrices up to 6×6 have aligned readable bracket/row previews on Canvas;
+full TeX typography remains available in Math Lab/Equation Studio/notes. The board
+continues using its Unicode text preview for unsupported/nested mathematical forms;
+original TeX is preserved rather than claiming full symbolic typesetting parity.
+
+## Mathematical comparisons and tables — 2026-10-14
+
+Math Lab can compare up to four functions on one shared coordinate window. Canvas
+inserts grouped ordinary ink segments with distinct curve colors, a source/parameter
+card, grid, axes and labelled expressions. The selected pen color is retained for
+the first curve/grid; additional curves use the shared comparison palette. Numeric
+value tables remain ordinary formula-card TeX snapshots, with readable bounded array
+row previews and widths sized for columns. New comparisons/tables fit the selected
+placements into view using existing camera transitions. Grouped edits undo as one
+command; snapshots stay editable through existing ink/text/placement controls.
+No new Canvas element type, object identity, spatial engine or workspace migration.

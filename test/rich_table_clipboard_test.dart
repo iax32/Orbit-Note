@@ -15,6 +15,11 @@ void main() {
   String? htmlClipboard;
   String? richHtmlClipboard;
   setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('pasteboard'),
+          (_) async => null,
+        );
     pending = null;
     clipboardFails = false;
     htmlClipboard = null;
@@ -111,6 +116,371 @@ void main() {
   }
 
   const table = '| A | B |\n| --- | --- |\n| One | Two |\n';
+  testWidgets(
+    'browser paragraph lists paste without phantom empty bullets and undo',
+    (tester) async {
+      await open(tester, 'Before');
+      await tester.tap(field('Before'));
+      await tester.pumpAndSettle();
+      tester.widget<TextField>(field('Before')).controller!.selection =
+          const TextSelection(baseOffset: 0, extentOffset: 6);
+      clipboard =
+          'Final Reminders\nBe on time: Exam at 13:15.\nSubmit manually: Save your answers.';
+      htmlClipboard =
+          '<h2>Final Reminders</h2><ul>'
+          '<li><p><strong>Be on time:</strong> Exam at 13:15.</p></li>'
+          '<li><p><strong>Submit manually:</strong> Save your answers.</p></li></ul>';
+      await key(tester, LogicalKeyboardKey.keyV, control: true);
+      expect(
+        body,
+        '## Final Reminders\n\n- **Be on time:** Exam at 13:15.\n- **Submit manually:** Save your answers.',
+      );
+      final lists = MarkdownDocument.parse(
+        body,
+      ).blocks.where((block) => block.kind == MarkdownBlockKind.list).toList();
+      expect(lists, hasLength(2));
+      expect(lists.every((block) => block.content.trim().isNotEmpty), isTrue);
+      expect(field('Be on time: Exam at 13:15.'), findsOneWidget);
+      expect(field('Submit manually: Save your answers.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await key(tester, LogicalKeyboardKey.keyZ, control: true);
+      expect(body, 'Before');
+    },
+  );
+
+  testWidgets(
+    'blank rows retain their destination positions during grid paste',
+    (tester) async {
+      await open(tester, '| A |\n| --- |\n| One |\n');
+      await tester.tap(cell(1, 0));
+      clipboard = 'First\n\nThird\n';
+      await tester
+          .state<RichTableEditorState>(find.byType(RichTableEditor))
+          .pasteGrid();
+      await tester.pumpAndSettle();
+      expect(MarkdownTable.tryParse(body)!.rows, [
+        ['A'],
+        ['First'],
+        [''],
+        ['Third'],
+      ]);
+    },
+  );
+
+  testWidgets(
+    'an all-empty one-column selection retains its row count on copy and paste',
+    (tester) async {
+      await open(tester, '| A |\n| --- |\n| |\n| |\n| |\n');
+      await tester.tap(cell(1, 0));
+      final editor = tester.state<RichTableEditorState>(
+        find.byType(RichTableEditor),
+      );
+      editor.selectRectangle(
+        startRow: 1,
+        startColumn: 0,
+        endRow: 3,
+        endColumn: 0,
+      );
+      await tester.pump();
+      await editor.copySelection();
+      expect(clipboard, '""\n""\n""');
+      editor.clearRectangleSelection();
+      await tester.pump();
+      await tester.tap(cell(3, 0));
+      await editor.pasteGrid();
+      await tester.pumpAndSettle();
+      expect(MarkdownTable.tryParse(body)!.rows, [
+        ['A'],
+        [''],
+        [''],
+        [''],
+        [''],
+        [''],
+      ]);
+    },
+  );
+  testWidgets('cell paste preserves active composition and native selection', (
+    tester,
+  ) async {
+    await open(tester, table);
+    await tester.tap(cell(1, 0));
+    final controller = tester.widget<TextField>(cell(1, 0)).controller!;
+    const value = TextEditingValue(
+      text: 'One',
+      selection: TextSelection.collapsed(offset: 3),
+      composing: TextRange(start: 0, end: 3),
+    );
+    controller.value = value;
+    clipboard = 'Replacement';
+    await tester
+        .state<RichTableEditorState>(find.byType(RichTableEditor))
+        .pasteGrid(atCaret: true);
+    await key(tester, LogicalKeyboardKey.keyV, control: true);
+    expect(body, table);
+    expect(controller.value, value);
+  });
+  for (final fail in [false, true]) {
+    testWidgets(
+      'rectangle cut ${fail ? 'failure preserves cells' : 'clears the range with one undo'}',
+      (tester) async {
+        final source = '$table| Three | Four |\n';
+        await open(tester, source);
+        await tester.tap(cell(1, 0));
+        tester
+            .state<RichTableEditorState>(find.byType(RichTableEditor))
+            .selectRectangle(
+              startRow: 1,
+              startColumn: 0,
+              endRow: 2,
+              endColumn: 1,
+            );
+        await tester.pump();
+        clipboardFails = fail;
+        await key(tester, LogicalKeyboardKey.keyX, control: true);
+        if (fail) {
+          expect(body, source);
+        } else {
+          expect(clipboard, 'One\tTwo\nThree\tFour');
+          expect(MarkdownTable.tryParse(body)!.rows.skip(1), [
+            ['', ''],
+            ['', ''],
+          ]);
+          await key(tester, LogicalKeyboardKey.keyZ, control: true);
+          expect(body, source);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('native text cut retains exact selected substring and undo', (
+    tester,
+  ) async {
+    await open(tester, table);
+    await tester.tap(cell(1, 0));
+    tester.widget<TextField>(cell(1, 0)).controller!.selection =
+        const TextSelection(baseOffset: 1, extentOffset: 3);
+    await key(tester, LogicalKeyboardKey.keyX, control: true);
+    expect(clipboard, 'ne');
+    expect(MarkdownTable.tryParse(body)!.rows[1], ['O', 'Two']);
+    await key(tester, LogicalKeyboardKey.keyZ, control: true);
+    expect(body, table);
+  });
+
+  testWidgets('native menu paste preserves the rectangular destination', (
+    tester,
+  ) async {
+    await open(tester, '$table| Three | Four |\n');
+    await tester.tap(cell(2, 1));
+    tester
+        .state<RichTableEditorState>(find.byType(RichTableEditor))
+        .selectRectangle(startRow: 1, startColumn: 0, endRow: 2, endColumn: 1);
+    await tester.pump();
+    clipboard = 'X\tY\nZ\tW';
+    final native = tester.state<EditableTextState>(
+      find.descendant(of: cell(2, 1), matching: find.byType(EditableText)),
+    );
+    final toolbar =
+        tester.widget<TextField>(cell(2, 1)).contextMenuBuilder!(
+              tester.element(cell(2, 1)),
+              native,
+            )
+            as AdaptiveTextSelectionToolbar;
+    toolbar.buttonItems!
+        .firstWhere((item) => item.type == ContextMenuButtonType.paste)
+        .onPressed!();
+    await tester.pumpAndSettle();
+    expect(body, '| A | B |\n| --- | --- |\n| X | Y |\n| Z | W |\n');
+  });
+
+  testWidgets(
+    'delayed grid paste refuses changed range with the same focus corner',
+    (tester) async {
+      await open(tester, '$table| Three | Four |\n');
+      await tester.tap(cell(2, 1));
+      final editor = tester.state<RichTableEditorState>(
+        find.byType(RichTableEditor),
+      );
+      editor.selectRectangle(
+        startRow: 0,
+        startColumn: 0,
+        endRow: 2,
+        endColumn: 1,
+      );
+      await tester.pump();
+      pending = Completer<String?>();
+      final paste = editor.pasteGrid();
+      await tester.pump();
+      editor.selectRectangle(
+        startRow: 1,
+        startColumn: 0,
+        endRow: 2,
+        endColumn: 1,
+      );
+      pending!.complete('Changed\tCells');
+      await paste;
+      await tester.pumpAndSettle();
+      expect(body, '$table| Three | Four |\n');
+    },
+  );
+  testWidgets('failed native cell cut preserves the selected text', (
+    tester,
+  ) async {
+    await open(tester, table);
+    await tester.tap(cell(1, 0));
+    tester.widget<TextField>(cell(1, 0)).controller!.selection =
+        const TextSelection(baseOffset: 0, extentOffset: 3);
+    clipboardFails = true;
+    await key(tester, LogicalKeyboardKey.keyX, control: true);
+    expect(body, table);
+    expect(tester.widget<TextField>(cell(1, 0)).controller!.text, 'One');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'keyboard rectangle paste replaces from upper left even with focus at the far corner',
+    (tester) async {
+      await open(tester, '$table| Three | Four |\n');
+      await tester.tap(cell(2, 1));
+      final editor = tester.state<RichTableEditorState>(
+        find.byType(RichTableEditor),
+      );
+      editor.selectRectangle(
+        startRow: 1,
+        startColumn: 0,
+        endRow: 2,
+        endColumn: 1,
+      );
+      await tester.pump();
+      clipboard = 'X\tY\nZ\tW';
+      await key(tester, LogicalKeyboardKey.keyV, control: true);
+      expect(body, '| A | B |\n| --- | --- |\n| X | Y |\n| Z | W |\n');
+      await key(tester, LogicalKeyboardKey.keyZ, control: true);
+      expect(body, '$table| Three | Four |\n');
+    },
+  );
+
+  testWidgets('table paste uses one plain clipboard snapshot', (tester) async {
+    await open(tester, table);
+    await tester.tap(cell(1, 0));
+    var reads = 0;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.getData') {
+            if (call.arguments == 'text/html') return null;
+            return {'text': ++reads == 1 ? 'Captured' : 'Later clipboard'};
+          }
+          return null;
+        });
+    await tester
+        .state<RichTableEditorState>(find.byType(RichTableEditor))
+        .pasteGrid();
+    await tester.pumpAndSettle();
+    expect(reads, 1);
+    expect(body, '| A | B |\n| --- | --- |\n| Captured | Two |\n');
+  });
+
+  testWidgets(
+    'ordinary single-line paste retains commas and quotes in the cell',
+    (tester) async {
+      await open(tester, table);
+      await tester.tap(cell(1, 0));
+      tester.widget<TextField>(cell(1, 0)).controller!.selection =
+          const TextSelection(baseOffset: 0, extentOffset: 3);
+      clipboard = 'Hello, "friend"';
+      await key(tester, LogicalKeyboardKey.keyV, control: true);
+      expect(MarkdownTable.tryParse(body)!.rows[1], ['Hello, "friend"', 'Two']);
+    },
+  );
+  for (final reverse in [false, true]) {
+    testWidgets(
+      'rectangle paste uses its upper left corner (${reverse ? 'reverse' : 'forward'}) and supports undo',
+      (tester) async {
+        await open(tester, '$table| Three | Four |\n');
+        await tester.tap(cell(1, 0));
+        final editor = tester.state<RichTableEditorState>(
+          find.byType(RichTableEditor),
+        );
+        editor.selectRectangle(
+          startRow: reverse ? 2 : 1,
+          startColumn: reverse ? 1 : 0,
+          endRow: reverse ? 1 : 2,
+          endColumn: reverse ? 0 : 1,
+        );
+        await tester.pump();
+        clipboard = 'X\tY\nZ\tW';
+        await editor.pasteGrid();
+        await tester.pumpAndSettle();
+        expect(body, '| A | B |\n| --- | --- |\n| X | Y |\n| Z | W |\n');
+        await key(tester, LogicalKeyboardKey.keyZ, control: true);
+        expect(body, '$table| Three | Four |\n');
+      },
+    );
+  }
+
+  testWidgets(
+    'TSV copy paste retains literal tabs, commas and quoted cell values',
+    (tester) async {
+      const source =
+          '| A | B |\n| --- | --- |\n| one, two, three | "quoted"\tvalue |\n';
+      await open(tester, source);
+      final editor = tester.state<RichTableEditorState>(
+        find.byType(RichTableEditor),
+      );
+      await tester.tap(cell(1, 0));
+      editor.selectRectangle(
+        startRow: 1,
+        startColumn: 0,
+        endRow: 1,
+        endColumn: 1,
+      );
+      await tester.pump();
+      await editor.copySelection();
+      editor.clearRectangleSelection();
+      await tester.pump();
+      await tester.tap(cell(0, 0));
+      await editor.pasteGrid();
+      await tester.pumpAndSettle();
+      final parsed = MarkdownTable.tryParse(body)!;
+      expect(parsed.columns, 2);
+      expect(parsed.rows[0], ['one, two, three', '"quoted"\tvalue']);
+      expect(parsed.rows[1], ['one, two, three', '"quoted"\tvalue']);
+    },
+  );
+
+  testWidgets(
+    'single cell copy preserves quotes and commas when pasted as a grid',
+    (tester) async {
+      const source = '| A | B |\n| --- | --- |\n| "one, two" | Kept |\n';
+      await open(tester, source);
+      final editor = tester.state<RichTableEditorState>(
+        find.byType(RichTableEditor),
+      );
+      await tester.tap(cell(1, 0));
+      await editor.copyCell();
+      await tester.tap(cell(0, 0));
+      await editor.pasteGrid();
+      await tester.pumpAndSettle();
+      expect(MarkdownTable.tryParse(body)!.rows[0], ['"one, two"', 'B']);
+    },
+  );
+
+  testWidgets(
+    'TSV separator takes priority over commas inside unquoted cells',
+    (tester) async {
+      await open(tester, table);
+      await tester.tap(cell(1, 0));
+      clipboard = 'one, two, three\tvalue';
+      await tester
+          .state<RichTableEditorState>(find.byType(RichTableEditor))
+          .pasteGrid();
+      await tester.pumpAndSettle();
+      expect(MarkdownTable.tryParse(body)!.rows[1], [
+        'one, two, three',
+        'value',
+      ]);
+    },
+  );
   test(
     'table cell edits preserve mixed line endings and authored trailing whitespace',
     () {

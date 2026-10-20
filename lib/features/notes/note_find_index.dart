@@ -1,5 +1,6 @@
 import 'rich/markdown_document.dart';
 import '../../domain/note_composition.dart';
+import '../../domain/publication_layout.dart';
 import 'rich/structured_text_projection.dart';
 import 'rich/fenced_code_source.dart';
 import 'rich/unicode_case_fold.dart';
@@ -89,6 +90,10 @@ class NoteFindIndex {
     }
     var offset = 0;
     for (final block in MarkdownDocument.parse(source).blocks) {
+      if (offset == 0 && PublicationSettings.metadataLine(block.source)) {
+        offset += block.source.length;
+        continue;
+      }
       final columns = NoteColumns.parse(block.source);
       if (columns != null) {
         for (var partIndex = 0; partIndex < columns.parts.length; partIndex++) {

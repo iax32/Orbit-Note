@@ -1,69 +1,71 @@
-# Activate Google Drive for this build
+# Google Drive activation — Windows account preview
 
-## Start here if you are unsure
+2026-10-15: a native automatic-sync preview is now available after explicit
+per-Vault opt-in. The existing registration/scopes below are unchanged. Real
+account transfers passed with two isolated native clients on one PC, including
+verified note/Canvas/files, offline conflicts, explicit resolution, resumable
+restart, lost acknowledgements and tombstones. The owner completed fresh browser
+consent; credentials stayed in memory and only synthetic acceptance data was
+uploaded. Physical two-device and installed-app secure-store acceptance remain
+unperformed. See
+[sync usage and limits](google-drive-sync-setup.md). Prior backup-only delivery
+statements below are historical for this feature slice.
 
-Open [Orbit Note's Google setup page](https://console.cloud.google.com/auth/overview?project=orbit-note-508518)
-in your browser and sign in with the account that owns the project. No downloaded
-Desktop OAuth JSON was found in the usual Downloads folder during this task.
-The next step is Google's **Branding** form, followed by **Audience** and
-**Clients → Create client → Desktop app**. The checklist below explains each field.
-When you download the JSON, keep it in Downloads and provide its file path;
-the existing helper imports it without displaying its contents. Your email alone
-cannot activate the sign-in button. Google registration remains incomplete.
+## Registered and verified — 2026-10-13
 
-## Registration status
+Orbit Note now uses dedicated project `orbit-note-511512`. The older
+`orbit-note-508518` project was inaccessible from the relevant accounts. The owner
+explicitly authorized browser registration and policy acceptance. Branding,
+external Testing audience, owner test user, **Orbit Note Windows / Desktop app**
+client, Google Drive API and `openid`, `profile`, `email`, `drive.file` scopes are
+configured. The owner completed Google's test-app notice and account consent.
 
-The existing distributor project is `orbit-note-508518`. OAuth registration was
-previously stopped before a client was created. The owner has now offered a support
-email and requested setup help; no email is hard-coded as a storage account or
-substitute for authorization. No Google console changes were made in this task.
+A temporary check using the production Windows OAuth and Drive API adapters
+successfully exchanged authorization, verified identity, read storage quota and
+listed Orbit Vaults/backups. Credentials stayed in memory; no Vault upload,
+restore or original-file change occurred. This verifies real account access,
+not installed-app secure-storage acceptance or large live backup transfers.
 
-## One-time developer registration
+## Use the configured Windows release
 
-1. Sign into Google Cloud Console and select **Orbit Note / orbit-note-508518**.
-2. Enable the Google Drive API if it is not enabled.
-3. Open Google Auth Platform → Branding. Set Orbit Note as the app name and select
-   the support email you intend users to see. Review Google's policy/consent setup
-   yourself; prior policy acceptance was declined, and an email alone does not
-   authorize accepting terms.
-4. Choose the External audience in Testing and add the owner account as a test
-   user. Add the narrow `openid`, `profile`, `email`, and `drive.file` scopes in
-   Data Access. Public distribution has a separate branding/verification process.
-5. In Clients, create an OAuth client of type **Desktop app**, name it Orbit Note
-   Windows, and download its credential JSON. Do not create a Web client for the
-   Windows loopback/PKCE flow.
-6. Keep the download outside Git. From the repo run:
+Run `build/windows/x64/runner/Release/orbit_note.exe`, with its sibling files.
+Open **Settings → Sync → Continue with Google** and choose the registered owner
+account. The browser consent is still required; no Cloud configuration entry is
+needed in this build. Complete sign-in once in the app to save its account on the
+device. The temporary verification did not sign the desktop app in for you.
+
+Explicit sign-in prepares/reuses an empty account-owned Orbit folder and refreshes
+storage and backup listings. It does not upload a Vault. Startup account restore
+remains read-only. Folder failures retain the account and show a retryable error.
+**Back up this Vault** performs a deliberate immutable backup; **Restore** verifies
+and reviews it before importing into a separate local folder. Local use stays
+available offline. This is manual backup/restore, not automatic Vault sync or
+Drive multiplayer.
+
+Google registration is currently **Testing**, with the owner's account allowed.
+Other users require explicit test-user registration or a separate public rollout.
+Android client/certificate registration remains unfinished.
+
+## Preserve registration in future Windows builds
+
+The downloaded Desktop JSON and `config/google-drive.local.json` are ignored local
+files. Never place account tokens, passwords or private downloads in Git/Vaults.
+Import a new developer download with:
 
 ```powershell
 ./tool/configure_google.ps1 -DesktopCredentials 'C:/path/to/downloaded-desktop-client.json'
+./tool/build_windows.ps1 -Flutter 'C:/path/to/flutter/bin/flutter.bat'
 ```
 
-This creates the ignored local build configuration, without printing its contents.
-Build Windows with the configured defines using the existing
-[Google setup guide](google-drive-sync-setup.md#release-workflow-configuration).
-Do not paste passwords, access tokens or refresh tokens into this chat or config.
-The path to the downloaded developer configuration is sufficient for importing it.
+The build helper validates platform-specific defines and includes the registered
+client. Invalid configuration fails rather than silently producing a local-only
+release. `-LocalOnly` explicitly opts out. GitHub builds still require their own
+repository variables/secrets; local registration does not configure hosted CI.
 
-Android also requires registration of `org.orbitnote.app` and the actual signing
-certificate, plus the same project's Web **client ID** for the Google platform SDK.
-See the existing setup guide; never embed the Web client secret.
+Unconfigured Windows previews offer **Continue with Google → Import desktop
+client…** as a recovery path. They validate the Desktop JSON, store only native
+client fields in device secure storage and then sign in. Configured releases
+cannot be overridden. Web clients and arbitrary endpoints are rejected. Normal
+consumers should receive the configured release, not perform developer setup.
 
-## Current Drive behavior
-
-Settings → Sync → Continue with Google uses the system authorization flow. A saved
-account reconnects on startup without opening the browser. Sign-in and account
-refresh load storage information, Vaults and available backups automatically;
-temporary service failures remain retryable. After signing in,
-**Back up this Vault** creates a timestamped immutable backup under
-your own Orbit Note folder. Transfer progress and Cancel are available. **Refresh
-backups** lists account-owned Orbit backups. **Restore** verifies SHA-256 and the
-manifest, shows the existing import review and creates a new local folder.
-Your current local Vault is not overwritten.
-
-This is manual backup/restore, not automatic Vault synchronization or multiplayer
-through Drive. Core local features still work offline. OAuth registration, actual
-sign-in, quotas and live transfers remain unverified until the client exists.
-
-References: [native OAuth/PKCE](https://developers.google.com/identity/protocols/oauth2/native-app),
-[narrow Drive scopes](https://developers.google.com/workspace/drive/api/guides/api-specific-auth),
-[resumable uploads](https://developers.google.com/workspace/drive/api/guides/manage-uploads).
+[Developer setup](google-drive-sync-setup.md) retains Android and CI instructions.

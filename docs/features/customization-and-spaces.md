@@ -87,3 +87,21 @@ Start with standard system theme in M0, then basic preferences and real pane nee
 Save layouts before introducing a full editor; add Spaces and dashboards as separate
 tasks. Community theme names in the chat are inspiration, not bundled assets or
 third-party dependencies selected for this repository.
+
+## Implemented writing surfaces — 2026-10-14
+
+LAY-01/06/10 subset: Markdown panes support six selectable writing designs and
+plain/lined/grid/dot paper. The appearance picker previews and applies/cancels
+choices, restores Orbit defaults, and offers optional fonts, quiet writing and
+static surface details. Show editor tools restores collapsed chrome. Scoped colors
+reuse Orbit semantic tokens while other panes and the global theme stay unchanged.
+Preferences use existing device-local noteViews, not knowledge metadata; malformed
+or unfamiliar versions display a safe default and retain raw data until an explicit
+change. See the editor spec for interaction, persistence and export boundaries.
+
+Writing surfaces additionally accept local photo backgrounds with positioning,
+fill/fit, intensity and a protected reading sheet. Preview/cancel/reset/removal
+are explicit; private photo bytes are saved before committing a small pane recipe.
+High contrast suppresses photos. Missing images retain recovery controls. This
+extends the same LAY subset and existing device-state boundary, not global theme
+pack image portability or an attachment/object format.

@@ -8,6 +8,7 @@ import 'latex_prose_controller.dart';
 import '../rich/math_grid_editor.dart';
 import 'latex_document.dart';
 import 'latex_math_palette.dart';
+import '../../math/math_lab_dialog.dart';
 
 /// The Visual Academic Editor for LaTeX documents.
 class RichLatexEditor extends StatefulWidget {
@@ -20,11 +21,12 @@ class RichLatexEditor extends StatefulWidget {
     this.scrollController,
     this.onUndo,
     this.onRedo,
+    this.onMathLab,
     this.imageBuilder,
     this.onInsertAttachment,
   });
 
-  final VoidCallback? onUndo, onRedo;
+  final VoidCallback? onUndo, onRedo, onMathLab;
   final String body;
   final ValueChanged<String> onChanged;
   final double contentWidth;
@@ -46,6 +48,13 @@ class RichLatexEditorState extends State<RichLatexEditor> {
   int? _activeIndex;
   final _focusNodes = <int, FocusNode>{};
   final _locationKeys = <int, GlobalKey>{};
+
+  void restoreEditingFocus() {
+    if (!mounted) return;
+    // Preamble/raw blocks can precede the first visible prose field.
+    final node = _focusNodes[_activeIndex] ?? _focusNodes.values.firstOrNull;
+    node?.requestFocus();
+  }
 
   void jumpTo(int sourceOffset) {
     var offset = 0;
@@ -445,6 +454,11 @@ class RichLatexEditorState extends State<RichLatexEditor> {
                   if (mounted && value != null) insertMath(value);
                 },
               ),
+              TextButton.icon(
+                onPressed: _openMathLab,
+                icon: const Icon(Icons.calculate_outlined, size: 17),
+                label: const Text('Math Lab'),
+              ),
               const OrbitToolbarDivider(),
               IconButton(
                 tooltip: 'Undo',
@@ -467,6 +481,30 @@ class RichLatexEditorState extends State<RichLatexEditor> {
         ),
       ),
     );
+  }
+
+  void insertMathBlock(String source) => _insertBlock(
+    _insertionIndex,
+    LatexBlock.fromFields(type: LatexBlockType.equation, rawContent: source),
+  );
+
+  Future<void> _openMathLab() async {
+    if (widget.onMathLab != null) {
+      widget.onMathLab!();
+      return;
+    }
+    if (_blockControllers.values.any((c) => !c.value.composing.isCollapsed)) {
+      return;
+    }
+    final original = _doc.toLatex(), index = _activeIndex;
+    final result = await showMathLab(context);
+    if (!mounted ||
+        result == null ||
+        original != _doc.toLatex() ||
+        index != _activeIndex) {
+      return;
+    }
+    insertMathBlock(result.tex);
   }
 
   void _showSymbols() => showDialog<void>(

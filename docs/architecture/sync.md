@@ -1,5 +1,55 @@
 # Sync architecture — implementation contract
 
+2026-10-15 continuity extension: [ADR-0031](../adr/0031-device-sync-continuity.md)
+adds an account-bound secure-device schedule for explicitly selected inactive
+Vaults. DriveVaultScheduler acquires the same active-controller batch lease,
+checks existing per-Vault opt-in before binding, and opens/closes native locked
+repositories sequentially. Startup reads local opt-in before account services.
+Shared create/connect activity suspends Drive before awaiting network work.
+Secure per-Vault room profiles support explicit reconnect only; server roles and
+divergence checks remain authoritative. Server readiness diagnostics and the
+standalone Windows launcher do not install a background service or configure TLS.
+
+2026-10-15 bulk transfer extension: an explicit DriveVaultBatch coordinates
+sequential per-Vault operations through the same binding helper, SyncEngine and
+provider. Active-Vault polling is suspended under a guarded controller lease;
+its replica retains draft/apply guards. Inactive native repositories acquire
+their normal OS locks, use the existing-only identity gate and close after each
+job. Downloads bootstrap verified manifests into new folders. No second sync
+protocol, authored migration or global background service is introduced. Durable
+per-Vault upload/outbox state supports retry; batch UI choices are ephemeral.
+Cancellation preserves valid saves and prior opt-ins, while a first connection
+enables automatic sync only after a completed reconciliation. Existing graph,
+conflict and account/opening guards remain unchanged.
+
+2026-10-15: [ADR-0030](../adr/0030-immutable-drive-revisions.md) adds native personal
+Drive synchronization through the existing engine and replica. Atomic mutable
+publication remains required for ordinary providers. An explicit
+ImmutableRevisionSyncProvider may instead prove append-only branch preservation:
+immutable blobs precede immutable records with parent IDs, complete listings expose
+all graph heads, and concurrent heads are durable conflicts rather than winners.
+The engine preserves each alternative (including when no local object exists)
+before checkpointing. Resolution journals an operation/entry/parents intent before
+publication and rechecks reviewed local hashes; all prior cloud revisions remain.
+The old conditional-publication-only gate below is superseded only for this
+explicit contract. Google Drive PATCH is not treated as compare-and-swap.
+
+DriveSyncController owns one active account/folder/Vault opening. Opt-in and upload
+plans use separate guarded device state files, never FTS. Normal application
+changes schedule coalesced foreground passes; account failures stop automatic
+requests, transient failures back off, and manual retry remains available. Startup
+reads only local opt-in before creating account services. Switching Vaults,
+disconnecting, pausing or joining Shared Vault invalidates provider reads, stages,
+applies and acknowledgements through the additional replica opening guard.
+Provider uploads read verified native stages in approximately 1 MiB chunks;
+per-key publication checks avoid re-reading every object's cloud history for each
+upload. Full listings are paginated and immutable record payloads are hash-cached.
+Cache/operation checkpoint size remains bounded by the existing 16 MiB store.
+See current task for automated and real-account evidence, and remaining physical
+device/application acceptance. Empty-folder replication, native non-Notes moves,
+revision GC and
+public/mobile rollout remain outside this delivered slice.
+
 2026-10-11: [ADR 0027](../adr/0027-shared-vault-preview-and-drive-backups.md) adds
 separate self-hosted shared editing and immutable Drive backup transfers. Neither
 claims the personal SyncProvider conditional-publication capability described here.

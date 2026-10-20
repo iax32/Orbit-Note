@@ -1,5 +1,39 @@
 # Optional sync and future collaboration
 
+2026-10-15 continuity extension: completed bulk Drive transfers can opt into
+scheduled inactive-Vault checks while Orbit is open, with account binding,
+native locks, individual pause preservation, visible results and pause/retry.
+Shared connection setup suspends personal Drive work. Shared settings add an
+authenticated server test and explicit secure-device Remember/Reconnect/Forget
+controls; no owner key is remembered and no automatic room join occurs.
+The Windows release includes a standalone server launcher; its private directory
+must remain outside every Vault. Health/readiness do not replace TLS deployment
+or physical-device acceptance. See [ADR-0031](../adr/0031-device-sync-continuity.md)
+and [host setup](../development/shared-vault-setup.md).
+
+2026-10-15 personal sync preview: native opt-in Drive synchronization now composes
+the existing engine, durable outbox/common bases and repository staging/history.
+An append-only revision provider retains concurrent branches; compare/review
+appends a resolution instead of silently choosing timestamps. The account/Vault
+binding, pause, interrupted-session retry and conflict choices survive local
+restarts. New objects, attachments and explicit tombstones participate in personal
+sync. This is independent of the existing shared-session preview (whose live new
+object/attachment protocol is still unfinished). Details and platform/release
+limits are in [cloud status](cloud-sync.md) and
+[ADR-0030](../adr/0030-immutable-drive-revisions.md).
+
+2026-10-15 reliability update: existing-document sessions back off after network
+failures (1/2/4/8/16/30 seconds), expose Retry now and pending-document counts, and
+pause automatic requests after denied/revoked access. Local saving remains
+independent. Uncertain edit acknowledgements retain their operation ID for replay;
+newer local edits remain separate proposals. A pending local save is not reported
+as acknowledged. Disconnect, a later connection attempt or a different Vault
+opening invalidates late replies. Invitations remain private session capabilities;
+there is no persistent auto-rejoin or new object/attachment streaming protocol.
+Manual Drive backups now add scoped browsing and bounded transfer recovery; see
+[cloud status](cloud-sync.md). These improvements do not complete personal sync or
+replace real two-device/TLS acceptance.
+
 2026-10-11 authorized preview: self-hosted whole-Vault snapshot sharing with live
 editing of existing notes/Canvas boards, server-enforced capability roles,
 ephemeral named pointers, known-base merges and explicit conflict recovery.

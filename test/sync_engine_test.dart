@@ -352,7 +352,7 @@ class _Replica implements SyncReplica {
   @override
   Future<void> preserveConflict(
     String conflictId,
-    SyncEntry local,
+    SyncEntry? local,
     RemoteSyncEntry remote,
     Stream<List<int>> source,
   ) async {

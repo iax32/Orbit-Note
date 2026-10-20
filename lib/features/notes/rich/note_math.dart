@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'equation_editor.dart';
+import '../pixel_font_scope.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
@@ -62,7 +63,10 @@ class NoteMath extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      PixelFontScope(enabled: false, child: Builder(builder: _buildMath));
+
+  Widget _buildMath(BuildContext context) {
     final content = Math.tex(
       source,
       mathStyle: display ? MathStyle.display : MathStyle.text,

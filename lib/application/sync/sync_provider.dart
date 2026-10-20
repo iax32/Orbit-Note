@@ -24,12 +24,25 @@ class SyncDelta {
     required this.cursor,
     this.reset = false,
     this.protocolVersion = 1,
+    this.forks = const {},
   });
   final int protocolVersion;
   final List<RemoteSyncEntry> entries;
   final Set<String> removedKeys;
   final String cursor;
   final bool reset;
+  final Map<String, List<RemoteSyncEntry>> forks;
+}
+
+/// Publications never overwrite prior bytes. Concurrent children remain visible
+/// as forks, including races after an expected-head check. See ADR-0030.
+abstract interface class ImmutableRevisionSyncProvider implements SyncProvider {
+  Future<RemoteSyncEntry> publishResolution(
+    SyncEntry entry,
+    Stream<List<int>> bytes, {
+    required String operationId,
+    required List<String> parents,
+  });
 }
 
 /// The first engine requires atomic conditional publication. A provider must
@@ -62,7 +75,7 @@ abstract interface class SyncReplica {
   });
   Future<void> preserveConflict(
     String conflictId,
-    SyncEntry local,
+    SyncEntry? local,
     RemoteSyncEntry remote,
     Stream<List<int>> remoteBytes,
   );

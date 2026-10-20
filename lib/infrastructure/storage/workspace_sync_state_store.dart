@@ -10,15 +10,16 @@ import 'workspace_store.dart';
 /// Device-only operational state; independent of FTS rebuild and content export.
 /// The caller must own the workspace and one SyncEngine for this state file.
 class WorkspaceSyncStateStore implements SyncStateStore {
-  WorkspaceSyncStateStore(this.store);
+  WorkspaceSyncStateStore(this.store, {this.storagePath = path});
   final WorkspaceStore store;
   static const path = '.orbit/device/sync/state-v1.json';
+  final String storagePath;
   String? _expectedHash;
   bool _loaded = false;
 
   @override
   Future<Map<String, dynamic>?> load() async {
-    final bytes = await store.read(path);
+    final bytes = await store.read(storagePath);
     if (bytes != null && bytes.length > 16 * 1024 * 1024) {
       throw const WorkspaceFailure(
         'Sync state exceeds the current safe size limit.',
@@ -41,7 +42,7 @@ class WorkspaceSyncStateStore implements SyncStateStore {
         'Sync state exceeds the current safe size limit.',
       );
     }
-    await store.write(path, bytes, expectedHash: _expectedHash);
+    await store.write(storagePath, bytes, expectedHash: _expectedHash);
     _expectedHash = sha256.convert(bytes).toString();
   }
 }

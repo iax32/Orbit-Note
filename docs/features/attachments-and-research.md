@@ -1,5 +1,123 @@
 # Attachments, media and research
 
+## Source/model preview and external-open quality — 2026-10-19
+
+Code previews offer Retry for failed/missing reads and apply known 1 MiB metadata
+bounds before loading, while still validating actual bytes. Attachment versions
+include Vault generation, reference/checksum and the existing attachment-change
+signal. Pending versions retire old content rather than presenting it under the
+new filename. Stable versions preserve source selection/model camera through
+unrelated rebuilds. Model decoding captures its filename before awaiting bytes
+and skips obsolete pending decodes; Retry uses synchronous state updates.
+
+External-open confirmations and delayed reads retain their original Vault,
+location and attachment version. Switching Vault, deleting/replacing the source
+or invalidating attachment bytes retires the action before platform launch. File
+pickers also refuse retired context before reading large incoming files. Original
+bytes remain authoritative; nothing is executed by attachment or preview itself.
+No new watcher, storage format or dependency is introduced.
+[Actual tests, builds and hardware limits](../tasks/file-workflow-quality-2026-10-19.md).
+
+## PDF review form protection — 2026-10-17
+
+Review comments, color, style and resolution changes ask before discarding
+unapplied edits on Cancel, Escape, back or outside-click. Save prevents duplicate
+submission and dismissal while the existing save command is pending. Failure
+retains the form for retry/copy; successful save closes it. Temporary form values
+remain in memory until saved to the original note through normal history.
+
+Verified alongside enlarged-text layout and failed-save behavior; see
+[editor quality evidence](../tasks/editor-quality-2026-10-17.md).
+
+## PDF review workspace — 2026-10-17
+
+Highlights and comments can expand into the PDF reading area while retaining the
+same review state. Checkboxes support individual and Shift-range selection;
+Select all filtered, Clear selection and keyboard focus are explicit controls.
+With review navigation focused, arrows move through source passages, Shift+arrows
+extend a range, Space selects, Ctrl/Cmd+A selects filtered items, Enter opens
+the source and Delete asks before moving selected notes to Trash. Escape clears
+selection first. Search text editing retains ordinary text-field shortcuts.
+Filtering clears hidden selections; pagination shows 50 results per page while
+selection and export still cover the full filtered set.
+
+Selected-only copy, Markdown export, linked review-summary notes and derivative
+annotated PDFs reuse the existing exporters. With no selection these actions use
+the filtered set. Create Canvas review board places references to the original
+PDF and selected annotation notes on a new ordinary board, opening it beside the
+PDF. Notes/attachments are not duplicated, and deleting the board keeps evidence.
+
+Bulk resolve/reopen, color, highlight/underline/strikeout and Trash use guarded
+per-note commands, up to 1,000 distinct items per edit batch. Progress and Cancel
+remain visible; cancellation stops between saves, retaining the completed prefix.
+Each result identifies saved, unchanged and failed items; failed writes retain
+their originals. Later edits, competing drafts, read-only/future review formats,
+wrong files and stale PDF versions refuse mutation. Stale marks can still be
+trashed for cleanup. Page comments support color/state, not text-markup conversion.
+
+Undo batch restores only exact committed snapshots, retaining newer edits and
+reporting skipped items. Partial/cancelled Undo can retry its remaining items.
+Receipts/selections are private in-memory review state; after reopening the app,
+ordinary note history and Trash provide recovery. Batches are sequential per-note
+commits, not a global transaction. Unknown fields, source anchors, note bodies
+and original PDF bytes are preserved. No new annotation schema, PDF engine,
+package, remote service or native embedded-annotation import is added.
+
+## PDF linked-note lifecycle fixes — 2026-10-16
+
+Connected notes and the Markdown note's PDF-source banner expose Move note to
+Trash, including plain page/quote notes without highlight geometry. Deletion
+uses ordinary durable saves, keeps original PDF bytes and offers revision-checked
+Undo. Busy state is local to the affected note; failure retains the note and
+shows retry guidance. Source-banner actions wrap at narrow widths/enlarged text.
+
+Shared tab cleanup no longer mutates immutable session defaults or generates
+close snapshots for deleted notes. Removing the primary note promotes the PDF
+beside it and removes deleted tab/pin/reopen entries. Session list defaults are
+owned mutable copies, fixing the same failure in pin/close/archive commands.
+Competing drafts, failed saves and stale snapshots refuse deletion with feedback;
+late keystrokes retain their content in the same recoverable Trash note.
+
+Quote extraction now checks persistence before reporting success, retains failed
+drafts/selections, rejects invalid/read-only/LaTeX destinations, preserves Markdown
+whitespace/line endings and writes Canvas scene data without replacing board
+properties or existing elements. Quote/highlight creation cannot inject completed
+old-Vault writes into the current Vault. New plain quote notes retain optional
+`pdfSource.quote` text for connected-note citation dragging. No migration or
+original-file rewriting is required.
+
+## PDF highlighting and recoverable deletion — 2026-10-15
+
+FILE-04/05/11/12/13: annotation rendering now decodes immutable Canvas-region
+snapshots once and indexes markup/comments by page. Ordinary parent rebuilds reuse
+the index; adding/changing a mark reuses unchanged snapshots. Painting and hit
+testing use only the relevant page. This cache is disposable reader state, not a
+new annotation format or source of truth.
+
+Plain highlight/underline/strikeout saves show temporary markup while persistence
+is pending and keep the review panel/camera unchanged. Success clears the text
+selection so clicking a mark opens its details. Failure removes only the temporary
+preview and retains selected text for retry. Passage comments retain their existing
+draft-preserving dialog; Cancel does not report a save failure. Text markup remains
+paint-only so selection drags and selected-text context menus remain available.
+
+Right-click a text mark for details, color/style/comment editing, quote copying
+or Delete. The details dialog and review rows also offer Delete, including older
+source-version items needing cleanup. Deleting moves the same annotation note and
+its comments to ordinary Trash; the original PDF and other annotations remain
+unchanged. An eight-second Undo restores that exact deleted revision. Later edits,
+competing editor drafts, unsupported/read-only notes or a changed Vault refuse
+stale mutations rather than replacing current content. Trash remains available
+after restart. Closing a deleted note's tab does not create a second auto-snapshot
+that would invalidate Undo. Clipboard failures in review rows show a retryable
+message rather than an unhandled exception.
+
+Native regression checks cover real PDF text selection/rendering, pending and
+failed saves, same-identity Undo, source replacement, read-only changes while a menu
+is open, narrow enlarged-text controls and native restart/original-byte retention.
+See [current task](../tasks/current.md) for actual runs and the geometry-only
+benchmark; neither is a measured desktop frame-rate or full Acrobat-parity claim.
+
 ## Reusable source libraries and BibTeX — 2026-10-11
 
 Create source library in the citation manager makes a named ordinary Vault note

@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import '../../application/sync/google_account.dart';
+import '../../application/sync/google_desktop_configuration.dart';
 
 abstract interface class GoogleAuthorizationReceiver {
   Uri get redirect;
@@ -11,19 +12,28 @@ abstract interface class GoogleAuthorizationReceiver {
   Future<void> close();
 }
 
-class GoogleDesktopAuth implements GoogleAccountAuth {
+class GoogleDesktopAuth implements GoogleAccountAuth, GoogleDesktopSetup {
   GoogleDesktopAuth({
-    required this.clientId,
-    this.clientSecret = '',
+    required String clientId,
+    String clientSecret = '',
     required this.credentials,
+    this.configurationStore,
     required this.client,
     required this.openBrowser,
     required this.receive,
     this.timeout = const Duration(minutes: 3),
     DateTime Function()? now,
-  }) : now = now ?? DateTime.now;
-  final String clientId, clientSecret;
+    // Preserve public parameter names while client fields stay read-only outside.
+    // ignore: prefer_initializing_formals
+  }) : _clientId = clientId,
+       // ignore: prefer_initializing_formals
+       _clientSecret = clientSecret,
+       now = now ?? DateTime.now;
+  String _clientId, _clientSecret;
+  String get clientId => _clientId;
+  String get clientSecret => _clientSecret;
   final GoogleCredentialStore credentials;
+  final GoogleCredentialStore? configurationStore;
   final http.Client client;
   final Future<bool> Function(Uri) openBrowser;
   final Future<GoogleAuthorizationReceiver> Function() receive;
@@ -36,6 +46,7 @@ class GoogleDesktopAuth implements GoogleAccountAuth {
   Completer<void>? _cancel;
   int _generation = 0;
   Future<void> _credentialWrites = Future.value();
+  bool _configuring = false;
   Future<void> _store(Future<void> Function() operation) {
     final next = _credentialWrites.then((_) => operation());
     _credentialWrites = next.catchError((Object _) {});
@@ -44,6 +55,33 @@ class GoogleDesktopAuth implements GoogleAccountAuth {
 
   @override
   bool get configured => clientId.isNotEmpty;
+  @override
+  bool get canConfigureDesktop =>
+      configurationStore != null && !configured && !_configuring;
+  @override
+  Future<void> configureDesktop(String downloadedJson) async {
+    if (!canConfigureDesktop || _cancel != null || _account != null) {
+      throw const GoogleCloudError(
+        'configuration',
+        'This build already has an app registration. Its client cannot be replaced while signing in.',
+      );
+    }
+    final parsed = GoogleDesktopConfiguration.fromDownload(downloadedJson);
+    final generation = _generation;
+    _configuring = true;
+    try {
+      await _store(() async {
+        _check(generation);
+        await configurationStore!.write(parsed.encode());
+      });
+      _check(generation);
+      _clientId = parsed.clientId;
+      _clientSecret = parsed.clientSecret;
+    } finally {
+      _configuring = false;
+    }
+  }
+
   @override
   GoogleAccount? get account => _account;
   String _random() => base64UrlEncode(
@@ -195,6 +233,27 @@ class GoogleDesktopAuth implements GoogleAccountAuth {
         )
         .timeout(const Duration(seconds: 30));
     if (response.statusCode != 200) {
+      String reason = '';
+      try {
+        final data = jsonDecode(response.body);
+        if (data is Map && data['error'] is String) {
+          reason = data['error'] as String;
+        }
+      } on Object {
+        /* Do not expose raw provider responses. */
+      }
+      if (reason == 'invalid_client' || reason == 'unauthorized_client') {
+        throw const GoogleCloudError(
+          'configuration',
+          'Google rejected this app registration. Check that the build uses an active Desktop app client from Google Cloud, then try again.',
+        );
+      }
+      if (reason == 'invalid_scope') {
+        throw const GoogleCloudError(
+          'configuration',
+          'The Google app registration does not allow the requested permissions. Check its Data Access settings.',
+        );
+      }
       if (response.statusCode == 400 || response.statusCode == 401) {
         throw const GoogleCloudError(
           'reauth',
@@ -259,6 +318,16 @@ class GoogleDesktopAuth implements GoogleAccountAuth {
 
   @override
   Future<GoogleAccount?> restore() async {
+    if (!configured && configurationStore != null) {
+      final generation = _generation;
+      final stored = await configurationStore!.read();
+      _check(generation);
+      if (stored != null) {
+        final parsed = GoogleDesktopConfiguration.fromStored(stored);
+        _clientId = parsed.clientId;
+        _clientSecret = parsed.clientSecret;
+      }
+    }
     if (!configured) return null;
     final generation = _generation;
     final raw = await credentials.read();

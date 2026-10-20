@@ -15,10 +15,14 @@ class CodeWorkspace extends StatefulWidget {
     required this.language,
     required this.canApply,
     this.readOnly = false,
+    this.originalCode,
+    this.initialComparison = false,
   });
   final String code, language;
   final bool Function() canApply;
   final bool readOnly;
+  final String? originalCode;
+  final bool initialComparison;
   @override
   State<CodeWorkspace> createState() => _CodeWorkspaceState();
 }
@@ -34,20 +38,21 @@ class _CodeWorkspaceState extends State<CodeWorkspace> {
   final queryFocus = FocusNode();
   final replaceFocus = FocusNode();
   late final original = CodeController(
-    text: widget.code,
+    text: widget.originalCode ?? widget.code,
     language: widget.language,
   );
   final originalFocus = FocusNode();
   final draftSurface = GlobalKey();
   final originalSurface = GlobalKey();
-  late final originalLines = codeLines(widget.code);
+  late final originalLines = codeLines(widget.originalCode ?? widget.code);
   final history = DocumentHistory();
   final _undoSelections = <(TextSelection, TextSelection)>[];
   final _redoSelections = <(TextSelection, TextSelection)>[];
   late TextEditingValue _committed;
   bool _replaying = false;
   bool wrap = false, matchCase = false, wholeWord = false, replacing = false;
-  bool comparison = false, numbers = true;
+  late bool comparison = widget.initialComparison;
+  bool numbers = true;
   String? _lineSource;
   List<({int start, int contentEnd, int end})> _lines = [];
   List<({int start, int contentEnd, int end})> get lines {
@@ -357,7 +362,7 @@ class _CodeWorkspaceState extends State<CodeWorkspace> {
         !control &&
         !keys.isAltPressed &&
         !keys.isShiftPressed) {
-      edit((v) => newlineCode(v, unit: unit));
+      edit((v) => newlineCode(v, unit: unit, language: widget.language));
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;

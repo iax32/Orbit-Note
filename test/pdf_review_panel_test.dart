@@ -45,6 +45,13 @@ PdfAnnotation annotation(
   ),
 );
 
+Future<void> tapReviewVisible(WidgetTester tester, Finder finder) async {
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets(
     'review dialog keeps save reachable with large text in a small window',
@@ -114,19 +121,26 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Open PDF source').first);
+    await tapReviewVisible(tester, find.byTooltip('Open PDF source').first);
     expect(openedSource, 1);
-    await tester.tap(find.byTooltip('Copy filtered review as Markdown'));
+    await tapReviewVisible(
+      tester,
+      find.byTooltip('Copy filtered review as Markdown'),
+    );
     expect(copied.map((a) => a.object.id), ['A', 'B']);
-    await tester.tap(find.byTooltip('Review All'));
+    await tapReviewVisible(tester, find.byTooltip('Review All'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Resolved').last);
+    await tapReviewVisible(tester, find.text('Resolved').last);
     await tester.pumpAndSettle();
     expect(find.text('Quote A'), findsNothing);
     expect(find.text('B'), findsOneWidget);
-    await tester.tap(find.byTooltip('Save filtered review as annotated PDF'));
+    await tapReviewVisible(
+      tester,
+      find.byTooltip('Save filtered review as annotated PDF'),
+    );
     expect(exported.map((a) => a.object.id), ['B']);
-    await tester.tap(
+    await tapReviewVisible(
+      tester,
       find.byWidgetPredicate(
         (w) => w is IconButton && w.tooltip == 'Save filtered review as note',
       ),
@@ -185,13 +199,13 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('Review'));
+      await tapReviewVisible(tester, find.text('Review'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'New comment');
-      await tester.tap(find.text('Green'));
-      await tester.tap(find.text('underline'));
-      await tester.tap(find.text('Resolved'));
-      await tester.tap(find.text('Save review'));
+      await tapReviewVisible(tester, find.text('Green'));
+      await tapReviewVisible(tester, find.text('underline'));
+      await tapReviewVisible(tester, find.text('Resolved'));
+      await tapReviewVisible(tester, find.text('Save review'));
       await tester.pumpAndSettle();
       expect(body, 'New comment');
       expect(color, 0xff22c55e);
@@ -203,7 +217,7 @@ void main() {
         'New comment',
       );
       saved = true;
-      await tester.tap(find.text('Save review'));
+      await tapReviewVisible(tester, find.text('Save review'));
       await tester.pumpAndSettle();
       expect(attempts, 2);
       expect(find.byType(PdfReviewEditor), findsNothing);

@@ -11,9 +11,11 @@ Future<void> showCalendarPlanEditor(
   UniversalObject? original,
   String kind = 'assignment',
   String? course,
+  String? courseId,
   DateTime? day,
   UniversalObject? linkedWork,
 }) async {
+  final generation = c.workspaceGeneration;
   if (original?.properties['calendarPlan'] != null &&
       calendarPlanKind(original!) == null) {
     await showDialog<void>(
@@ -172,6 +174,7 @@ Future<void> showCalendarPlanEditor(
                   const SizedBox(height: 12),
                   TextField(
                     controller: subject,
+                    readOnly: courseId != null,
                     enabled: !busy && !readonly,
                     maxLength: 500,
                     decoration: const InputDecoration(
@@ -469,12 +472,27 @@ Future<void> showCalendarPlanEditor(
                                       ).toIso8601String(),
                                     },
                                   };
+                            if (generation != c.workspaceGeneration) {
+                              refresh(() {
+                                busy = false;
+                                error =
+                                    'The Vault changed. Close this form and reopen planning.';
+                              });
+                              return;
+                            }
                             final saved = await c.saveCalendarPlan(
                               original: original,
                               title: title.text,
                               body: body.text,
                               kind: kind,
                               course: subject.text,
+                              courseId:
+                                  courseId ??
+                                  (original?.properties['course'] ==
+                                          subject.text
+                                      ? original?.properties['courseId']
+                                            as String?
+                                      : null),
                               dates: dates,
                               estimateMinutes:
                                   int.tryParse(estimate.text) ?? -1,

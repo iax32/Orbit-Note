@@ -1,5 +1,247 @@
 # Implemented open formats — v1 subset
 
+## Canvas ink transfer compatibility — 2026-10-18
+
+Existing version-1 ink `points` are placement-local samples. Duplicate, paste,
+align and distribute offset placement `x`/`y` once and preserve the points verbatim,
+including pressure/time and unknown per-sample fields. Connector endpoints
+remain world-space and still receive their existing translation/remapping.
+There is no schema/version change or automatic rewrite of older boards. Canvas
+clipboard data that cannot be represented as supported Markdown retains its full
+literal payload, including labelled drawings; partial conversion is refused.
+
+## Technical article metadata — 2026-10-17
+
+The existing leading `orbit:publication` version-1 JSON comment may include an
+optional `article` object with `version:1`, string fields `title`, `description`,
+`author`, `authorUrl`, `canonicalUrl`, `imageUrl`, `language`, `published`,
+`modified`, and optional Boolean `indexable` (default true). Fields are bounded
+to 2,000 characters without control characters. URLs use absolute HTTP(S), no
+credentials; dates use real YYYY-MM-DD values, with modified >= published when
+both exist. Language is a bounded hyphenated language tag. Author/dates are not
+invented. Unknown publication/article fields survive updates; malformed/future
+article metadata refuses editor replacement and yields an HTML export warning.
+Older publication readers retain this optional data without needing a migration.
+
+The original Markdown remains authoritative. Ordinary editor changes/history
+own metadata saves. CMS fragments omit document head/script/style metadata;
+standalone HTML exposes escaped head metadata and JSON-LD plus visible authored
+byline/dates. The handoff is not a CMS API or crawler audit. See the
+[workflow](../features/technical-article-publishing.md) for fidelity boundaries.
+
+Research diagrams use schema-1 ordinary rectangles/arrows and explicit placement
+references in existing live-object blocks. Optional `researchDiagram` labels
+identify a preset; no new rendering engine or object type is required. Export to
+Markdown also accepts ordinary technical shapes; relationships resolve only
+between included nodes. Address calculations are authored tables, not live
+memory handles or canonical bare-address object identities.
+
+## Review workspace commands and Canvas boards — 2026-10-17
+
+Bulk review editing adds no durable format. Annotation notes retain existing
+`pdfHighlightVersion:1`, `pdfSource` regions and `pdfReview` state. Edits preserve
+unrecognized fields and unsupported region entries. Page comments keep their
+kind and cannot become text markup. Results/Undo receipts are immutable runtime
+collections of before/after object snapshots; partial commits remain ordinary
+revision-checked note saves with recoverable history. They are not a transaction
+journal or an extra storage authority.
+
+Create review board writes ordinary Canvas schema 1 `card` placements with new
+placement UUIDs and existing PDF/note `objectId`/`referenceTarget` identities.
+The PDF card has a page reference, and note cards reference canonical note IDs.
+Only title fallback labels and layout are stored; passages/bodies/bytes are not
+copied. Optional board property `sourcePdfId` records provenance. Existing folder,
+project and course ownership can carry from the PDF. Older readers retain ordinary
+card presentation; no migration or alternate rendering engine is required.
+
+## Precise live diagram selections — 2026-10-16
+
+The existing schema-1, three-line Markdown `orbit-object` block can link to
+`orbit-object:<canvas-id>#elements=<encoded-json-array>`. The fragment value
+is URI-encoded JSON containing 1–1,000 distinct nonempty placement IDs, each at
+most 200 UTF-16 units. Parentheses are percent-encoded to keep the Markdown
+link unambiguous, including for arbitrary authored IDs. Existing `element`,
+section, page, annotation and unknown fragments retain their behavior.
+
+Resolution includes visible/renderable placements with those IDs and current
+visible connectors whose two bound endpoints are in the selection. New internal
+relationships therefore appear live. Unavailable IDs are reported; resolution
+never substitutes the rest of the board. No content, geometry, screenshot,
+attachment, migration or new universal identity is stored in the note.
+Canvas JSON remains authoritative. Older/external readers retain a usable
+source link; publication exports warn that the preview is not embedded.
+
+UML surfaces use one pure palette derived from the rendering background and
+foreground in native painting and SVG. Stored class accents remain unchanged.
+
+## UML Canvas presentation — 2026-10-16
+
+Canvas schemaVersion 1 remains unchanged. A class is an ordinary `rectangle`
+placement: `text` holds its name; optional `uml` map contains `attributes` and
+`operations` (arrays of authored strings), `stereotype` (string) and `abstract`
+(boolean). Unknown nested/root/placement fields survive edits and save/reopen.
+Readers without UML support show a named rectangle and preserve the extra fields.
+
+UML relationships are existing `connector` placements with bound `startId` /
+`endId`, `umlRelationship` (association/dependency/generalization/realization/
+aggregation/composition), ordinary style/routing/marker fields, and optional
+`startMultiplicity`, `endMultiplicity`, `startRole`, `endRole` strings.
+`startAnchorOffset` / `endAnchorOffset` are finite fractions along their resolved
+attachment side (default .5, clamped 0..1). Finite `routingOffset` shifts an
+orthogonal middle lane in world units (default 0; rendering clamps ±10,000).
+New marker spellings: `hollowTriangle`, `hollowDiamond`, `filledDiamond`; legacy
+`diamond` keeps its existing filled appearance. Hollow markers cover the line
+behind them with the surface color. Marker, label and bound geometry is shared
+by painting, hit testing/culling and SVG where appropriate. No class object IDs,
+file sidecar, migration or database-only data are introduced.
+
+JSON is the lossless editable transfer; SVG/PNG are presentation exports. Existing
+Mermaid output remains a flowchart, with a visible UML fidelity warning.
+
+## Personal Drive sync operational formats — 2026-10-15
+
+Bulk transfers reuse these per-Vault formats; no batch file or authored migration
+is added. A first batch connection persists folder/pending IDs with `enabled:
+false` until reconciliation completes (including a retained conflict needing
+review). Cancellation/failure retains the interrupted plan without newly enabling
+automatic sync. Existing opt-ins stay enabled. Native `selected-workspace.json`
+version 1 now retains up to 50 recent locations. Adding downloaded recents keeps
+the active `path`, `closed` state and unknown optional fields unchanged.
+
+No authored Vault migration. `.orbit/device/sync/drive-settings-v1.json` uses
+`format: orbit-drive-settings`, `version: 1`, Vault `workspaceId`, Google `subject`,
+display `email`, boolean `enabled`, remote `folder` and optional `pendingFolder`.
+The generated pending folder ID is saved before creation. This file is device-only;
+portable import does not silently opt a new device into uploading. Unknown optional
+settings survive edits; unsupported versions remain untouched and block setup.
+
+`.orbit/device/sync/drive-uploads-v1.json` uses `orbit-drive-uploads`, version 1,
+opaque `bindingId`, `operations` and immutable `records` cache. Each operation stores
+its exact SyncEntry/parent IDs, generated blob/record IDs and optional resumable
+session URL before use. Cached records retain provider MD5 plus decoded protocol
+data. These are operational capabilities/state, excluded from exports and content
+sync; account tokens stay in the existing secure adapter. Both files use repository
+serialization, expected-hash writes and Vault-opening guards. The existing engine
+state-v1 file additionally supports optional `resolutions` intents and conflict
+`alternatives`; old version-1 state without those fields remains readable.
+
+Drive owns a `sync-vault` folder with `orbitProtocol: 2` and canonical Vault UUID.
+Immutable raw binary blobs use role `sync-blob`; immutable JSON records use role
+`sync-revision` and key-routing SHA-256 `orbitKey`. A record has format
+`orbit-drive-revision`, version 2, `workspaceId`, exact SyncEntry, `blob` ID, byte
+`size`, `parents` and `operation`. Local logical paths/IDs never become Drive IDs.
+Blob verification precedes record publication. A full paginated graph requires
+existing same-key parents and no cycles; every unreferenced head remains visible.
+Records are limited to 64 KiB, graphs to 10,000 records and resolutions to 64 parents.
+Local checkpoint files retain the 16 MiB bound. No cloud deletion/GC is performed.
+
+Retained `.orbit/sync-conflicts/<digest>/{local,remote,conflict.json}` copies remain
+portable recovery data. A branch with no local object stores only remote bytes and
+a nullable `local` descriptor. The digest includes remote identity/version so
+separate branches cannot collide merely because their bytes match. Recovery does
+not create a duplicate live universal object. Review/selection does not execute
+imported recovery records; explicit resolution uses normal guarded apply/history.
+
+## Project launch configuration — 2026-10-13
+
+`.orbit-ide/config/launch.json` version 1 contains `profiles` (up to 30). Each has a
+stable string `id`, `name`, project-relative `cwd` and 1–8 ordered `steps`. A step
+uses `tool` (`python`, `compiler`, `custom`, `program`), an `arguments` string array
+and optional custom `executable`. `{output}`/`{buildDir}` are runtime substitutions;
+device interpreter/compiler paths remain private tool settings. Root/profile/step
+unknown fields survive editing. Duplicate IDs, malformed/future data and unsafe
+working folders refuse replacement. Configuration is limited to 128 KiB.
+
+Expected-hash saves share the project's save lock and retain flushed
+`.orbit-ide/config-history/<timestamp>-<uuid>.json` checkpoints with version 1,
+`before` and `after` configuration. The picker offers the latest 20 compatible
+prior settings. A checkpoint can represent an interrupted attempt. No settings
+auto-start a tool or become duplicate Vault objects; no Vault migration is needed.
+Preview address, cookie/token and reload revision are ephemeral memory only.
+See [ADR-0029](../adr/0029-code-launch-and-loopback-preview.md).
+
+## External code project recovery — 2026-10-13
+
+Normal UTF-8 source files in an explicitly selected native folder are authoritative;
+they are not duplicate Vault objects. Up to 1 MiB is editable, retaining authored
+line endings and a UTF-8 BOM when present. `.orbit-ide/save.lock` coordinates Orbit
+saves; this does not lock out unrelated external editors.
+
+`.orbit-ide/drafts/<path-sha>-<session-uuid>.json` contains version 1, relative
+`path`, nullable source SHA-256 `baseHash` and `text`. A session clears only its own
+draft. The latest candidate is recovered with conflict review when the base differs;
+older/other-session drafts remain intact. Malformed/future records remain intact
+and generate a warning rather than replacing current source. Recovery text is
+bounded to the same 1 MiB source limit and rejects NUL.
+
+`.orbit-ide/history/<path-sha>-<timestamp>-<uuid>.json` contains version 1, `path`,
+`before`, `after`, `beforeHash`, `afterHash`, `hasBom` and UTC `savedAt`. The flushed
+checkpoint precedes source replacement, so it can represent an attempted save.
+The picker reads the latest 50; underlying history is retained. `.orbit-ide/build`
+holds generated single-file binaries and debug artifacts. Source browsing skips
+this operational folder. Code projects/history are outside automatic Vault backups.
+
+Private application-support `code-tools.local.json` version 1 stores `python`,
+`compiler`, `debugger`, `debuggerArguments` (JSON-array text), and a `servers` map
+with HTML/Python/C++ `executable` and `arguments` arrays. Same-directory flushed
+replacement preserves unknown root/server fields; future settings versions refuse
+replacement. These device-specific paths are outside Vaults, synchronization and
+exports. There is no Vault storage migration. See [ADR-0028](../adr/0028-scoped-code-workspace.md).
+
+## Technical evidence and comparison snapshots — 2026-10-13
+
+Ordinary note properties optionally contain `sourceCapture` version 1 with method
+`working-tree-capture`, repository label/path, relative file path, startLine/endLine,
+language, excerptSha256, optional sourceSha256 and UTC capturedAt. Exact source
+text remains in a Markdown code fence. This metadata is not a filesystem access
+grant or a verified Git revision. Resource IDs retain canonical project context.
+
+Build Comparison notes use researchComparisonVersion 1, binaryId, baselineBuild,
+candidateBuild, comparisonCounts, resourceIds and sourceVersions. Markdown retains
+a readable snapshot and original UUID links. Build Investigation tasks use the
+normal task format with those build/source references and an editable checklist.
+Unknown properties and authored records remain preserved. No dedicated database,
+source authority change or workspace migration is introduced.
+
+
+## Private desktop Google registration — 2026-10-13
+
+Windows secure-storage key `orbit.google.desktop-client.v1` optionally stores JSON
+`{version: 1, clientId: string, clientSecret: string}` for an unconfigured preview.
+Only validated native Desktop app configuration is accepted. A compiled client
+always takes precedence; it cannot be replaced by import. Unknown stored versions
+are rejected. This device-only record is outside Vaults and exports, contains no
+account tokens and does not change the durable knowledge/save authority. Existing
+account credential records retain their separate client/account binding.
+
+## Note print settings — 2026-10-12
+
+A note body may start with one `<!-- orbit:publication JSON -->` line. JSON has
+`version: 1`, `style` and `blocks`. Style fields are `letter`, `serif`,
+`numberHeadings`, `titlePage`, `contents`, `pageNumbers`, `margin` (24–90 points),
+`fontSize` (9–18 points), `author` and `header` (each at most 500 characters).
+The record is at most 256,000 UTF-16 units, with at most 1,000 block settings.
+
+Block keys are SHA-256 hashes of canonical parsed Markdown node content: tag,
+sorted authored attributes and recursively encoded text/children. Generated
+`orbit-*` attributes are excluded. Only unique top-level tables and paragraphs
+containing one standalone image receive overrides. Duplicate or changed content
+is reported rather than silently retargeted. Stale/orphan settings remain stored.
+
+Each block may contain integer `width` (25–100 percent), `alignment`
+(`left`, `center`, `right`), `caption` (single line, at most 2,000 characters),
+Boolean `pageBreakBefore`, and Boolean `repeatHeader`. Defaults are 100 percent,
+left alignment, no caption/break and repeated headers. These are print settings;
+the source image bytes, table cells and ordinary Markdown remain authoritative.
+
+Known settings are validated before hiding or rewriting the leading record.
+Unknown fields are retained when saving settings; resetting a block removes known
+layout fields while preserving unfamiliar fields. Future/malformed versions
+remain literal and cannot be overwritten by Save settings. Fenced examples are
+not treated as a leading record. JSON escapes HTML delimiters; presentation
+exports do not execute comment contents. No storage migration or new content owner
+is introduced. Settings edits use existing recoverable note commands/history.
+
 ## Markdown columns and live object blocks — 2026-10-11
 
 Two or three ordinary Markdown bodies are separated by explicit layout comments:
@@ -522,7 +764,9 @@ source navigation. These are device/session navigation hints, not durable note
 content. Annotation geometry is used only when the note's source checksum matches.
 
 Extracted quotes are ordinary notes with quoted Markdown, a page wiki reference
-and `properties.pdfSource: {objectId, page, checksum}`. Source bytes remain exact;
+and `properties.pdfSource: {objectId, page, checksum, quote?}`. New extracted notes
+retain the optional quoted text for citation dragging; older notes without it
+remain valid. Source bytes remain exact;
 the checksum records provenance but this batch does not implement automatic
 revision re-anchoring. See [ADR-0013](../adr/0013-local-pdf-reader.md).
 
@@ -617,6 +861,13 @@ Only matching-checksum regions are painted; stale versions retain all metadata a
 show source-review status. Unknown versions remain readable ordinary notes.
 Deleting/restoring a highlight uses ordinary note Trash/restore. No PDF writes,
 object-envelope migration or SQLite schema change. See ADR-0014.
+
+2026-10-15 reader controls expose that existing Trash lifecycle directly, with
+revision-checked deletion and Undo of the exact returned trashed snapshot. Comment
+text, unknown metadata, source-version anchors and UUIDs are retained. Page lookup,
+decoded-region reuse and pending-save previews are disposable view state; they
+are never persisted as an alternate annotation authority. Ordinary highlight
+creation no longer implicitly opens the review panel or changes the page viewport.
 
 Source-file preview is disposable: extension mapping, strict UTF-8, 1 MiB limit,
 binary/invalid-encoding fallback, existing syntax renderer (plain text above 50,000
@@ -715,3 +966,163 @@ examples literal. Removal changes only the owner note, with existing undo/histor
 Live previews: 100,000 characters per section, note-identity depth five, maximum
 24 nested cards per root. Oversized fallbacks expose open/copy actions rather than
 silently truncating durable text. Same-note transclusion is conservatively rejected.
+
+## Connected project context and relationships — 2026-10-12
+
+Device settings `projectContext` is version 1 with optional selected project ID,
+panel pin and `projects` map (maximum 30). Per-project records retain continuation
+`draft`/`nextStep` (maximum 4,000 UTF-16 units), supported WorkspaceContext descriptor,
+source version map, saved/resumed times, recording flag and newest-first activity
+(maximum 300 records: object ID/action/UTC timestamp). Unknown fields round-trip;
+unsupported versions/shapes are not mutated. Private descriptors are not knowledge
+content and remain excluded from portable knowledge backup.
+
+Objects own optional `orbitConnections: {version: 1, items: [...]}` metadata,
+maximum 200 entries. Authored records contain stable relation ID, supported kind,
+ObjectReference target string, reason (2,000 units), observed versionToken and
+created/reviewed UTC timestamps. Normal Markdown frontmatter/object envelopes own
+these records. No separate relation repository/index authority is introduced.
+Unknown record kinds/fields are preserved; future envelopes refuse mutation.
+Creation accepts 1,000-unit targets, rejects self/duplicate/missing targets and
+checks an expected source version when a dialog is open. Missing/future precise
+fragments remain references and cannot silently bind to another object.
+
+## Optional course metadata — 2026-10-13
+
+Ordinary orbit.note overview records retain isCourseOverview and legacy course,
+folder, semester, lecturer, courseCode and ects. Optional courseDisplayName is
+presentation metadata; it never rewrites Markdown/path labels. courseStatus is
+active/passed/archived; finite numeric ects accepts 0–120 including fractions.
+courseBoardId optionally references an ordinary Canvas. Material/view properties
+can record courseId as the overview's universal UUID. An explicit empty courseId
+excludes membership even when a legacy folder matches; absent IDs use legacy
+folder/name membership. Existing unknown data is retained, with no destructive
+migration or new object/scene format. Hub course continuations use the UUID as
+the existing studyCourse key; legacy name keys remain supported.
+
+## Precise live object-card targets — 2026-10-13
+
+The existing three-line orbit:object v=1 Markdown marker accepts an optional
+ObjectReference fragment in its orbit-object URL: orbit-object:UUID#fragment.
+No fragment preserves the existing representation. UUID remains canonical source
+identity; the fragment is navigation/presentation metadata. Supported fragments
+use the existing ObjectReference contract (page, block, heading, label, annotation,
+element); unknown fragments are retained. Malformed/unsupported markers remain
+literal authored Markdown. Older readers that do not recognize a precise card
+can retain its readable link as source. Canvas placements use existing objectId,
+referenceTarget and presentation fields; no scene-version change.
+
+Derived reference caches are non-durable and rebuildable. Objects own all
+reference metadata, normal repository history retains mutations, and no separate
+reference database becomes storage authority. Authored orbitConnections kinds
+also support references, part of, depends on and inspired by; unknown records
+still survive edits. Canonical courseId now participates in project context and
+legacy saved-view scope matching; selected canonical courses give newly created
+objects courseId/course ownership. Explicit ownership wins, legacy course labels
+remain compatible, and no existing object is migrated or renamed automatically.
+
+## Callout block folding — 2026-10-14
+
+Existing quoted callouts additionally recognize an optional immediate `+` or `-`
+after the type bracket: `> [!BTW]- Optional title`, followed by ordinary quoted body
+lines. BTW is the By the way preset. The marker sets the initial view state only;
+body content stays ordinary authored Markdown. Default-setting edits change one
+header, while local folding does not serialize. Unknown alphabetic types/body
+source/line endings survive title and body editing. Read search expands callouts
+transiently. No new workspace format version or object migration is required;
+other Markdown tools retain a readable quoted header and the complete body.
+
+## Math Lab portability — 2026-10-14
+
+Calculated results and 20 mathematical templates use existing ordinary display
+TeX. Markdown uses $$ blocks with readable calculation/parameter/approximation
+text; rich LaTeX uses a standard equation environment before end{document}.
+Variables are retained in TeX as well as Markdown descriptions. Plot placement
+uses existing grouped sticky/line/ink/text JSON (finite coordinates and local ink
+points); its expression, parameters and window are visible source text. Plots are
+editable snapshots and serialize/export through existing Canvas JSON/SVG paths.
+No object/format version change, new engine or persisted calculator cache. Unknown
+existing scene/object data remains untouched. Numerical tools do not execute TeX.
+
+## Live plot recipe v1 — 2026-10-14
+
+An ordinary fenced code block labelled orbit-plot holds JSON:
+
+```json
+{
+  "version": 1,
+  "title": "Wave comparison",
+  "functions": ["a*sin(x)", "cos(x)"],
+  "variables": {"a": 2},
+  "window": {"xMin": -5, "xMax": 5, "yMin": -5, "yMax": 5}
+}
+```
+
+One to four nonempty single-line expressions use the bounded real arithmetic
+parser. At most 12 ASCII named parameters are finite numeric values; x is reserved
+for the horizontal axis and pi/e are constants. Windows follow existing ±1,000,000,
+increasing/distinct-sample bounds. The optional title is at most 120 UTF-16 units.
+Recipes are at most 65,536 UTF-16 units and 32 JSON nesting levels. Out-of-range
+numbers, integers beyond JavaScript's exact safe-integer range, and decimal
+metadata that would change value when re-encoded are refused before decode;
+unfamiliar data cannot silently become Infinity/zero/rounded values.
+Unknown metadata/window fields remain deeply immutable in memory and survive
+explicit edits. Unknown versions or malformed/unsupported recipes remain literal
+editable fenced code; they are not rewritten automatically. Known-field edits
+serialize JSON inside the original fences and preserve CRLF without doubling CR.
+
+The source recipe is authoritative; no raster attachment or database-only graph
+cache is introduced. SVG export is standalone escaped vector data with the recipe
+in its description. XML-incompatible characters are sanitized in the derived SVG
+text; the authored recipe stays unchanged. TSV/CSV value exports are sampled numeric snapshots with
+undefined domain cells labelled. LaTeX/table output stays ordinary TeX; Canvas
+comparison output uses existing grouped sticky/line/ink/text JSON. No workspace
+format/version change or mandatory migration. Publication formats currently keep
+the fenced source as code rather than promising an embedded graph export.
+
+## Private sync continuity v1 — 2026-10-15
+
+OS-protected device key `orbit.drive.schedule.v1` stores JSON with format
+`orbit-drive-schedule`, version 1, enabled boolean, Google subject, minutes
+(1/5/15), and vaults (id/path/name). At most 50 unique UUID selections and 256 KiB
+of configuration are accepted. Supported unknown root/entry fields survive
+updates; malformed/future configurations freeze until explicit Forget. This is
+local scheduling intent, never a sync binding or authority to re-enable a paused
+Vault. Per-Vault native bindings/outboxes remain in their existing guarded stores.
+
+Device key `orbit.shared.connection.v1.<SHA-256 of Vault UUID>` optionally stores
+JSON with format `orbit-shared-connection`, version 1, workspaceId, server, room
+and token. Maximum 16 KiB; endpoint uses existing HTTPS/loopback rules; room/token
+are 43 base64url characters. Explicit Remember preserves supported unknown fields;
+future/malformed formats cannot be replaced without Forget. No root owner key,
+cached role or auto-join flag is stored. Reconnect uses live permissions and local
+divergence checks. Neither private format enters Vault files, exports, content
+sync or logs. No authored version change or migration is introduced.
+
+## Device-local writing appearance v1 — 2026-10-14
+
+Existing session noteViews may contain writingAppearance with version 1, design
+(orbit/pixelBook/classicBook/crt/retro/command/blueprint/fieldJournal/typewriter/
+amberTerminal), paper (plain/ruled/grid/dots), spacing (finite 20–64 logical pixels),
+details, styledFont and quiet booleans. Optional pixelSnap defaults true; false
+opts the pixel font out of display-aligned sizing. Existing raw unknown fields
+remain preserved, and no older preference needs rewriting on open.
+Missing/invalid/future preferences use Orbit/plain with defaults; unrelated view
+updates retain the raw stored value. Explicit Apply retains unknown fields while
+setting the supported fields/version. Note/pane keys remain the existing identity.
+This is private view presentation, never part of Markdown, object properties,
+ordinary exports or recovery history. No workspace version or migration changes.
+
+Optional writingAppearance.photo v1 contains id (64 lowercase hex SHA-256 of the
+normalized bytes), name (at most 120 UTF-16 units), opacity (0–1), x/y (-1–1), fit
+(cover/contain), and readingSheet (default true). Unknown/future photo recipes are
+not loaded but remain in raw preferences through unrelated changes. Explicit
+Remove/Reset removes this reference; other unfamiliar fields remain preserved.
+Bytes are static normalized PNGs at .orbit/device/writing-backgrounds/<id>.png,
+at most 2 MiB and 1,600 px per side. Repository serial writes use the captured Vault
+identity and existing guarded atomic store; reads are size/stream/header/hash
+checked. Identical images reuse the same private file. The device path is excluded
+from content sync and bytes are never embedded in repeatedly saved noteViews JSON.
+These are presentation copies, not ordinary attachments or authored object IDs.
+Unused copies remain until device state is deliberately cleaned; no migration,
+automatic garbage collection, live external-file reference or image deletion command.

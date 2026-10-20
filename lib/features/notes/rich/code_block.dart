@@ -7,11 +7,13 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:highlight/highlight.dart' as hl;
 import 'package:markdown/markdown.dart' as md;
 import '../read_search_overlay.dart';
+import '../pixel_font_scope.dart';
 import '../../../app/workspace_controller.dart';
 import 'dynamic_view_block.dart';
 import 'snapshot_block.dart';
 import 'code_workspace.dart';
 import 'code_editing.dart';
+import '../../math/math_plot_source_block.dart';
 
 class CodeController extends TextEditingController {
   CodeController({required String text, required this.language})
@@ -186,7 +188,10 @@ class NoteCodeBlockState extends State<NoteCodeBlock> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      PixelFontScope(enabled: false, child: Builder(builder: _buildCode));
+
+  Widget _buildCode(BuildContext context) {
     final langLower = widget.language.toLowerCase();
     final isBytes = langLower == 'hex' || langLower == 'bytes';
     final isAsm =
@@ -409,6 +414,14 @@ class CodeElementBuilder extends MarkdownElementBuilder {
       'language-',
       '',
     );
+    if (language == 'orbit-plot') {
+      return ReadSearchText(
+        text: text,
+        leadingLength: 0,
+        normalizeQueryLineEndings: true,
+        child: MathPlotSourceBlock(source: text),
+      );
+    }
     if (DynamicViewBlock.isDynamicView(language, text)) {
       return DynamicViewBlock(
         source: text,

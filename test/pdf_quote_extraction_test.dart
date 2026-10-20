@@ -140,7 +140,7 @@ void main() {
 
       final updated = controller.find(canvas.id);
       expect(updated, isNotNull);
-      final scene = CanvasScene.fromJson(updated!.properties);
+      final scene = CanvasScene.fromJson(updated!.data);
       expect(scene.elements.length, 1);
       final card = scene.elements.first;
       expect(card.type, 'card');
@@ -168,7 +168,7 @@ void main() {
 
       final canvases = controller.ofType('orbit.canvas');
       expect(canvases.length, 1);
-      final scene = CanvasScene.fromJson(canvases.first.properties);
+      final scene = CanvasScene.fromJson(canvases.first.data);
       expect(scene.elements.length, 1);
       expect(scene.elements.first.text, contains('Reinforcement learning'));
       expect(scene.elements.first.text, contains('RLHF Guide, p. 2'));

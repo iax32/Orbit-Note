@@ -12,6 +12,12 @@ import '../note_typography.dart';
 import '../read_attachment_preview.dart';
 
 enum CalloutType {
+  btw(
+    name: 'BTW',
+    label: 'By the way',
+    icon: Icons.chat_bubble_outline,
+    color: Color(0xFF7FA6C8),
+  ),
   definition(
     name: 'DEFINITION',
     label: 'Definition',
@@ -130,13 +136,19 @@ class ParsedCallout {
     required this.type,
     required this.title,
     required this.body,
+    this.fold = '',
+    this.rawType,
   });
 
   final CalloutType type;
   final String title;
   final String body;
+  final String fold;
+  final String? rawType;
 
-  static final _calloutRegex = RegExp(r'^>\s*\[!([a-zA-Z]+)\][ \t]*(.*)$');
+  static final _calloutRegex = RegExp(
+    r'^>\s*\[!([a-zA-Z]+)\]([+-]?)[ \t]*(.*)$',
+  );
 
   static bool isCallout(String text) {
     final lines = text.split(RegExp(r'\r?\n'));
@@ -154,7 +166,7 @@ class ParsedCallout {
     final type = match != null
         ? CalloutType.fromString(match.group(1)!)
         : CalloutType.note;
-    final title = match != null ? match.group(2)!.trim() : '';
+    final title = match != null ? match.group(3)!.trim() : '';
 
     final bodyLines = <String>[];
     for (var i = 1; i < lines.length; i++) {
@@ -172,6 +184,8 @@ class ParsedCallout {
       type: type,
       title: title,
       body: bodyLines.join('\n').trim(),
+      fold: match?[2] ?? '',
+      rawType: match?[1],
     );
   }
 
@@ -191,7 +205,7 @@ class ParsedCallout {
 
   String toMarkdown() {
     final titlePart = title.isNotEmpty ? ' $title' : '';
-    final header = '> [!${type.name}]$titlePart';
+    final header = '> [!${rawType ?? type.name}]$fold$titlePart';
     if (body.isEmpty) return '$header\n';
     final lines = body.split('\n');
     final formattedBody = lines.map((l) => '> $l').join('\n');
@@ -228,6 +242,7 @@ class CalloutBlockState extends State<CalloutBlock> {
   final FocusNode _focus = FocusNode();
   TextRange? _headerSelection;
   String? _emitted;
+  bool _expanded = true;
 
   TextSelection? get sourceSelection {
     final parts = CalloutSourceParts(_emitted ?? widget.source);
@@ -256,6 +271,7 @@ class CalloutBlockState extends State<CalloutBlock> {
   void initState() {
     super.initState();
     _parsed = ParsedCallout.parse(widget.source);
+    _expanded = _parsed.fold != '-';
     _bodyCtrl = TextEditingController(
       text: CalloutSourceParts(widget.source).body.text,
     );
@@ -290,6 +306,9 @@ class CalloutBlockState extends State<CalloutBlock> {
       _emitted = null;
       _headerSelection = null;
       _parsed = ParsedCallout.parse(widget.source);
+      if (ParsedCallout.parse(oldWidget.source).fold != _parsed.fold) {
+        _expanded = _parsed.fold != '-';
+      }
       final body = CalloutSourceParts(widget.source).body.text;
       if (_bodyCtrl.text != body) {
         _bodyCtrl.value = TextEditingValue(
@@ -314,34 +333,28 @@ class CalloutBlockState extends State<CalloutBlock> {
   }
 
   void _updateType(CalloutType newType) {
+    if (!_bodyCtrl.value.composing.isCollapsed) return;
     final source = _emitted ?? widget.source;
     final parts = CalloutSourceParts(source);
     if (parts.typeEnd <= parts.typeStart) return;
-    _parsed = ParsedCallout(
-      type: newType,
-      title: _parsed.title,
-      body: _bodyCtrl.text,
-    );
     _emitted = source.replaceRange(
       parts.typeStart,
       parts.typeEnd,
       newType.name,
     );
+    _parsed = ParsedCallout.parse(_emitted!);
     widget.onChanged(_emitted!);
     setState(() {});
   }
 
   void _onBodyChanged(String newBody) {
-    _parsed = ParsedCallout(
-      type: _parsed.type,
-      title: _parsed.title,
-      body: newBody,
-    );
     _emitted = CalloutSourceParts(_emitted ?? widget.source).editBody(newBody);
+    _parsed = ParsedCallout.parse(_emitted!);
     widget.onChanged(_emitted!);
   }
 
   bool selectSource(int offset, {int length = 0}) {
+    if (!_expanded) setState(() => _expanded = true);
     final source = _emitted ?? widget.source;
     final parts = CalloutSourceParts(source);
     if (offset < parts.headerEnd) {
@@ -366,6 +379,50 @@ class CalloutBlockState extends State<CalloutBlock> {
       if (context != null) Scrollable.ensureVisible(context, alignment: .15);
     });
     return true;
+  }
+
+  Future<void> _editTitle() async {
+    if (!_bodyCtrl.value.composing.isCollapsed) return;
+    final before = _emitted ?? widget.source;
+    final parts = CalloutSourceParts(before);
+    if (parts.typeEnd <= parts.typeStart) return;
+    final next = await showDialog<String>(
+      context: context,
+      builder: (_) => _CalloutTitleDialog(title: _parsed.title),
+    );
+    if (!mounted || next == null) return;
+    if (before != (_emitted ?? widget.source)) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(
+          content: Text('The callout changed. Reopen its title editor.'),
+        ),
+      );
+      return;
+    }
+    final title = next.replaceAll(RegExp(r'[\r\n]+'), ' ').trim();
+    _headerSelection = null;
+    _emitted = CalloutSourceParts(before).editTitle(title);
+    _parsed = ParsedCallout.parse(_emitted!);
+    widget.onChanged(_emitted!);
+    setState(() {});
+  }
+
+  void _foldSetting({String? marker}) {
+    if (!_bodyCtrl.value.composing.isCollapsed) return;
+    final before = _emitted ?? widget.source;
+    final parts = CalloutSourceParts(before);
+    final markerAt = parts.typeEnd + 1;
+    if (parts.typeEnd <= parts.typeStart) return;
+    _emitted = before.replaceRange(
+      markerAt,
+      markerAt + _parsed.fold.length,
+      marker ?? (_parsed.fold.isEmpty ? '+' : ''),
+    );
+    _parsed = ParsedCallout.parse(_emitted!);
+    _expanded = _parsed.fold != '-';
+    if (!_expanded) _focus.unfocus();
+    widget.onChanged(_emitted!);
+    setState(() {});
   }
 
   InlineSpan _headerSpan(Color highlight) {
@@ -393,7 +450,11 @@ class CalloutBlockState extends State<CalloutBlock> {
   Widget build(BuildContext context) {
     final colors = OrbitColors.of(context);
     final type = _parsed.type;
-    final effectiveColor = type.color;
+    final effectiveColor =
+        type == CalloutType.btw &&
+            Theme.of(context).brightness == Brightness.light
+        ? const Color(0xFF2F648F)
+        : type.color;
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
@@ -424,8 +485,23 @@ class CalloutBlockState extends State<CalloutBlock> {
                   ),
                   color: effectiveColor.withValues(alpha: 0.08),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Icon(type.icon, size: 16, color: effectiveColor),
+                      if (_parsed.fold.isNotEmpty)
+                        IconButton(
+                          tooltip: _expanded
+                              ? 'Collapse callout'
+                              : 'Expand callout',
+                          icon: Icon(
+                            _expanded ? Icons.expand_less : Icons.expand_more,
+                          ),
+                          onPressed: () {
+                            if (!_bodyCtrl.value.composing.isCollapsed) return;
+                            _focus.unfocus();
+                            setState(() => _expanded = !_expanded);
+                          },
+                        ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text.rich(
@@ -435,7 +511,9 @@ class CalloutBlockState extends State<CalloutBlock> {
                               (widget.textStyle ??
                                       const TextStyle(fontSize: 14))
                                   .copyWith(
-                                    fontWeight: FontWeight.w700,
+                                    fontWeight: NoteTypography(
+                                      fontFamily: widget.textStyle?.fontFamily,
+                                    ).headingWeight,
                                     color: effectiveColor,
                                   ),
                         ),
@@ -463,37 +541,74 @@ class CalloutBlockState extends State<CalloutBlock> {
                         ],
                         onSelected: _updateType,
                       ),
+                      PopupMenuButton<String>(
+                        tooltip: 'Callout options',
+                        icon: const Icon(Icons.more_horiz, size: 16),
+                        itemBuilder: (_) => [
+                          const PopupMenuItem(
+                            value: 'title',
+                            child: Text('Edit title'),
+                          ),
+                          PopupMenuItem(
+                            value: 'fold',
+                            child: Text(
+                              _parsed.fold.isEmpty
+                                  ? 'Make collapsible'
+                                  : 'Keep expanded',
+                            ),
+                          ),
+                          if (_parsed.fold.isNotEmpty)
+                            PopupMenuItem(
+                              value: _parsed.fold == '-' ? 'open' : 'closed',
+                              child: Text(
+                                _parsed.fold == '-'
+                                    ? 'Start expanded'
+                                    : 'Start collapsed',
+                              ),
+                            ),
+                        ],
+                        onSelected: (value) {
+                          if (value == 'title') {
+                            _editTitle();
+                          } else if (value == 'fold') {
+                            _foldSetting();
+                          } else {
+                            _foldSetting(marker: value == 'closed' ? '-' : '+');
+                          }
+                        },
+                      ),
                     ],
                   ),
                 ),
 
                 // Editable Callout Content
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  child: TextField(
-                    key: const ValueKey('callout-body'),
-                    controller: _bodyCtrl,
-                    focusNode: _focus,
-                    maxLines: null,
-                    style:
-                        (widget.textStyle ??
-                                const TextStyle(fontSize: 14, height: 1.5))
-                            .copyWith(color: colors.text),
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      hintText: 'Type callout contents...',
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      contentPadding: EdgeInsets.zero,
-                      fillColor: Colors.transparent,
+                if (_expanded)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
                     ),
-                    onChanged: _onBodyChanged,
+                    child: TextField(
+                      key: const ValueKey('callout-body'),
+                      controller: _bodyCtrl,
+                      focusNode: _focus,
+                      maxLines: null,
+                      style:
+                          (widget.textStyle ??
+                                  const TextStyle(fontSize: 14, height: 1.5))
+                              .copyWith(color: colors.text),
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        hintText: 'Type callout contents...',
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                        fillColor: Colors.transparent,
+                      ),
+                      onChanged: _onBodyChanged,
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -510,7 +625,7 @@ class CalloutBlockSyntax extends md.BlockSyntax {
   const CalloutBlockSyntax();
 
   static final _calloutHeaderPattern = RegExp(
-    r'^\s*>\s*\[!([a-zA-Z]+)\][ \t]*(.*)$',
+    r'^\s*>\s*\[!([a-zA-Z]+)\]([+-]?)[ \t]*(.*)$',
   );
 
   @override
@@ -525,7 +640,7 @@ class CalloutBlockSyntax extends md.BlockSyntax {
   md.Node parse(md.BlockParser parser) {
     final match = _calloutHeaderPattern.firstMatch(parser.current.content)!;
     final typeStr = match.group(1)!;
-    final title = match.group(2)!.trim();
+    final title = match.group(3)!.trim();
     parser.advance();
 
     final bodyLines = <String>[];
@@ -571,6 +686,7 @@ class CalloutBlockSyntax extends md.BlockSyntax {
     ]);
     element.attributes['type'] = typeStr;
     element.attributes['title'] = title;
+    element.attributes['fold'] = match[2]!;
     return element;
   }
 }
@@ -609,7 +725,11 @@ class CalloutElementBuilder extends MarkdownElementBuilder {
         : '';
 
     final colors = OrbitColors.of(context);
-    final effectiveColor = type.color;
+    final effectiveColor =
+        type == CalloutType.btw &&
+            Theme.of(context).brightness == Brightness.light
+        ? const Color(0xFF2F648F)
+        : type.color;
     final headerDisplay = title.isNotEmpty
         ? (title.toLowerCase().startsWith(type.name.toLowerCase()) ||
                   title.toLowerCase().startsWith(type.label.toLowerCase())
@@ -617,112 +737,197 @@ class CalloutElementBuilder extends MarkdownElementBuilder {
               : '${type.name}: $title')
         : type.name;
 
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 10),
-      decoration: BoxDecoration(
-        color: colors.panel,
-        borderRadius: BorderRadius.circular(OrbitRadius.control),
-        border: Border.all(color: colors.border.withValues(alpha: 0.6)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(width: 4, color: effectiveColor),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 9,
-                    ),
-                    color: effectiveColor.withValues(alpha: 0.08),
-                    child: Row(
-                      children: [
-                        Icon(type.icon, size: 16, color: effectiveColor),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ReadSearchText(
-                            text: title,
-                            leadingLength: headerDisplay.length - title.length,
-                            child: SelectableText(
-                              headerDisplay,
-                              key: const ValueKey('read-callout-title'),
-                              style: typography.body().copyWith(
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0,
-                                color: effectiveColor,
+    return _ReadCalloutShell(
+      fold: element.attributes['fold'] ?? '',
+      builder: (expanded, toggle) => Container(
+        margin: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: colors.panel,
+          borderRadius: BorderRadius.circular(OrbitRadius.control),
+          border: Border.all(color: colors.border.withValues(alpha: 0.6)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(width: 4, color: effectiveColor),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 9,
+                      ),
+                      color: effectiveColor.withValues(alpha: 0.08),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(type.icon, size: 16, color: effectiveColor),
+                          if ((element.attributes['fold'] ?? '').isNotEmpty)
+                            IconButton(
+                              tooltip: expanded
+                                  ? 'Collapse callout'
+                                  : 'Expand callout',
+                              icon: Icon(
+                                expanded
+                                    ? Icons.expand_less
+                                    : Icons.expand_more,
+                              ),
+                              onPressed: toggle,
+                            ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ReadSearchText(
+                              text: title,
+                              leadingLength:
+                                  headerDisplay.length - title.length,
+                              child: SelectableText(
+                                headerDisplay,
+                                key: const ValueKey('read-callout-title'),
+                                style: typography.body().copyWith(
+                                  fontWeight: typography.headingWeight,
+                                  letterSpacing: 0,
+                                  color: effectiveColor,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (body.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
-                      child: ReadSearchGroup(
-                        child: MarkdownBody(
-                          data: body,
-                          selectable: true,
-                          onTapLink: onTapLink,
-                          imageBuilder: (uri, imageTitle, alt) {
-                            final image =
-                                imageBuilder?.call(uri, imageTitle, alt) ??
-                                Text(alt ?? imageTitle ?? uri.toString());
-                            if (uri.scheme.isNotEmpty ||
-                                onOpenAttachment == null) {
-                              return image;
-                            }
-                            return ReadAttachmentPreview(
-                              uri: uri,
-                              description: alt ?? imageTitle,
-                              onOpen: onOpenAttachment,
-                              child: image,
-                            );
-                          },
-                          inlineSyntaxes: [
-                            HighlightInlineSyntax(),
-                            MarkTagInlineSyntax(),
-                            UnderlineInlineSyntax(),
-                            InsInlineSyntax(),
-                            MathInlineSyntax(),
-                          ],
-                          builders: {
-                            'a': ?linkBuilder,
-                            'mark': HighlightElementBuilder(),
-                            'u': UnderlineElementBuilder(),
-                            'ins': UnderlineElementBuilder(),
-                            'math-inline': MathElementBuilder(),
-                          },
-                          styleSheet: typography
-                              .markdown(Theme.of(context))
-                              .copyWith(
-                                code: TextStyle(
-                                  fontFamily: 'monospace',
-                                  fontSize: 13,
-                                  backgroundColor: Theme.of(
-                                    context,
-                                  ).colorScheme.surfaceContainerHighest,
-                                ),
-                              ),
-                        ),
+                        ],
                       ),
                     ),
-                ],
+                    if (body.isNotEmpty)
+                      Offstage(
+                        offstage: !expanded,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          child: ReadSearchGroup(
+                            child: MarkdownBody(
+                              data: body,
+                              selectable: true,
+                              onTapLink: onTapLink,
+                              imageBuilder: (uri, imageTitle, alt) {
+                                final image =
+                                    imageBuilder?.call(uri, imageTitle, alt) ??
+                                    Text(alt ?? imageTitle ?? uri.toString());
+                                if (uri.scheme.isNotEmpty ||
+                                    onOpenAttachment == null) {
+                                  return image;
+                                }
+                                return ReadAttachmentPreview(
+                                  uri: uri,
+                                  description: alt ?? imageTitle,
+                                  onOpen: onOpenAttachment,
+                                  child: image,
+                                );
+                              },
+                              inlineSyntaxes: [
+                                HighlightInlineSyntax(),
+                                MarkTagInlineSyntax(),
+                                UnderlineInlineSyntax(),
+                                InsInlineSyntax(),
+                                MathInlineSyntax(),
+                              ],
+                              builders: {
+                                'a': ?linkBuilder,
+                                'mark': HighlightElementBuilder(),
+                                'u': UnderlineElementBuilder(),
+                                'ins': UnderlineElementBuilder(),
+                                'math-inline': MathElementBuilder(),
+                              },
+                              styleSheet: typography
+                                  .markdown(Theme.of(context))
+                                  .copyWith(
+                                    code: TextStyle(
+                                      fontFamily: 'monospace',
+                                      fontSize: 13,
+                                      backgroundColor: Theme.of(
+                                        context,
+                                      ).colorScheme.surfaceContainerHighest,
+                                    ),
+                                  ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _ReadCalloutShell extends StatefulWidget {
+  const _ReadCalloutShell({required this.fold, required this.builder});
+  final String fold;
+  final Widget Function(bool expanded, VoidCallback? toggle) builder;
+  @override
+  State<_ReadCalloutShell> createState() => _ReadCalloutShellState();
+}
+
+class _ReadCalloutShellState extends State<_ReadCalloutShell> {
+  late bool expanded = widget.fold != '-';
+  @override
+  void didUpdateWidget(_ReadCalloutShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.fold != widget.fold) expanded = widget.fold != '-';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final searching = ReadSearchActivity.of(context);
+    return widget.builder(
+      expanded || searching,
+      searching ? null : () => setState(() => expanded = !expanded),
+    );
+  }
+}
+
+class _CalloutTitleDialog extends StatefulWidget {
+  const _CalloutTitleDialog({required this.title});
+  final String title;
+  @override
+  State<_CalloutTitleDialog> createState() => _CalloutTitleDialogState();
+}
+
+class _CalloutTitleDialogState extends State<_CalloutTitleDialog> {
+  late final input = TextEditingController(text: widget.title);
+  @override
+  void dispose() {
+    input.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Callout title'),
+    scrollable: true,
+    content: TextField(
+      controller: input,
+      autofocus: true,
+      maxLines: 2,
+      decoration: const InputDecoration(hintText: 'Optional title'),
+      onSubmitted: (s) => Navigator.pop(context, s),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      TextButton(
+        onPressed: () => Navigator.pop(context, input.text),
+        child: const Text('Apply'),
+      ),
+    ],
+  );
 }

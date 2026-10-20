@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import '../domain/writing_photo.dart';
 
 import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
@@ -188,15 +189,23 @@ class WorkspaceRepository {
     return (length: bytes.length, checksum: sha256.convert(bytes).toString());
   }
 
-  Future<void> createFolder(String path) => _serial(() async {
-    _requireWritable();
-    await _verifyManifest();
-    await (_store as WorkspaceFolderStore).createFolder(path);
-    _folders = await (_store as WorkspaceFolderStore).listFolders();
-  });
+  Future<void> createFolder(String path) {
+    final generation = _syncGeneration, owner = workspaceId;
+    return _serial(() async {
+      _requireWritable();
+      if (generation != _syncGeneration || owner != workspaceId) {
+        throw const WorkspaceFailure(
+          'The Vault changed before folder creation.',
+        );
+      }
+      await _verifyManifest();
+      await (_store as WorkspaceFolderStore).createFolder(path);
+      _folders = await (_store as WorkspaceFolderStore).listFolders();
+    });
+  }
 
   Future<void> deleteFolder(String folder) =>
-      _serial(() => _changeFolder(folder, null));
+      _ownedOrganization(() => _changeFolder(folder, null));
 
   Future<void> moveNote(String id, String folder) {
     if (_objects[id]?.typeId != 'orbit.note') {
@@ -210,13 +219,18 @@ class WorkspaceRepository {
   }
 
   Future<void> moveFolder(String source, String target) =>
-      _serial(() => _changeFolder(source, target));
+      _ownedOrganization(() => _changeFolder(source, target));
   List<UniversalObject> get objects => List.unmodifiable(_objects.values);
   Future<SyncInventory> syncInventory() => _serial(() async {
     _requireWritable();
     await _verifyManifest();
     return captureSyncInventory(_store, workspaceId);
   });
+
+  bool get supportsFileSync =>
+      _store is WorkspaceStreamingStore &&
+      _store is WorkspaceStagingStore &&
+      !_store.isBrowser;
 
   /// File-size metadata only: opening Settings never rehashes large attachments.
   Future<SyncFootprint> syncFootprint() => _serial(() async {
@@ -611,24 +625,32 @@ class WorkspaceRepository {
     String body = '',
     Map<String, dynamic> properties = const {},
     Map<String, dynamic> data = const {},
-  }) => _serial(() async {
-    _requireWritable();
+  }) {
+    final generation = _syncGeneration, owner = workspaceId;
     final now = DateTime.now().toUtc();
-    return _save(
-      UniversalObject(
-        id: const Uuid().v4(),
-        workspaceId: workspaceId,
-        typeId: typeId,
-        title: title,
-        body: body,
-        properties: properties,
-        data: data,
-        createdAt: now,
-        updatedAt: now,
-        revision: 0,
-      ),
+    // Freeze caller-owned containers before waiting behind another command.
+    final candidate = UniversalObject(
+      id: const Uuid().v4(),
+      workspaceId: owner,
+      typeId: typeId,
+      title: title,
+      body: body,
+      properties: properties,
+      data: data,
+      createdAt: now,
+      updatedAt: now,
+      revision: 0,
     );
-  });
+    return _serial(() async {
+      _requireWritable();
+      if (generation != _syncGeneration || owner != workspaceId) {
+        throw const WorkspaceFailure(
+          'The Vault changed before object creation.',
+        );
+      }
+      return _save(candidate);
+    });
+  }
 
   Future<UniversalObject> save(UniversalObject object) =>
       _serial(() => _save(object));
@@ -765,13 +787,28 @@ class WorkspaceRepository {
     return saved;
   }
 
-  Future<UniversalObject> trash(String id) => _serial(
+  // Organization/lifecycle commands may wait behind a Vault reopen in the queue.
+  // Even reopening the same identity retires the old intent.
+  Future<T> _ownedOrganization<T>(Future<T> Function() command) {
+    final generation = _syncGeneration, owner = workspaceId;
+    return _serial(() {
+      if (generation != _syncGeneration || owner != workspaceId) {
+        throw const WorkspaceFailure(
+          'The Vault changed before this operation.',
+        );
+      }
+      return command();
+    });
+  }
+
+  Future<UniversalObject> trash(String id) => _ownedOrganization(
     () => _save(_requireObject(id).copyWith(deletedAt: DateTime.now().toUtc())),
   );
-  Future<UniversalObject> restore(String id) =>
-      _serial(() => _save(_requireObject(id).copyWith(clearDeletedAt: true)));
+  Future<UniversalObject> restore(String id) => _ownedOrganization(
+    () => _save(_requireObject(id).copyWith(clearDeletedAt: true)),
+  );
 
-  Future<void> deletePermanently(String id) => _serial(() async {
+  Future<void> deletePermanently(String id) => _ownedOrganization(() async {
     _requireWritable();
     await _verifyManifest();
     final object = _objects[id];
@@ -787,22 +824,29 @@ class WorkspaceRepository {
     }
   });
 
-  Future<void> emptyTrash() => _serial(() async {
-    _requireWritable();
-    await _verifyManifest();
-    final trashed = _objects.values.where((o) => o.isDeleted).toList();
-    try {
-      for (final object in trashed) {
-        _validate(object);
-        await WorkspaceDeletions(
-          _store,
-          workspaceId,
-        ).delete(object.id, _paths[object.id]!, _hashes[object.id]!);
+  Future<void> emptyTrash({Iterable<String>? ids}) {
+    final selected =
+        (ids ?? _objects.values.where((o) => o.isDeleted).map((o) => o.id))
+            .toSet();
+    return _ownedOrganization(() async {
+      _requireWritable();
+      await _verifyManifest();
+      final trashed = _objects.values
+          .where((o) => selected.contains(o.id) && o.isDeleted)
+          .toList();
+      try {
+        for (final object in trashed) {
+          _validate(object);
+          await WorkspaceDeletions(
+            _store,
+            workspaceId,
+          ).delete(object.id, _paths[object.id]!, _hashes[object.id]!);
+        }
+      } finally {
+        await _refresh();
       }
-    } finally {
-      await _refresh();
-    }
-  });
+    });
+  }
 
   Future<List<UniversalObject>> search(String query) async {
     await _queue;
@@ -829,6 +873,83 @@ class WorkspaceRepository {
           .toList(),
       size: snapshot.fold<int>(0, (size, o) => size + o.body.length + 256),
     );
+  }
+
+  Future<String> saveDeviceWritingPhoto(
+    Uint8List bytes, {
+    required String expectedWorkspace,
+  }) {
+    validateWritingPhotoBytes(bytes);
+    final copy = Uint8List.fromList(bytes);
+    final id = sha256.convert(copy).toString();
+    return _serial(() async {
+      _requireWritable();
+      if (workspaceId != expectedWorkspace) {
+        throw const WorkspaceFailure(
+          'The Vault changed before saving the background.',
+        );
+      }
+      final path = '.orbit/device/writing-backgrounds/$id.png';
+      final old = (await _store.listFiles()).contains(path)
+          ? await _readStoredWritingPhoto(id)
+          : null;
+      if (old != null) {
+        if (sha256.convert(old).toString() != id) {
+          throw const WorkspaceFailure(
+            'The saved background is damaged; choose another photo.',
+          );
+        }
+        return id;
+      }
+      await _store.write(path, copy, expectedHash: null);
+      return id;
+    });
+  }
+
+  Future<Uint8List?> readDeviceWritingPhoto(
+    String id, {
+    required String expectedWorkspace,
+  }) => _serial(() async {
+    _requireOpen();
+    if (!WritingPhoto.validId(id) || workspaceId != expectedWorkspace) {
+      throw const WorkspaceFailure(
+        'The background reference is unavailable in this Vault.',
+      );
+    }
+    return _readStoredWritingPhoto(id);
+  });
+
+  Future<Uint8List?> _readStoredWritingPhoto(String id) async {
+    final path = '.orbit/device/writing-backgrounds/$id.png';
+    final store = _store;
+    if (store is WorkspaceFileSizeStore &&
+        await (store as WorkspaceFileSizeStore).fileSize(path) >
+            WritingPhoto.maxBytes) {
+      throw const WorkspaceFailure('The saved background exceeds its limit.');
+    }
+    Uint8List? bytes;
+    if (store is WorkspaceStreamingStore) {
+      final builder = BytesBuilder(copy: false);
+      await for (final chunk in (store as WorkspaceStreamingStore).openRead(
+        path,
+      )) {
+        if (builder.length + chunk.length > WritingPhoto.maxBytes) {
+          throw const WorkspaceFailure(
+            'The saved background exceeds its limit.',
+          );
+        }
+        builder.add(chunk);
+      }
+      bytes = builder.takeBytes();
+    } else {
+      bytes = await store.read(path);
+    }
+    if (bytes == null) return null;
+    validateWritingPhotoBytes(bytes);
+    if (sha256.convert(bytes).toString() != id) {
+      throw const WorkspaceFailure('The saved background is damaged.');
+    }
+    return Uint8List.fromList(bytes);
   }
 
   Future<Map<String, dynamic>> readDeviceSettings() async {
@@ -885,53 +1006,65 @@ class WorkspaceRepository {
   Future<UniversalObject> importAttachment({
     required String name,
     required Uint8List bytes,
-  }) => _serial(() async {
-    _requireWritable();
+  }) {
     if (bytes.length > 100 * 1024 * 1024) {
-      throw const WorkspaceFailure(
-        'This first attachment importer accepts files up to 100 MB.',
+      return Future.error(
+        const WorkspaceFailure(
+          'This first attachment importer accepts files up to 100 MB.',
+        ),
       );
     }
-    final checksum = sha256.convert(bytes).toString();
-    final matches = objects.where(
-      (o) =>
-          o.typeId == 'orbit.file' &&
-          o.properties['checksum'] == checksum &&
-          !o.isDeleted,
-    );
-    if (matches.isNotEmpty) return matches.first;
-    final safeName = _safeName(name);
-    final path = 'Attachments/$checksum/$safeName';
-    final old = await _store.read(path);
-    if (old == null) {
-      await _store.write(path, bytes, expectedHash: null);
-    } else if (sha256.convert(old).toString() != checksum) {
-      throw const WorkspaceConflict(
-        'An attachment at this location has different bytes; it was not replaced.',
+    final generation = _syncGeneration, owner = workspaceId;
+    // Hashing and writes must observe the same bytes even while queued.
+    final snapshot = Uint8List.fromList(bytes);
+    return _serial(() async {
+      if (generation != _syncGeneration || workspaceId != owner) {
+        throw const WorkspaceFailure(
+          'The Vault changed before attachment import. Try importing again.',
+        );
+      }
+      _requireWritable();
+      final checksum = sha256.convert(snapshot).toString();
+      final matches = objects.where(
+        (o) =>
+            o.typeId == 'orbit.file' &&
+            o.properties['checksum'] == checksum &&
+            !o.isDeleted,
       );
-    }
-    // An interruption before metadata is written leaves recoverable ordinary
-    // bytes, never a metadata record referencing a not-yet-written attachment.
-    final now = DateTime.now().toUtc();
-    return _save(
-      UniversalObject(
-        id: const Uuid().v4(),
-        workspaceId: workspaceId,
-        typeId: 'orbit.file',
-        title: name,
-        createdAt: now,
-        updatedAt: now,
-        revision: 0,
-        properties: {
-          'contentRef': path,
-          'originalName': name,
-          'mimeType': _mime(safeName),
-          'byteLength': bytes.length,
-          'checksum': checksum,
-        },
-      ),
-    );
-  });
+      if (matches.isNotEmpty) return matches.first;
+      final safeName = _safeName(name);
+      final path = 'Attachments/$checksum/$safeName';
+      final old = await _store.read(path);
+      if (old == null) {
+        await _store.write(path, snapshot, expectedHash: null);
+      } else if (sha256.convert(old).toString() != checksum) {
+        throw const WorkspaceConflict(
+          'An attachment at this location has different bytes; it was not replaced.',
+        );
+      }
+      // An interruption before metadata is written leaves recoverable ordinary
+      // bytes, never a metadata record referencing a not-yet-written attachment.
+      final now = DateTime.now().toUtc();
+      return _save(
+        UniversalObject(
+          id: const Uuid().v4(),
+          workspaceId: workspaceId,
+          typeId: 'orbit.file',
+          title: name,
+          createdAt: now,
+          updatedAt: now,
+          revision: 0,
+          properties: {
+            'contentRef': path,
+            'originalName': name,
+            'mimeType': _mime(safeName),
+            'byteLength': snapshot.length,
+            'checksum': checksum,
+          },
+        ),
+      );
+    });
+  }
 
   Future<Uint8List?> readAttachment(String relativePath) async {
     validateRelativePath(relativePath);

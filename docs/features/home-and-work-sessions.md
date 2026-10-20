@@ -72,3 +72,21 @@ descriptor format before arbitrary views/plugins can join this mechanism.
 M0 Home is only a welcome screen. Add real local recents/tasks after their data
 exists. Implement manual continuation/context restoration before inferred summaries;
 activity aggregation and AI are later independent enhancements.
+
+## Connected project activity and continuation — 2026-10-12
+
+Project workspace Activity records explicit in-app opens, normal object creation,
+completed tasks, saved drafts/events and shell attachment capture. Recording is off
+by default, can pause without filling gaps and can be cleared. Records contain
+object IDs, action and UTC time, never content bodies or system monitoring. Repeated
+same-object/action events within a minute coalesce; only successful content saves
+become save events. This is a recorded-action timeline, not total focus duration.
+
+Continue retains an editable draft and written next step; Save working position
+flushes content first and stores bounded tabs/split/view descriptors plus source
+versions in private device settings. Resume uses current content and refreshes
+existing view instances. Changed sources use fresh positions and missing documents
+are skipped with feedback. Reset project context removes activity, draft and saved
+position. Up to 30 contexts, 300 events each, and 4,000-character continuation text.
+This complements existing work/study sessions, without inventing activity for other
+specialized repository operations or restoring another device's personal positions.

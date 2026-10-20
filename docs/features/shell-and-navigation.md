@@ -66,6 +66,23 @@ The exact M0 breakpoint, two destinations and test sizes remain defined in
 [current.md](../tasks/current.md). No tabs, docking, registries or advanced inspector
 are added to M0 by this expanded specification.
 
+## Split-pane focus quality — 2026-10-20
+
+Tab cycling and close shortcuts target the visible pane that last received focus
+or a pointer action, including read-only panes. Responsive layouts retain the
+saved split but do not send shortcuts to its hidden pane. Cycling skips deleted,
+missing and duplicate tab candidates. Secondary cycling avoids an unsupported
+second view of the same non-note object; primary cycling can still activate it.
+Closing the secondary note view keeps its source and
+the primary view intact.
+
+Each pane owns a focus scope. Explicit tab activation/cycling and split closing
+restore editor typing focus; normal document refreshes do not request it.
+Deferred requests check their view/request, Vault opening and current route so
+they cannot steal focus from another modal. Source/Rich selections and the
+other long-document view remain independent. Existing local session/history
+storage remains authoritative; no new schema or persistent focus state is added.
+
 ## Explorer interaction follow-up — 2026-09-11
 
 NAV-02/10 subset: Notes folder/note rows now have an Orbit surface with hover,
@@ -78,3 +95,37 @@ Copy note reference uses the existing stable UUID wiki-link format and sanitized
 readable title. Open beside, move, Trash and folder commands retain their existing
 repository paths. Read-only/unsupported-format rows disable mutation entries.
 No multi-select, new folder deletion, tree-wide arrow traversal or data migration.
+
+## Connected project workspace — 2026-10-12
+
+The shell project bar explicitly scopes search/explorer and creation while retaining
+open documents. Project workspace opens as a dialog at narrow widths or can replace
+the wide inspector as a pinned panel; Close/unpin restores object inspection.
+Work lists canonical objects, briefs and unfinished standalone tasks with filters,
+30-row pages and Open beside. New note/task/Canvas objects and imported files inherit
+selected project unless ownership was supplied. Assign existing preserves identity;
+project metadata edits offer guarded undo. Existing Space restrictions also apply
+to search/explorer; project selection never rewrites existing object ownership.
+
+The bar is omitted when a Vault has no project candidates. Calendar layouts with
+little vertical space scroll without squeezing header/agenda controls; day cells
+scale with enlarged text and date/count badges wrap at narrow widths.
+
+### File and course entry points — 2026-10-13
+
+Explorer now has direct buttons for Open code file, Open 3D model (OBJ / GLB),
+and Courses & study progress. These also appear in New/import and the workspace
+Open/import menu. Code files use the supported source/text extension filter;
+models use OBJ/GLB and the existing offline viewer. Opening imports an ordinary
+owned attachment through the repository; no source code runs. Existing preview
+size/encoding/mesh limitations and original-file recovery remain in effect.
+
+## Common source actions — 2026-10-13
+
+Every object surface exposes Connections and Use elsewhere: copy a live card or
+stable mention, embed in a note, place on Canvas, or open beside. Linked course
+and project roots offer direct navigation. Shared references retain precise
+locations in secondary panes, including PDF pages and annotation ownership.
+Reference pickers and Connections use scrollable bounded headers/results/actions
+at narrow widths and enlarged text. Vault changes invalidate open reference
+dialogs. These are local operations and require no account.

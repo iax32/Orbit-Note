@@ -50,9 +50,11 @@ const codeLanguages = {
 String? previewLanguage(String name) =>
     codeLanguages[name.split('.').last.toLowerCase()];
 
+const maxCodePreviewBytes = 1024 * 1024;
+
 /// Strict decoding: never present replacement characters as original source.
 String decodeCodePreview(Uint8List bytes) {
-  if (bytes.length > 1024 * 1024) {
+  if (bytes.length > maxCodePreviewBytes) {
     throw const FormatException(
       'Preview supports files up to 1 MiB. Open the original for larger files.',
     );

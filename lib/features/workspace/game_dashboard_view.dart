@@ -6,6 +6,7 @@ import 'dashboard_columns.dart';
 import 'workspace_views.dart';
 import 'gameplay_workbench.dart';
 import 'source_browser_dialog.dart';
+import 'code_ide_workspace.dart';
 
 class GameDashboardView extends StatelessWidget {
   const GameDashboardView({
@@ -410,7 +411,24 @@ class GameDashboardView extends StatelessWidget {
                     runSpacing: 8,
                     children: [
                       OutlinedButton.icon(
-                        onPressed: () => showSourceBrowser(context),
+                        onPressed: () => showCodeIde(
+                          context,
+                          controller: controller,
+                          owner: viewObject,
+                          evidenceFolder:
+                              '${folderFilter ?? 'Games/$projectName'}/Programming',
+                        ),
+                        icon: const Icon(Icons.developer_mode),
+                        label: const Text('Code workspace'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => showSourceBrowser(
+                          context,
+                          controller: controller,
+                          owner: viewObject,
+                          folder:
+                              '${folderFilter ?? 'Games/$projectName'}/Programming',
+                        ),
                         icon: const Icon(Icons.code),
                         label: const Text('Browse source files'),
                       ),

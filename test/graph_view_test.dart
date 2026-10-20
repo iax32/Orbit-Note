@@ -233,6 +233,11 @@ void main() {
       expect(find.text('Local'), findsOneWidget);
       expect(find.byType(CustomPaint), findsWidgets);
       expect(find.text('2 nodes · 0 links'), findsOneWidget);
+      await tester.tap(find.text('Vault Insights'));
+      await tester.pumpAndSettle();
+      expect(find.text('Connected pairs'), findsOneWidget);
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
       final transform = tester
           .widget<InteractiveViewer>(find.byType(InteractiveViewer))
           .transformationController!;

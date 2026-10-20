@@ -1,3 +1,2308 @@
+# In progress — GitHub source and desktop/mobile preview publication, 2026-10-20
+
+User authorized pushing the accumulated source and publishing current Windows
+and Android releases to `iax32/Orbit-Note`. Scope: inspect publishable files,
+retain private configuration/signing outside Git, increment to 1.0.1+2, build a
+Windows setup EXE and release-mode Android preview APK with the existing preview
+key, verify checksums/identity, and publish a dated preview linked to its commit.
+Keep the local runnable Windows folder. No personal Vaults or app auto-launch.
+See [publication evidence](github-publication-2026-10-20.md).
+
+## Previous task
+
+# Validated — Editor transactions and split-pane reliability, 2026-10-20
+
+Fixed wrong-input/document undo ownership, reused-note history, stale shared
+history replay, backwards selection restoration, revision-guarded clipboard/review
+commands, read-only callbacks, Unicode replacement previews and duplicate draft
+recovery. 34 new regressions; final expanded matrix **214 passed**; full suite
+**2,628 passed**, **2 existing skips**. Formatting/strict check clean across 688
+files; analysis clean. Configured Windows/server and standard web builds verified
+with fresh payloads, runtime files and font hashes. Existing web SDK/font warnings
+remain. See [evidence and limits](editor-transactions-quality-2026-10-20.md).
+Preserve unrelated work and portable originals. No desktop control, personal
+Vault mutation, publishing or shutdown. Next suggested task: structured
+table/code-block selection and command ownership across split panes. Stop before
+implementing it.
+
+## Previous task
+
+# Validated — Split-pane navigation and focus quality, 2026-10-20
+
+Fixed hidden/read-only pane shortcut targeting, stale/deleted tab cycling,
+secondary Canvas candidate filtering, tab/split-close typing focus and LaTeX
+preamble focus fallback. Pane scopes and guarded activation preserve modal focus
+and independent long-document selections/scroll. 18 new widget regressions;
+focused matrix 40 passed; full suite **2,594 passed**, **2 existing skips**.
+Formatting/strict check clean across 682 files; analysis clean. Configured
+Windows/server and standard web builds verified with fresh payloads, runtime files
+and font hashes. See [evidence and limits](split-focus-quality-2026-10-20.md).
+Preserve unrelated work and portable data. No desktop control, personal Vault
+mutation, publishing or shutdown. Next suggested task: find/replace and undo/redo
+ownership while switching split panes. Stop before implementing it.
+
+## Previous task
+
+# Validated — Assignment and reference workflow quality, 2026-10-19
+
+Fixed stale mention linking, deleted reference targets, tag normalization and
+unknown-data retention, original-document tag input, live project/reference
+choices, guarded assignment ownership, disappearing keyboard selection and
+retryable connection drafts without duplicate edges. 19 new regressions;
+focused matrix 65 passed; full suite **2,576 passed**, **2 existing skips**.
+Formatting/strict check clean across 681 files; analysis clean. Configured
+Windows/server and standard web releases built; fresh payloads, runtime files
+and font hashes verified. See [evidence and limits](assignment-relation-quality-2026-10-19.md).
+Preserve unrelated work and portable data. No desktop control, personal Vault
+mutation, publishing or shutdown. Next suggested task: split-pane tab switching
+and keyboard focus restoration after dialogs with several long documents. Stop
+before implementing it.
+
+## Previous task
+
+# Validated — Metadata dialog quality, 2026-10-19
+
+Fixed stale-field/whole-property overwrites, guarded rename/property/color
+callbacks, retained conflicting drafts, finite-number/hex validation and enlarged
+color previews. Folder rename checks changed membership; native save/reopen keeps
+source, identity, aliases and unknown metadata. 17 new regressions; focused matrix
+47 passed; full suite **2,557 passed**, **2 existing skips**. Formatting/analysis
+clean across 676 Dart files; final fixture-only isolation check also passed.
+Configured Windows/server and standard web releases built; fresh payloads, runtime
+files and font hashes verified. See [scope, evidence and limits](metadata-dialog-quality-2026-10-19.md).
+Preserve unrelated work and portable data. No desktop control, personal Vault
+changes or shutdown. Next suggested task: bulk tag/project assignments and retained
+relation pickers under concurrent edits, large selections and failed saves. Stop
+before implementing that follow-up.
+
+## Previous task
+
+# Validated — Bulk lifecycle quality, 2026-10-19
+
+Fixed mutable/duplicate batch selections, retired queued lifecycle commands,
+partial permanent-cleanup reconciliation, failed-save deletion guards and
+pending confirmation ownership/counts. Stress evidence includes 120 mixed native
+owners across repeated moves/Trash/restore/reopen and guarded planning Undo.
+19 new regressions; full suite **2,540 passed**, **2 existing skips**; formatting
+and analysis clean. Configured Windows/server and standard web releases built;
+runtime files, fresh payloads and font hashes verified. See
+[scope, evidence and limits](bulk-lifecycle-quality-2026-10-19.md). Preserve
+unrelated work and ordinary files. No desktop control, personal Vault changes or
+shutdown. Next suggested task: Explorer rename/property/color dialogs under
+concurrent edits, retained callbacks and narrow/large-text layouts. Stop before
+implementing it.
+
+## Previous task
+
+# Validated — Creation and source/file workflow quality, 2026-10-19
+
+Fixed wrong-type creation, retained inline callbacks, failed-read retries, stale
+source/model previews, source-operation feedback and delayed external-open
+ownership. Stress coverage includes out-of-order reads, stable preview state and
+5,000-file listings. 18 new regressions; full suite **2,521 passed**, **2 existing
+skips**; formatting and analysis clean. Configured Windows/server and standard
+web releases built; fresh payloads, runtime files and font hashes verified. See
+[scope, evidence and limits](file-workflow-quality-2026-10-19.md). Unrelated work
+and portable originals are preserved. No desktop control, personal Vault changes
+or shutdown. Suggested next task: mixed-type bulk move/delete/restore and guarded
+Undo after partial failures or later edits. Stop before implementing it.
+
+## Previous task
+
+# Validated — Kanban and project-board quality, 2026-10-19
+
+Fixed reserved-name grouping, stale drag/options/completion, failed/delayed
+creation, read-only/imported data, shared membership and large/narrow layouts.
+18 new regressions; full suite **2,503 passed**, **2 existing skips**; formatting
+and analysis clean. Configured Windows/server and standard web releases built;
+fresh payloads, runtime files and font hashes verified. See
+[scope, evidence and limits](kanban-quality-2026-10-19.md). Unrelated changes,
+unknown data and legacy scope semantics are preserved. No desktop control,
+personal Vault changes or shutdown. Suggested next task: specialized-object
+creation flows, including the generic Other type group. Stop before implementing it.
+
+## Previous task
+
+# Validated — Large-project collection quality, 2026-10-18
+
+Fixed existing collection-table stale edits, popup/dialog/creation ownership,
+durable folder moves, shared timeline/progress membership and large-text/imported
+data handling. 20 new regressions; full suite **2,485 passed**, **2 existing
+skips**; formatting and analysis clean. Configured Windows/server and standard
+web releases built; runtime files, fresh payloads and font hashes verified.
+See [scope, checks and limits](collection-quality-2026-10-18.md). Unknown data,
+unrelated changes and legacy scope precedence are preserved. No desktop control,
+personal Vault changes or shutdown. Suggested next task: Kanban cross-view edits
+and large-project board interactions. Stop before implementing it.
+
+## Previous task
+
+# Validated — Writing font and zoom quality, 2026-10-18
+
+Fixed Pixel notebook heading weights, bundled real terminal bold/italic faces,
+expanded symbol fallbacks and isolated code/math from pixel text-size stepping.
+14 new regressions; full suite **2,465 passed**, **2 existing skips**; formatting
+and analysis clean. Configured Windows/server and standard web releases built;
+fresh payloads and all packaged font faces/hashes verified. See [changes, checks
+and limits](writing-font-quality-2026-10-18.md). No desktop-control testing,
+personal Vault changes or shutdown. Preserve unrelated work. Suggested next task:
+document preview/export font-style fidelity audit. Stop before implementing it.
+
+## Previous task
+
+# Validated — Canvas selection/drop/clipboard quality, 2026-10-18
+
+Completed the approved selection, drag/drop and cross-editor clipboard quality
+batch. 31 new behavior regressions; full suite **2,451 passed**, **2 existing
+skips**; formatting and analysis clean. Configured Windows, standalone server
+and standard web releases built; required bundle files and fresh compiled
+payloads verified. See [changes, checks and limits](canvas-transfer-quality-2026-10-17.md).
+No desktop-control testing, personal Vault changes or shutdown. Preserve all
+unrelated working-tree changes. Suggested next task: Canvas connector routing
+and UML editing quality audit. Stop before implementing it.
+
+## Previous task
+
+# Validated — Editor and document-tool quality, 2026-10-17
+
+Completed the scoped writing-tool, temporary-draft, publication failure and
+layout quality batch. 21 new regressions; full suite **2,420 passed**, **2 existing
+skips**; formatting and analysis clean. Windows/configured Google and standard
+web releases built, runnable bundle verified. See [changes, checks and remaining
+boundaries](editor-quality-2026-10-17.md). No desktop-control testing or shutdown.
+Suggested next task: Canvas selection, drag-and-drop and cross-editor clipboard
+quality. Stop before implementing it; preserve all unrelated working-tree changes.
+
+## Previous task
+
+# Validated — Technical articles and CMS publishing, 2026-10-17
+
+Implement the owner's technical-article, memory/reverse-engineering diagram and
+SEO publishing request. WordPress/another CMS is the chosen destination.
+See [scope, plan and evidence](technical-articles-2026-10-17.md). Preserve the
+completed PDF work and unrelated changes. Do not repeat the previous shutdown.
+
+## Previous task
+
+# Validated — PDF review workspace, 2026-10-17
+
+Owner requests a substantial documented feature update, followed by computer
+shutdown once work is complete. Scope FILE-04/05/11/12/13/14: expanded review,
+keyboard source navigation, explicit multi/range selection, bounded paginated
+results, selected-only copy/export/linked summaries, bulk resolve/reopen/color/
+style/delete with progress/cancellation, guarded per-item recovery and batch Undo.
+CAN-13/15 and FILE-13 bridge selected evidence into linked Canvas review boards.
+Reuse ordinary annotation notes, original PDF bytes and existing repository
+history; report partial results honestly. No new engine, service, schema or
+desktop-control testing. Preserve unrelated work.
+
+Plan: share validated review transformations and repository commands; build an
+Orbit-themed selection/action workspace around existing review rows; verify
+bulk/Undo/partial failure/cancel/stale/readonly/source changes, native restart,
+keyboard/filter/narrow-layout behavior; run required checks and release builds.
+Finish all writes/checks and record results before requesting OS shutdown. Do not
+force-close unsaved apps. No shutdown until actual completion.
+
+Delivered: the existing Highlights and comments view expands over the reading
+area with its actual state retained, rather than a duplicate editor. Checkboxes,
+Shift ranges, keyboard source navigation/selection and 50-item result pages work
+with the full filtered selection. Hidden selections clear on filter changes;
+selected-only copy, export, linked summary and annotated PDF use existing paths.
+Selected review boards use ordinary PDF/note-reference cards, retain source
+context and open beside the PDF; no evidence notes or attachment bytes are copied.
+
+Bulk resolve/reopen/color/style/Trash commands validate each immutable snapshot
+and use normal recoverable note saves. A 1,000-item bound, duplicate-ID collapse,
+single-batch guard, source/draft/read-only checks and explicit saved/unchanged/
+failed results retain safe partial progress. Cancellation stops between writes.
+Undo restores only exact committed snapshots and retains newer edits; incomplete
+Undo can retry its remaining receipt. Page comments cannot become text markup.
+Receipts are private runtime state; durable history/Trash remain after reopening.
+
+The first focused tests passed domain/native failure boundaries but caught an
+expansion fixture tapping before layout settled; the fixture was repaired.
+Large-text native rendering prompted a less crowded selection toolbar and
+collapsible keyboard help. No warnings are suppressed or checks skipped for this.
+Validation and release evidence follow; no SDK/dependency/schema upgrade, external
+account access, personal data or desktop-control testing is used.
+
+Focused acceptance: **49 passed in 16s**, including 13 new domain/native/widget
+cases for batch operations, partial failure/cancel/Undo, unknown versions,
+deduplication, stale sources/drafts, linked boards, selection/export/pagination,
+2x narrow text and native reader expansion with retained selection. Headless
+rendering with local Segoe UI confirms the final 390px/2x layout at
+work/ui/pdf-review-workspace-large-text.png; the opt-in visual check passes.
+Final analyzer is clean in 13.5s. Required format and strict check pass for 656 lib/test
+files with zero changes. Scoped whitespace checks pass. No packages, analyzer
+exclusions, timeout changes or new skips were added. Evidence:
+.local/pdf-review-workspace-{focused,visual,analyze,format,format-check,fix}.log.
+Final full regression and release evidence follow.
+
+The first full run exposed two older review fixtures clicking clipped controls
+or tapping while earlier save feedback obscured the bottom row. They now scroll to controls
+and await layout/feedback expiry before real taps; assertions remain unchanged.
+That run was stopped after those failures to repair and rerun the affected PDF
+tests. Its output is retained at .local/pdf-review-workspace-tests-first-pass.log;
+it is not counted as a passing full run. No hit-test warnings are suppressed.
+
+Affected regression: **24 passed in 12s**, including the real native PDF reader
+workflow and expanded review selection. No missed-tap warnings remain. Evidence:
+.local/pdf-review-workspace-regression.log. Fresh full regression: **2,384 passed, 2 existing skips in 4m16s**. No failures
+or missed-tap warnings. Existing skips cover native symlink permission and manual
+Google consent; no new exclusions/skips/timeouts were introduced. Evidence:
+.local/pdf-review-workspace-tests.log. Release evidence follows.
+
+
+Release validation: Windows release **passed in 95.7s** with the existing
+registered Google desktop client; the standalone collaboration server compiled
+without starting a server or packaging keys. Web JavaScript release **passed in
+85.6s**. Existing Google Identity WebAssembly dry-run incompatibility and missing
+Cupertino font warnings remain; this does not claim a Wasm build. Both build
+processes exited zero. Logs:
+.local/pdf-review-workspace-{windows,web}-build.log.
+
+Runnable Windows application:
+build/windows/x64/runner/Release/orbit_note.exe. The release folder contains
+Flutter, PDFium and SQLite runtimes, ICU data, Flutter assets and the standalone
+server/launcher. Compiled data/app.so is 24,282,000 bytes, written 2026-10-17
+02:19:52 Europe/Vienna, newer than all six production files in this task. The
+native runner can retain its older timestamp; Dart application code is in app.so.
+No ZIP was created. No personal Vault, account transfer, physical-device or
+computer-control test was performed. Unrelated working-tree changes are retained.
+
+All feature work, automated validation, release builds and documentation are
+complete. The user's authorized completion action is an ordinary Windows
+shutdown, requested by a short hidden helper after the final response can send.
+It uses shutdown.exe /s /t 0, without /f; unsaved applications may prevent poweroff.
+The helper request/result is recorded in .local/pdf-review-workspace-shutdown.log;
+physical poweroff cannot be confirmed from this session.
+
+Suggested next task: import existing native PDF annotations into linked Orbit
+review notes, with explicit fidelity warnings and recoverable duplicate handling.
+Do not implement that next task as part of this completed update.
+
+## Previous task
+
+### Validated — PDF note deletion and extraction reliability, 2026-10-16
+
+Fix reported accidental PDF reference/highlight notes that cannot be deleted or
+leave the app stuck. Scope FILE-04/05/11/12/13 and ordinary recoverable note
+commands: accessible deletion from connected notes and the source banner,
+retryable failure/Undo, safe tab cleanup, stale/dirty/read-only/Vault-switch
+guards, and adjacent PDF quote extraction/save failures. Preserve original PDFs,
+unknown note/Canvas data, identity and history. No desktop-control testing.
+
+Plan: reproduce controller/UI failure boundaries; repair shared deletion and
+linked-note controls, quote persistence and source guards; test deletion/retry/
+restore, competing writes, real reader widgets and native restart. Run required
+format/analyze/full tests, document results and rebuild Windows when unlocked.
+
+Reproduced: SessionState's default lists are immutable, while tab close/pin/
+archive operations mutate them. A linked-note deletion can commit and then throw
+during tab cleanup, leaving presentations inconsistent. Sessions now own mutable
+list copies, including caller-supplied const lists. Trash removes presentation
+state without snapshotting a deleted note and promotes the adjacent PDF.
+
+Connected notes and the note's PDF-source banner now expose recoverable deletion
+and Undo; save failure releases per-note busy state with retry guidance. Generic
+Trash flushes pending edits, validates snapshots/drafts/workspace, bounds duplicate
+deletes and preserves keystrokes arriving during a deletion in the same Trash
+note. Undo refuses newer Trash snapshots; restoration keeps recovered content.
+
+Adjacent fixes: quote extraction uses canonical Canvas data rather than object
+properties, preserving existing elements/metadata. Markdown insertion retains
+authored whitespace/line endings, rejects LaTeX/read-only/invalid destinations,
+and reports failed saves. Reader retains failed selections and clears only after
+success. Quote/highlight creation ignores results belonging to a switched Vault.
+Plain quote notes retain optional source text for citation dragging. No schema
+migration, original PDF rewriting, dependency or alternate rendering engine.
+
+New tests reproduce default-list failure, delete/restore/retry, competing drafts,
+late typing during gated writes, wrong destinations, extraction failure, old-Vault
+results, real note/banner UI and native restart/source-byte retention. Existing
+Canvas extraction fixtures now assert scene data rather than the wrong property.
+Exploratory fixture syntax/async/snapshot checks are not passing evidence; final
+validation and release evidence follow. No test skips/timeouts/exclusions added.
+
+Focused acceptance: **70 passed in 28s**, including 13 new lifecycle cases,
+actual native PDF selection/deletion/Undo/source-change tests, quote extraction,
+Trash/permanent deletion and document history. Analyzer is clean in 8.8s.
+Required formatting and strict check pass for 653 lib/test files, zero changes.
+The 19 scoped style fixes affect only the two edited library files. Scoped
+whitespace checks pass. Evidence: .local/pdf-note-reliability-{focused,analyze,
+format,format-check,fix}.log.
+
+Full suite: **2,371 passed, 2 skipped in 4m22s**, concurrency 6 without competing
+release builds. Existing skips are native OS symlink permission and explicitly
+opt-in real Google consent. Evidence: .local/pdf-note-reliability-tests.log.
+No desktop control or personal Vault testing used.
+
+Windows release succeeds in 113.6s with the existing registered Google Desktop
+configuration. The standalone server compiles without starting it or packaging
+keys. Normal web release succeeds in 117.6s with the existing Google Identity
+Wasm dry-run and missing Cupertino font warnings; no Wasm acceptance is claimed.
+No SDK upgrade was performed. Runtime verification confirms EXE, Flutter/PDFium/
+SQLite, ICU/assets and server/launcher, with a fresh **24,200,080-byte app.so**
+newer than all six changed production Dart files. Run the ordinary
+build/windows/x64/runner/Release/orbit_note.exe with its siblings. No ZIP or
+app launch used. Evidence: .local/pdf-note-reliability-{windows-build,web-build,
+release-validation}.log. Final scoped whitespace checks pass.
+
+Suggested next task: keyboard navigation and multi-selection for PDF review
+items, building on the existing recoverable deletion commands. Stop before
+implementing the next task. These checks cover the reproduced failures and
+related save/deletion paths, not a claim that every PDF issue is resolved.
+
+## Previous task
+
+### Validated — Orbit UML styling and live Markdown diagrams, 2026-10-16
+
+User requests Orbit-native styling and professional export of a Canvas diagram
+into the Markdown editor without screenshots. Scope CAN-07/13/15/16 and EDT-05/08:
+shared graphite/theme-aware class rendering; export selected UML classes plus
+their relationships as a live, precise Markdown object reference; send to a new
+or existing note or copy for paste; readable vector previews in Rich/Read,
+source editing/navigation, missing/changed-source feedback and safe persistence.
+Keep existing authored class/placement IDs and unknown fields; no raster capture,
+new rendering engine, package or future Mermaid parser.
+
+Plan: reuse existing object-embed grammar and Canvas renderer; add a bounded
+selection fragment and guarded note export through controller commands; apply
+shared Orbit styling to Canvas/SVG and previews; test references, live updates,
+subset boundaries, failure/retry, read-only/stale edits, native restart and
+narrow layouts. Run required checks and build the normal Windows release.
+
+Delivered: shared Orbit surface/foreground palette, quiet separators, rounded
+class boxes and restrained per-class accents in Canvas, SVG and note previews.
+The existing Shapes and diagrams menu offers Export diagram to Markdown and
+Copy live diagram for Markdown. Pure-UML Extract Selection uses the same path.
+The destination dialog creates a note with source folder/project/course context
+or appends to a searchable existing editable Markdown note. Precise placement
+IDs travel in the existing object-block grammar; selected class content remains
+authoritative in Canvas and current internal relationships update live.
+
+Rich/Read render the same Canvas vector painter, with expansion/zoom, selectable
+class details and exact source navigation. Rich source editing opens the shared
+Canvas editor focused on the selected classes. Removed/hidden/malformed/future
+sources retain useful warnings instead of showing unrelated board content.
+Removing a block preserves its source. Source/destination changes, conflicting
+drafts, Vault switches and read-only destinations reject mutation. Existing text,
+line endings and unknown metadata survive append; failed writes retain a draft
+and retry without appending twice. Native save/restart preserves exact refs.
+
+Production Read-editor testing exposed cached object previews that did not
+refresh when prose stayed unchanged. A scoped object notifier now updates live
+surfaces without reparsing/replacing the surrounding Markdown. Twelve new
+reference/domain/controller/native-storage/widget tests cover this behavior.
+Focused acceptance: **85 passed in 23s**. Analyzer is clean in 14.1s; required
+format and strict check pass for 652 lib/test files with zero changes. Earlier
+fixture compile errors, Material ancestor assertions and the stale Read test
+were repaired and are not counted as passing evidence.
+
+Publication boundary: outside Orbit the block is a normal source link. Existing
+PDF/HTML/Word publication exports retain that link and their preview-fidelity
+warning; self-contained vector publication snapshots are not implemented here.
+No new dependencies, analyzer exclusions, timeout changes or skips added. No
+desktop control or personal-data testing used.
+
+Full regression: **2,358 passed, 2 skipped in 4m27s**, concurrency 6, without
+competing release builds. Existing skips are OS symlink permission and opt-in
+real Google account consent. Native rendering with a real local Segoe UI font
+was inspected at .local/uml-preview.png; this is a test artifact, not the stored
+diagram representation. Evidence: .local/diagram-markdown-{focused,tests,format,
+format-check,analyze}.log. Scoped whitespace checks pass.
+
+Windows release succeeds in 109.1s with the existing registered Google desktop
+configuration. The standalone server compiles without starting it. Normal web
+release succeeds in 101.7s with the existing Google Identity Wasm dry-run and
+missing Cupertino font warnings; no Wasm acceptance is claimed. Release runtime
+verification confirms Flutter/PDFium/SQLite, ICU/assets, server/launcher and a
+fresh **24,183,696-byte data/app.so** newer than all 14 changed production Dart
+files. Run build/windows/x64/runner/Release/orbit_note.exe with its siblings;
+no ZIP or app launch was used. Evidence: .local/diagram-markdown-{windows-build,
+web-build,release-validation}.log. An initial verifier used the wrong server
+filename; the corrected check confirms the actual OrbitNote-Server.exe.
+
+Suggested next task: vector diagram snapshots in published PDF/HTML/Word output,
+with explicit source/freshness details. Stop before implementing it.
+
+## Previous task
+
+### Validated — Editable UML class diagrams, 2026-10-16
+
+User requests native Canvas class diagrams matching the supplied class-box and
+multiplicity reference. Scope CAN-04/05/07/14/15/16: compartmented class shapes,
+editable attributes/operations, stereotypes/abstract names; association,
+dependency, generalization, realization, aggregation and composition; attached
+orthogonal connectors, roles/multiplicities; starter example; shared selection,
+move/resize, clipboard, history, JSON and SVG. Ordinary rectangle/connector
+presentations retain old-reader fallback and unknown fields; no new engine,
+dependency, generated code, desktop control or external service.
+
+Plan: inspect existing shape/connector/save paths and compatibility; implement
+class/relationship editors and shared geometry/export; test creation, editing,
+undo, paste/remapped endpoints, move/resize, locked/read-only/stale dialogs,
+native save/reopen and narrow/enlarged layouts; run required checks and build.
+Delivered: the Canvas Shapes and diagrams menu and empty-space context menu create
+native class boxes and attached relationships. Double-click/Open edits classes
+or UML edges. Classes have distinct bold name, attributes and operations
+compartments, optional stereotype/abstract name, authored visibility/type text
+and blue/navy defaults; empty compartments remain visible. Editing grows to fit
+new members while preserving manually enlarged geometry. Cancel inserts nothing;
+stale/read-only/locked scenes refuse edits. No universal objects are copied.
+
+Association, dependency, generalization, realization, aggregation and composition
+presets use ordinary connectors with open arrows, hollow triangles and hollow/
+filled diamonds. Endpoint multiplicities/roles, attachment side/fraction and
+orthogonal lane controls support multiple separated relationships per class.
+Shared endpoint resolution drives paint, marker tangents, hit testing, culling
+and SVG. Closed markers cover the stroke behind them. Endpoint labels follow
+movement/resizing and are indexed for hit testing; class member search returns
+the actual class name. Reversing a connector swaps its endpoint role/position
+fields as well as existing anchors/markers. Existing marker behavior is retained.
+
+Insert UML example adds the four supplied medical-domain classes and four
+associations as one undo operation, with non-overlapping lanes and useful stored
+endpoint fallbacks. Menus return keyboard focus for immediate copy/undo. Whole-
+diagram paste remaps shape/edge placement IDs and attachments. Schema 1 is
+unchanged: rectangles carry an optional documented `uml` map and connectors
+carry optional relationship fields; old readers retain named-rectangle fallback.
+Unknown root/placement/nested metadata survives edit/save/reopen. JSON retains
+editable data; SVG/PNG retain appearance. SVG escapes authored labels and clips
+content to geometry. Existing Mermaid export remains flowchart-only, with UML
+fidelity warnings in the dialog and copy action.
+
+Validation: 74 focused Canvas/UML/connector/export/search/narrow-panel checks
+pass in 17s, including 12 new domain/native storage/widget/rendering cases.
+The full suite passes: **2,346 passed, 2 skipped in 4m02s**, concurrency 6,
+without competing release builds. Skips remain native symlink permission and
+the explicitly opt-in real Google consent test. Strict formatting passes for
+648 lib/test Dart files; root analyzer is clean in 7.7s. Native save/reopen
+retains exact members, bound endpoints and unknown data. Headless rendering uses
+real local fonts for visual inspection; all six generated SVG variants parse
+with authored escaped labels and the expected closed UML marker geometry.
+
+Exploratory checks caught keyboard-focus loss after example insertion, generic
+search-result titles, duplicate template routing lanes and a toolbar-width
+regression. These were repaired before final acceptance: UML uses the existing
+Shapes menu, keeping Layers reachable at previous widths. Initial fixture
+assertion/lint and interrupted compiler runs are not counted as passing checks.
+No analyzer exclusions, timeout changes, new dependencies or test skips added.
+Evidence: .local/uml-{focused,tests,format,format-check,analyze,svg-validation}.log;
+native visual artifact .local/uml-preview.png.
+
+Windows release succeeds in 98.4s with the existing registered Google desktop
+configuration; the unchanged standalone server also compiles without starting a
+process. Normal web release succeeds in 87.8s with the existing Google Identity
+Wasm dry-run and missing Cupertino font warnings; no Wasm acceptance is claimed.
+The Release directory includes orbit_note.exe, Flutter/PDFium/SQLite runtime,
+ICU/assets and a fresh 24,134,544-byte data/app.so newer than all eight changed
+production source files. The runner EXE retains its earlier native build date;
+updated Dart behavior is in the AOT bundle. Scoped whitespace checks pass.
+Logs: .local/uml-{windows-build,web-build}.log. App/server remain closed;
+no ZIP, publishing, personal files or desktop control were used.
+
+Limits:
+no Mermaid classDiagram import/export, self-associations, automatic obstacle
+avoidance, code generation or signature/multiplicity semantic validation. No
+manual device acceptance, desktop control, personal data, publishing or ZIP.
+
+Suggested next task: Mermaid UML classDiagram import/export with fidelity
+checks and preserved authored member signatures.
+
+## Previous task
+
+### Validated — PDF highlighting and annotation controls, 2026-10-15
+
+Owner reports laggy PDF highlighting and missing deletion, and requests a more
+reliable Firefox/Acrobat-style reading workflow. Scope FILE-04/05/11/12/13:
+page-local cached annotation geometry; preserve selection/camera during ordinary
+highlight saves; show pending markup promptly; direct annotation/page-comment
+delete with recoverable Trash and guarded Undo; useful right-click actions and
+clear save failures. Preserve original bytes, canonical note IDs, unknown data,
+read-only/stale-source protections and ordinary save/history boundaries.
+No new PDF engine, dependency, destructive PDF edits or desktop control.
+
+Plan: audit selection/render/save paths and existing tests; implement cached
+page lookup and guarded annotation removal/restoration; improve in-page/review
+controls without intercepting selection drags; exercise native PDF selection,
+failure/retry, source replacement, large annotation sets, Trash/restart and
+narrow layouts; run required formatting/analyzer/full suite and Windows build.
+
+Delivered: PdfAnnotation decodes its immutable normalized Canvas regions once;
+the reader indexes markup and page comments by page, reusing unchanged decoded
+snapshots when another mark changes. Fresh parent wrapper lists no longer trigger
+annotation invalidation or full-document geometry work. Painting, hit testing
+and comment-pin construction use page-local data. Active-mark pulses repaint
+without rebuilding the whole reader; unchanged page notifications no longer
+overwrite page-jump input. Original bytes and portable annotation fields stay
+authoritative; no package, alternate ink engine or format migration was added.
+
+Plain highlight/underline/strikeout saves paint pending regions promptly, keep
+the page viewport and panel state, and clear selected text only after success.
+Failure removes the transient preview but retains selection for retry. Cancelled
+passage comments keep selection without reporting a persistence failure. The
+existing comment dialog retains failed drafts. Text markup remains paint-only;
+selection drags and ordinary selected-text context menus are not covered by
+annotation hit-test widgets.
+
+Right-click text marks for details, color/style/comment editing, copying or
+Delete. Details and review rows expose deletion of highlights and page comments,
+including stale source-version notes. The application issues an ordinary
+revision-checked save to Trash and returns that exact deleted snapshot for
+eight-second Undo. Stale snapshots, unsaved/in-flight edits, competing editor
+drafts, unsupported/read-only notes and changed Vaults refuse mutation. Closing
+the deleted note's view avoids a post-delete automatic snapshot that would change
+its revision and invalidate Undo. Unknown data/comments/UUIDs are preserved;
+Trash survives restart and does not modify the source PDF. Clipboard failures in
+individual review rows now report safely. Late actions/replies are source-bound.
+
+Validation: 60 PDF/controller/export checks pass in 13s, including
+13 new domain/controller/native widget/storage cases. Native tests verify actual
+PDF selection/paint callbacks, pending/failure/retry, stable camera/viewport,
+same-identity delete/Undo without source reload, read-only menu changes, source
+replacement, cancelled comments, narrow 2× text and native Trash/restart/restore
+with exact original bytes/unknown metadata. The full suite passes: **2,334 passed,
+2 skipped in 4m45s** with concurrency 6 and no competing builds. Skips remain the
+existing Windows symlink privilege case and explicitly opt-in real Google consent
+test; all new native PDF cases ran. Final strict formatting passes (645 lib/test
+Dart files, zero changes); root analyzer is clean in 8.2s. Early exploratory
+fixture/formatting and tab-close failure cases were repaired before the final
+passing runs; no failing run is counted as acceptance.
+
+Geometry-only microbenchmark: 1,000 annotations across 100 pages, 12,000 regions,
+30 simulated repaint passes on one page. The prior repeated-decode loop takes
+4,464,189 µs; page lookup takes 924 µs for the same visible geometry. Initial index
+build takes 38,443 µs and snapshot-reusing refresh 4,670 µs. Each page visits 120
+regions, instead of decoding 1,800,000 region instances across those passes.
+This isolates annotation processing: it is not an end-to-end PDF frame-rate,
+large-file rendering benchmark or a guaranteed device speedup. Script/result:
+.local/pdf-markup-benchmark.dart and .local/pdf-reader-benchmark.log.
+
+Windows release succeeds in 123.8s using the existing registered Google Desktop
+client; the existing standalone server also compiles without starting a process.
+Normal web release succeeds in 116.2s with the pre-existing Google Identity Wasm
+dry-run and missing Cupertino font warnings; no Wasm acceptance is claimed.
+The normal Release directory contains orbit_note.exe, Flutter runtime, PDFium,
+SQLite, ICU/assets and a fresh 24,052,624-byte app.so newer than all five changed
+production source files. No ZIP or publishing; the app remains closed. Scoped
+whitespace checks pass, and unrelated workspace changes are preserved. Logs:
+.local/pdf-reader-{focused,tests,format,format-check,analyze,windows-build,
+web-build,benchmark}.log. No desktop control or personal PDF is used.
+
+Limits: these are headless native PDF and storage checks, not measured desktop
+scroll/selection frame-rate or device/manual acceptance. Deletion/Undo act on
+Orbit's linkable annotations; native editing of annotations already embedded in
+an imported PDF is not introduced. Original attachments are never overwritten.
+No complete Acrobat-parity or PDF-wide keyboard undo/redo claim is made.
+
+Suggested next task: PDF annotation keyboard shortcuts and document-wide
+annotation undo/redo with the same durable recovery guarantees.
+
+## Previous task
+
+### Validated — Device sync and self-hosted connection continuity, 2026-10-15
+
+Owner requests continued Google Drive improvements plus easier self-hosting and
+cross-device sync. Scope: opt-in foreground checks for selected existing Drive
+Vaults, explicit pause/retry/status, secure remembered shared-server connections
+and reconnect, authenticated server readiness diagnostics and clearer host setup.
+Reuse existing provider/engine, native locks, repository history and shared roles.
+Drive and shared authorities must not run together, including connection setup.
+No new cloud scopes, personal uploads from agent tools, public deployment,
+firewall changes, desktop control, new live object/attachment protocol or service
+that continues after Orbit closes. Core local-only startup stays offline.
+
+Plan: finish targeted storage/server inspection; implement guarded scheduling
+and secure device-only connection profiles; add server test/setup guidance;
+exercise restart, account/Vault switches, locks, revocation, cancellation and
+authority handover; run format/analyzer/full tests and relevant platform builds.
+
+Delivered: successful bulk transfers offer **Keep these Vaults updated while
+Orbit is open** (off by default). Settings → Sync → **Manage scheduled Vault
+checks** shows the selected Vaults, per-job results, last/next check, 1/5/15-minute
+interval, check now, pause/resume, remove and Forget. The secure device-local
+selection survives restart and binds to the Google subject. Checks reuse the
+active controller's exclusive batch lease and production engine/provider, exclude
+the current Vault, and open/close inactive native repositories under their normal
+existing-identity/OS locks. Individually paused/unbound Vaults cannot be newly
+enabled by scheduling. Offline work backs off; account failures need explicit
+retry. No scheduler account service is constructed without saved opt-in.
+
+Shared settings add owner-authenticated **Test server connection**, explicit
+**Remember connection on this device**, **Reconnect saved server** and **Forget
+saved connection**. Only a room capability is saved in OS-protected storage keyed
+by Vault UUID hash; never the root owner key or portable files. Live server role,
+revocation and divergence checks remain authoritative. Unsupported private data
+is preserved until explicit Forget, which remains accessible after load failure.
+Shared create/connect signals activity before the first await to suspend Drive;
+late import/invitation replies retain active-opening guards. New controls wrap
+at narrow widths and enlarged text. Unknown supported private metadata survives.
+
+The normal Windows build now includes collaboration/OrbitNote-Server.exe,
+Start Orbit Server.cmd and its README. The explicit launcher uses private
+LOCALAPPDATA/OrbitNote/Server and keeps an ordinary console open; no installed
+service, firewall rule or public host is created. Both CLI and service reject
+server data inside a Vault before creating keys/journals. Minimal /healthz returns
+readiness without private details; /v1/server requires the owner key and returns
+protocol/readiness/capabilities. Journal failure reports unready. ADR-0031 extends
+the earlier memory-only reconnect boundary; no authored migration/dependency or
+new live shared-object protocol was introduced.
+
+Validation: **17 new continuity tests passed**, including native selected-Vault
+checks/restart, per-Vault opt-out, account/shared exclusion, offline backoff,
+cancellation, locks, supported unknown metadata/future formats, saved server
+roles/revocation, cancelled connections, narrow 2× text/recovery controls and
+server readiness/storage failure. The complete suite passes: **2,321 passed,
+2 skipped in 5m26s** with concurrency 6 and no competing builds. Skips remain the
+existing Windows symlink privilege case and opt-in real Google consent/uploads.
+An isolated production Drive/native storage file also passed all 13 tests in 26s.
+Exploratory narrow-layout overflow and a new widget fixture's simulated-clock
+stall were fixed. An earlier full run under simultaneous release compilers hit
+the existing storage test's 30s timeout; it was stopped, then the isolated check
+and the uncontended full suite passed without increasing timeouts.
+
+Final strict formatting passes (644 lib/test Dart files, zero changes); root
+analyzer reports no issues in 124.2s. Windows release succeeds in 153.9s with the
+existing registered Google Desktop client and standalone server compilation.
+The normal web release succeeds in 131.6s; existing Google Identity Wasm dry-run
+and missing Cupertino font warnings remain, so no Wasm acceptance is claimed.
+The compiled server separately passed health/authentication/key initialization
+and CLI refusal to create private state inside a Vault, using an invisible
+ephemeral helper with synthetic data; the helper and data were removed afterward.
+The normal Windows EXE, runtime DLL, ICU/assets and current 24,019,856-byte app.so
+are present in build/windows/x64/runner/Release. The collaboration subfolder
+contains the 7,574,528-byte server EXE, launcher and README, with no owner key.
+No ZIP was created. The app remains closed. Scoped whitespace checks pass and
+unrelated workspace edits are preserved.
+
+Evidence: .local/device-sync-{continuity-final,storage-recheck,tests,format,
+format-check,analyze,windows-build,web-build-final,server-smoke}.log.
+
+Limits: this slice uses temporary synthetic Vaults, a simulated Drive HTTP
+service and an ephemeral loopback host. It does not repeat owner Google consent,
+upload personal files, control the desktop, configure HTTPS/public exposure or
+prove physical-device transfer. Previous real-account acceptance below predates
+this schedule UI. Checks stop when Orbit closes. Existing-note/Canvas live edits
+remain the shared protocol; new objects, deletions and attachment changes still
+require a new shared snapshot. No publishing or process termination of the user's
+app/server is performed. The compiled smoke helper is owned by this test only.
+
+Suggested next task: shared live propagation of newly created objects,
+deletions and attachments with durable reconnect and two-client acceptance.
+
+## Previous bulk-transfer evidence
+
+### Validated — Bulk Drive Vault transfers, 2026-10-15
+
+Owner requests a button to select multiple local Vaults (including a group on
+Desktop), upload/connect them to Drive, and retrieve them on another device.
+Scope SYNC-02/03/04/05/07: native explicit multi-selection, bounded folder
+discovery, sequential per-Vault sync through existing engine/provider, persistent
+bindings, per-Vault results, cancellation/retry and bulk cloud download into new
+local folders. Preserve active Vault, existing identities, locks, drafts, conflict
+copies and account isolation. No automatic upload of the owner's personal Vaults
+from agent tools, new scope/dependency, desktop control or global background
+service. Inactive Vaults sync on this explicit batch; foreground automatic sync
+continues for the active Vault only.
+
+Plan: inspect existing registry/discovery and binding contracts; add a guarded
+batch coordinator with existing-only native opening; add accessible local/cloud
+pickers and transfer results; test multiple Vaults, selection scope, duplicates,
+restart/retry, locks, conflicts, cancellation and account changes. Run required
+format/analyze/full tests and relevant platform builds; record actual evidence.
+
+Delivered: Settings → Sync now has **Upload multiple Vaults** and **Download
+multiple Vaults**, with explicit checkboxes, Select all, individual folders and
+shallow discovery inside a chosen parent such as Desktop. Per-Vault status,
+streamed file progress, cancel and retry preserve partial work. Downloads create
+separate folders, register up to 50 recents without changing the active selection,
+and show authored Vault names in the switcher. Duplicate UUID copies require an
+individual choice; different Vaults with matching names remain independent.
+
+The batch reuses extracted binding/manifest-opening helpers, SyncEngine and the
+production Drive provider. The active controller grants an account/opening-guarded
+lease, suspends its polling and retains active draft/apply checks. Inactive native
+repositories use OS locks, verify an existing manifest identity before recovery,
+and close after each job. No missing selection can create a replacement Vault.
+Completed reconciliations retain per-Vault sync bindings. Cancellation during a
+first transfer leaves automatic sync disabled; existing opt-ins are preserved.
+Account/shared-session changes invalidate subsequent requests and checkpoints.
+No authored migration, new package or alternate sync protocol was introduced.
+
+Validation: 42 focused provider/controller/native batch checks passed in
+34s, including twelve same-name Vaults, selected-only scope, locks/deleted paths,
+duplicates, partial retry, account changes, exact downloads, future binding data,
+conflicts, active draft guards, recents and narrow 2× text layouts. Three additional
+checks cover active polling exclusion and account invalidation during batch/picker
+setup. Root analyzer is clean in 99.3s; strict format check passes (639 Dart files).
+The complete suite passes: **2,304 tests passed, 2 skipped in 3m51s**. Skips are
+the existing Windows symlink privilege case and explicitly opt-in live-account
+acceptance (no Google consent or cloud upload occurs in normal tests). The 18 new
+cases include actual native files/staging and deterministic UI discovery data;
+initial exploratory fixture/compile failures were repaired and are not counted
+as passing runs. Windows release succeeds in 91.5s using the existing registered
+Google Desktop client. The normal web release succeeds in 98.7s; it retains the
+pre-existing Google Identity Wasm dry-run and missing Cupertino icon-font warnings,
+so no Wasm acceptance is claimed. Evidence:
+.local/bulk-drive-{focused,format,format-check,analyze,tests}.log.
+Build logs: .local/bulk-drive-{windows,web}-build.log. The compiled Windows
+data/app.so postdates all 11 changed application sources; EXE, runtime DLL,
+ICU data and assets are present in build/windows/x64/runner/Release. The app
+remains closed. No ZIP, process termination, publishing or desktop-control test.
+Scoped whitespace checks pass; unrelated workspace changes are preserved.
+
+Limits: batch execution is explicit foreground work, not continuous inactive-Vault
+background sync. This update uses native temporary Vaults and a simulated Drive
+HTTP service for repeatable tests; no personal Vault was uploaded or app desktop
+controlled. Previous real-account acceptance below predates this batch UI.
+
+Suggested next task: optional scheduling for explicitly selected inactive
+Vaults while Orbit is open, with visible ownership/lock and pause controls.
+
+## Previous acceptance evidence
+
+### Validated — Real-account Drive acceptance, 2026-10-15
+
+Owner approved the outstanding real Google-account and two-device transfer checks.
+Use only isolated synthetic acceptance Vaults with the production account,
+Drive provider, native repository and sync engine. Tokens stay in memory; do not
+read the application's credential store or upload any personal Vault. Browser
+consent belongs to the owner. No desktop control, new scopes or publishing.
+
+Plan: add an explicitly opt-in live acceptance harness; exercise sign-in/refresh,
+cloud discovery, verified note/Canvas/attachment transfers, reverse transfers,
+offline divergence, retained conflict copies, explicit resolution, interrupted
+resumable uploads, lost publication acknowledgements, tombstones and restarts.
+Retain clearly named synthetic fixtures for inspection. Two isolated native
+clients on this PC are not two physical devices; record that distinction and any
+owner-assisted second-device result. Default automated suites must skip live I/O.
+
+Delivered: an explicit `ORBIT_LIVE_DRIVE=true` manual acceptance harness (skipped
+by default) and reproducible setup/acceptance instructions. Owner completed fresh
+Google consent and selected two local clients for now. No desktop control or
+app credential-store access was used. Two independent native repositories and
+HTTP clients used the production OAuth, Drive provider, staging and SyncEngine.
+
+Real-account result: **1 live test passed in 4m10s**. Google identity, session
+restore and refresh passed. A uniquely identified synthetic cloud Vault was
+created/discovered; client B bootstrapped from its checksum-verified remote
+manifest. Mixed-line-ending/Unicode Markdown, Canvas unknown data and a 2 MiB +
+37-byte attachment transferred intact. New objects transferred B → A. Offline
+divergent edits retained both originals; explicit cloud resolution converged.
+A real acknowledged upload chunk lost its response; reopening the local
+repository resumed the same journaled session without creating another session.
+A real revision creation lost its response and recovered by stable ID. Trash and
+permanent-deletion tombstones propagated; both persisted replicas restarted with
+clean checkpoints and no remaining branches. No production defect surfaced in
+these scenarios; no application behavior or binary changes were needed.
+
+Evidence: .local/drive-live-acceptance.log and sanitized
+.local/drive-live-result.json. Synthetic cloud fixture **Orbit Sync Acceptance
+dcf46d05** and matching local fixtures are retained for inspection. Tokens stayed
+only in memory and were cleared on completion; local operational journals remain
+ignored and are not portable account credentials. Existing personal Vaults were
+not read or uploaded. Format/strict checks pass (631 Dart files), analyzer is
+clean in 8.2s, and the normal full suite passes: **2,286 passed, 2 skipped in
+3m45s**. The skips are the existing Windows symlink-permission case and the new
+explicitly manual live-account case (which passed separately above). Logs:
+.local/drive-live-{format,format-check,analyze,tests}.log. Scoped whitespace checks
+pass. Only tests and documentation changed; the existing Windows binary remains
+current for production application code, so no rebuild or app launch was needed.
+
+Limits: this is actual Google-account transfer acceptance on one Windows PC,
+not two physical devices, app UI scheduling, app secure credential storage,
+mobile/public OAuth rollout or multiplayer acceptance. The owner chose to defer
+the second physical device. Suggested next task: installed-app sign-in/secure
+session restore and transfer acceptance on a second Windows device when available.
+
+## Previous implementation evidence
+
+### Validated — Automatic personal Drive sync preview, 2026-10-15
+
+Owner approved automatic Drive Vault synchronization with conflict recovery.
+Scope SYNC-01–08/11/12: opt-in native personal Vault sync, durable account/Vault
+binding and retry state, automatic foreground scheduling, verified streamed files,
+new-object/deletion propagation, conflict review and recoverable resolution.
+Reuse SyncEngine, WorkspaceSyncReplica and normal save/history. Preserve unrelated
+work. No desktop control, new OAuth scopes, server deployment or account upload
+from agent tools. Enabling uploads remains an explicit in-app action.
+
+Plan: select/document a race-safe Drive publication protocol; implement provider
+and engine conformance with temporary native replicas; add opt-in application/UI
+coordination and conflict recovery; verify restarts, forks, uncertain responses,
+drafts, account/Vault switches, format/analyze/full suites and Windows release.
+Drive v3's mutable-update CAS is not assumed. Immutable revision publication will
+retain concurrent branches and surface them for explicit resolution rather than
+overwrite an unobserved edit. ADR-0030 records this extension of ADR-0017.
+
+Delivered: native foreground automatic personal sync with explicit account/Vault
+consent, durable folder binding and interrupted-setup IDs, restart resume,
+pause/retry and new-device opening into a separate folder. The provider publishes
+verified streamed immutable blobs and parent-linked records; concurrent heads are
+retained as branches. SyncEngine preserves each alternative before checkpointing
+and journals explicit resolutions; newer local edits reject stale reviews. Ordinary
+repository history, exact authored bytes, stable IDs, attachment-first apply and
+permanent-deletion tombstones remain authoritative. Provider/key caches avoid
+re-downloading every record for each publication. No automatic cloud garbage
+collection, new dependency or authored Vault migration.
+
+Local-only startup reads opt-in without constructing account services. Account/
+Vault switching, pause and Shared Vault activity invalidate applies and late
+acknowledgements. Authentication/quota/configuration failures stop automatic
+requests until attention/manual retry; transient failures back off. Pause remains
+reachable when Google requires reconnection. Backups stay independent of sync.
+Operational settings/journal and optional engine resolution fields are documented
+in implemented-formats; ADR-0030 partially supersedes the mutable CAS-only gate.
+
+Validation: 27 new regression cases exercise the production HTTP
+adapter against a simulated Drive service and real temporary native Vault files,
+including offline divergence, racing branches, restart/lost acknowledgements,
+multi-chunk/empty attachments, moves, Canvas unknown data, tombstones, initial forks
+with no local object, stale review, setup/pause recovery, account isolation,
+startup opt-in, Archive gate and narrow/enlarged settings. UI/ready focused checks
+pass (20 cases). Format and strict format checks pass (630 Dart files), root
+analyzer is clean in 7.9s, and all 2,286 tests pass in 4m47s (concurrency 8), with
+one existing Windows symlink-permission skip. Evidence:
+.local/drive-sync-{format,format-check,analyze,tests,ui-final}.log. Native/provider
+fixtures and the complete pre-existing engine/replica suites are included in the
+full run. Initial metadata-widget fixtures stalled across fake/real clock file
+queues; only read-only footprint metadata is deterministic in those layout tests,
+while native durability tests still use real files. Interrupted exploratory runs
+are not counted as final checks. Windows release succeeds in 101.7s with the
+existing registered Desktop client; the normal web release succeeds in 101.0s
+(.local/drive-sync-{windows,web}-build.log). Web retains existing Google Identity
+Wasm dry-run incompatibility and missing Cupertino icon-font warnings; no Wasm
+or browser automatic-sync claim. Compiled data/app.so postdates all 13 relevant
+app sources; executable, runtime DLL and assets are present in the normal
+build/windows/x64/runner/Release folder. No ZIP, app launch, process termination
+or publishing. The app remains closed. Scoped diff whitespace check passes.
+
+Limits: native folders and open-app lifetime only, empty folders/device settings
+stay local, device-local folder Archive metadata blocks setup; 10,000 retained
+revisions, 64 parents, 16 MiB operational checkpoints and existing native file
+limits. Some non-Notes moves and restoring a permanent deletion need manual
+recovery. Retained revisions consume Drive storage. No user account upload,
+browser/desktop control, public OAuth rollout, Android activation or real
+Google-transfer/two-device acceptance was performed by this task.
+
+Suggested next task: real-account, two-device Drive acceptance covering offline
+divergence, account renewal and interrupted large attachment transfer. Stop before
+performing it; no broader multiplayer or cloud retention/GC feature is authorized
+by this continuation.
+
+---
+
+# Validated — Drive and shared-session reliability, 2026-10-15
+
+Owner requests improving Google Drive and multiplayer. Scope SYNC-02/03/04/05/07/
+08/09/10 within ADR-0027: improve backup account/cancel guards, completed-upload
+feedback, provider error classification, backup browsing, and shared-session
+reconnect/backoff, pending work and revoked-access feedback. Preserve local editing,
+known-base merging, journal acknowledgements, private capability credentials and
+whole-Vault snapshot consent. No automatic personal sync, new live object protocol,
+production deployment, new OAuth scopes, account uploads or desktop control.
+
+Plan: regression fixtures for interrupted/cancelled transfers and connection races;
+bounded recovery and actionable status/controls; headless provider/two-client tests,
+format/analyze/full suites, docs and normal Windows release if closed. No new package
+or portable schema migration. Live Google/two-device acceptance remains separate.
+
+Delivered: Drive backups filter by current/all Vaults and name within the connected
+account, bind confirmation to account and owning Vault opening, and discard late
+cancelled restore candidates. Verified uploads remain visible if listing fails or
+is temporarily incomplete. Upload recovery refreshes expired tokens once, probes
+the same resumable session after transient failures with bounded 1/2/4-second
+waits, and distinguishes quota/rate/API configuration from revoked access. Failed
+sign-out keeps account data and actionable feedback instead of silently succeeding.
+Shared sessions add 1/2/4/8/16/30-second network backoff, Retry now, revoked-access
+pause, and pending-document status including failed local saves. Late connection/
+Vault responses are ignored; uncertain edit acknowledgements replay the same
+operation identity while newer local edits remain separate proposals. Existing
+repository history, capability roles and server journal boundaries remain intact.
+
+Validation: 23 new regression cases; 62 focused Drive/shared-session checks pass
+in 4s. Headless provider fixtures cover cancellations, uncertain
+acknowledgements, token expiry, throttling/outages and exhausted recovery; widget
+fixtures exercise backup filters/account isolation and stale confirmation. Local
+two-client/server-restart and narrow/large-text shared controls remain covered by
+the focused collaboration suite. No user Vault/account upload, browser sign-in,
+desktop control, server deployment or real two-device acceptance in this batch.
+
+Formatting and strict format checks pass (624 Dart files); root analyzer is clean
+in 15.6s. All 2,259 tests pass in 4m41s (concurrency 8), with the existing one
+Windows symlink-permission skip. Evidence: .local/cloud-shared-{format,
+format-check,analyze,focused,tests}.log. The initial widget fixture stalled while
+closing/reopening a PDF indexer across fake/real clocks; it was replaced with an
+owning-workspace replacement fixture. An initial transfer fixture also exposed
+that an immediately empty listing hid a verified upload; the product now retains
+that verified result. Interrupted exploratory runs are not counted as final checks.
+
+Windows release succeeds in 93.6s using the existing registered desktop client
+(.local/cloud-shared-windows-build.log). Compiled data/app.so postdates all six
+changed application sources; executable, runtime DLL and assets are present in
+build/windows/x64/runner/Release. App remains closed. No private credentials are
+printed or packaged separately, no ZIP is created and no running process is stopped
+or app launched. Scoped diff whitespace check passes; no new dependency/schema
+migration.
+
+Suggested next task: automatic personal Drive Vault synchronization through the
+existing provider/reconciliation boundary, including conflict recovery. Stop
+before implementing it.
+
+---
+
+# Validated — Remove editor scroll-progress stripe, 2026-10-15
+
+Owner asks to remove the annoying Markdown scroll-progression indicator. Scope
+EDT-03/15: remove the shared NoteEditor reading-progress stripe, derived progress
+state and its whole-editor scroll-notification rebuilds. Retain scrolling, source
+offset callbacks, native scrollbar behavior, saved Rich/Read/Source/Split positions
+and line/column indicators. No source/preferences/storage changes or desktop control.
+
+Plan: remove indicator-only state/listener, update the existing UI assertion and
+design contract, format/analyze/full tests and rebuild Windows if the app is closed.
+
+Delivered: removed the reading-progress widget and percentage state from shared
+NoteEditor chrome and the indicator-only ScrollNotification wrapper. Source scroll
+offset callbacks and existing saved view-state listeners remain intact. The line/
+column regression now expects no stripe; no new implementation-mirroring test.
+Format and strict format checks pass (623 files), root analyzer is clean in 16.6s.
+All 2,236 tests pass in 4m12s (concurrency 8), with one Windows symlink-privilege
+skip. Headless tests include saved view restoration, selection/scrolling and
+large-note navigation; no desktop control or hardware-performance claim. Evidence:
+.local/remove-scroll-progress-{format,format-check,analyze,tests}.log. Windows
+release succeeds in 92.3s (.local/remove-scroll-progress-windows-build.log).
+Compiled data/app.so postdates note_editor.dart, and the normal executable/DLL/data
+folder remains runnable without a ZIP. App remains closed; no process was stopped
+or launched. Scoped diff whitespace check passes. Changes remain limited to the
+requested UI removal.
+
+Suggested next task: the previously queued nested/numbered browser-list paste
+audit. Stop before implementing it.
+
+---
+
+# Validated — Browser list paste spacing, 2026-10-15
+
+Owner reports ChatGPT/browser paste showing empty bullet placeholders above each
+paragraph. Scope EDT-04/09, DES-01: reproduce paragraph-wrapped HTML list conversion,
+attach first paragraph text to the existing bullet, and verify real Rich paste,
+formatting, undo and plain-text fallback. Preserve authored empty list items,
+ordinary Markdown blank lines, code and unrelated work. No desktop-control tests,
+user Vault mutation, dependency or source format change.
+
+Plan: failing converter fixtures for paragraph/div wrappers; narrow HTML import
+fix; headless keyboard paste/undo and adjacent converter regression tests;
+format/analyze/full suites, evidence and Windows release if the app is closed.
+
+Delivered: HTML list import consumes leading whitespace and opening paragraph/div
+wrappers with the list-item boundary, keeping its first text on the bullet instead
+of creating an empty list block followed by unrelated prose. This applies to rich
+browser paste only, not existing Markdown source or plain paste. No blanket empty
+item/blank-line removal. Literal code remains protected by the existing converter.
+
+Three failing fixtures reproduce paragraph/div/nested-div wrappers generating the
+reported empty bullets. After the narrow fix, 67 focused clipboard/table/selection
+checks pass in 17s. Six new cases include real Rich Ctrl+V replacing a selection,
+filled list fields, preserved bold and exact one-step undo, wrapper attributes/case,
+Unicode, inline code and links, and deliberately empty HTML items/prose paragraphs.
+Existing source/raw code/plain clipboard behavior remains checked. Owner closed
+the running release app; no process was killed. Final format and strict format
+checks pass (623 files), root flutter analyze is clean in 11.9s, and 2,236 full-suite
+tests pass in 4m18s with concurrency 8. The one skipped native symlink check requires
+Windows privilege and remains unverified. Logs: .local/browser-list-focused.log,
+browser-list-repro.log, browser-list-full-tests.log, browser-list-analyze.log and
+browser-list-format-check.log. Testing is headless with clipboard fixtures, not
+desktop control or real external-app acceptance. Registered-client Windows release
+succeeds in 79.5s (.local/browser-list-windows-build.log); compiled data/app.so
+postdates markdown_clipboard.dart. The normal runnable Release/orbit_note.exe,
+DLLs and data remain together without a ZIP; the app stays closed. Scoped diff
+whitespace check passes. Previously malformed pasted sections must be re-pasted or
+edited explicitly; existing source is never automatically rewritten.
+
+Suggested next audit: nested and numbered browser-list clipboard imports. Stop
+before implementing it.
+
+---
+
+# Validated — Feature reliability and delayed-action audit, 2026-10-15
+
+Owner requests feature testing and bug fixes. Scope EDT-04/09/11/12, DES-01, CAN-05/07 and
+storage/recovery regression: inspect existing feature boundaries, reproduce
+clipboard/grid, connected-Canvas and delayed-dialog failures, fix defects with native
+widget/domain fixtures and run the broader existing feature/stress suites. Owner
+then requested continuing the issue audit: expand to equation/table/link/attachment
+dialogs, read-only transitions and note-block placement while switching documents.
+Preserve unrelated work, ordinary Markdown/JSON and unknown data, object versus
+placement identity, undo, failed/stale operations and read-only behavior. No new
+features, desktop control, app launch or tests on user Vaults.
+
+Plan: failing round-trip/rectangle/race clipboard tests and duplicate/connector
+geometry tests; narrowly repair those paths; validate editing, source undo,
+Canvas history, saved/reopened fixture bytes, code/PDF/search/recovery workflows
+through existing headless suites. Format/analyze/full tests, docs/evidence and
+serial web/Windows builds; stop with one suggested next audit.
+
+Delivered: rectangle keyboard/menu/grid paste starts at the upper-left cell with
+range/revision/owner guards; CSV/TSV copies quote delimiter/quote/empty values,
+unquoted tabs take precedence over commas, and blank rows retain their positions.
+Plain clipboard fallback uses one captured read. Single-line caret paste preserves
+commas/quotes instead of overwriting neighbor cells; explicit Paste cells retains
+CSV import. Native table copy/cut actions share guarded handlers; failed cuts retain
+text, successful cell/range cuts are undoable, changed note epochs (including
+switch-away-and-back) refuse delayed cut/paste, and active composition is retained.
+Canvas duplicate remaps copied connector anchors to copied nodes, retaining outside
+anchors. Copy snapshots visible endpoint geometry so detached paste keeps its
+shape when attached nodes are outside the copied set; fully connected copies keep
+authored fallback coordinates. Malformed connector field types use safe getters
+for rendering and hit-testing while retaining their JSON. Cut checks still use the
+original immutable placement data, not the copied geometry maps. No source
+format/migration, object deletion or new dependencies.
+
+Additional delivered fixes: Source equation/table/link dialogs use the guarded
+insertion boundary shared with attachments, capture note/controller/Vault ownership
+and refuse switch-away-and-back or read-only completions. Changed source/selection
+offers explicit Insert here instead of overwriting newer text; that action rechecks
+ownership and permissions. Rich attachment insertion shares the outer guard.
+Pending Source cut rechecks read-only/deleted state after clipboard success; Source
+paste also checks those permissions. Controller/Vault changes invalidate ownership
+epochs. Note-block placement captures its source owner/title before picking a Canvas
+and validates owner, local/persisted source and permissions before adding anchors
+or placements. Successful equation/table/link insertions remain undoable. Equation
+Studio uses a scrolling dialog and naturally sized controls plus a bounded symbol
+list so short/narrow windows and enlarged text do not squeeze controls into overflow.
+
+Validation in progress: failing fixtures reproduced forward rectangle refusal,
+TSV/cell quote and delimiter corruption, linked duplicates targeting original nodes,
+stale connector fallback positions, and failed native cuts deleting text. Fixes
+passed 137 focused checks in 27 seconds after the additional connector audit,
+including 24 new table/clipboard/Canvas cases, native keyboard/menu routes, source undo,
+owner/range races and active composition. Existing PDF reading/search/navigation,
+code-file viewing, course drafts, workspace recovery, editor selection and stress
+checks pass. Stress evidence is eight seeds/8,000 mixed Canvas commands and a
+temporary native 24-note Vault with six save/reopen rounds and external conflicts.
+Unknown data, original scene/source after undo, and final persisted bytes survive.
+These are test workloads, not hardware frame-time or total-capacity guarantees.
+The first full suite caught fallback-coordinate changes in fully connected copies;
+narrowing snapshots to detached copies restores that existing contract. A separate
+malformed-connector fixture reproduced a render TypeError; safe typed getters fix
+it without removing or rewriting original data. The first completed full run passed
+2,207 tests with one Windows symlink-privilege skip; analyze was clean and strict
+formatting passed (622 files). Continuing the audit reproduced cross-note equation
+and table insertion, link insertion overwriting newer text, Source attachment
+insertion after switch-and-return, wrong-note Canvas placement, and pending Source
+cut deleting after read-only transition. Equation Studio's compact layout overflow
+was also reproduced. Twenty further headless checks cover those failure boundaries,
+normal insert/undo, guarded explicit relocation and 390px/1.8x-text math layout.
+The expanded full suite also caught an integration regression: routing dialog
+insertion through the attachment handler displayed indefinite transfer progress
+while waiting for user choice. Dialog insertions now retain the safety/duplicate
+guards without transfer progress; ordinary attachment operations keep it.
+
+Final source checks: 2,227 full-suite tests passed in 7m54s; the one skipped check
+requires Windows native symlink-creation privilege, and remains unverified here
+(.local/feature-audit-full-tests.log). The expanded math/writing/table/clipboard
+focused run passed 111 tests in 26s, and the existing note-editor plus dialog checks
+passed 24 in 13s after removing modal transfer progress. Three additional free
+line/arrow/connector duplication regressions passed in 2s: the existing geometry
+copy path already shifts explicit endpoints, so no additional code fix was needed.
+There are 47 new cases in this audit (44 exercised in the full suite, three in
+.local/feature-audit-free-connector-repro.log). Native clipboard adapters are
+fixtures; external-app/device acceptance, sign-in and hardware latency are not
+claimed. Final format and strict format checks pass (623 files, zero differences),
+and root flutter analyze reports no issues in 10.7s. A post-build analyzer run
+exposed ignored scratch snapshots and package caches under Windows 8.3 aliases;
+analysis_options.yaml now excludes only .local/.pub-cache and their aliases,
+retaining application/test analysis (.local/feature-audit-analyze-cache-probe.log
+records the cache findings; .local/feature-audit-analyze.log is the passing run).
+JavaScript web release succeeds in 197.5s (.local/feature-audit-web-build.log).
+Existing Google identity dependency Wasm dry-run and Cupertino font warnings
+remain; this validates the JavaScript target, not Wasm or font fallback fidelity.
+Registered-Google-client Windows release succeeds in 144.4s
+(.local/feature-audit-windows-build.log); data/app.so postdates all changed app
+sources. The runnable build/windows/x64/runner/Release/orbit_note.exe, DLLs and data
+remain together in the normal release folder, without a ZIP. No running app was
+stopped or launched. Scoped git diff --check passes. Unrelated work is preserved.
+
+Suggested next audit: PDF/asset-import cancellation while switching Vaults. Stop
+before implementing that audit. Native external-app/device acceptance and the
+skipped symlink-privilege check remain separate work.
+
+---
+
+# Validated — More writing designs and pixel-font zoom, 2026-10-14
+
+Owner requests more Markdown designs and a fix for soft pixel-notebook lettering
+at Ctrl-plus app zoom. Scope LAY-01/06/10, EDT-03/04: four writing designs using
+the existing surfaces/paper/photo system, display-pixel-aligned Tiny5 sizes with
+an opt-out for continuous sizing, previews and preserved pane preferences.
+Keep native Rich/Source/Read/Split selection/undo, OS accessibility scaling,
+ordinary app chrome and other fonts. No new fonts/packages, file schemas or
+authored content changes; no desktop-control testing.
+
+Plan: inspect font metrics and zoom path; scope pixel sizing to note title/body
+and previews, add palettes/original vector frames and useful initial paper
+choices; exercise Ctrl-plus, DPR/OS text scaling, state/selection, all palettes,
+photo contrast and narrow layouts. Render real bundled-font previews headlessly,
+run format/analyze/full suites, update evidence and build web/Windows serially.
+
+Delivered: Blueprint, Field journal, Typewriter and Amber terminal palettes and
+original vector drafting/cover/platen/phosphor details, with existing paper/photo
+controls. Blueprint/grid and journal/rules are initial choices from plain paper.
+Paper controls precede the expanded gallery; larger pickers remain scrollable.
+Tiny5's bundled font metrics are 1024 units/em and 640-unit cap height (five
+128-unit cells). A stable MediaQuery scope rounds title/body and previews after
+the composed zoom/OS scaler to integer display cells; app chrome/other fonts and
+viewport geometry stay unchanged. Sizes can grow in steps; Crisp pixel sizing
+opts out without replacing controllers or source. Existing preferences retain
+unknown fields and default pixelSnap to true. No font/package additions.
+
+Validation in progress: 66 focused checks pass in 12 seconds
+(.local/designs-zoom-focused.log), including eight new preference/zoom/state cases,
+all ten designs/four papers at 360px/200% text, light/dark contrast, photo contrast/
+storage and selection/clipboard/search regressions. Ctrl-plus passes in actual
+Rich/Source/Read/Split, preserving native field/controller identity and selection;
+five display densities and three OS scales exercise every zoom step and normal
+writing sizes. Continuous opt-out and Apply/Reset preserve source. The expanded
+gallery required scroll-to-paper in the existing interaction fixture; no checks
+were removed. Real bundled-font headless previews for all designs and pixel
+110/125/150% zoom pass and were inspected (.local/designs-zoom-render.log,
+.local/designs-pixel-render.log, .local/writing-{design}.png,
+.local/pixel-zoom-{zoom}.png). Strict formatting: 622 files, zero changes (5.57s).
+Analysis is clean (9.6s). Full regression passes 2,183 tests with one explicit
+Windows native-symlink-permission skip in 205 seconds
+(.local/designs-zoom-full-tests.log); native interpreter fixtures are configured.
+Scoped git diff --check passes. JavaScript web release passes in 72.6 seconds
+(.local/designs-zoom-web-build.log), with existing dependency Wasm dry-run and
+Cupertino-font warnings; no Wasm claim. Windows release passes in 73 seconds
+(.local/designs-zoom-windows-build.log), retaining the registered Google desktop
+client. Normal executable: build/windows/x64/runner/Release/orbit_note.exe;
+data/app.so is newer than all changed implementation sources. No desktop
+control, user Vault mutations, physical-input/IME/hardware clipboard acceptance,
+ZIP or publication. Platform font rasterization is not a universal pixel-exact
+claim; native rendering and authored formatting remain supported.
+Suggested next task: reusable writing presets for applying favorite looks to notes.
+
+---
+
+# Validated — Markdown selection scroll ownership, 2026-10-14
+
+Owner reports selected text pulling the Markdown editor back upward when
+scrolling/copying. Scope EDT-03/04: reproduce mouse selection plus manual scrolling,
+fix paragraph/document ownership of focus and caret reveals, preserve selected
+source and clipboard/undo, and update stationary drag endpoints after scrolling.
+Keep ordinary typing/navigation/search reveals, native single-paragraph selection,
+edge scrolling, lazy paragraphs and structured editors. No format/storage change.
+
+Plan: headless failing short/virtualized-note wheel tests; narrowly gate stale
+paragraph reveal requests while the document owns selection, restore native focus
+on release/cancel and resolve scroll endpoints after layout. Verify forward/reverse
+scroll, copy/paste, focus recovery and existing search/clipboard/selection tests,
+then format/analyze/full tests and serial web/Windows builds. No desktop control.
+
+Delivered: request-time native paragraph reveal gate while document selection
+owns the range, focus transfer before wheel recycling, post-layout endpoint
+updates for stationary wheel/edge scroll, global-coordinate hit testing and
+current selection notifications. No focus-node disabling or custom clipboard
+engine. Release/cancel and new editing preserve normal focus, source and undo.
+
+Validation in progress: original wheel-plus-drag tests returned to offset 0 in
+both short and lazy notes; selection notifications retained the old extent.
+Regression fixes pass 85 focused checks in 26 seconds
+(.local/selection-scroll-regressions.log), including 10 new scrolling/clipboard
+cases and existing code-search, native state/geometry, source/multi-block copy,
+media clipboard, paste/undo, surfaces and cleanup. The complete editor checks
+exact UTF-16 range copying and replacement, caret reveal after paste and undo.
+Analysis is clean (12.2s); strict format check passes for 620 files with zero
+changes (11.63s). The full suite passes 2,175 tests with one explicit Windows
+native-symlink-permission skip in 221 seconds (.local/selection-scroll-full-tests.log).
+Native interpreter fixtures are configured. Scoped git diff --check passes.
+JavaScript web release passes in 92 seconds (.local/selection-scroll-web-build.log)
+with existing dependency Wasm dry-run/Cupertino-font warnings; no Wasm claim.
+Windows release passes in 77.8 seconds (.local/selection-scroll-windows-build.log),
+retaining the registered Google desktop client. The normal executable is
+build/windows/x64/runner/Release/orbit_note.exe; updated data/app.so is newer than
+the changed editor source. No physical mouse, IME/hardware clipboard,
+desktop-control, user Vault mutation, ZIP or publication testing.
+Suggested next task: audit drag-selection transitions through tables and inline
+equations, using headless geometry and clipboard fixtures.
+
+---
+
+# Validated — Photo writing backgrounds, 2026-10-14
+
+Owner accepts custom photo backgrounds with readable-text controls. Scope LAY-01/
+06/10 and EDT-03/04: local photo selection, bounded static normalized image,
+position/fit/intensity, protected reading sheet or automatic contrast protection,
+preview/apply/cancel/remove/reset and persisted pane preferences. Reuse existing
+repository device paths and platform image/file adapters; no network image URLs,
+authored attachment/object, schema migration or user Vault changes during testing.
+
+Plan: validated recipe and bounded image conversion, guarded hash-addressed private
+photo read/write, cached decorative layer and accessible picker/status recovery.
+Keep native text/caret/undo and unknown preferences, stale note/Vault guards and
+quota/failure safety. Test resource limits, storage reopen/corruption/failure,
+reversible preview, old-note compatibility, readable worst-case backgrounds and
+narrow/enlarged text; headless visual inspection, format/analyze/full suites, then
+serial web/Windows builds. Record evidence and stop before one suggested next task.
+
+Delivered: local PNG/JPEG/WebP selection and static normalized copies, horizontal/
+vertical position, fill/crop or whole-image fit, intensity, protected reading sheets
+and conservative contrast caps without a sheet. Existing paper patterns remain on
+the writing sheet, and high contrast suppresses photos with an explicit explanation.
+Apply saves a private hash-addressed copy through the repository before updating
+view preferences. Preview/cancel/remove/reset, stale note/repository/Vault guards,
+missing/corrupt retry and quota/failure feedback preserve knowledge and the old
+appearance. No image URLs, uploads, new objects/packages or source-file mutations.
+Session JSON holds small recipes, not pixels. Duplicate normalized photos share a
+device file; unused copies are retained so other panes are never silently broken.
+
+Validation: 63 focused checks pass in 9 seconds
+(.local/photo-focused-final.log), including 11 new photo model/import/storage/UI
+tests plus writing-surface, search, font, layout and plot regressions. PNG/JPEG/WebP
+decode, image dimensions/byte budgets, guarded/deduplicated private writes, corrupt/
+oversized and failed saves, native reopen, cached reads, stale owner responses,
+missing retry, high contrast and 200% text at 360 px pass. Initial tests exposed
+paper controls pushed below the picker viewport and failure notifications queued
+without a frame; restoring paper-control priority and scheduling feedback fix both.
+Synthetic photo/reading-sheet and automatic-contrast previews were rendered and
+inspected headlessly (.local/photo-sheet.png, .local/photo-contrast.png,
+.local/photo-render.log); the capture waits for image decoding, not desktop control.
+Analysis is clean (11.1s); strict formatting is 620 files with zero changes
+(.local/photo-analyze-final.log, .local/photo-format-check.log). Full regression
+passes 2,165 tests with one explicit Windows symlink-permission skip in 211 seconds
+(.local/photo-full-tests.log); native interpreter fixtures are configured.
+JavaScript web release passes in 70.9 seconds (.local/photo-web-build.log), with
+existing dependency Wasm dry-run/Cupertino-font warnings; no Wasm claim. Windows
+release passes in 74.0 seconds (.local/photo-windows-build.log), retaining the
+registered Google desktop client. data/app.so is newer than the changed sources;
+the normal executable is build/windows/x64/runner/Release/orbit_note.exe.
+Scoped git diff --check passes. No user Vault, desktop-control, app launch, ZIP
+or publication testing. There is no automatic unused-photo deletion or shared
+photo/export styling claim; private copies are bounded to 1,600 px and 2 MiB.
+Suggested next task: reusable writing presets across notes.
+
+---
+
+# Validated — Writing surfaces, 2026-10-14
+
+Owner requests Markdown editor designs matching pixel notebook, CRT terminal,
+classic book and retro desktop/command references, with lined and graph paper.
+Scope LAY-01/06/10 and EDT-03/04: selectable pane-local writing surfaces, scoped
+readable colors/typography, vector frames/paper, preview/apply/cancel/reset, and
+device-local view persistence. Keep Rich/Source/Read/Split and native text editing,
+font scaling, ordinary content/history and existing app theme. No document schema,
+cloud, new renderer, flicker, desktop control or changes to user Vaults.
+
+Plan: bounded appearance data with unknown-value fallback; reusable responsive
+surface/picker and original reference-inspired vector details; integrate editor
+view state and readable fonts. Verify content/selection/undo survival, reopen,
+unknown preferences, read-only, narrow/enlarged text and headless rendered previews.
+Run required format/analyze/full tests and web/Windows checks. Record evidence and
+suggest one next task without implementing it.
+
+Delivered: Orbit, Pixel notebook, Bound book, CRT terminal, Retro desktop and
+Command prompt writing surfaces with plain/lined/math-grid/dotted backgrounds.
+Original vector frames, adjustable 20–64 px paper spacing, scoped semantic
+colors/selection and offline Tiny5/Space Mono/existing Crimson Text fonts surround
+real editable content. Apply/cancel/reset, font opt-out, quiet writing and Show
+editor tools preserve access to existing features. View preferences persist in
+existing pane/note session state; unknown data is retained. Source/text, selection,
+knowledge/history and user Vaults are unchanged. Rich/Source/Read/Split and
+read-only presentation are covered; LaTeX keeps its existing appearance. Static
+details do not cover/intercept text; high contrast suppresses CRT scanlines/vignette.
+No flicker, arbitrary skin code, raster text scaling or new package. Surface themes
+are reused while typing and background painting has its own repaint boundary.
+
+Validation: 52 focused tests pass in 10 seconds
+(.local/surface-focused-final.log), covering 11 new preference/layout/identity
+checks, font/large-text behavior, code search and live graph regression. The full
+run caught mode controls pushed below clipped Find chrome after adding the new
+button; placing modes first fixes the interaction with existing regression coverage.
+An initial keyboard fixture lacked editor focus and was corrected to exercise
+Alt+T from the source field. Native source selection/draft and unknown preferences
+survive apply/cancel/reopen; read-only, stale-note refusal, quiet/full recovery,
+custom-font retention, 200% text at 360 px and readable palette contrast pass.
+Six headless previews were rendered with real fonts and inspected
+(.local/writing-*.png, .local/surface-render.log). The initial preview revealed
+old dark-toolbar tokens; scoped Orbit colors fix the mismatch. Analysis is clean
+(13.5s) and strict format checks 616 files with zero changes
+(.local/surface-analyze-final.log, .local/surface-format-check.log). Final full
+regression passes 2,154 tests with one explicit Windows symlink-permission skip in
+246 seconds (.local/surface-full-tests-final.log), with native interpreter fixtures
+configured. JavaScript web release passes in 68.4 seconds
+(.local/surface-web-build.log), with existing dependency Wasm dry-run and
+Cupertino-font warnings; no Wasm claim. Windows release passes in 70.6 seconds
+(.local/surface-windows-build.log), retaining the registered desktop Google client.
+The normal executable remains build/windows/x64/runner/Release/orbit_note.exe;
+data/app.so is newer than the changed sources. Both releases bundle the new fonts
+and license files. Scoped git diff --check passes. No desktop control, app launch,
+ZIP, publication or user Vault editing was used. These are original reference-inspired
+frames, not exact third-party UI/art assets; writing surfaces do not affect exports.
+Suggested next task: custom photo backgrounds with readable-text controls.
+
+---
+
+# Validated — Live mathematical plots, 2026-10-14
+
+Owner requests more math features. Scope EDT-03/04/06/09/12 and existing Canvas
+math snapshots: live editable plot blocks in Rich/Read/Split notes; compare up to
+four functions, inspect coordinates, generate/copy value tables, export SVG, and
+reuse comparison/table tools in Math Lab for LaTeX and Canvas. Keep offline use,
+normal undo, identity and source guards. Bounded readable orbit-plot fenced JSON;
+unknown/malformed/future recipes remain editable code. No workspace migration,
+new engine, packages, symbolic CAS, accounts or desktop-control testing.
+
+Plan: pure recipe/sample/table/SVG boundaries and compatibility tests, responsive
+cached graph widget and parameter/range editor, Markdown/Read/math-lab/Canvas
+integration, stale/source/read-only guards, ordinary history and clipboard/source
+fallbacks. Run required formatting, analyze and full tests before serial platform
+builds. Update evidence, suggest one next task and stop. Preserve user Vaults.
+
+Delivered: live Markdown plot recipes with editable expressions/parameters/ranges,
+four-function comparisons, pointer/tap and keyboard coordinate inspection, numeric
+tables, TSV copying and local CSV/SVG export. Shared Math Lab offers comparison
+and table output for LaTeX/Canvas; boards retain grouped editable primitive snapshots,
+distinct curve colors and fit-selection. Ten more templates bring the shared new
+set to 30. Numeric expressions accept π/×/÷/−. Source search reveals native JSON;
+unsupported/future/unsafe numeric metadata remains editable code. Unknown fields,
+line endings, read-only/IME and stale note/Vault/source guards remain intact.
+No new packages, schema, accounts, spatial engine or user Vault changes.
+
+Validation: all 78 focused checks pass in 10 seconds
+(.local/plots-acceptance-final.log), including recipe bounds/precision, Unicode
+inputs, Canvas JSON/group undo, template/TeX rendering, domain gaps, native source
+search, read-only controls, stale edits, narrow 200% text, table hidden-field handling
+and clipboard failures. Full regression passes 2,143 tests with one explicit Windows
+symlink-permission skip in 282 seconds (.local/plots-all-tests-verified.log); native
+interpreter fixtures are configured. Final analysis has no issues (106.3 seconds),
+and strict formatting checks 613 files with zero changes
+(.local/plots-analyze-final.log, .local/plots-format-check.log). Standalone SVG passes
+Python standard-library XML validation with two vector curves and no script/image
+elements. A verification helper initially selected only root-level polylines; the
+correct descendant selector passes. No new XML package was added.
+
+JavaScript web release passes in 98.7 seconds (.local/plots-web-build-final.log),
+with existing dependency Wasm dry-run/Cupertino-font warnings; no Wasm claim.
+Windows release passes in 84.7 seconds (.local/plots-windows-build-final.log),
+retaining the registered Google desktop client; the updated data/app.so is newer
+than the changed sources. The normal executable is
+build/windows/x64/runner/Release/orbit_note.exe. No desktop-control testing, app
+launch, ZIP or publication. Scoped git diff --check passes. Numeric plots have 257 samples
+per curve and can miss discontinuities/oscillation; this is not a symbolic CAS.
+Markdown publication outputs retain fenced recipes, with standalone SVG available
+for figures. Suggested next task: unit-aware calculations and conversions.
+
+---
+
+# Validated — Shared Math Lab, 2026-10-14
+
+Owner requests a substantial math update across Markdown, LaTeX and Canvas.
+Scope EDT-02/04/09/12 and existing CAN mathematical card/ink behavior: offline
+bounded arithmetic and variables, function plots and numerical calculus, small
+real matrix operations, reusable templates and explicit TeX insertion. Preserve
+source, normal undo/history, object identity and existing spatial primitives.
+No symbolic CAS, arbitrary execution, network service, new schema or desktop QA.
+
+Plan: pure numeric domain tests (precedence, ranges, singularities, matrices),
+responsive shared dialog and renderable TeX, all-editor integration with stale
+source/read-only/composition guards, Canvas editable plot snapshot round-trip and
+single undo. Validate focused and full suites, formatting, analysis and web/Windows
+builds; record evidence, suggest one next task and stop. Do not alter user Vaults.
+
+Delivered: shared calculator and numeric variables, sampled function plots with
+explicit windows, function evaluation, numerical derivative/integral/root tools,
+real small-matrix inverse/transpose/determinant/product/system solving, presets and
+20 templates in both palettes. Markdown retains descriptions/TeX; TeX results also
+retain parameter values. Rich LaTeX inserts inside the document before its closing
+marker. Canvas makes editable grouped graph snapshots using existing primitives,
+with matrix row previews and card heights sized for rows. No new dependencies,
+object schema, cloud or user Vault modifications. Calculus is approximate; sampled
+plots can miss gaps. Full TeX rendering remains richer in notes/lab than Canvas.
+
+Acceptance: 72 focused tests pass (.local/math-acceptance-complete.log), covering
+numerical domains/precedence/resources/corners/singular matrices, all template
+rendering, input invalidation, portable Canvas JSON/SVG/group undo, all-editor
+insertion and stale drafts, large text and an on-screen keyboard, search/selection
+layout and existing equation/footnote behavior. Initial runs exposed search-header
+crowding and keyboard footer overflow; both have regression coverage and fixes.
+An overlapping native build/test attempt hit a PDF DLL lock, so final platform
+builds run after tests. Final focused acceptance also checks that template-search
+Enter retains its search-only role. The full run passes 2,124 tests with one explicit Windows
+symlink-permission skip in 201 seconds (.local/math-all-tests-complete.log).
+Native interpreter fixtures are configured. Analysis is clean (9.7s); strict format
+is 606 files with zero changes (.local/math-analyze-complete.log and
+.local/math-format-check.log). No native desktop-control testing was used. Final
+JavaScript web build passes in 72.3 seconds (.local/math-web-build-complete.log),
+with existing dependency Wasm dry-run/Cupertino-font warnings; no Wasm claim.
+Windows release passes in 74.4 seconds (.local/math-windows-build-complete.log),
+retains the registered Google desktop-client configuration and updates data/app.so
+with a timestamp newer than the changed sources. The normal executable remains
+build/windows/x64/runner/Release/orbit_note.exe. No ZIP, app launch, publication or
+user Vault edits. git diff --check passes for changed tracked source/docs.
+Suggested next task: live function plot blocks in notes with editable parameters.
+
+---
+
+# Validated — Block formats and BTW callouts, 2026-10-14
+
+Owner requests new Markdown features and “BTW block format.” Interpret BTW as
+By the way, alongside a real current/selected-block format chooser. Scope EDT-02/
+03/04/09/12: reuse portable Markdown, existing projection/save/history and callout
+renderers; no new object identity, schema migration, cloud service or desktop QA.
+
+Delivered: Format block toolbar control opens a searchable list of paragraph,
+Heading 1–6, bullet/numbered/checklist, quote and Note/BTW/Tip/Warning styles.
+Formatting expands to supported complete source blocks, retains inline markup,
+links, checked checklist state and stable block anchors; structured/unknown blocks,
+aligned blocks and nested list/quote levels refuse rather than flatten silently.
+Multi-line prose cannot become a heading without an explicit one-line selection.
+A callout conversion refuses to absorb unselected adjacent quote lines. Applications
+revalidate source/note/Vault and use one normal undoable edit. BTW insertion is
+also in Insert/slash menus and callout type selection; empty blocks have no filler
+sentence. Existing Note/BTW insertion now prefixes every body line correctly.
+
+Callout options edit the title without rewriting the body/type, make it collapsible,
+remove collapsibility, or choose expanded/collapsed defaults using [!TYPE]+/-.
+Local expand/collapse changes no source. Rich source navigation reveals a folded
+body; Read search temporarily expands folded contents before matching/reveal.
+Title editing refuses changed source and clears obsolete title-highlight ranges;
+unknown alphabetic types, exact body quoting and CRLF remain source-preserved.
+
+Narrow/enlarged editor acceptance exposed an existing status-row overflow and a
+command header consuming the writing viewport. Compact cursor details remain in
+the clickable tooltip, while narrow command chrome scrolls within a bounded area.
+Callout title controls align at the top so long wrapped titles do not move controls
+below the viewport. Normal-width labels and actions remain available.
+
+Plan/validation: parser/projection tests, formatting safety/anchors/CRLF/unknown
+blocks, picker cancellation and stale source, title shortening after selection,
+source-vs-view folding, exact undo and narrow 200% text. Run formatting/analysis/
+full tests, web build, and normal Windows rebuild only when closed. Record results,
+suggest one next task and stop. No native desktop-control testing or app launch.
+
+Validation: focused coverage passes 50 tests, including 10 new cases,
+with the shortened-title/selected-header regression and 200% layout checks
+(.local/blocks-focused-final.log). The first full suite exposed two footnote-menu
+hit-test failures after inserting a new menu item above Footnote. Keeping existing
+command order and placing BTW after existing insert commands fixes both; all 11
+footnote/underline tests pass (.local/blocks-footnote-regression.log). The final
+full suite passes 2,102 tests with one explicit Windows symlink-permission skip in
+320 seconds (.local/blocks-all-tests-final.log). Native interpreter fixtures are
+configured for that run. No native desktop-control testing was used.
+Analysis is clean (.local/blocks-analyze-final.log); strict formatting reports
+598 files, zero changes (.local/blocks-format-check.log). Final JavaScript web build
+passes in 180.7 seconds (.local/blocks-web-build-final.log), with existing dependency
+Wasm dry-run/Cupertino-font warnings; no Wasm claim. Final Windows release passes
+in 182.5 seconds (.local/blocks-windows-build-final.log), retains the registered
+Google desktop-client configuration and updates the normal release data/app.so.
+The executable remains build/windows/x64/runner/Release/orbit_note.exe; no ZIP,
+app launch or publication was performed. git diff --check passes for changed
+tracked files. Existing unrelated source and user Vaults remain intact.
+Suggested next task: reusable custom callout presets with icons and colors.
+
+---
+
+# Validated — Vault Insights and Markdown Document Checks, 2026-10-14
+
+Owner requests more graph-like diagnostics/statistics, then more Markdown editing
+features. Scope: deterministic read-only Vault inspection (AI-09/15, LNK-04/06)
+and document checks with explicit single-link repair (EDT-13/LNK-03/04). Preserve
+existing identity, portable documents, save/history, offline use and unknown data.
+No AI provider, credentials, schema migration or desktop-control testing.
+
+Plan: reuse the shared object-connection index; compute object/type counts,
+reference occurrences vs unique pairs, connected components/degree, isolated notes,
+repeated titles, recent updates and task completion. Expose current draft/save/
+repository/PDF indexing counts, refreshable snapshot and aggregate-only clipboard
+report. Add a paginated document inspector for missing/ambiguous wiki links,
+missing/unused/duplicate footnotes and repeated/skipped headings. Open exact source
+ranges or deliberately choose a replacement object through the existing picker;
+retain label/fragments, validate the captured source/Vault and use ordinary undo.
+Check large Vaults, CRLF/UTF-16, literal exclusions, stale snapshots, narrow/200%
+text layouts, repair cancellation and undo. Format/analyze/full tests, web and
+Windows release builds when the app is closed. Record results, then stop.
+
+Delivered surfaces: Graph → Vault Insights; Markdown Writing tools → Document
+Checks. Insights counts cover the whole active Vault, independently of graph
+filters, and reflect current drafts. Navigation revalidates object/Vault identity.
+Diagnostics copy contains only aggregate counts/phases; no names, object IDs,
+paths, source content or account details. Snapshots refresh deliberately rather
+than doing report work during typing. Recent means last updated within seven days,
+not an edit history. Isolated notes and repeated titles are explanations for review,
+not errors. Missing recorded sources cover derived placement/metadata edges;
+Wiki mentions are inspected in Document Checks. No disk-health/sync certification.
+
+Document Checks operates on unchanged authored source. Existing literal/footnote/
+heading parsers preserve code, frontmatter and comments and retain UTF-16 source
+ranges. Findings open Source with selection and reveal. Explicit link repair
+retains the authored label/fragment, changes one mention through normal history,
+and refuses stale notes/Vaults, composition, read-only writes or unavailable
+replacement objects. No external URL validation, broad Markdown/grammar guarantee,
+auto-cleanup, automatic merge or semantic interpretation. No storage changes.
+
+Validation: new domain/widget tests cover a 5,000-object reference graph,
+repeated edges/missing/deleted targets/empty Vaults, aggregate-report privacy,
+stable ID/alias/binding resolution, code/frontmatter/comment exclusions,
+CRLF/UTF-16 findings, 200% text at 360x640, paginated navigation, snapshot refresh,
+stale-document refusal, explicit link repair, cancellation and one-step undo.
+Full suite passes 2,089 tests with four skips in 301 seconds
+(.local/insights-all-tests.log). Three skips were interpreter-dependent acceptance
+fixtures; rerunning the IDE/launch suites with ORBIT_IDE_TEST_PYTHON produces
+34 passing and one OS-permission symlink skip (.local/insights-native-supplement.log).
+Thus interpreter coverage is recovered, with the Windows symlink-creation check
+still explicitly unverified. No desktop-control QA was used.
+Analysis is clean (.local/insights-analyze-final.log); strict formatting reports
+594 files, zero changes (.local/insights-format-check.log). JavaScript web release
+passes in 180.4 seconds (.local/insights-web-build.log), retaining existing
+Wasm-dependency/Cupertino-font dry-run warnings; no Wasm-support claim.
+Windows release passes in 152.8 seconds (.local/insights-windows-build.log), using
+tool/build_windows.ps1 and retaining the registered Google desktop-client build
+configuration. The normal executable is at build/windows/x64/runner/Release/
+orbit_note.exe; no ZIP, app launch or publication was created. git diff --check
+passes for the changed tracked files. Existing unrelated work remains intact.
+Suggested next task: project-scoped Insights with navigable connection groups.
+Do not implement the next task ahead.
+
+---
+
+# Completed — Demonstration Vault and next-feature audit, 2026-10-14
+
+Owner requested a separate demonstration Vault and asked what substantial feature
+can be added from the docs next. This delivery creates sample content only; it does
+not implement a new roadmap feature or change production code.
+
+Created `C:/Users/isa/Desktop/Orbit Showcase Vault` using normal repository and
+controller commands, with a new stable workspace identity. Existing Vaults and
+active/recent Vault preferences were not replaced. The START HERE note links a
+15-minute tour of 68 objects across 34 folders: university course/lecture/study
+cards, game design/production, invented research Function records, creative brief/
+references/decisions, tasks/calendar/Gantt/Smart View, linked Canvas control room,
+classic-blue blueprint board, illustrated note, original PDF and OBJ/GLB models.
+Ordinary source projects under Code Projects provide Python, multi-file C++ and
+an interactive static web example; Python/C++ profiles use current launch storage.
+No account sign-in, upload, shared server, desktop control or automatic code run.
+
+Validation: headless generation through production boundaries passes, then closes
+and reopens the Vault with the same identity/count and no repository issues
+(.local/showcase-generation.log). A separate automated check verifies internal
+note links, Canvas source identities, query results, decoded PNG dimensions,
+12-triangle OBJ/GLB parsing and persisted valid Python/C++ launch profiles
+(.local/showcase-verification.log). Source files, original media and canonical
+objects remain editable. No production build/full-suite rerun was needed for this
+content-only artifact; prior app validation remains recorded below.
+
+Docs audit: substantial remaining work includes scoped Git history/diffs and
+revision capture (DEV-03/05), graphical debugger integration, and automatic
+personal Drive synchronization (manual backup is separate). Suggested next task:
+read-only scoped Git integration connecting exact revisions/diffs to design and
+playtest evidence. Await owner choice; do not implement ahead.
+
+---
+
+# Implementation validated — Saved launch profiles and local web preview, 2026-10-13
+
+Owner accepts the suggested next Code workspace task. Focus DEV-01/03/05 on small
+scripts/web projects: saved editable project run/build profiles with argument arrays
+and scoped working folders, sequential build/run with failure/cancellation boundaries,
+recoverable expected-hash configuration saves; explicit loopback-only static web
+preview with saved-file reload, asset support, visible address and start/stop controls.
+Preserve external source authority, unknown data, existing drafts/tools and Google
+configuration. No desktop-control QA, automatic execution, package installation,
+public hosting, graphical debugger or new backend. Do not build ahead.
+
+Plan: pure launch configuration, native/stub store/server adapters, reuse existing
+process console and project save checks, compact profile editor and preview controls.
+Test real temporary-project HTTP traversal/hidden-file/symlink boundaries, assets,
+reload and shutdown; native profile restart/conflicts/recovery/future data; sequential
+failure/cancellation and UI at narrow/enlarged text. Format/analyze/full tests and web
+build; Windows rebuild only when the normal release is closed. Update evidence and
+behavior docs, suggest one next task, then stop.
+
+Delivered: Run profiles manager with Python/C++/custom presets, stable IDs, names,
+project-relative working folders, editable ordered steps and literal JSON argument
+arrays. `{output}` and `{buildDir}` support generated executables and separate
+object outputs; multi-file MSVC compilation was verified using paths with spaces.
+Selecting/opening profiles does not execute them. Explicit runs check source drafts,
+open-file hashes/versions and saved configuration; failure, changed context and
+cancellation stop later steps. Pending process startup also honors cancellation.
+Settings preserve unknown fields, refuse future versions/stale saves and retain
+flushed before/after checkpoints with a recovery picker. No Vault migration/package.
+
+Local HTTP preview opens saved HTML with module/CSS/image/font asset serving, visible
+address/copy/refresh/stop, saved-file reload and native external-change watching.
+Ephemeral IPv4 loopback binding, per-port authorization cookies and Host/origin
+checks prevent accidental shared-cookie interference or outside/cross-site access.
+Hidden/unsupported files, directory listings and symlink escapes are refused. The
+reload script is appended without modifying authored markup or source files; body
+closing strings inside JavaScript/comments cannot break insertion. Project changes,
+close and successful exit stop the service. No public hosting, bundler/backend or
+graphical debug adapter claim. External watching/CSP/media Range limitations are
+documented; normal sources remain ordinary UTF-8 files.
+
+Focused evidence: 34 passing IDE/launch cases and one explicit skip, including
+13 new launch tests (.local/launch-focused.log). Native tests cover configuration
+restart/unknown metadata/concurrent stale writers/checkpoint failure/future data,
+HTTP authorization/assets/methods/traversal/hidden sources/Windows external reload/
+shutdown, independent preview cookies, literal process arguments/scoped working
+folders, sequence failure/cancellation, pending startup and 200% text at 360x640 /
+640x360. Symlink creation was refused by this Windows account; that dedicated
+native link test is explicitly skipped rather than claimed as accepted.
+Supplementary MSVC multi-file profile build/run passes
+(.local/launch-cpp-multifile-check.log), using temporary source only.
+
+Initial full suite: 2,078 passing, one skip, 253 seconds (.local/launch-all-tests.log).
+Final full suite after the HTML markup-preservation fix: 2,078 passing, one explicit
+native symlink skip, 291 seconds (.local/launch-all-tests-final.log). The real HTTP
+regression verifies that authored JavaScript containing a body-closing string is
+retained intact and original file bytes are unchanged. Analysis is clean
+(.local/launch-analyze-final.log); strict formatting reports 588 files, zero changes.
+JavaScript web release succeeds in 159.3 seconds (.local/launch-web-build.log), with
+the existing dependency Wasm dry-run/Cupertino font warnings. No Wasm claim.
+git diff --check passes. No source/configuration fixture or preview server was left
+running; temporary projects were removed. The final markup fix is native-only and
+does not alter the successfully built JavaScript/stub branch.
+
+Windows release succeeds in 122.3 seconds (.local/launch-windows-build.log). The app
+closed during validation, so tool/build_windows.ps1 could update the normal release
+while preserving the registered Google desktop client. Required executable,
+flutter_windows.dll, data/icudtl.dat and data/app.so are present. No force-close,
+app launch, desktop-control QA or public release publication occurred. Actual
+browser runtime acceptance and OS link/locking matrix
+remain device checks. See setup, implemented formats and ADR-0029. Suggested next
+task: graphical Python debugging with breakpoints, call stack and variables. Stop
+before implementing it.
+
+---
+# Implementation validated — Code workspace for HTML, Python and C++, 2026-10-13
+
+Owner requests full IDE-style coding support. This supersedes the earlier
+read-only-source restriction for an explicitly selected coding project. Scope:
+DEV-01/03/05 editor/tool adapters with HTML/Python/C++ workflows. Add multi-file
+editing, recoverable drafts and guarded/history-backed saves; offline snippets;
+optional local LSP completion/diagnostics/hover/definition/formatting; explicit
+Python syntax/run/pdb, C++ single-file build/run/configured console debug and HTML browser preview; bounded
+output, cancellation and project navigation/search. Preserve all prior work.
+No automatic code execution, shell-interpreted project commands, unreviewed
+server edits, graphical debugger promises, cloud or app desktop-control QA.
+
+Plan: pure source/tool/LSP models and application session commands, conditional
+native/stub project/process adapters, existing CodeSurface/CodeController/history,
+scoped source browser/search and linked evidence. Source files keep ordinary
+external-file authority; draft/history state is documented separately and never
+turns source files into duplicate Vault objects. Record boundary change in ADR
+0028. Validate conflict/failed-save/reopen/locked writes, UTF-16/version/range safety,
+framing/disconnect/cancellation, real temporary-project tooling, compact layouts,
+then format/analyze/full tests and relevant builds. Windows release remains pending
+owner closing the running release; Google activation/configuration is preserved.
+
+Delivered: dedicated Code workspace from Explorer/command palette and Game/Analysis
+dashboards, focused on the owner's chosen small-scripts/web-project workflow.
+Multi-file editing/creation/search, per-tab undo/selection, line operations,
+find/replace, go-to-line, save-all with partial-failure reporting, recovered drafts,
+external-change comparison and checkpoint review reuse existing editor/history
+surfaces. HTML/Python/C++ include offline snippets and optional local LSP completion,
+versioned diagnostics, hover, definition, symbols and formatting preview. Evidence
+capture uses ordinary Vault commands and canonical dashboard links.
+
+Native files retain UTF-8/BOM/line endings, expected hashes and flushed before/after
+checkpoints. Saves serialize within/across Orbit sessions; independent recovery
+files cannot clear another session's draft. Unknown/future recovery and device-tool
+settings remain intact. UTF-16 proposals reject invalid/overlapping/surrogate-split
+ranges and stale versions. Local process commands use executable/argument arrays;
+Python parsing/run/pdb, MSVC/clang/g++ single-file build/run and configured C++ console
+debugging are explicit. HTML preview opens the saved file in the browser. Native
+scope is conditional; no new app package or Vault migration was introduced.
+
+Validation: all 2,066 tests pass in 207 seconds (.local/ide-all-tests.log), including
+22 new IDE cases. Covers mixed endings/emoji/snippets, split-byte LSP framing,
+stale diagnostics/server mutation refusal/disconnect, edits arriving during save,
+external conflicts/failed recovery and close, native BOM/history/restart/create/path
+guards, concurrent stale saves, separate-session drafts, future data retention,
+private preferences, tab limits, real process stdin/output/stop, installed MSVC
+compilation, explicit-run guards, completion undo/Python indentation and 360x640 /
+640x360 at 200% text with live console/input/stop. Compact testing exposed inaccessible
+Stop controls and a static modal console; these now scroll/reflow and update live.
+
+Supplementary real temporary-project acceptance passes for Python LSP initialize,
+math.sqrt completion, undefined-name diagnostics and hover; HTML LSP initialize,
+div completion and validated formatting; MSVC C++20 debug compilation, PDB symbols
+and program output. Logs: .local/ide-real-language-check.log,
+.local/ide-real-html-check.log and .local/ide-cpp-debug-check.log. Test servers were
+installed only in ignored isolated .local environments; no project code or user
+binary was executed. Fixtures/processes closed and temporary source folders removed.
+
+dart format lib test completed; strict check reports 581 files, zero changes.
+flutter analyze reports no issues (.local/ide-analyze-final.log). JavaScript web
+release succeeds in 81.2 seconds (.local/ide-web-build.log). Existing dependency
+Wasm dry-run and Cupertino font warnings remain; Wasm acceptance is not claimed.
+git diff --check passes. No desktop-control testing was used.
+
+Windows release replacement remains pending: orbit_note.exe PID 1440 still runs
+from the normal release folder. The earlier close request has not been answered;
+no force-close or locked-file overwrite was attempted. Resume tool/build_windows.ps1
+after closure to preserve the registered Google client. No release/publish claim.
+Tool setup, source authority and limits are documented in
+[Code workspace setup](../development/code-workspace-setup.md) and ADR-0028.
+clangd/C++ console debugger, actual browser preview and two-process OS-lock acceptance
+remain separate device checks; no full IDE, graphical DAP, multi-file build or
+hardware power-loss claim. Suggested next task: project run/build profiles and a
+local web development preview server. Stop before implementing it.
+
+---
+# Implementation validated — Technical source search and build investigations, 2026-10-13
+
+Owner requests more features for reverse engineers and game developers. Scope:
+DEV-01/02/03/04, REV-02/04 and GAME-02 local knowledge subsets. Add cancellable,
+bounded all-file source search with exact-line navigation; capture source evidence
+as portable linked notes; compare recorded function maps across explicitly chosen
+binary/build identities; save linked comparison reports and investigation tasks.
+Preserve earlier work and source authority. No desktop-control testing, executing
+code/binaries, external repository edits, live debugger connectors or cloud work.
+The Google test-account follow-up below remains pending owner browser access.
+
+Plan: extend current read-only source browser/adapters and normal validated
+repository commands. Match function records only with explicit binary/build/module
+context and unique symbols; flag duplicates/unsupported locations, distinguish
+rebasing from changed recorded RVAs and avoid claiming an actual binary diff.
+Retain source UUIDs/revisions, exact excerpts and evidence when checkouts disappear.
+Test source cancellation/limits/failures, scoped comparison/missing context, stale
+reports, storage failure/reopen and narrow/enlarged layouts. Run standard checks.
+
+Delivered: cancellable literal search across selected source-folder listings with
+case/whole-word/path filters, progress, partial/skipped status, exact-line results
+and stale-file SHA-256 checks. Assembly/log files join existing scripts/shaders.
+Game and research dashboards can save source evidence notes with exact fenced
+excerpts, path/range/hash metadata and canonical owner links. Gameplay capture
+reuses the same search. No source file is executed or changed.
+
+Recorded function-map comparison appears on research dashboards/Function tables.
+Build choices require the same explicit binary ID; exact unique module/symbol
+pairs distinguish changed metadata/RVAs, rebasing and recorded presence/absence.
+Duplicates, incomplete context and auto-address names remain uncertain. Filters,
+30-row pagination and baseline/candidate cards open original UUID records. Reports
+and investigation tasks retain source revisions/resource links in ordinary files;
+stale/unsaved/missing/future records reject save. View switching does not copy
+functions. Snapshot reports are not binary diffs or a claim of equal behaviour.
+
+Focused validation: 46 passing source/research/gameplay tests, including 15 new
+technical-investigation cases. Verified supplementary Unicode whole-word matching,
+LF/CRLF capture, path-before-limit search, cancellation during a pending read and
+within a 100,000-line file, failure/budget reporting, stale source navigation,
+ambiguous/rebased/different-binary locations, source UUID connections, failed saves,
+native-file restart and 360x640/640x360 at 200% text. The test fixtures were corrected
+to use repository.objects and real async outside Flutter's fake clock; the UI save
+assertion now waits for the asynchronous command to finish. No desktop-control QA.
+Analysis is clean (7.7s); strict formatting passes on 569 files; diff check passes.
+Full suite: 2,044 passing tests in 3m50s (.local/technical-full.log). JavaScript web
+release succeeds in 156.6s (.local/technical-web.log). Existing Google JS-interop
+Wasm dry-run and missing Cupertino-font warnings remain; this is not Wasm support.
+Windows rebuild is pending: final process check still finds Orbit Note running
+from the normal release directory (PID 1440). Owner was asked to save/close it;
+no confirmation arrived during validation. Do not overwrite/force-close the running
+release. Resume with tool/build_windows.ps1 after the owner closes it, retaining
+the existing registered Google client. No force-close or app launch was performed.
+
+Limits: literal line search of supported listed files, 500 matching lines and
+16 Mi UTF-16 code units per operation; existing native listing/preview bounds
+apply. Function comparison is limited to 1,000 scoped selected records. Note bodies,
+binary instructions/bytes and Git commits are not compared. Search is session-local;
+source paths in evidence do not grant filesystem access. Google test-user follow-up
+is unchanged. No cloud, new package, architecture/store migration or execution.
+Suggested next task: read-only Git revision/diff inspection and verified commit
+excerpt capture through explicit repository scope. Stop before implementing it.
+
+---
+# Follow-up task — Google test-account access, 2026-10-13
+
+Owner screenshot shows Google's 403 access_denied for a different Google account
+from the registered owner test user. Scope: add the account shown to the existing
+Testing audience, verify its saved entry, then request a fresh app sign-in. No
+public rollout, new credentials, app rebuild or automatic Vault synchronization.
+
+Confirmed screenshot explanation: only developer-approved test users may access
+the app. The prior owner account remains the immediate sign-in option. Browser
+inventory no longer exposes the earlier Brave owner session. In-app Cloud Console
+cannot load the project/audience and shows no project entries; retry did not fix
+it. Asked owner to reopen the existing Brave setup session. No test-user change
+has been submitted or claimed successful. Resume only with accessible owner UI.
+No source changes or new app tests required for this external-registration fix.
+
+---
+# Completed task — Google Drive sign-in activation, 2026-10-13
+
+User requests functional one-click Google sign-in. Authorized Google Cloud browser
+registration and explicitly accepted the Google API Services User Data Policy at
+its final step. Scope: activate the Windows Desktop app client/Drive API/testing
+audience, fix unconfigured-build setup and sanitized diagnostics, exercise OAuth
+and existing account/backup flows, and rebuild Windows with actual local config.
+Preserve all prior work. No app desktop-control testing, automatic Vault sync,
+multiplayer expansion, Android registration, billing or public rollout.
+
+Confirmed: local generated build configs had no client IDs. Old project
+orbit-note-508518 is inaccessible from the relevant signed-in accounts. Created
+dedicated orbit-note-511512 under the owner's existing Google account; saved
+branding, external testing audience, Desktop client and owner test-user entry.
+Client configuration stays in ignored local config; no secrets are printed,
+committed, placed in a Vault, or uploaded to GitHub. Drive API is enabled.
+
+Delivered: registered narrow scopes and real Windows Desktop app client; imported
+its ignored local build configuration; fixed the inactive sign-in button with
+validated preview registration recovery, secure device restoration, sanitized
+configuration errors and an explicit first-sign-in empty-folder preparation.
+Added tool/build_windows.ps1 so future local rebuilds keep the registered client.
+Existing identity, credential binding, offline use and manual transfer boundaries
+are unchanged. No automatic upload occurs after sign-in.
+
+Real-account evidence: after the owner completed browser consent, the temporary
+production-adapter OAuth check exchanged the code, verified identity, read quota
+and listed Vaults/backups. RAM-only credentials were cleared afterward. No Vault
+upload, restore or original-file change occurred. Screenshot:
+.local/google-registration-evidence.png; result: .local/google-live-result.json.
+The installed app still requires its own first sign-in; device secure storage and
+live backup transfers were not manually tested through desktop controls.
+
+Validation: 17 new tests cover parser rejection, BOM/version handling, activation
+and secure restart, failed/parallel configuration writes, compiled-client protection,
+provider errors, actionable setup UI and first-folder success/failure/reuse without
+upload. Focused auth/backup run: 47 pass; final activation/ready run: 23 pass.
+An older full run exposed the obsolete no-root-on-sign-in fixture; it was corrected
+to verify existing-folder reuse. A temporary test edit accidentally referenced an
+out-of-scope restore variable in cancellation assertions; corrected before the
+final restart. Analysis is clean (101.2s); format/strict pass on 563 files.
+Final full suite: 2,029 passing tests in 5m32s against the corrected sources
+(.local/google-activation-full-clean.log). git diff --check passes.
+
+Windows configured release succeeds in 180.8s (.local/google-activation-windows.log).
+JavaScript web release succeeds in 213.6s (.local/google-activation-web.log).
+Existing Google JS-interop Wasm dry-run and missing Cupertino-font warnings remain;
+this validates JavaScript web, not Wasm. Windows data/app.so is updated (22,807,440
+bytes); the native launcher can retain its prior timestamp for Dart-only changes.
+
+Limits: Google Testing owner audience only. Android OAuth registration and public
+rollout remain open; local configuration does not configure hosted CI. No Vault
+backup was uploaded for this verification, no desktop-control QA, no automatic
+Vault sync or multiplayer completion claim. All earlier work remains preserved.
+Suggested next task: automatic personal Vault synchronization, using the existing
+reconciliation/save contract, with visible conflicts and offline recovery. Stop
+before implementing it.
+
+---
+# Completed task — Universal reference bridges, 2026-10-13
+
+User requests a cohesive app with genuine references across Canvas, notes, files,
+courses/projects and specialized workflows. Scope: LNK-03/04/10, CAN-02/03/09,
+VIEW-06/07, NAV object navigation. Preserve prior uncommitted work. Plan: unify
+reference discovery/preview/actions, bridge source objects into notes/Canvas,
+index live embeds and portable ownership/resource links with exact source
+locations, and preserve precise references during clipboard transfers. Reuse
+normal object identity, existing embeds/placements and recoverable mutations.
+No desktop-control QA, backend, new packages or speculative future subsystems.
+
+Delivered: shared universal-object picker with live preview and keyboard search,
+Connections/Use elsewhere across object surfaces, precise incoming-use navigation,
+authored relationship reasons/source-version review and saved-query membership.
+Added source-owned live task/view cards, canonical course/project context, guarded
+reference embedding/placement and exact page/section clipboard/open-beside paths.
+Backlinks, outbound inspection and Graph now share the reference projection,
+including file/view objects, live embeds, source provenance and resource links.
+Unknown metadata/Markdown and shared-source identity remain preserved.
+
+Validation completed after the final Graph integration. Initial automated fixtures
+were corrected to use real storage async outside the widget fake clock, valid
+Study provenance and the actual Canvas schemaVersion field. An earlier full run
+was interrupted after a changed test encountered a previously compiled Graph
+API; the restarted full run uses the frozen final sources. No desktop-control QA.
+
+Final checks so far: full suite 2,012 passing tests in 4m15s
+(.local/bridges-full-final.log), including 33 new connection/bridge tests.
+Focused Graph/reference/research run: 51 pass (.local/bridges-graph-focused.log).
+Cases include canonical identity/rename, CRLF and escaped/Unicode fragments,
+unknown markers, code literals, exact use offsets, attachment ambiguity, live
+query membership, shared task updates, stale drafts/future scenes/failed writes,
+source review/undo, canonical course ownership, native temporary-store reopen,
+1,000-reference incremental parsing, picker keyboard/pagination, Vault-generation
+invalidations, and 360x640/640x360 layouts at 200% text.
+Analysis is clean in 11.6s (.local/bridges-analyze-clean.log); format/strict pass
+on 561 files (.local/bridges-format-clean.log, .local/bridges-strict-clean.log).
+git diff --check passes. Windows release succeeds in 157.7s
+(.local/bridges-windows.log). JavaScript web release succeeds in 94.9s (.local/bridges-web.log).
+Existing Google JS-interop Wasm dry-run and missing Cupertino-font warnings
+remain; this validates the JavaScript build, not WebAssembly. The Windows
+release contains updated data/app.so (22,774,672 bytes); the native launcher
+can retain its existing timestamp when only Dart code changes.
+
+Limits: Graph aggregates object-pair edges rather than exposing a complete typed
+dependency engine. Only supported object/reference formats are interpreted;
+unknown metadata and unsupported fragments remain preserved. No desktop-control
+QA, mobile binary build, deployment/publication, new backend or issue-free claim.
+Suggested next task: semantic Canvas connectors that author labeled relationships
+and display them consistently in Connections and Graph. Stop before implementing.
+
+---
+# Completed task — Connected university workspace and competing drafts, 2026-10-13
+
+User authorized the simultaneous-editor/autosave audit, explicit code/OBJ/GLB
+opening controls, courses with maintenance/progress, and broader Canvas/structured
+planning workflows. Their clarification prioritizes the university workspace.
+Scope: STUDY-01/03/04/05, CAN-02/03/08/09/14, VIEW-02/06/07 and HIST-01/09.
+Preserve all previous uncommitted work. No desktop-control QA or new packages.
+
+Plan: retain competing note/Canvas drafts; exercise parallel autosave, failures
+and recovery. Add discoverable file controls using current offline viewers. Build
+a course hub on ordinary overview notes, stable course membership, editable
+metadata, real task/practice/understanding metrics, linked material and scoped
+study/planning boards. Reuse columns, object cards, saved queries, calendar and
+Study & Review. Do not promise complete Milanote/Notion commercial feature parity.
+Validate ownership on queued creates/setup, preserve unknown fields/user text,
+then run focused/full automated tests, analysis, formatting and release checks.
+
+Delivered: session-retained conflicting note bodies/Canvas scenes, shared/retained
+comparison, recovered-object copy/discard, normal exit/switch blocking, correct
+Canvas source snapshots throughout active gestures, and no-op draft suppression.
+Queued creates/folders reject Vault changes; object creation freezes caller maps.
+Course hub adds search/status/semester filters, editable details/fractional ECTS,
+assignment/practice/concept metrics, explicit linking/removal and archived/passed
+states. Linked study boards use normal columns, shared objects and scoped live
+queries. Course-specific planning/review/continuations use stable UUID membership,
+with legacy folder/name compatibility. Added direct code/OBJ/GLB/course buttons,
+menu entries and a command-palette course entry. Existing read-only sources now
+correctly disable note/Canvas mutations in the shell.
+
+Validation so far: 18 new tests pass (.local/university-new-verified.log). They
+cover same-frame note publishers/rebuild/recovery, failed recovery, newer retained
+drafts during a pending recovery, simultaneous Canvas gesture/source changes,
+100 queued draft updates with three parallel flushes, no-op revisions, frozen
+caller maps, queued create/folder Vault switches, same-name course isolation,
+metadata/body preservation and stale form rejection, scoped live query updates,
+membership removal preserving objects/placements, malformed/duplicate/failed and
+partially completed setups, scoped exam/card/resume records, direct entry points,
+and course layouts at 360x640/640x360/1100x800 with 200% text. Full suite passes
+1,979 tests in 4m02s (.local/university-full.log). Analysis is clean in 11.3s
+(.local/university-analyze-clean.log); format/strict checks pass on 557 files
+(.local/university-format-clean.log, .local/university-strict-clean.log).
+The initial widget fixture awaited storage in Flutter's fake async zone; corrected
+to use runAsync and cancel controller timers before advancing the gesture clock.
+The Canvas gesture regression then exposed a real lazy-base initialization issue,
+fixed by capturing the base in initState. Earlier targeted invocation included an
+incorrect test filename; final full suite covers all real tests. git diff --check
+passes. Windows release succeeds in 143.0s (.local/university-windows.log),
+including updated data/app.so. JavaScript web release succeeds in 138.8s
+(.local/university-web.log); existing Google JS-interop/Wasm dry-run and missing
+Cupertino-font warnings remain. This is not a Wasm-support claim. Direct Windows
+launch path: build/windows/x64/runner/Release/orbit_note.exe; its data directory
+contains the updated Dart application even though the unchanged native wrapper
+keeps its previous timestamp.
+
+Limits: this delivers the university workflow prioritized by the user and reuses
+existing creative/structured Canvas tools. Complete Milanote/Notion commercial
+parity is not claimed. Conflicts are session-local (normal close is blocked),
+not crash-durable; Canvas comparison currently shows serialized data. Titles and
+properties retain their existing editing paths. Course creation/board setup are
+not multi-file atomic: completed objects survive partial failure. Initial study
+board placements are capped at 18 material objects, with current live query
+results beyond that. No desktop-control QA, APK build, publication, packages,
+backend credentials or storage/scene version migration.
+
+Suggested next task: crash-durable competing-editor drafts with recovery on restart;
+stop before implementing it.
+
+---
+# Completed task — Stress and asynchronous import safety, 2026-10-13
+
+User requested automated stress testing, hidden-bug discovery and fixes. Scope:
+FILE/DES import ownership and durable-storage/Canvas failure boundaries. Preserve
+all prior uncommitted tasks. No desktop-control QA, external user files, packages
+or speculative features. Plan: gated Vault/tab-switch drops, queued import and
+caller-buffer mutation checks; seeded Canvas undo/redo/index stress; repeated
+native save/reopen/conflict checks; fix reproduced failures, then run required
+format/analyze/full suite and release checks.
+
+Reproduced defects: queued imports could run after initialization changed Vault;
+caller buffer mutation changed captured attachment bytes; cross-project repeated
+capture rewrote canonical ownership; all eight seeded Canvas sequences exposed
+stacking changes on undo from duplicate order allocation. Drop audit found late
+reads bypassing Vault checks, links based on the active rather than captured note,
+and Canvas read errors escaping the per-file error boundary.
+
+Delivered: unique bring-to-front order allocation; repository import generation
+check and bounded owned-byte snapshot; shell generation/Vault guards across
+picker/read/decode/import and late open/placement; target-note-relative paths;
+per-file Canvas read failure feedback/continuation; image decoder cleanup; controller
+capture generation checks after metadata saves; existing explicit attachment
+ownership and creative capture provenance/folder retention on deduplication.
+No storage schema, package, platform adapter, universal identity or engine changes.
+
+Validation: 61 focused checks pass (.local/stress-regression-final.log). Eight
+seeds each execute 1,000 mixed Canvas insert/move/remove/reorder/cancel/undo/redo
+commands with spatial-query comparisons and JSON round-trips retaining opaque
+data. Native temporary-file tests create 24 notes, queue 144 updates across six
+save/reopen rounds, retain Unicode/mixed endings/unknown properties, and reject a
+stale overwrite after an external edit. Six new import fixtures exercise queue
+ownership, byte isolation, delayed Vault/tab switching, partial batch failure and
+trashed targets; project fixtures exercise ownership/course/provenance preservation.
+The gated drop fixtures use synthetic files and in-memory Vaults, not user files.
+The first widget Vault-switch fixture was adjusted to apply the repository switch
+boundary directly; controller shutdown awaits are not modeled as OS acceptance.
+Initial analyzer found one missing brace; corrected before final full tests.
+Final analysis is clean (.local/stress-analyze-verified.log). Format and strict
+checks pass on 551 files (.local/stress-format-verified.log,
+.local/stress-strict-verified.log); git diff --check passes. Windows release
+succeeds in 280.8s (.local/stress-windows-final.log), including updated data/app.so.
+JavaScript web release succeeds in 296.8s (.local/stress-web-final.log); existing
+Google identity JS-interop/Wasm dry-run and Cupertino font warnings remain.
+No Wasm support claim. The first final suite passed 1,960 tests but the large
+native disk fixture exceeded the default 30-second test timeout under combined
+build/test load (.local/stress-full-final.log). Its unchanged content/conflict
+assertions now have an explicit bounded two-minute I/O timeout. Cleanup errors
+after that timeout were fixture teardown while work was pending, not accepted
+product behavior. The complete rerun passes all 1,961 tests (.local/stress-full-verified.log).
+
+Limits: automated correctness and failure-boundary stress only. No hardware FPS,
+memory-capacity, physical power-loss or device input claim. No desktop-control QA,
+APK build, Git push or publication. Successfully imported but unplaced attachments
+remain discoverable; no shared attachment is silently cleaned up.
+Suggested next task: stress-test simultaneous editor drafts and autosave conflicts;
+stop before implementing it.
+
+---
+# Completed task — Clipboard and Canvas data-safety audit, 2026-10-12
+
+User authorized finding and fixing major bugs. Audit scope: EDT-04/06,
+DES-01/05/06 and existing Canvas rendering boundaries. Reproduce late cuts across
+note switches, stale Canvas paste, malformed/duplicate clipboard placements,
+plain document-range paste and invalid Canvas typography/strokes. Preserve all
+prior uncommitted tasks. Use existing mutation/undo and platform boundaries;
+no new packages, durable formats, migrations or desktop-control QA.
+Plan: regression fixtures first, bounded fixes, focused/full tests and release
+checks, then record actual outcomes and limitations.
+
+Delivered: Rich document/block cuts check owner/epoch/source/selection, with
+pending work invalidated on owner switches. Rich single-field and Source native
+actions/menus await clipboard success before deletion and preserve undo. Source
+paste also checks mode/owner/request order. Plain document-range paste no longer
+interprets Orbit payloads. Canvas paste captures scene identity/revision,
+selection and request order; malformed/unsupported/non-map/duplicate placement
+batches refuse before history/selection mutation. Successful transfers retain
+remapped IDs and normal single undo. Image imports catch load errors and refuse
+changed boards/read-only scenes. Finite bounded Canvas font/section stroke values
+prevent invalid render styles while preserving raw fields.
+
+Sixteen new regressions exercise changed-owner/return-to-owner cuts, native cut
+clipboard denial and success/undo in Rich/Source, plain payload paste, duplicate/
+unsupported/non-map Canvas batches, preserved selection/history on rejection,
+late/overlapping Canvas paste, image failure/board switching and invalid styles.
+All 84 focused checks pass (.local/safety-audit-regression-final.log). Initial
+fixtures reproduced data loss/partial paste and unsafe native Rich cuts; a Source
+fixture mode name was corrected to the stored `write` mode for actual Source QA.
+Analysis is clean (.local/safety-audit-analyze-final.log), format/strict checks pass
+on 549 files (.local/safety-audit-format-final.log, .local/safety-audit-strict-final.log)
+and git diff --check passes. Windows release succeeds in 132.4s
+(.local/safety-audit-windows.log), including updated data/app.so.
+All 1,944 tests pass (.local/safety-audit-full.log). JavaScript web release
+succeeds in 142.3s (.local/safety-audit-web.log); existing Google identity
+JS-interop/Wasm dry-run and Cupertino font warnings remain. No Wasm support claim.
+
+Limits: this is a targeted safety audit, not proof of an issue-free app. Other
+specialized editor controls keep their existing native clipboard paths. Physical
+clipboard/input acceptance remains unverified; no desktop-control testing,
+APK build, push or publication. Imports already completed by a callback can retain
+an attachment without adding a placement; no shared attachment is auto-deleted.
+Suggested next task: asynchronous import/drop ownership audit across PDF and code
+workspaces; stop before implementing it.
+
+---
+# Completed task — Long-note selection auto-scroll, 2026-10-12
+
+User accepted edge auto-scroll for long-note text selection (EDT-03/04/15).
+Plan: preserve the original source anchor; scroll proportionally within the Rich
+viewport edge band; resolve endpoints after virtualized layout; stop on release,
+cancel, focus loss, note/view changes and disposal. Preserve native structured
+editor gestures and all preceding uncommitted changes. No storage/schema/package
+changes or desktop-control testing. Test ordinary/virtualized notes, upward and
+downward continuation, stationary edge hold, stop/reverse and stale lifecycle.
+Delivered frame-driven proportional mouse edge scrolling, bounded to 720 logical
+pixels/second. Hit testing uses the nearest mounted block after layout; source
+anchors persist across lazy field recycling. The viewport listener retains the
+pointer path and the editor retains focus as original fields leave view. The
+scroll ticker is inactive when idle. Release/cancel, focus/app deactivation,
+note/source/section changes and disposal stop scrolling and invalidate queued
+endpoint updates. No document mutation is performed by selection scrolling.
+
+Validation: eight new widget regressions cover stationary edge hold on 60/360-
+paragraph notes, exact anchor preservation, upward reversal, pause/release/cancel,
+external text changes, right-button exclusion, 200% text and boundary clamping,
+focus loss, app deactivation and active disposal. All 32 focused selection and
+virtualization checks pass (.local/autoscroll-regression-final.log). Initial
+regression checks caught lazy ticker creation during disposal of an unused editor;
+initialization now occurs in initState and the final full suite passes.
+All 1,928 tests pass (.local/autoscroll-full.log). Analysis is clean
+(.local/autoscroll-analyze-final.log); format/strict checks pass, 548 files
+(.local/autoscroll-format.log, .local/autoscroll-strict.log); git diff --check passes.
+Windows release succeeds in 137.7s (.local/autoscroll-windows.log). JavaScript
+web release succeeds in 144.8s (.local/autoscroll-web.log); existing Google identity
+JS-interop/Wasm dry-run and Cupertino font warnings remain. No Wasm claim.
+No physical mouse/IME or desktop-control testing, APK build, push or publication.
+
+Limits: new edge scrolling belongs to mouse prose/heading/list selection in the
+scrolling Rich host; embedded column editors do not yet delegate scrolling to
+their host. Structured controls and touch retain their existing interaction paths.
+Suggested next task: selection auto-scroll across embedded columns; stop here.
+
+---
+# Completed task — Selection and clipboard reliability, 2026-10-12
+
+User reported clumsy copy/paste and unfinished text selection. Scope EDT-03/04/06/11:
+repair cross-paragraph selection/paste, stable selection rendering, Windows HTML
+clipboard extraction, and safe code/Source paste. Preserve the preceding publishing
+and connected-project changes. Use existing source-preserving projection, normal
+note edit/undo boundary and platform clipboard adapters.
+
+Plan: reproduce range/focus/paste defects; preserve mounted native text fields and
+render precise text ranges; Shift-click text selection with block handles retained;
+guarded whole-range paste and collapse/navigation; balance partial inline endpoints;
+extract CF_HTML by UTF-8 byte offsets and preserve code whitespace/entities;
+exercise stale/failure boundaries and existing clipboard/media/table regression.
+No desktop-control testing, new package, content schema, engine or migration.
+Delivered stable native field identity/geometry and precise prose text-range paint;
+Shift-click extends text, right-click retains it and navigation collapses it.
+Keyboard/native-menu document paste replaces the actual range and rejects stale
+asynchronous results. Partial formatted endpoints rebalance, document copy keeps
+valid Markdown, and inline paste restores visible caret offsets. Plain paste and
+Source/code literal paste preserve authored text. Native CF_HTML extraction uses
+UTF-8 byte offsets and marker fallback; code whitespace and entities survive.
+
+Validation: 121 focused editor/table/media/clipboard checks pass
+(.local/selection-focused-3.log); all 1,920 tests pass
+(.local/selection-full-final.log). Final analysis is clean
+(.local/selection-analyze-clean.log); format and strict checks pass, 547 files with
+no changes; git diff --check passes. The initial analysis found a missing brace
+in a new clipboard mock; corrected and rechecked. Synthetic platform messenger
+fixtures exercise clipboard failures/fallback without using the user's clipboard.
+Windows release succeeds in 140.7s (.local/selection-windows-final.log), including
+updated data/app.so. JavaScript web release succeeds in 93.9s
+(.local/selection-web-final.log). Existing Google identity JS-interop/Wasm dry-run
+and Cupertino font warnings remain; Wasm support is not claimed.
+
+Limits: conservative HTML conversion, portable Markdown document-range copy,
+structured-block feedback for tables/code/media, and existing segmented math
+selection remain. Full Word/CSS fidelity and physical clipboard/IME acceptance
+are not claimed. No desktop-control QA, APK build, Git push or publication.
+Suggested next task: edge auto-scroll during long-note drag selection; stop here.
+
+---
+# Completed task — Connected project workspace, 2026-10-12
+
+User authorized the complete proposed integration update: project context across
+surfaces, meaningful connections, project activity and continuation. Scope:
+NAV-01/04/05/10, LNK-02/03, CTX-03/05/07/09/11, CAP-01/04, ORG relationships.
+Reuse canonical objects, existing repository commands and device settings. No
+new engine/package/cloud service, duplicate content owner or desktop-control QA.
+Preserve the preceding uncommitted publishing improvements.
+
+Plan: visible project scope and pinned responsive workspace; scoped creation,
+attachment capture and search; explicit typed precise relationships and source
+version checks; opt-in bounded local activity; continuation drafts and guarded
+saved view restoration; recoverable metadata edits and compatibility tests.
+
+Implementation: project bar follows all shell destinations; workspace offers
+Work, Connections, Activity and Continue. Scope includes root plus explicitly
+associated objects. Notes/tasks/Canvas and attachment capture inherit project
+unless ownership is explicit. Search/explorer share scope, intersecting existing
+Space filters. Existing objects can be reassigned, retaining identity/content.
+Typed supports/implements/blocks/verified-by links retain exact target fragments,
+reason and observed source version. Inbound/outbound inspectors reuse the links.
+Metadata operations use validated draft/save commands and guarded field-only undo.
+Activity is off by default, pausable, clearable and bounded to 300 ID/action/time
+records per context. Up to 30 device contexts keep drafts, continuation, tabs,
+splits and supported view positions. Changed sources reset positions, missing
+objects are skipped, future/malformed records stay intact.
+
+Validation complete: all 24 focused checks pass
+(.local/project-context-focused-final.log), including native ordinary-file reopen,
+private settings restart, scoped search/create/capture/event ownership, opt-in
+activity and retention, failed-save draft recovery, unknown/future metadata,
+field-only undo after later prose edits, stale form refusal, missing/changed source
+restoration, repeated exact secondary-pane PDF navigation and 200% short layouts.
+All 1,906 tests pass (.local/project-context-full-final.log). Analysis of lib/test/tool
+is clean (.local/project-context-analyze-final.log). Format and strict checks pass
+(546 files; .local/project-context-format-final.log and
+.local/project-context-strict-final.log); git diff --check passes.
+
+The initial full suite found short-calendar overflow and settings reachability
+regressions. Empty Vaults now omit the project bar; constrained calendar layouts
+scroll, day cells scale with text, and day/count badges wrap. The selected-project
+380x380/200% regression and the final complete suite pass.
+Project catalog discovery uses a cached linear scan rather than repeated object
+lookups; no percentage performance claim or synthetic benchmark is asserted.
+
+Windows release compiles in 123.7 seconds (.local/project-context-windows-final.log);
+the executable loads the updated data/app.so from the local release directory.
+Web JavaScript release compiles in 90.2 seconds (.local/project-context-web-final.log).
+Existing Google JS-interop/Wasm dry-run and Cupertino font warnings remain; no Wasm
+or physical browser/mobile acceptance is claimed. No desktop-control testing or
+GitHub release replacement was performed. The prior publishing changes remain.
+
+Limits: project selection is explicit and separate from object ownership; existing
+Space filters intersect search/explorer scope. Source-owned connections do not
+propagate dependencies or create semantic Canvas connectors. Activity covers the
+listed supported local actions, not every specialized repository operation or
+remote edits, and does not measure focus time. Personal continuation is device-only;
+object relationships remain portable knowledge metadata. Immediate metadata undo
+is session-local and refuses newer edits; native command history retains recovery.
+Suggested next task: drag-to-link typed relationships directly on Canvas.
+
+---
+# Completed task — Image/table print layouts and page-aware publishing, 2026-10-12
+
+User selected image/table resizing and captions/page breaks, live contents with
+page positions, and shared PDF/HTML/Word document settings. Scope: extend the
+existing publishing workspace and normal Markdown edit/history boundary
+(EDT-02/06/07/10/11/12, PORT-05/06). No second content owner, new engine/package,
+full editable page mode, desktop-control testing or remote release publication.
+
+Plan: portable, bounded versioned print settings; safe unique content matching;
+image/table inspector and page-aware PDF navigation; consistent export geometry
+with explicit fidelity differences; persistence, malformed/stale/duplicate and
+narrow-layout tests; visual PDF inspection and full repository checks.
+Implementation complete. Publish document offers per-block print width/alignment,
+captions, page starts and repeated table headers; searchable, paginated contents
+show actual PDF heading pages and navigate the preview. PDF/HTML/Word share the
+style and layout settings. Word includes page-reference fields; HTML labels PDF
+positions and export details explain pagination differences. Save settings uses
+portable Markdown metadata through existing editor undo/save/history, with
+Source selection preserved across header insertion/update. Unknown fields remain;
+future/malformed records and stale/read-only/changed-owner writes refuse updates.
+Duplicate or edited content never silently inherits another block's layout.
+Frontmatter remains excluded from exports when print metadata precedes it.
+
+Validation: 28 focused checks pass (.local/publication-layout-focused-final.log),
+including portable-file reopen, long table pagination/last-row preservation,
+caption focus during regeneration, saved-style restoration, 200% compact controls,
+source selection/one-step undo and shared export dimensions/captions/page fields.
+All 1,882 tests pass (.local/publication-layout-full-final.log). Analysis of
+lib/test/tool is clean (.local/publication-layout-analyze-final.log); format and
+strict checks pass (542 files, zero final changes). git diff --check passes.
+PDF fixture pages were rendered and visually inspected; contents numbers match
+their heading pages and image/table captions align with the configured widths.
+The .local/publication-layout-review.pdf and page PNGs are validation fixtures.
+Windows release builds successfully in 74.0 seconds
+(.local/publication-layout-windows-final.log); the local executable loads the
+updated app data from build/windows/x64/runner/Release. Web JavaScript release
+compiles successfully in 79.6 seconds (.local/publication-layout-web-final.log).
+The web build retains pre-existing Google JS-interop/Wasm dry-run warnings and a
+Cupertino font-family warning; no Wasm or physical browser/device acceptance is
+claimed. No desktop-control testing or GitHub release replacement was performed.
+
+Scope limits: this remains a source snapshot publishing workspace, not direct
+editing on live pages. Standalone images/top-level tables receive print overrides;
+nested or inline content retains its normal flow. Exact Word/browser pagination,
+native Word-device review and physical mobile acceptance are not claimed. No new
+package, database, content owner or source migration was added.
+Suggested next task: editable page view using the saved document styles.
+
+---
 # Completed task — Publish source and Windows/Android artifacts, 2026-10-11
 
 User explicitly authorized pushing the current source to iax32/Orbit-Note and

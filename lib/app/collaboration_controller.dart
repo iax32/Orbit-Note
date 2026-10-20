@@ -5,6 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
+import 'package:crypto/crypto.dart';
+import '../application/device_secret_store.dart';
+import '../infrastructure/storage/device_secret_store.dart';
 import '../domain/collaboration.dart';
 import 'workspace_controller.dart';
 
@@ -12,15 +15,28 @@ final collaborationProvider = Provider<CollaborationController>((ref) {
   final controller = CollaborationController(
     ref.read(workspaceProvider.notifier),
     http.Client(),
+    secrets: (id) => SecureDeviceSecrets(
+      'orbit.shared.connection.v1.${sha256.convert(utf8.encode(id))}',
+    ),
   );
   ref.onDispose(controller.dispose);
   return controller;
 });
 
-/// Session credentials remain in memory. Local repository save/history is used
+/// Session credentials remain in memory unless explicitly remembered in secure
+/// device storage. Local repository save/history is used
 /// for every accepted remote mutation; server acknowledgement is a separate state.
 class CollaborationController extends ChangeNotifier {
-  CollaborationController(this.workspace, this.httpClient);
+  CollaborationController(
+    this.workspace,
+    this.httpClient, {
+    DateTime Function()? now,
+    this.automaticPolling = true,
+    this.secrets,
+  }) : _now = now ?? DateTime.now;
+  final DateTime Function() _now;
+  final bool automaticPolling;
+  final DeviceSecretStore Function(String workspaceId)? secrets;
   final WorkspaceController workspace;
   final http.Client httpClient;
   Uri? endpoint;
@@ -33,6 +49,42 @@ class CollaborationController extends ChangeNotifier {
   final session = const Uuid().v4();
   Timer? _timer;
   int _generation = 0;
+  int _connectionRequest = 0, _failures = 0;
+  DateTime? retryAt, lastAcknowledgedAt;
+  bool accessBlocked = false;
+  bool connecting = false, profileBusy = false;
+  Map<String, dynamic>? _savedConnection;
+  bool get hasSavedConnection =>
+      workspace.hasWorkspace &&
+      _savedConnection != null &&
+      _savedConnection!['workspaceId'] == workspace.repository.workspaceId;
+  String? get savedServer {
+    if (!hasSavedConnection) return null;
+    return _savedConnection!['server'] as String;
+  }
+
+  bool get canRememberConnection =>
+      secrets != null && connected && _validWorkspace;
+  int get pendingChanges => _documents.keys.where((id) {
+    final local = workspace.find(id);
+    return local != null &&
+        !local.isDeleted &&
+        (_inflight.containsKey(id) ||
+            workspace.dirty.contains(id) ||
+            !collaborationContentEqual(
+              collaborationSnapshot(local),
+              Map<String, dynamic>.from(_documents[id]!['snapshot'] as Map),
+            ));
+  }).length;
+  bool _current(int generation) {
+    if (_disposed || generation != _generation) return false;
+    if (!_validWorkspace) {
+      disconnect();
+      return false;
+    }
+    return true;
+  }
+
   int? _workspaceGeneration;
   int _sequence = 0;
   bool busy = false, _disposed = false;
@@ -109,7 +161,17 @@ class CollaborationController extends ChangeNotifier {
       bytes.takeBytes(),
       incoming.statusCode,
     );
-    final value = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      throw const CollaborationAccessDenied();
+    }
+    Map<String, dynamic> value;
+    try {
+      value = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    } on Object {
+      throw StateError(
+        'The server returned an unreadable response. Local files are safe.',
+      );
+    }
     if (response.statusCode == 409) {
       throw CollaborationConflict(
         value['error'] as String? ?? 'shared content',
@@ -117,9 +179,7 @@ class CollaborationController extends ChangeNotifier {
     }
     if (response.statusCode != 200) {
       throw StateError(
-        response.statusCode == 403
-            ? 'Access denied or invitation revoked.'
-            : 'The server could not finish this action. Local files are safe.',
+        'The server could not finish this action. Local files are safe.',
       );
     }
     return value;
@@ -130,20 +190,38 @@ class CollaborationController extends ChangeNotifier {
     String ownerKey,
     String name,
   ) async {
-    final generation = workspace.workspaceGeneration;
-    if (!await workspace.flushAll()) {
-      throw StateError('Save the Vault before sharing.');
+    final attempt = ++_connectionRequest;
+    connecting = true;
+    _notify();
+    try {
+      final generation = workspace.workspaceGeneration;
+      if (!await workspace.flushAll()) {
+        throw StateError('Save the Vault before sharing.');
+      }
+      final workspaceId = workspace.repository.workspaceId;
+      final backup = await workspace.repository.exportBundle();
+      if (workspace.repository.workspaceId != workspaceId ||
+          workspace.workspaceGeneration != generation) {
+        throw StateError('Vault changed.');
+      }
+      final result = await request(server, ownerKey, 'POST', '/v1/rooms', {
+        'name': name,
+        'backup': backup,
+      });
+      if (_disposed ||
+          attempt != _connectionRequest ||
+          workspace.workspaceGeneration != generation) {
+        throw StateError(
+          'Connection cancelled or Vault changed. The local Vault was preserved.',
+        );
+      }
+      return result;
+    } finally {
+      if (attempt == _connectionRequest) {
+        connecting = false;
+        _notify();
+      }
     }
-    final workspaceId = workspace.repository.workspaceId;
-    final backup = await workspace.repository.exportBundle();
-    if (workspace.repository.workspaceId != workspaceId ||
-        workspace.workspaceGeneration != generation) {
-      throw StateError('Vault changed.');
-    }
-    return request(server, ownerKey, 'POST', '/v1/rooms', {
-      'name': name,
-      'backup': backup,
-    });
   }
 
   Future<Map<String, dynamic>> inspectRoom(
@@ -151,66 +229,232 @@ class CollaborationController extends ChangeNotifier {
     String id,
     String token,
   ) => request(server, token, 'GET', '/v1/rooms/$id/state');
+
+  Future<Map<String, dynamic>> testServer(Uri server, String ownerKey) async {
+    server = validateEndpoint('$server');
+    final info = await request(server, ownerKey, 'GET', '/v1/server');
+    if (info['service'] != 'orbit-collaboration' ||
+        info['protocol'] != 1 ||
+        info['ready'] != true) {
+      throw StateError(
+        'The server is incompatible or needs storage recovery before sharing.',
+      );
+    }
+    return info;
+  }
+
+  Future<void> loadSavedConnection() async {
+    if (profileBusy || secrets == null || !workspace.hasWorkspace) return;
+    final id = workspace.repository.workspaceId,
+        opening = workspace.workspaceGeneration;
+    profileBusy = true;
+    _notify();
+    try {
+      final raw = await secrets!(id).read();
+      if (_disposed || workspace.workspaceGeneration != opening) return;
+      if (raw == null) {
+        _savedConnection = null;
+        return;
+      }
+      if (raw.length > 16384) {
+        throw const FormatException('Saved connection is too large.');
+      }
+      final value = jsonDecode(raw) as Map<String, dynamic>;
+      if (value['format'] != 'orbit-shared-connection' ||
+          value['version'] != 1 ||
+          value['workspaceId'] != id ||
+          value['server'] is! String ||
+          value['room'] is! String ||
+          value['token'] is! String ||
+          !RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(value['room'] as String) ||
+          !RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(value['token'] as String)) {
+        throw const FormatException(
+          'Saved connection is unsupported; forget it explicitly before replacing it.',
+        );
+      }
+      validateEndpoint(value['server'] as String);
+      _savedConnection = value;
+    } finally {
+      profileBusy = false;
+      _notify();
+    }
+  }
+
+  Future<void> rememberConnection() async {
+    if (!canRememberConnection || profileBusy) {
+      throw StateError('Connect this Vault before remembering its connection.');
+    }
+    final id = workspace.repository.workspaceId,
+        opening = workspace.workspaceGeneration,
+        connection = _generation;
+    Map<String, dynamic> value = {
+      'format': 'orbit-shared-connection',
+      'version': 1,
+      'workspaceId': id,
+      'server': '$endpoint',
+      'room': room,
+      'token': _token,
+    };
+    profileBusy = true;
+    _notify();
+    try {
+      final existing = await secrets!(id).read();
+      if (existing != null) {
+        if (existing.length > 16384) {
+          throw StateError(
+            'Saved connection requires recovery; forget it before replacing it.',
+          );
+        }
+        final prior = jsonDecode(existing);
+        if (prior is! Map ||
+            prior['format'] != 'orbit-shared-connection' ||
+            prior['version'] != 1 ||
+            prior['workspaceId'] != id) {
+          throw StateError(
+            'The saved connection requires recovery; forget it explicitly before replacing it.',
+          );
+        }
+        value = {...Map<String, dynamic>.from(prior), ...value};
+      }
+      if (_disposed ||
+          workspace.workspaceGeneration != opening ||
+          connection != _generation ||
+          !connected) {
+        throw StateError('Connection changed.');
+      }
+      final encoded = jsonEncode(value);
+      if (encoded.length > 16384) {
+        throw StateError(
+          'Saved connection exceeds the safe limit; forget it before replacing it.',
+        );
+      }
+      await secrets!(id).write(encoded);
+      if (!_disposed &&
+          workspace.workspaceGeneration == opening &&
+          connection == _generation) {
+        _savedConnection = value;
+      }
+    } finally {
+      profileBusy = false;
+      _notify();
+    }
+  }
+
+  Future<void> reconnectSaved() async {
+    await loadSavedConnection();
+    if (!hasSavedConnection) {
+      throw StateError('No saved connection for this Vault.');
+    }
+    final saved = _savedConnection!;
+    await connect(
+      validateEndpoint(saved['server'] as String),
+      saved['room'] as String,
+      saved['token'] as String,
+    );
+  }
+
+  Future<void> forgetSavedConnection() async {
+    if (secrets == null || profileBusy || !workspace.hasWorkspace) return;
+    final id = workspace.repository.workspaceId,
+        opening = workspace.workspaceGeneration;
+    profileBusy = true;
+    _notify();
+    try {
+      await secrets!(id).delete();
+      if (!_disposed && workspace.workspaceGeneration == opening) {
+        _savedConnection = null;
+      }
+    } finally {
+      profileBusy = false;
+      _notify();
+    }
+  }
+
   Future<String> downloadRoom(Uri server, String id, String token) async =>
       jsonEncode(await request(server, token, 'GET', '/v1/rooms/$id/backup'));
   Future<void> connect(Uri server, String id, String token) async {
-    final generation = workspace.workspaceGeneration;
-    if (!RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(id) ||
-        !RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(token)) {
-      throw const FormatException('The invitation is invalid.');
-    }
-    if (!await workspace.flushAll()) {
-      throw StateError('Save the Vault before connecting.');
-    }
-    final state = await inspectRoom(server, id, token);
-    if (_disposed || workspace.workspaceGeneration != generation) {
-      throw StateError('Vault changed before the connection finished.');
-    }
-    if (state['protocol'] != 1) {
-      throw StateError('This server protocol is unsupported.');
-    }
-    if (state['workspaceId'] != workspace.repository.workspaceId) {
-      throw StateError(
-        'Open or import this shared Vault before connecting. Matching names are not matching identities.',
-      );
-    }
-    disconnect();
-    endpoint = server;
-    room = id;
-    _token = token;
-    _workspaceId = state['workspaceId'] as String;
-    _workspaceGeneration = workspace.workspaceGeneration;
-    role = state['role'] as String;
-    _sequence = state['sequence'] as int;
-    // A returning client must never treat its divergent saved draft as a known
-    // common base. Reconcile explicitly instead of publishing over remote work.
-    for (final entry in (state['documents'] as Map).entries) {
-      final doc = Map<String, dynamic>.from(entry.value as Map);
-      final local = workspace.find(entry.key as String);
-      if (local == null ||
-          !collaborationContentEqual(
-            collaborationSnapshot(local),
-            Map<String, dynamic>.from(doc['snapshot'] as Map),
-          )) {
-        conflicts[entry.key as String] =
-            'Local and server content differ on connection. Keep your local copy or explicitly adopt the server version.';
-      }
-      _documents[entry.key as String] = doc;
-    }
-    peers = (state['peers'] as List)
-        .map((v) => Map<String, dynamic>.from(v as Map))
-        .toList();
-    status = conflicts.isEmpty
-        ? 'Connected · saved locally'
-        : 'Connected · review differences';
-    _timer = Timer.periodic(
-      const Duration(milliseconds: 500),
-      (_) => unawaited(pump()),
-    );
+    server = validateEndpoint('$server');
+    final requestId = ++_connectionRequest;
+    connecting = true;
     _notify();
+    try {
+      final generation = workspace.workspaceGeneration;
+      if (!RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(id) ||
+          !RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(token)) {
+        throw const FormatException('The invitation is invalid.');
+      }
+      if (!await workspace.flushAll()) {
+        throw StateError('Save the Vault before connecting.');
+      }
+      if (_disposed ||
+          requestId != _connectionRequest ||
+          workspace.workspaceGeneration != generation) {
+        throw StateError('Connection cancelled or Vault changed.');
+      }
+      final state = await inspectRoom(server, id, token);
+      if (_disposed ||
+          requestId != _connectionRequest ||
+          workspace.workspaceGeneration != generation) {
+        throw StateError('Vault changed before the connection finished.');
+      }
+      if (state['protocol'] != 1) {
+        throw StateError('This server protocol is unsupported.');
+      }
+      if (!{'owner', 'editor', 'viewer'}.contains(state['role'])) {
+        throw StateError('The server returned unsupported access permissions.');
+      }
+      if (state['workspaceId'] != workspace.repository.workspaceId) {
+        throw StateError(
+          'Open or import this shared Vault before connecting. Matching names are not matching identities.',
+        );
+      }
+      disconnect();
+      endpoint = server;
+      room = id;
+      _token = token;
+      _workspaceId = state['workspaceId'] as String;
+      _workspaceGeneration = workspace.workspaceGeneration;
+      role = state['role'] as String;
+      _sequence = state['sequence'] as int;
+      // A returning client must never treat its divergent saved draft as a known
+      // common base. Reconcile explicitly instead of publishing over remote work.
+      for (final entry in (state['documents'] as Map).entries) {
+        final doc = Map<String, dynamic>.from(entry.value as Map);
+        final local = workspace.find(entry.key as String);
+        if (local == null ||
+            !collaborationContentEqual(
+              collaborationSnapshot(local),
+              Map<String, dynamic>.from(doc['snapshot'] as Map),
+            )) {
+          conflicts[entry.key as String] =
+              'Local and server content differ on connection. Keep your local copy or explicitly adopt the server version.';
+        }
+        _documents[entry.key as String] = doc;
+      }
+      peers = (state['peers'] as List)
+          .map((v) => Map<String, dynamic>.from(v as Map))
+          .toList();
+      status = conflicts.isEmpty
+          ? 'Connected · saved locally'
+          : 'Connected · review differences';
+      if (automaticPolling) {
+        _timer = Timer.periodic(
+          const Duration(milliseconds: 500),
+          (_) => unawaited(pump()),
+        );
+      }
+      _notify();
+    } finally {
+      if (requestId == _connectionRequest) {
+        connecting = false;
+        _notify();
+      }
+    }
   }
 
   void disconnect() {
+    connecting = false;
+    _connectionRequest++;
     _generation++;
     _timer?.cancel();
     _timer = null;
@@ -224,6 +468,9 @@ class CollaborationController extends ChangeNotifier {
     _inflight.clear();
     conflicts.clear();
     _cursor = null;
+    _failures = 0;
+    retryAt = lastAcknowledgedAt = null;
+    accessBlocked = false;
     status = 'Not connected';
     _notify();
   }
@@ -245,6 +492,7 @@ class CollaborationController extends ChangeNotifier {
       disconnect();
       return;
     }
+    if (accessBlocked || (retryAt != null && _now().isBefore(retryAt!))) return;
     final generation = _generation,
         server = endpoint!,
         id = room!,
@@ -253,7 +501,7 @@ class CollaborationController extends ChangeNotifier {
     try {
       if (!viewer) {
         for (final entry in _documents.entries.toList()) {
-          if (generation != _generation) return;
+          if (!_current(generation)) return;
           if (conflicts.containsKey(entry.key)) continue;
           final object = workspace.find(entry.key);
           if (object == null || object.isDeleted || object.isReadOnly) continue;
@@ -268,7 +516,7 @@ class CollaborationController extends ChangeNotifier {
           // First preserve the local proposal in normal save/history. A failed
           // upload never means that a successful local save has been lost.
           await workspace.flush(entry.key);
-          if (generation != _generation || !_validWorkspace) {
+          if (!_current(generation)) {
             return;
           }
           if (workspace.dirty.contains(entry.key) ||
@@ -292,14 +540,16 @@ class CollaborationController extends ChangeNotifier {
               '/v1/rooms/$id/edit',
               operation,
             );
-            if (generation != _generation) return;
+            if (!_current(generation)) return;
             await _adopt(
               entry.key,
               Map<String, dynamic>.from(operation['snapshot'] as Map),
               result,
             );
+            if (!_current(generation)) return;
             _inflight.remove(entry.key);
           } on CollaborationConflict catch (e) {
+            if (!_current(generation)) return;
             conflicts[entry.key] = e.toString();
             _inflight.remove(entry.key);
           }
@@ -311,7 +561,7 @@ class CollaborationController extends ChangeNotifier {
         'GET',
         '/v1/rooms/$id/state?since=$_sequence',
       );
-      if (generation != _generation) return;
+      if (!_current(generation)) return;
       if (state['protocol'] != 1 || state['workspaceId'] != _workspaceId) {
         throw StateError('Server identity or protocol changed.');
       }
@@ -326,7 +576,9 @@ class CollaborationController extends ChangeNotifier {
               Map<String, dynamic>.from(prior['snapshot'] as Map),
               next,
             );
+            if (!_current(generation)) return;
           } on CollaborationConflict catch (e) {
+            if (!_current(generation)) return;
             conflicts[entry.key as String] = e.toString();
           }
         }
@@ -342,14 +594,30 @@ class CollaborationController extends ChangeNotifier {
         await request(server, token, 'POST', '/v1/rooms/$id/presence', _cursor);
         _lastCursor = DateTime.now();
       }
-      if (generation != _generation) return;
-      status = conflicts.isEmpty
-          ? 'Connected · changes acknowledged'
-          : 'Connected · review differences';
-    } on Object {
-      if (generation == _generation) {
+      if (!_current(generation)) return;
+      _failures = 0;
+      retryAt = null;
+      if (pendingChanges == 0 && conflicts.isEmpty) lastAcknowledgedAt = _now();
+      status = conflicts.isNotEmpty
+          ? 'Connected · review differences'
+          : pendingChanges > 0
+          ? 'Connected · $pendingChanges shared document(s) pending'
+          : 'Connected · changes acknowledged';
+    } on CollaborationAccessDenied {
+      if (_current(generation)) {
         peers = [];
-        status = 'Connection interrupted · local work is preserved';
+        accessBlocked = true;
+        retryAt = null;
+        status = 'Access denied or revoked · local work is preserved';
+      }
+    } on Object {
+      if (_current(generation)) {
+        peers = [];
+        _failures = (_failures + 1).clamp(1, 6);
+        final seconds = (1 << (_failures - 1)).clamp(1, 30);
+        retryAt = _now().add(Duration(seconds: seconds));
+        status =
+            'Connection interrupted · retrying in ${seconds}s · local work is preserved';
       }
     } finally {
       busy = false;
@@ -357,11 +625,18 @@ class CollaborationController extends ChangeNotifier {
     }
   }
 
+  Future<void> retryNow() async {
+    retryAt = null;
+    accessBlocked = false;
+    await pump();
+  }
+
   Future<void> _adopt(
     String id,
     Map<String, dynamic> base,
     Map<String, dynamic> next,
   ) async {
+    final generation = _generation;
     final local = workspace.find(id);
     if (local == null ||
         local.isDeleted ||
@@ -390,7 +665,7 @@ class CollaborationController extends ChangeNotifier {
         throw const CollaborationConflict('local saving');
       }
     }
-    _documents[id] = next;
+    if (_current(generation)) _documents[id] = next;
   }
 
   Future<void> adoptServer(String id) async {
@@ -398,12 +673,20 @@ class CollaborationController extends ChangeNotifier {
       return;
     }
     if (workspace.find(id) == null) return;
+    final generation = _generation;
+    final original = collaborationSnapshot(workspace.find(id)!);
     await workspace.flush(id);
+    final saved = workspace.find(id);
+    if (!_current(generation) ||
+        saved == null ||
+        saved.isDeleted ||
+        !collaborationContentEqual(original, collaborationSnapshot(saved))) {
+      return;
+    }
     if (workspace.failures.containsKey(id) || workspace.dirty.contains(id)) {
       return;
     }
     final local = workspace.find(id)!;
-    final generation = _generation;
     busy = true;
     try {
       final state = await inspectRoom(endpoint!, room!, _token!);
@@ -427,7 +710,8 @@ class CollaborationController extends ChangeNotifier {
         data: source.data,
       );
       await workspace.flush(id);
-      if (!workspace.dirty.contains(id) &&
+      if (_current(generation) &&
+          !workspace.dirty.contains(id) &&
           !workspace.failures.containsKey(id)) {
         _documents[id] = next;
         conflicts.remove(id);
@@ -460,4 +744,11 @@ class CollaborationController extends ChangeNotifier {
     viewerChanges.dispose();
     super.dispose();
   }
+}
+
+class CollaborationAccessDenied implements Exception {
+  const CollaborationAccessDenied();
+  @override
+  String toString() =>
+      'Access denied or invitation revoked. Local files are safe.';
 }

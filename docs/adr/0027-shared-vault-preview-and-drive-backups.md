@@ -4,6 +4,7 @@
 - Date: 2026-10-11
 - Scope: SYNC-02/03/04/05/09/10 shared-note/Canvas and backup subsets
 - Supersedes: none; ADR-0017/0019 personal replica safety gates remain in effect
+- Reconnect boundary extended by [ADR-0031](0031-device-sync-continuity.md): explicit secure device-only remembered connections; portable Vaults still contain no capabilities.
 
 ## Context
 

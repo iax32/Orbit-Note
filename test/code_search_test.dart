@@ -209,7 +209,10 @@ void main() {
     await tester.tap(find.textContaining('Apply '));
     await tester.pumpAndSettle();
     expect(body, source.replaceFirst('**target**', '**changed**'));
-    await undo(tester);
+    // Find/Replace inputs own their text history. Use the explicit document
+    // control while focus remains in the replacement field.
+    await tester.tap(find.byKey(const ValueKey('note-document-undo')));
+    await tester.pumpAndSettle();
     expect(body, source);
   });
   testWidgets('code replacement keeps fences and exact shared undo/redo', (
@@ -228,10 +231,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(body, 'before\n\n````dart info\n```\nnew\n````\n\nafter');
     expect(code(tester).controller!.text, '```\nnew');
-    await undo(tester);
+    await tester.tap(find.byKey(const ValueKey('note-document-undo')));
+    await tester.pumpAndSettle();
     expect(body, input);
     expect(code(tester).controller!.text, 'TARGET');
-    await undo(tester, redo: true);
+    await tester.tap(find.byKey(const ValueKey('note-document-redo')));
+    await tester.pumpAndSettle();
     expect(code(tester).controller!.text, '```\nnew');
   });
   testWidgets(

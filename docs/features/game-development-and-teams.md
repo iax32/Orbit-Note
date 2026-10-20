@@ -1,5 +1,18 @@
 # Game development and team project presets
 
+## Project source investigations — 2026-10-13
+
+Browse source files on Game dashboards now supports all-file scoped search and
+Save evidence note. Exact-line search navigation checks the current file hash;
+stale results never select a possibly wrong line. Saved working-tree evidence
+retains source path/range/text/hashes and links the dashboard/project context.
+It saves in the project's Programming folder and can be linked to mechanics,
+playtests, tasks or Canvas using existing object controls. Gameplay's Capture from
+source file also has the shared folder search. These are local technical knowledge
+bridges, not source-file editing, automatic Git verification or engine execution.
+See the software-development specification for bounds and failure handling.
+
+
 ## Narrative and asset planning — 2026-10-11
 
 Story, character, world, dialogue, branching-quest and game-narrative Markdown

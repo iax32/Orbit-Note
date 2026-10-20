@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../app/orbit_theme.dart';
+import '../../../domain/math_templates.dart';
 import '../../notes/rich/math_grid_editor.dart';
 
 class LatexSymbolItem {
@@ -21,7 +22,18 @@ class LatexSymbolItem {
 }
 
 class LatexMathPaletteData {
-  static const List<LatexSymbolItem> items = [
+  static final List<LatexSymbolItem> items = List.unmodifiable([
+    ..._legacyItems,
+    for (final t in mathLabTemplates)
+      LatexSymbolItem(
+        name: t.name,
+        latex: t.tex,
+        category: t.category,
+        symbol: '∑',
+        isTemplate: true,
+      ),
+  ]);
+  static const List<LatexSymbolItem> _legacyItems = [
     // BASIC
     LatexSymbolItem(
       name: 'Fraction',

@@ -1,5 +1,6 @@
 import 'geometry.dart';
 import 'scene.dart';
+import 'uml.dart';
 import '../domain/object_reference.dart';
 import '../domain/document_anchors.dart';
 
@@ -222,7 +223,18 @@ CanvasSearchResult? _evaluateElementMatch({
   String? matchedSnippet;
 
   // 1. Check direct element text/url/label fields
-  final directText = element.text;
+  final directText = isUmlClass(element)
+      ? UmlClass(element).searchableText
+      : [
+          element.text,
+          for (final key in [
+            'startMultiplicity',
+            'endMultiplicity',
+            'startRole',
+            'endRole',
+          ])
+            if (element.data[key] is String) element.data[key] as String,
+        ].join('\n');
   if (directText.isNotEmpty && directText.toLowerCase().contains(query)) {
     matchedTitle = _defaultTitleForElement(element);
     matchedSnippet = _extractSnippet(directText, query);
@@ -362,6 +374,9 @@ CanvasSearchResult? _evaluateElementMatch({
 }
 
 String _defaultTitleForElement(CanvasElement element) {
+  if (isUmlClass(element)) {
+    return element.text.isEmpty ? 'UML class' : element.text;
+  }
   switch (element.type) {
     case 'sticky':
       final firstLine = element.text.trim().split('\n').first;

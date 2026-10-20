@@ -15,14 +15,32 @@ class NoteTypography {
     'times new roman',
     'georgia',
     'serif',
+    'orbitbook',
   ].contains(family?.toLowerCase());
-  FontWeight get headingWeight =>
-      isSerif(fontFamily) ? FontWeight.w700 : FontWeight.w600;
+  // Tiny5's heavier variable weights expand its pixel cells off their grid.
+  // Keep the original outlines; size supplies the heading hierarchy.
+  FontWeight get headingWeight => fontFamily == 'OrbitPixel'
+      ? FontWeight.w400
+      : isSerif(fontFamily) || fontFamily == 'OrbitTerminal'
+      ? FontWeight.w700
+      : FontWeight.w600;
   List<String> get fallbacks => isSerif(fontFamily)
-      ? ['Georgia', 'Times New Roman', 'serif']
-      : const ['Consolas', 'monospace'].contains(fontFamily)
-      ? ['Consolas', 'Courier New', 'monospace']
-      : ['Segoe UI', 'Arial', 'sans-serif'];
+      ? ['Georgia', 'Times New Roman', 'serif', ..._symbolFallbacks]
+      : const [
+          'Consolas',
+          'monospace',
+          'OrbitTerminal',
+          'OrbitPixel',
+        ].contains(fontFamily)
+      ? ['Consolas', 'Courier New', 'monospace', ..._symbolFallbacks]
+      : ['Segoe UI', 'Arial', 'sans-serif', ..._symbolFallbacks];
+
+  static const _symbolFallbacks = [
+    'Segoe UI Symbol',
+    'Segoe UI Emoji',
+    'Apple Color Emoji',
+    'Noto Color Emoji',
+  ];
 
   TextStyle body({Color? color}) => TextStyle(
     fontFamily: fontFamily,

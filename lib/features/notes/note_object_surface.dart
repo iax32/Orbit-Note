@@ -1,3 +1,4 @@
+import '../workspace/object_bridges.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -6,6 +7,8 @@ import '../../domain/note_composition.dart';
 import '../../domain/universal_object.dart';
 import '../../canvas/scene.dart';
 import '../../canvas/geometry.dart';
+import '../../canvas/diagram_reference.dart';
+import '../canvas/canvas_diagram_preview.dart';
 import '../canvas/canvas_painter.dart';
 import '../canvas/canvas_editor.dart';
 import '../canvas/canvas_images.dart';
@@ -35,6 +38,10 @@ class _NoteObjectSurfaceState extends State<NoteObjectSurface> {
   int _imageRevision = -1;
   Map<String, dynamic>? _sceneData;
   CanvasScene? _scene;
+  Map<String, dynamic>? _diagramData;
+  String? _diagramFragment;
+  ResolvedCanvasDiagram? _diagram;
+  bool _diagramUnsupported = false;
   void _previewChanged() {
     if (!mounted) return;
     if (SchedulerBinding.instance.schedulerPhase ==
@@ -103,6 +110,8 @@ class _NoteObjectSurfaceState extends State<NoteObjectSurface> {
                 child: CanvasEditor(
                   canvasId: original.id,
                   data: original.data,
+                  focusElementIds:
+                      diagramElementIds(widget.block.reference) ?? const [],
                   objects: references,
                   onOpenObject: widget.onOpen,
                   imageLoader: controller.repository.readAttachment,
@@ -156,6 +165,55 @@ class _NoteObjectSurfaceState extends State<NoteObjectSurface> {
       }
     }
     final target = object;
+    if (widget.block.reference.anchorType == 'elements') {
+      final ids = diagramElementIds(widget.block.reference);
+      if (target == null || target.typeId != 'orbit.canvas' || ids == null) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(widget.block.label),
+              const Text(
+                'The linked diagram source or selection is unavailable. Its original reference is retained.',
+              ),
+              SelectableText('orbit-object:${widget.block.reference.target}'),
+            ],
+          ),
+        );
+      }
+      if (!identical(_diagramData, target.data) ||
+          _diagramFragment != widget.block.fragment) {
+        _diagramData = target.data;
+        _diagramFragment = widget.block.fragment;
+        final source = CanvasScene.fromJson(target.data);
+        _diagramUnsupported = source.readOnly;
+        _diagram = ResolvedCanvasDiagram(source, ids);
+      }
+      if (_diagramUnsupported) {
+        return const Padding(
+          padding: EdgeInsets.all(16),
+          child: Text(
+            'Unsupported Canvas format. The diagram reference and source data are retained.',
+          ),
+        );
+      }
+      return CanvasDiagramPreview(
+        scene: _diagram!.scene,
+        title: widget.block.label,
+        unavailable: _diagram!.unavailable,
+        onOpen: () => widget.onOpen(widget.block.reference.target),
+        onEdit: writable ? _draw : null,
+      );
+    }
+    if (controller != null && target?.typeId != 'orbit.canvas') {
+      return ObjectReferenceCard(
+        controller: controller,
+        reference: widget.block.reference,
+        fallback: widget.block.label,
+        interactive: widget.editable,
+      );
+    }
     if (target == null) {
       return Card(
         child: Padding(
@@ -191,34 +249,41 @@ class _NoteObjectSurfaceState extends State<NoteObjectSurface> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                if (task)
-                  Checkbox(
-                    value: target.isCompleted,
-                    onChanged: writable
-                        ? (value) {
-                            final current = object;
-                            if (current == null || !writable) return;
-                            widget.controller!.edit(
-                              current.id,
-                              properties: {
-                                ...current.properties,
-                                'completed': value == true,
-                              },
-                            );
-                            setState(() {});
-                          }
-                        : null,
+            if (controller != null)
+              ObjectReferenceCard(
+                controller: controller,
+                reference: widget.block.reference,
+                preview: false,
+              ),
+            if (controller == null)
+              Row(
+                children: [
+                  if (task)
+                    Checkbox(
+                      value: target.isCompleted,
+                      onChanged: writable
+                          ? (value) {
+                              final current = object;
+                              if (current == null || !writable) return;
+                              widget.controller!.edit(
+                                current.id,
+                                properties: {
+                                  ...current.properties,
+                                  'completed': value == true,
+                                },
+                              );
+                              setState(() {});
+                            }
+                          : null,
+                    ),
+                  Expanded(
+                    child: Text(
+                      target.title.isEmpty ? widget.block.label : target.title,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
                   ),
-                Expanded(
-                  child: Text(
-                    target.title.isEmpty ? widget.block.label : target.title,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-              ],
-            ),
+                ],
+              ),
             if (target.properties['dueDate'] != null)
               Text('Due ${target.properties['dueDate']}'),
             if (target.properties['status'] != null)
@@ -310,10 +375,12 @@ class _NoteObjectSurfaceState extends State<NoteObjectSurface> {
             Wrap(
               spacing: 8,
               children: [
-                TextButton(
-                  onPressed: () => widget.onOpen(target.id),
-                  child: const Text('Open source'),
-                ),
+                if (controller == null)
+                  TextButton(
+                    onPressed: () =>
+                        widget.onOpen(widget.block.reference.target),
+                    child: const Text('Open source'),
+                  ),
                 if (target.typeId == 'orbit.canvas' &&
                     writable &&
                     !CanvasScene.fromJson(target.data).readOnly)

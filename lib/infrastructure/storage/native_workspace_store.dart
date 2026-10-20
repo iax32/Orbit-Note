@@ -59,12 +59,16 @@ class NativeWorkspaceStore
 
   NativeWorkspaceStore({
     this.rememberWorkspace = false,
+    this.existingWorkspaceId,
     this.selectionFilePath,
     this.historyMaxEntries = 200,
     this.historyMaxBytes = 64 * 1024 * 1024,
     this.historyMaxAge = const Duration(days: 30),
   });
   final bool rememberWorkspace;
+
+  /// Batch transfer must never create a replacement for a deleted selection.
+  final String? existingWorkspaceId;
   final String? selectionFilePath;
   final int historyMaxEntries, historyMaxBytes;
   final Duration historyMaxAge;
@@ -89,7 +93,7 @@ class NativeWorkspaceStore
         'version': 1,
         'path': _root.path,
         'closed': false,
-        'recent': {_root.path, ...await recentLocations()}.take(12).toList(),
+        'recent': {_root.path, ...await recentLocations()}.take(50).toList(),
       }),
       flush: true,
     );
@@ -104,6 +108,24 @@ class NativeWorkspaceStore
       throw const WorkspaceFailure('Newer Vault preferences are preserved.');
     }
     return value;
+  }
+
+  /// Add a downloaded Vault without switching the user's active selection.
+  Future<void> rememberRecentLocation(String path) async {
+    if (!rememberWorkspace) return;
+    final previous = await _readSelection();
+    final file = await _selectionFile();
+    await file.parent.create(recursive: true);
+    final temporary = File('${file.path}.${const Uuid().v4()}.tmp');
+    await temporary.writeAsString(
+      jsonEncode({
+        ...previous,
+        'version': 1,
+        'recent': {path, ...await recentLocations()}.take(50).toList(),
+      }),
+      flush: true,
+    );
+    await temporary.rename(file.path);
   }
 
   @override
@@ -129,7 +151,7 @@ class NativeWorkspaceStore
         available.add(path);
       }
     }
-    final recent = available.take(12).toList();
+    final recent = available.take(50).toList();
     if (candidates.length != recent.length) {
       final file = await _selectionFile();
       final temp = File('${file.path}.${const Uuid().v4()}.tmp');
@@ -314,15 +336,37 @@ class NativeWorkspaceStore
           'My Knowledge',
         );
     _root = Directory(p.normalize(p.absolute(selected)));
-    await _root.create(recursive: true);
+    if (existingWorkspaceId == null) {
+      await _root.create(recursive: true);
+    } else if (!await _root.exists()) {
+      throw const WorkspaceFailure('Selected Vault is no longer available.');
+    }
     try {
       _root = Directory(await _root.resolveSymbolicLinks());
     } catch (_) {
       // Retain normalized directory if resolveSymbolicLinks is unsupported (e.g. network shares, subst drives).
     }
+    Future<void> verifyExisting() async {
+      if (existingWorkspaceId == null) return;
+      final file = await _file('workspace.json');
+      if (!await file.exists() || await file.length() > 1024 * 1024) {
+        throw const WorkspaceFailure('Selected Vault manifest is unavailable.');
+      }
+      final v = jsonDecode(await file.readAsString()) as Map;
+      if (v['format'] != 'orbit-note-workspace' ||
+          v['version'] != 1 ||
+          v['id'] != existingWorkspaceId) {
+        throw const WorkspaceFailure(
+          'Selected Vault identity changed. Select it again.',
+        );
+      }
+    }
+
+    await verifyExisting();
     _ownership = await NativeVaultLock.acquire(
       await _file('.orbit/device/vault.lock'),
     );
+    await verifyExisting();
     await _file('.orbit/workspace.sqlite');
     final manifest = await read('workspace.json');
     var supportsRecovery = manifest == null;
