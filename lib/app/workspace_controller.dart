@@ -51,6 +51,8 @@ import '../domain/course_progress.dart';
 import '../domain/json_values.dart';
 import '../domain/object_connections.dart';
 import '../domain/note_composition.dart';
+import '../domain/life_workspace.dart';
+import '../domain/life_templates.dart';
 
 part 'workspace_productivity.dart';
 part 'workspace_courses.dart';
@@ -67,6 +69,8 @@ part 'workspace_work_calendars.dart';
 part 'workspace_gameplay.dart';
 part 'workspace_technical.dart';
 part 'workspace_pdf_review.dart';
+part 'workspace_life.dart';
+part 'workspace_life_packs.dart';
 
 final repositoryProvider = Provider<WorkspaceRepository>(
   (ref) => WorkspaceRepository(),
@@ -77,6 +81,7 @@ final workspaceProvider = NotifierProvider<WorkspaceController, int>(
 
 /// Coordinates drafts and serialized durable commands. UI never writes files.
 class WorkspaceController extends Notifier<int> {
+  final _lifeOperations = <String, Future<UniversalObject?>>{};
   final _connectionResolver = ObjectConnectionResolver();
   List<UniversalObject>? _connectionSnapshot;
   List<ObjectConnection> _connectionEdges = const [];

@@ -129,10 +129,12 @@ class NoteCompositionBuilder extends MarkdownElementBuilder {
               blockSyntaxes: [
                 const CalloutBlockSyntax(),
                 const MathBlockSyntax(),
+                const MathTableSyntax(),
                 ...blockSyntaxes,
               ],
               builders: {
                 'math': MathElementBuilder(),
+                'math-inline': MathElementBuilder(),
                 'math-block': MathElementBuilder(display: true),
                 'mark': HighlightElementBuilder(),
                 'u': UnderlineElementBuilder(),

@@ -1,53 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'equation_editor.dart';
+import '../../../domain/markdown_math.dart';
+export '../../../domain/markdown_math.dart'
+    show inlineMathMatches, MathTableSyntax;
 import '../pixel_font_scope.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
-
-const _inlineMathPattern =
-    r'(?<!\\)\$(?![$\s])((?:\\.|[^$\\\n])+?)(?<!\s)\$(?!\$)';
-
-/// Match equations outside escaped text and complete inline code spans.
-/// Keep source coordinates so an equation edit is a single local splice.
-Iterable<Match> inlineMathMatches(String source) sync* {
-  final math = RegExp(_inlineMathPattern);
-  var i = 0;
-  while (i < source.length) {
-    if (source[i] == '\\') {
-      i += 2;
-      continue;
-    }
-    if (source[i] == '`') {
-      var end = i + 1;
-      while (end < source.length && source[end] == '`') {
-        end++;
-      }
-      final delimiter = source.substring(i, end);
-      var close = source.indexOf(delimiter, end);
-      while (close >= 0 &&
-          ((close > 0 && source[close - 1] == '`') ||
-              (close + delimiter.length < source.length &&
-                  source[close + delimiter.length] == '`'))) {
-        close = source.indexOf(delimiter, close + delimiter.length);
-      }
-      i = close < 0 ? end : close + delimiter.length;
-      continue;
-    }
-    if (source.startsWith(r'$$', i)) {
-      i += 2;
-      continue;
-    }
-    final match = math.matchAsPrefix(source, i);
-    if (match != null) {
-      yield match;
-      i = match.end;
-    } else {
-      i++;
-    }
-  }
-}
 
 class NoteMath extends StatelessWidget {
   const NoteMath(this.source, {super.key, this.display = false, this.onEdit});
@@ -108,7 +68,7 @@ class NoteMath extends StatelessWidget {
 }
 
 class MathInlineSyntax extends md.InlineSyntax {
-  MathInlineSyntax() : super(_inlineMathPattern);
+  MathInlineSyntax() : super(markdownInlineMathPattern);
   @override
   bool onMatch(md.InlineParser parser, Match match) {
     parser.addNode(md.Element.text('math-inline', match[1]!));

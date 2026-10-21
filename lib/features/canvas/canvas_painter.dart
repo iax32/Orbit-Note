@@ -25,6 +25,7 @@ class CanvasObjectReference {
     this.properties = const {},
     this.viewMemberIds,
     this.viewQueryIssue,
+    this.lifeSummary,
   });
   final String id;
   final String title;
@@ -33,6 +34,7 @@ class CanvasObjectReference {
   final Map<String, dynamic> properties;
   final List<String>? viewMemberIds;
   final String? viewQueryIssue;
+  final String? lifeSummary;
 
   bool get isCompleted =>
       properties['completed'] == true || properties['status'] == 'done';
@@ -75,6 +77,7 @@ class CanvasObjectReference {
       other.title == title &&
       other.typeId == typeId &&
       other.body == body &&
+      other.lifeSummary == lifeSummary &&
       mapEquals(other.properties, properties) &&
       listEquals(other.viewMemberIds, viewMemberIds) &&
       other.viewQueryIssue == viewQueryIssue;
@@ -85,6 +88,7 @@ class CanvasObjectReference {
     typeId,
     body,
     properties.length,
+    lifeSummary,
     Object.hashAll(viewMemberIds ?? const <String>[]),
     viewQueryIssue,
   );
@@ -1962,7 +1966,10 @@ class OrbitCanvasPainter extends CustomPainter {
                       ? '3D MODEL ASSET'
                       : 'ATTACHMENT');
             titleText = object.title.isEmpty ? 'Untitled File' : object.title;
-            bodyText = object.body.replaceAll(RegExp(r'[#*`\[\]]'), '').trim();
+            bodyText = [
+              if (object.lifeSummary != null) object.lifeSummary!,
+              object.body.replaceAll(RegExp(r'[#*`\[\]]'), '').trim(),
+            ].join('\n\n');
             if (isModelAsset(
                   object.properties['originalName'] as String? ?? object.title,
                 ) &&
@@ -1973,13 +1980,19 @@ class OrbitCanvasPainter extends CustomPainter {
           } else if (object.typeId == 'orbit.task') {
             typeLabel = isDone ? 'TASK (DONE)' : 'TASK';
             titleText = object.title.isEmpty ? 'Untitled Task' : object.title;
-            bodyText = object.body.replaceAll(RegExp(r'[#*`\[\]]'), '').trim();
+            bodyText = [
+              if (object.lifeSummary != null) object.lifeSummary!,
+              object.body.replaceAll(RegExp(r'[#*`\[\]]'), '').trim(),
+            ].join('\n\n');
           } else {
             typeLabel = isCanvas
                 ? 'CANVAS BOARD'
                 : object.typeId.replaceFirst('orbit.', '').toUpperCase();
             titleText = object.title.isEmpty ? 'Untitled' : object.title;
-            bodyText = object.body.replaceAll(RegExp(r'[#*`\[\]]'), '').trim();
+            bodyText = [
+              if (object.lifeSummary != null) object.lifeSummary!,
+              object.body.replaceAll(RegExp(r'[#*`\[\]]'), '').trim(),
+            ].join('\n\n');
           }
         } else if (hasText) {
           typeLabel = 'CARD';

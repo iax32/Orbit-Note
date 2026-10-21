@@ -1,336 +1,303 @@
+import '../../domain/universal_object.dart';
+import '../../domain/life_workspace.dart';
 import 'package:flutter/material.dart';
 import '../../app/orbit_theme.dart';
 import 'note_templates.dart';
 import 'creative_brief_dialog.dart';
 import 'technical_article_template_dialog.dart';
 
-/// Modal dialog allowing users to choose or preview a structured Markdown note template.
+/// One searchable library for new notes and insertion into an existing note.
 class NoteTemplateDialog extends StatefulWidget {
-  const NoteTemplateDialog({super.key, this.insertMode = false});
-
-  /// If true, the dialog is used to insert markdown into an existing open document.
+  const NoteTemplateDialog({
+    super.key,
+    this.insertMode = false,
+    this.personalTemplates = const [],
+  });
   final bool insertMode;
-
+  final List<UniversalObject> personalTemplates;
   static Future<NoteTemplate?> show(
     BuildContext context, {
     bool insertMode = false,
-  }) {
-    return showDialog<NoteTemplate>(
-      context: context,
-      builder: (_) => NoteTemplateDialog(insertMode: insertMode),
-    );
-  }
-
+    List<UniversalObject> personalTemplates = const [],
+  }) => showDialog<NoteTemplate>(
+    context: context,
+    builder: (_) => NoteTemplateDialog(
+      insertMode: insertMode,
+      personalTemplates: personalTemplates,
+    ),
+  );
   @override
   State<NoteTemplateDialog> createState() => _NoteTemplateDialogState();
 }
 
 class _NoteTemplateDialogState extends State<NoteTemplateDialog> {
-  final TextEditingController _searchController = TextEditingController();
-  NoteTemplate _selectedTemplate = NoteTemplates.all.first;
-  String _searchQuery = '';
+  final _search = TextEditingController();
+  final _title = TextEditingController();
+  final _date = DateTime.now();
+  NoteTemplate _selected = NoteTemplates.all.first;
+  NoteTemplateCategory? _category;
+  bool _preview = false, _choosing = false;
 
-  Future<void> _choose(NoteTemplate template) async {
-    final result = template.id == 'creative_brief'
-        ? await showDialog<NoteTemplate>(
-            context: context,
-            builder: (_) => const CreativeBriefDialog(),
-          )
-        : template.id.startsWith('article_')
-        ? await showDialog<NoteTemplate>(
-            context: context,
-            builder: (_) => TechnicalArticleTemplateDialog(
-              template: template,
-              insertMode: widget.insertMode,
-            ),
-          )
-        : template;
-    if (mounted && result != null) Navigator.of(context).pop(result);
+  late final _personal = [
+    for (final o in widget.personalTemplates)
+      if (lifeKind(o) == LifeKind.template &&
+          lifeData(o)['templateFormat'] == 'note')
+        NoteTemplate(
+          id: 'personal:${o.id}',
+          personalSourceId: o.id,
+          name: o.title,
+          description: 'Personal reusable note',
+          icon: Icons.bookmark_outline,
+          defaultTitle: o.title,
+          body: o.body,
+          customizable: true,
+          categoryOverride: NoteTemplateCategory.life,
+        ),
+  ];
+  List<NoteTemplate> get _filtered => [
+    ...NoteTemplates.search(_search.text, category: _category),
+    ..._personal.where(
+      (p) =>
+          (_category == null || p.category == _category) &&
+          p.name.toLowerCase().contains(_search.text.toLowerCase()),
+    ),
+  ];
+  NoteTemplate get _prepared =>
+      _selected.instantiate(title: _title.text, date: _date);
+
+  void _filter() => setState(() {
+    final options = _filtered;
+    if (options.isNotEmpty && !options.contains(_selected)) {
+      _select(options.first);
+    }
+  });
+  void _select(NoteTemplate template) {
+    _selected = template;
+    _title.text = template.defaultTitle;
+  }
+
+  Future<void> _choose() async {
+    if (_choosing || _filtered.isEmpty) return;
+    setState(() => _choosing = true);
+    try {
+      final result = _selected.id == 'creative_brief'
+          ? await showDialog<NoteTemplate>(
+              context: context,
+              builder: (_) => const CreativeBriefDialog(),
+            )
+          : _selected.id.startsWith('article_')
+          ? await showDialog<NoteTemplate>(
+              context: context,
+              builder: (_) => TechnicalArticleTemplateDialog(
+                template: _selected,
+                insertMode: widget.insertMode,
+              ),
+            )
+          : _prepared;
+      if (mounted && result != null) Navigator.of(context).pop(result);
+    } finally {
+      if (mounted) setState(() => _choosing = false);
+    }
   }
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _search.dispose();
+    _title.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final colors = OrbitColors.of(context);
-    final filtered = NoteTemplates.search(_searchQuery);
-
-    // Keep selection valid if filtered list changes
-    if (!filtered.contains(_selectedTemplate) && filtered.isNotEmpty) {
-      _selectedTemplate = filtered.first;
-    }
-
-    final isWide = MediaQuery.of(context).size.width >= 720;
-
+    final theme = Theme.of(context);
+    final options = _filtered;
     return Dialog(
+      insetPadding: const EdgeInsets.all(16),
       backgroundColor: colors.panel,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: colors.border),
-      ),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 780, maxHeight: 620),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Header
-              Row(
-                children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: colors.accent.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      widget.insertMode
-                          ? Icons.add_circle_outline
-                          : Icons.auto_stories_outlined,
-                      size: 18,
-                      color: colors.accent,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.insertMode
-                              ? 'Insert Markdown Template'
-                              : 'New Note from Template',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          widget.insertMode
-                              ? 'Select a structured section to append at your current caret position.'
-                              : 'Choose a structured starting point for your notes, study, or projects.',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colors.subtle,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 18),
-                    tooltip: 'Close',
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Search Filter Bar
-              TextField(
-                key: const ValueKey('note-template-search-field'),
-                controller: _searchController,
-                autofocus: true,
-                style: const TextStyle(fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: 'Search templates by title, tag, or description…',
-                  prefixIcon: const Icon(Icons.search, size: 16),
-                  suffixIcon: _searchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear, size: 16),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() => _searchQuery = '');
-                          },
-                        )
-                      : null,
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  filled: true,
-                  fillColor: colors.panel,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: colors.border),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: colors.border),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: colors.accent),
-                  ),
-                ),
-                onChanged: (q) => setState(() => _searchQuery = q),
-              ),
-              const SizedBox(height: 16),
-
-              // Main Content Area (Two Columns if Wide)
-              Expanded(
-                child: isWide
-                    ? Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Template list
-                          SizedBox(
-                            width: 290,
-                            child: _buildTemplateList(filtered, colors),
-                          ),
-                          const SizedBox(width: 16),
-                          // Detail & Preview Pane
-                          Expanded(child: _buildPreviewPane(colors, theme)),
-                        ],
-                      )
-                    : _buildTemplateList(filtered, colors),
-              ),
-              const SizedBox(height: 16),
-
-              // Footer Action Buttons
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(width: 10),
-                  FilledButton.icon(
-                    key: const ValueKey('create-note-from-template-button'),
-                    onPressed: filtered.isNotEmpty
-                        ? () => _choose(_selectedTemplate)
-                        : null,
-                    icon: Icon(
-                      widget.insertMode ? Icons.add : Icons.check,
-                      size: 16,
-                    ),
-                    label: Text(
-                      widget.insertMode ? 'Insert Template' : 'Create Note',
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTemplateList(List<NoteTemplate> templates, OrbitColors colors) {
-    if (templates.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.search_off_rounded, size: 36, color: colors.subtle),
-              const SizedBox(height: 8),
-              Text(
-                'No matching templates found',
-                style: TextStyle(fontSize: 13, color: colors.subtle),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      decoration: BoxDecoration(
-        color: colors.panel,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colors.border),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: ListView.separated(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          itemCount: templates.length,
-          separatorBuilder: (_, _) =>
-              Divider(height: 1, color: colors.border.withValues(alpha: 0.5)),
-          itemBuilder: (context, idx) {
-            final template = templates[idx];
-            final isSelected = template.id == _selectedTemplate.id;
-
-            return InkWell(
-              key: ValueKey('template-item-${template.id}'),
-              onTap: () {
-                setState(() => _selectedTemplate = template);
-              },
-              onDoubleTap: () {
-                _choose(template);
-              },
-              child: Container(
-                color: isSelected
-                    ? colors.accent.withValues(alpha: 0.15)
-                    : Colors.transparent,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
-                child: Row(
+        constraints: const BoxConstraints(maxWidth: 940, maxHeight: 720),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final wide =
+                constraints.maxWidth >= 740 &&
+                MediaQuery.textScalerOf(context).scale(14) < 23;
+            final header = Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
                   children: [
-                    Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? colors.accent.withValues(alpha: 0.25)
-                            : colors.raised,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Icon(
-                        template.icon,
-                        size: 16,
-                        color: isSelected ? colors.accent : colors.subtle,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            template.name,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: isSelected
-                                  ? FontWeight.w600
-                                  : FontWeight.normal,
-                              color: isSelected ? colors.accent : null,
-                            ),
-                          ),
-                          Text(
-                            template.description,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: colors.subtle,
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        widget.insertMode
+                            ? 'Insert Markdown Template'
+                            : 'New Note from Template',
+                        style: theme.textTheme.titleMedium,
                       ),
                     ),
-                    if (template.tags.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 6),
-                        child: Text(
-                          '#${template.tags.first}',
-                          style: TextStyle(fontSize: 10, color: colors.subtle),
-                        ),
-                      ),
+                    IconButton(
+                      tooltip: 'Close templates',
+                      onPressed: _choosing
+                          ? null
+                          : () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                    ),
                   ],
                 ),
+                TextField(
+                  key: const ValueKey('note-template-search-field'),
+                  controller: _search,
+                  autofocus: true,
+                  onChanged: (_) => _filter(),
+                  decoration: InputDecoration(
+                    labelText: 'Search templates',
+                    hintText: 'Try mind map, nature or prompt…',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _search.text.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Clear template search',
+                            onPressed: () {
+                              _search.clear();
+                              _filter();
+                            },
+                            icon: const Icon(Icons.clear),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: ChoiceChip(
+                          label: const Text('All templates'),
+                          selected: _category == null,
+                          onSelected: (_) {
+                            _category = null;
+                            _filter();
+                          },
+                        ),
+                      ),
+                      for (final category in NoteTemplateCategory.values)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: ChoiceChip(
+                            key: ValueKey('template-category-${category.name}'),
+                            label: Text(category.label),
+                            selected: _category == category,
+                            onSelected: (_) {
+                              _category = category;
+                              _filter();
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${options.length} templates · editable Markdown · works offline',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.subtle,
+                  ),
+                ),
+                if (!wide)
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Browse'),
+                        selected: !_preview,
+                        onSelected: (_) => setState(() => _preview = false),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Preview & details'),
+                        selected: _preview,
+                        onSelected: options.isEmpty
+                            ? null
+                            : (_) => setState(() => _preview = true),
+                      ),
+                    ],
+                  ),
+                const SizedBox(height: 8),
+              ],
+            );
+            final footer = Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                TextButton(
+                  onPressed: _choosing ? null : () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton.icon(
+                  key: const ValueKey('create-note-from-template-button'),
+                  onPressed: options.isEmpty || _choosing ? null : _choose,
+                  icon: const Icon(Icons.check, size: 16),
+                  label: Text(
+                    widget.insertMode ? 'Insert Template' : 'Create Note',
+                  ),
+                ),
+              ],
+            );
+            return Padding(
+              padding: EdgeInsets.all(constraints.maxWidth < 480 ? 12 : 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (wide) header,
+                  Expanded(
+                    child: wide
+                        ? options.isEmpty
+                              ? const Center(
+                                  child: Text(
+                                    'No matching templates. Try another category or search.',
+                                  ),
+                                )
+                              : Row(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    SizedBox(
+                                      width: 310,
+                                      child: _list(options, colors, wide),
+                                    ),
+                                    const VerticalDivider(width: 24),
+                                    Expanded(child: _details(colors)),
+                                  ],
+                                )
+                        : CustomScrollView(
+                            key: ValueKey(
+                              'compact-template-${_preview ? "preview" : "browse"}',
+                            ),
+                            slivers: [
+                              SliverToBoxAdapter(child: header),
+                              if (options.isEmpty)
+                                const SliverToBoxAdapter(
+                                  child: Text(
+                                    'No matching templates. Try another category or search.',
+                                  ),
+                                )
+                              else if (_preview)
+                                SliverToBoxAdapter(
+                                  child: _detailContent(colors),
+                                )
+                              else
+                                SliverList.builder(
+                                  itemCount: options.length,
+                                  itemBuilder: (context, index) =>
+                                      _tile(options[index], colors, false),
+                                ),
+                            ],
+                          ),
+                  ),
+                  const SizedBox(height: 12),
+                  footer,
+                ],
               ),
             );
           },
@@ -339,89 +306,71 @@ class _NoteTemplateDialogState extends State<NoteTemplateDialog> {
     );
   }
 
-  Widget _buildPreviewPane(OrbitColors colors, ThemeData theme) {
-    return Container(
-      decoration: BoxDecoration(
-        color: colors.panel,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colors.border),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+  Widget _list(List<NoteTemplate> options, OrbitColors colors, bool wide) =>
+      ListView.builder(
+        itemCount: options.length,
+        itemBuilder: (context, index) => _tile(options[index], colors, wide),
+      );
+  Widget _tile(NoteTemplate template, OrbitColors colors, bool wide) =>
+      ListTile(
+        key: ValueKey('template-item-${template.id}'),
+        selected: template.id == _selected.id,
+        selectedTileColor: colors.accent.withValues(alpha: .12),
+        leading: Icon(template.icon, color: colors.subtle),
+        title: Text(template.name),
+        subtitle: Text(
+          template.description,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        onTap: () => setState(() {
+          _select(template);
+          if (!wide) _preview = true;
+        }),
+      );
+
+  Widget _details(OrbitColors colors) =>
+      SingleChildScrollView(child: _detailContent(colors));
+  Widget _detailContent(OrbitColors colors) => Column(
+    key: ValueKey('template-preview-${_selected.id}'),
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(_selected.name, style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(height: 8),
+      Text(_selected.description),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 6,
+        runSpacing: 4,
         children: [
-          // Header info
-          Row(
-            children: [
-              Icon(_selectedTemplate.icon, size: 20, color: colors.accent),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  _selectedTemplate.name,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              for (final tag in _selectedTemplate.tags)
-                Container(
-                  margin: const EdgeInsets.only(left: 4),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: colors.accent.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    '#$tag',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: colors.accent,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            _selectedTemplate.description,
-            style: TextStyle(fontSize: 12, color: colors.subtle),
-          ),
-          const SizedBox(height: 12),
-          Divider(height: 1, color: colors.border),
-          const SizedBox(height: 12),
-          // Preview Body Scroll
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: colors.background,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: colors.border.withValues(alpha: 0.5)),
-              ),
-              child: SingleChildScrollView(
-                child: SelectableText(
-                  _selectedTemplate.body.isEmpty
-                      ? '(Empty document)'
-                      : _selectedTemplate.body,
-                  style: TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 11,
-                    height: 1.5,
-                    color: _selectedTemplate.body.isEmpty
-                        ? colors.subtle
-                        : theme.colorScheme.onSurface,
-                  ),
-                ),
-              ),
-            ),
-          ),
+          for (final tag in _selected.tags)
+            Text('#$tag', style: TextStyle(color: colors.subtle)),
         ],
       ),
-    );
-  }
+      if (_selected.customizable) ...[
+        const SizedBox(height: 12),
+        TextField(
+          key: const ValueKey('template-custom-title'),
+          controller: _title,
+          maxLength: 120,
+          onChanged: (_) => setState(() {}),
+          decoration: const InputDecoration(labelText: 'Note title'),
+        ),
+        Text(
+          'Date: ${_date.year}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
+      const Divider(height: 24),
+      const Text(
+        'Markdown preview',
+        style: TextStyle(fontWeight: FontWeight.w600),
+      ),
+      const SizedBox(height: 8),
+      SelectableText(
+        _prepared.body.isEmpty ? '(Empty document)' : _prepared.body,
+        style: const TextStyle(fontSize: 13, height: 1.6),
+      ),
+    ],
+  );
 }

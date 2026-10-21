@@ -195,9 +195,14 @@ class LinkedSectionCard extends StatelessWidget {
                   ? const [
                       LinkedSectionSyntax(),
                       MathBlockSyntax(),
+                      MathTableSyntax(),
                       CalloutBlockSyntax(),
                     ]
-                  : const [MathBlockSyntax(), CalloutBlockSyntax()],
+                  : const [
+                      MathBlockSyntax(),
+                      MathTableSyntax(),
+                      CalloutBlockSyntax(),
+                    ],
               builders: {
                 'pre': CodeElementBuilder(),
                 'math-inline': MathElementBuilder(),

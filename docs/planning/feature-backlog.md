@@ -1,5 +1,11 @@
 # Canonical feature backlog
 
+2026-10-21 owner-approved task: implement the complete personal Life proposal,
+[LIFE-01–12](../features/life-workspace.md), extending existing CTX/TASK/EVT/EDT/CAN
+contracts. These are P1 capabilities authorized now; this does not enlarge the
+frozen Windows-local 1.0 release gate or claim unrelated roadmap completion.
+See [task and evidence](../tasks/life-workspace-2026-10-21.md).
+
 2026-09-12 priority override: the owner authorized M6 now, Google Drive first and
 WebDAV second. Existing SYNC requirement IDs retain their behavioral meaning;
 this changes execution order, not claims of completion. See the

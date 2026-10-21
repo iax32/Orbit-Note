@@ -1,5 +1,35 @@
 # Implemented open formats — v1 subset
 
+## Connected Life metadata — 2026-10-21
+
+Life knowledge uses ordinary `orbit.note` Markdown documents and their existing
+portable property envelopes, plus normal tasks/events/Canvas. There is no new
+authoritative database or workspace migration. The versioned optional `life`
+property and its bounds are documented in [Life Workspace](../features/life-workspace.md).
+Unknown fields survive guarded edits; unsupported typed versions remain available
+as ordinary notes. Normal save/conflict/history/Trash/backup rules still apply.
+
+For example, a routine log is a separate note with the following property:
+
+```json
+{"life":{"version":1,"kind":"routineLog","state":"active","parentId":"<routine UUID>","date":"2026-10-21","items":["Prepare tomorrow"],"checked":[0],"actionKey":"routine:<routine UUID>:2026-10-21"}}
+```
+
+Workout sessions store `sets` with unique set `id`, canonical `exerciseId`,
+`completed`, numeric reps/weight/distance/seconds/optional effort and explicit
+`weightUnit`/`distanceUnit`. `startedAt`, optional `restUntil` and `finishedAt`
+are timestamp strings; no continuously decrementing timer is persisted.
+Goal actions use task `lifeGoalId` and ordinary resource links. Scheduled entries
+use `lifeSourceId`/`lifeScheduleKey`, preserving the existing event format.
+
+Personal templates are notes of kind `template`: `templateFormat` is note/canvas,
+`templateProperties` retains portable source properties and optional `templateData`
+retains a Canvas snapshot. Instantiation removes daily action identity and remaps
+known spatial IDs while retaining universal object links and opaque fields.
+Pack records use stable action keys and a board `lifePackActionKey`; partial
+installation remains visible and retryable. Home presentation is device-local
+`lifeWorkspace`, excluded from knowledge backups with other device settings.
+
 ## Canvas ink transfer compatibility — 2026-10-18
 
 Existing version-1 ink `points` are placement-local samples. Duplicate, paste,

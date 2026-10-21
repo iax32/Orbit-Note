@@ -1,3 +1,99 @@
+# In progress — GitHub Windows/Android publication, 2026-10-21
+
+Owner explicitly requested pushing current source and uploading Windows/Android
+releases. Publish version 1.0.2+3 with the existing signed Android preview identity
+and configured Windows setup EXE. Audit source, retain private configuration/keys
+outside Git, push without force, build the same commit, verify artifacts/signatures
+and publish a dated preview. No new product behavior, app launch or desktop control.
+[Scope and evidence](github-publication-2026-10-21.md).
+
+## Previous task
+
+# Validated — Math explanation paste, 2026-10-21
+
+Normal Rich paste now imports mixed ChatGPT-style explanations and editable
+inline/display LaTeX from plain text and browser math HTML. Fixed duplicated
+visual/accessibility math, extra blank paragraphs, long malformed-input scans,
+and table quoting across Read/embedded/Study/export views. Column inline math
+also uses its intended renderer. Source/code/plain paste remains literal.
+Existing focus/revision/composition guards and undo/history remain in place.
+
+46 new regressions; focused **192 passed**; final full **2,815 passed, 2 existing
+skips**. Format/strict check clean across 714 files; analysis clean. Configured
+Windows/server and standard web builds passed; 485-file source snapshot, fresh
+app payloads, runtime files and font hashes verified. Existing web SDK/font
+warnings remain. No desktop control, personal Vaults, cloud access or app launch.
+
+Run `build/releases/Math Paste/orbit_note.exe` with its sibling runtime files.
+The previous running app/release folder remains intact. Physical clipboard/device
+acceptance remains unverified; [evidence and limits](math-explanation-paste-2026-10-21.md).
+Next suggested task: equation labels, numbering and cross-references; stop before
+implementing it. Earlier unrelated changes are preserved.
+
+## Previous task
+
+# Validated — Connected Life Workspace, 2026-10-21
+
+Implemented the complete owner-approved LIFE-01–12 proposal: configurable Home,
+goals/milestones, habits/routines, custom fitness/programs/resumable sessions,
+journals, experiments/check-ins, life administration, learning, 31 starters/five
+connected packs, personal note/Canvas templates, live boards and period reviews.
+Normal local repository commands and portable objects retain authority.
+
+85 new regressions; focused **102 passed**; full **2,769 passed, 2 existing skips**.
+Formatting/strict check clean across 711 Dart files; analysis clean. Native files,
+10,000 records, failed/partial/duplicate writes, enlarged layouts and headless
+real-font previews verified. Configured Windows/server and standard web builds
+passed; fresh payloads, runtime files and font hashes verified.
+
+Run `build/releases/Life Workspace/orbit_note.exe` with its sibling runtime files.
+A verified source snapshot allowed a separate release while the older app remained
+open. No desktop control, personal Vault/account access, publishing or shutdown.
+[Scope, evidence and limits](life-workspace-2026-10-21.md).
+Next suggested task: local daily reminders and mobile quick logging; stop before
+implementing it. Earlier unrelated uncommitted work is preserved.
+
+## Previous task
+
+# Validated — Shared Canvas review and everyday templates, 2026-10-20
+
+Added known-base placement-level local/shared/removal/order review with immutable
+comparisons, stale-state guards, normal history and safe idempotent publication.
+Independent edits still merge; newer overlap during saving returns to review.
+Added 26 Markdown and eight Canvas starters, categories/search, title/date
+preparation, vector previews, fresh placements and one insertion undo.
+29 new regressions; focused **90 passed**; full **2,684 passed, 2 existing skips**.
+Formatting/strict check clean across 701 files; analysis clean. Configured
+Windows/server and standard web builds verified with fresh payloads, runtime
+files and font hashes. Existing web SDK/font warnings remain.
+[Evidence and limits](canvas-review-templates-2026-10-20.md).
+Unknown common bases/document metadata conflicts retain existing recovery.
+No desktop control, personal Vaults, cloud mutations, publishing or shutdown.
+Next suggested task: save personal notes and Canvas layouts as reusable templates;
+stop before implementing it.
+
+## Previous task
+
+# Validated — Canvas shared presence and structured split editors, 2026-10-20
+
+Added bounded Canvas selected-placement presence and a separate overlay, own-session
+clear-on-leave and renewed connection IDs; fixed merge identity/order checks and
+room-switch presence denial. Fixed structured focus/backwards selections, delayed
+code/table clipboard ownership, and Find focus stealing replacement input. Shared
+document history remains pane-local and conflicting drafts remain recoverable.
+27 new regressions; focused matrix **201 passed**; full suite **2,655 passed**,
+**2 existing skips**. Formatting/strict check clean across 693 files; analysis
+clean. Configured Windows/server and standard web builds verified with fresh
+payloads, runtime files and font hashes. Existing web SDK/font warnings remain.
+See [evidence and limits](canvas-split-quality-2026-10-20.md).
+Update both app and self-hosted server for selected-item presence/clear-on-leave.
+No desktop control, personal Vaults, cloud operations, publishing or shutdown.
+GitHub releases/APK unchanged. No CRDT/new-object/attachment streaming expansion.
+Next suggested task: placement-level review of overlapping shared Canvas edits;
+stop before implementing it.
+
+## Previous task
+
 # Published — GitHub source and Windows/Android preview, 2026-10-20
 
 Source pushed at `b669857503f6e89e80feecdf18f0142bcd680d7a`; version 1.0.1+2.

@@ -1,6 +1,22 @@
 import 'package:flutter/material.dart';
 
 part 'technical_article_templates.dart';
+part 'everyday_note_templates.dart';
+
+enum NoteTemplateCategory {
+  ideas('Ideas & thinking'),
+  journal('Journal & reflection'),
+  outdoors('Outdoors & nature'),
+  ai('AI & experiments'),
+  study('Learning & study'),
+  work('Work & projects'),
+  writing('Writing & creative'),
+  life('Life & hobbies'),
+  code('Code');
+
+  const NoteTemplateCategory(this.label);
+  final String label;
+}
 
 /// A reusable starter template for Markdown documents in Orbit Note.
 class NoteTemplate {
@@ -12,8 +28,12 @@ class NoteTemplate {
     required this.defaultTitle,
     required this.body,
     this.tags = const [],
+    this.categoryOverride,
+    this.customizable = false,
+    this.personalSourceId,
   });
 
+  final String? personalSourceId;
   final String id;
   final String name;
   final String description;
@@ -21,6 +41,39 @@ class NoteTemplate {
   final String defaultTitle;
   final String body;
   final List<String> tags;
+  final NoteTemplateCategory? categoryOverride;
+  final bool customizable;
+  NoteTemplateCategory get category {
+    if (categoryOverride != null) return categoryOverride!;
+    if (tags.contains('code')) return NoteTemplateCategory.code;
+    if (tags.contains('study')) return NoteTemplateCategory.study;
+    if (tags.any(
+      (tag) => ['writing', 'story', 'narrative', 'creative'].contains(tag),
+    )) {
+      return NoteTemplateCategory.writing;
+    }
+    return NoteTemplateCategory.work;
+  }
+
+  NoteTemplate instantiate({String? title, DateTime? date}) {
+    if (!customizable) return this;
+    final entered = (title ?? '').replaceAll(RegExp(r'[\r\n\t]+'), ' ').trim();
+    final heading = entered.isEmpty ? defaultTitle : entered;
+    final day = date ?? DateTime.now();
+    final stamp =
+        '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+    return NoteTemplate(
+      id: id,
+      personalSourceId: personalSourceId,
+      name: name,
+      description: description,
+      icon: icon,
+      defaultTitle: heading,
+      tags: tags,
+      categoryOverride: category,
+      body: body.replaceAll('{{date}}', stamp).replaceAll('{{title}}', heading),
+    );
+  }
 
   String get content => body;
 }
@@ -414,6 +467,7 @@ What do the observations support, contradict, or leave uncertain?
     javascriptCode,
     ...storyTemplates,
     ...TechnicalArticleTemplates.all,
+    ...EverydayNoteTemplates.all,
     blank,
   ];
 
@@ -832,15 +886,21 @@ Observable behavior and a threshold decided before the test.
     return null;
   }
 
-  static List<NoteTemplate> search(String query) {
-    final q = query.trim().toLowerCase();
-    if (q.isEmpty) return all;
+  static List<NoteTemplate> search(
+    String query, {
+    NoteTemplateCategory? category,
+  }) {
+    final terms = query
+        .trim()
+        .toLowerCase()
+        .split(RegExp(r'\s+'))
+        .where((s) => s.isNotEmpty);
     return all.where((t) {
-      if (t.name.toLowerCase().contains(q)) return true;
-      if (t.description.toLowerCase().contains(q)) return true;
-      if (t.tags.any((tag) => tag.toLowerCase().contains(q))) return true;
-      if (t.body.toLowerCase().contains(q)) return true;
-      return false;
+      if (category != null && t.category != category) return false;
+      final text =
+          '${t.name} ${t.description} ${t.tags.join(' ')} ${t.category.label} ${t.body}'
+              .toLowerCase();
+      return terms.every(text.contains);
     }).toList();
   }
 }

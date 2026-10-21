@@ -1,3 +1,70 @@
+## Math explanation paste — 2026-10-21
+
+Owner-requested EDT-04/12 subset: normal Rich clipboard paste converts balanced
+TeX delimiters and browser KaTeX/MathML/MathJax source annotations into editable
+Markdown equations beside prose. Duplicate visual/accessibility text is removed,
+TeX spacing preserved, and table/list boundaries retained. Literal/Source/code
+paste stays literal; existing ownership guards and undo/redo remain. No schema,
+package or account is added. Read/embedded/Study/export table math also shares
+correct cell decoding, retaining norm bars, formatting and forward links.
+46 added regressions; focused **192 passed**; full **2,815 passed, 2 existing skips**.
+Formatting/strict check clean across 714 files; analysis clean. Configured Windows/
+server and standard web builds verified from current source, including runtime
+files and custom fonts. Runnable release: `build/releases/Math Paste/orbit_note.exe`.
+No desktop control or app launch. Physical clipboard/device acceptance remains
+unverified; existing web SDK/font warnings remain. See
+[task evidence and limits](../tasks/math-explanation-paste-2026-10-21.md).
+
+## Connected Life Workspace — 2026-10-21
+
+[LIFE-01–12](../features/life-workspace.md), owner-approved extension of
+CTX/TASK/EVT/EDT/CAN: configurable personal Home, goals and actual milestones,
+quantity habits and dated routines, custom fitness library/workouts/programs,
+resumable set logging/rest/history/comparison, journaling, experiments, optional
+observations, home/meal/travel/people planning, linked skills/practice/courses,
+31 starters/five connected packs, reusable personal note/Canvas templates, live
+canonical Canvas summaries and grounded period reviews. All use existing
+repository boundaries and portable ordinary notes/tasks/events/Canvas.
+No dependency, authoritative database or workspace-format migration was added.
+
+85 new regressions; focused matrix **102 passed**; final full suite **2,769 passed,
+2 existing skips**. Strict formatting across 711 files and analysis clean. Native
+portable-file rebuild, 10,000 records, failed saves, duplicate actions, partial
+pack retry, missing sources, enlarged layouts and real-font headless previews
+were exercised. Configured Windows/server and standard web builds passed; fresh
+payloads, runtime files and font hashes verified. A separate runnable Windows
+folder preserves the user's existing running app. [Evidence, operation and
+limits](../tasks/life-workspace-2026-10-21.md). This does not complete unrelated
+roadmap requirements or expand existing multiplayer/Drive transport.
+
+## Shared Canvas review and everyday templates — 2026-10-20
+
+SYNC-05/12 and EDT-09/CAP-07/CAN-15/17 refinement: known-base placement-level
+local/shared/removal/order review with immutable comparisons, stale-state guards,
+normal history and ordinary idempotent publication. Independent edits still merge;
+new overlapping edits during saving return to review. Unknown ancestors and
+unsupported document conflicts retain the conservative recovery path.
+26 new Markdown and eight Canvas starters add searchable categories, title/date
+preparation, compact previews, fresh placement identity and one insertion undo.
+The shared scene renderer supplies vector previews; templates add no account,
+model execution, dependency or durable-format migration.
+29 new regressions; final focused matrix 90 passed; full suite **2,684 passed**,
+**2 existing skips**. Strict formatting/analysis clean. Configured Windows/server and standard web
+builds passed; fresh payloads, runtime files and font hashes verified. [Evidence and limits](../tasks/canvas-review-templates-2026-10-20.md).
+
+## Canvas awareness and structured split editors — 2026-10-20
+
+SYNC-03/04/05/09/10 and EDT-04/07/NAV-03/04 refinement: selected-placement
+presence, own-session clear-on-leave, renewed connection sessions, bounded
+membership caching and isolated overlay painting; placement identity validation
+and compatible reorder/deletion handling. Structured focus/selection, guarded
+code/table clipboard commands and focus-preserving Find traversal complete this
+bounded batch. No durable format/dependency change or CRDT/live creation claim.
+27 new regressions; focused matrix 201 passed; full suite 2,655 passed with
+2 existing skips. Formatting/analysis clean; configured Windows/server and standard
+web builds verified. GitHub releases/APK unchanged by this local task.
+[Current validation and limits](../tasks/canvas-split-quality-2026-10-20.md).
+
 ## Editor transaction and recovery quality — 2026-10-20
 
 EDT-02/04/06/07/10 and HIST-01/03 refinement: source-validated bounded history,

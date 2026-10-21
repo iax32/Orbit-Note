@@ -60,6 +60,7 @@ retire a requirement with a reason rather than silently reusing its number.
 | DEV | [Software development](software-development.md) |
 | REV | [Reverse engineering](reverse-engineering.md) |
 | GAME | [Game development and teams](game-development-and-teams.md) |
+| LIFE | [Connected Life Workspace](life-workspace.md) — owner-approved 2026-10-21 |
 | COMP | [Compatibility/migrations](../architecture/compatibility-and-migrations.md) |
 | MOT | [Motion system](../design/motion.md) |
 

@@ -1,5 +1,67 @@
 # Markdown and document editing
 
+## Math explanation paste — 2026-10-21
+
+Normal Rich paste accepts mixed explanations with `\(...\)` inline and
+`\[...\]` display equations, storing ordinary `$...$` / `$$` Markdown.
+Browser KaTeX and MathML/MathJax TeX annotations, `data-latex` and legacy
+`math/tex` source scripts import as editable equations rather than duplicated
+visual/accessibility text. TeX spacing/entities remain intact. Display boundaries
+do not add empty paragraphs; browser table/list equations use inline form to
+remain within their original cells/items.
+
+Code spans/fences, indented code, URLs and link destinations remain literal.
+Ctrl/Cmd+Shift+V, Source and code-field paste preserve the plain clipboard source.
+Existing dollar equations are retained; bare prose, currency and unsupported or
+partial math are not guessed into equations. Table math decodes the same quoting
+in Read, linked/column/callout/Study previews and publication exports; norm bars
+retain authored backslashes and enclosing formatting/forward links remain intact. Unknown TeX remains editable with
+the existing render fallback. Normal undo/redo and clipboard focus/revision guards
+still apply. No API/account, external renderer or document migration is involved.
+[Evidence and limits](../tasks/math-explanation-paste-2026-10-21.md).
+
+## Everyday template library — 2026-10-20
+
+New Note from Template and Insert Markdown Template share a searchable library
+with Ideas, Journal, Outdoors, AI, Learning, Work, Writing, Life and Code categories.
+Search terms combine across title, tags, description and content; categories
+filter the results before selection. Narrow/enlarged layouts use one scrollable
+browse/details surface so the list cannot collapse behind a large header.
+
+26 added starters cover mind-map outlines and problem exploration; daily/weekly
+journals and small moments; hiking, camping, nature observations, gardening and
+astronomy; travel, home projects, meals, habits, hobbies and community events;
+learning/assignment plans, project kickoff/retrospectives; AI prompt experiments,
+evaluation plans, paper reading and dataset cards; and story worldbuilding.
+New starters preview an editable title and local calendar date, then materialize
+as ordinary Markdown with normal object identity, saving and history. Existing
+creative brief/technical article setup remains available. AI templates are offline
+records, not model execution or implicit upload permission. Journal starters do
+not create a new automatic daily-note destination or a recurring task workflow.
+[Checks and limits](../tasks/canvas-review-templates-2026-10-20.md).
+
+## Structured split-pane editing — 2026-10-20
+
+Reactivating a Rich note restores its active table cell or code field, retaining
+both selection endpoints. External table text updates clamp both endpoints
+without collapsing backwards selections or reversing rectangular anchors.
+Source offset projection uses the appropriate leading/trailing boundary for a
+backwards cell selection.
+
+Deferred code cut/paste and table grid paste recheck focus ownership/revision,
+document epoch and field contents. A changed owner cannot receive an earlier
+clipboard operation. Code remains literal text and uses the shared document
+history, including when pasted backticks require longer fences. Context-menu
+clipboard actions use the same checks as keyboard actions.
+
+Find can select/scroll to a Rich result without moving typing focus into the
+document and scheduling a focus steal back to Find. Result selection is recorded
+after structured fields are updated, so previous/next traversal remains exact.
+Replacement input and the other split pane keep their own focus/history;
+document Undo/Redo remains explicit while a search field owns focus. Same-note
+conflicting structured drafts preserve the winning canonical source.
+See [tests and evidence](../tasks/canvas-split-quality-2026-10-20.md).
+
 ## Editor transaction ownership — 2026-10-20
 
 Document undo/redo belongs to its note and observed source. Reusing an editor

@@ -1,3 +1,4 @@
+import 'life_workspace.dart';
 import '../../domain/course_progress.dart';
 import 'dart:async';
 import 'dart:math' as math;
@@ -349,6 +350,8 @@ status: open
               ..._buildDayContent(context, colors, c)
             else
               ..._buildPeriodicReviewContent(context, colors, c),
+            const SizedBox(height: 20),
+            LifeHomeCard(controller: c),
           ],
         ),
       ),

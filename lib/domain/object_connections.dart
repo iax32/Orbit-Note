@@ -1,3 +1,4 @@
+import 'life_workspace.dart';
 import 'dart:convert';
 import 'package:path/path.dart' as p;
 import 'universal_object.dart';
@@ -261,6 +262,9 @@ class ObjectConnectionResolver {
     }
 
     for (final pair in {
+      'lifeGoalId': 'Life action',
+      'lifeSourceId': 'Life schedule',
+      'templateSourceId': 'Personal template',
       'courseId': 'Course',
       'project': 'Project',
       'contextId': 'Context',
@@ -294,6 +298,9 @@ class ObjectConnectionResolver {
           }
         }
       }
+    }
+    for (final id in lifeReferences(source)) {
+      add(ObjectReference(id), 'Life link');
     }
     for (final id in calendarResources(source)) {
       add(ObjectReference(id), 'Planning resource');

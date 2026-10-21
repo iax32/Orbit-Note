@@ -47,6 +47,22 @@ class CollaborationServer {
   final _rooms = <String, Map<String, dynamic>>{};
   final _presence = <String, Map<String, Map<String, dynamic>>>{};
   final _sessions = <String, ({String room, String grant})>{};
+  final _placementIds =
+      <(String, String), ({Object snapshot, Set<Object?> ids})>{};
+  Set<Object?> _knownPlacements(String room, String id, Map snapshot) {
+    final key = (room, id), prior = _placementIds[(room, id)];
+    if (prior != null && identical(prior.snapshot, snapshot)) return prior.ids;
+    final elements = (snapshot['data'] as Map)['elements'];
+    final ids = elements is List
+        ? elements.whereType<Map>().map((e) => e['id']).toSet()
+        : <Object?>{};
+    if (_placementIds.length >= 128) {
+      _placementIds.remove(_placementIds.keys.first);
+    }
+    _placementIds[key] = (snapshot: snapshot, ids: ids);
+    return ids;
+  }
+
   Future<void> _queue = Future.value();
   HttpServer? _server;
   RandomAccessFile? _lock;
@@ -424,7 +440,7 @@ class CollaborationServer {
             );
             request.response.write('{}');
           case ('POST', 'presence'):
-            final body = await _body(request, 2048);
+            final body = await _body(request, 16 * 1024);
             final session = body['session'] as String;
             if (!RegExp(r'^[A-Za-z0-9-]{1,80}$').hasMatch(session)) {
               throw const FormatException('Invalid session.');
@@ -433,6 +449,12 @@ class CollaborationServer {
             if (prior != null &&
                 (prior.room != room || prior.grant != access.hash)) {
               throw const HttpException('Session belongs to another member.');
+            }
+            if (body['active'] == false) {
+              _presence[room]?.remove(session);
+              _sessions.remove(session);
+              request.response.write('{}');
+              return;
             }
             _peers(room);
             if (prior == null && (_presence[room]?.length ?? 0) >= 128) {
@@ -449,6 +471,23 @@ class CollaborationServer {
                 throw const FormatException('Invalid cursor.');
               }
             }
+            final selected = body['selection'];
+            if (selected != null &&
+                (selected is! List ||
+                    selected.length > 64 ||
+                    selected.any(
+                      (id) => id is! String || id.isEmpty || id.length > 160,
+                    ))) {
+              throw const FormatException('Invalid selected placements.');
+            }
+            final document =
+                (access.state['documents'] as Map)[objectId] as Map;
+            final snapshot = document['snapshot'] as Map;
+            final knownIds = _knownPlacements(
+              room,
+              objectId as String,
+              snapshot,
+            );
             _sessions[session] = (room: room, grant: access.hash);
             (_presence[room] ??= {})[session] = {
               'session': session,
@@ -459,6 +498,11 @@ class CollaborationServer {
               'x': body['x'],
               'y': body['y'],
               'space': body['space'] == 'canvas' ? 'canvas' : 'note',
+              'selection': body['space'] == 'canvas'
+                  ? collaborationSelectionIds(
+                      selected,
+                    ).where(knownIds.contains).toList()
+                  : <String>[],
               'seen': DateTime.now().toUtc().toIso8601String(),
             };
             request.response.write('{}');

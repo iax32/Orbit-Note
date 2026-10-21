@@ -1,5 +1,6 @@
 import 'package:markdown/markdown.dart' as md;
 import 'document_footnotes.dart';
+import 'markdown_math.dart';
 import 'document_citations.dart';
 import 'linked_section.dart';
 import 'universal_object.dart';
@@ -237,7 +238,7 @@ class PublicationDocument {
     final document = md.Document(
       extensionSet: md.ExtensionSet.gitHubFlavored,
       encodeHtml: false,
-      blockSyntaxes: [_PageBreak(), _DisplayMath()],
+      blockSyntaxes: [_PageBreak(), _DisplayMath(), const MathTableSyntax()],
       inlineSyntaxes: [_Footnote(), _InlineMath()],
     );
     final nodes = document.parseLines(source.split(RegExp(r'\r\n|\n|\r')));

@@ -1,5 +1,20 @@
 # Live document references on Canvas
 
+Everyday templates and shared placement review (2026-10-20): eight searchable,
+editable Canvas starters reuse the standard scene renderer, append beside existing
+work and share one undo boundary. Known-base shared conflicts support explicit
+local/shared choices per overlapping placement and competing stacking order.
+See [starter behavior](spatial-boards.md#everyday-canvas-starters--2026-10-20) and
+[review boundaries](sync-and-collaboration.md#shared-canvas-placement-review--2026-10-20).
+
+Shared Canvas awareness (2026-10-20): named pointers include bounded selected-item
+outlines in the common world camera, with server-validated ephemeral placement
+IDs and clear-on-leave. A separate presence overlay avoids rebuilding the editor
+for pointer-only updates. No placement is locked or modified by presence; unknown
+data and canonical references remain in the normal scene/save contract. See
+[collaboration behavior](sync-and-collaboration.md#canvas-awareness-and-session-reliability--2026-10-20)
+and [validation](../tasks/canvas-split-quality-2026-10-20.md).
+
 Template consumption (2026-10-09): a board stores `canvasPresetApplied: true`
 after its first editable emission. An emptied preset board therefore stays empty
 when reopened. Delete/Backspace still removes only unlocked placements, supports

@@ -99,11 +99,13 @@ class NoteCodeBlock extends StatefulWidget {
     this.onUndo,
     this.onRedo,
     this.onFocused,
+    this.clipboardEpoch,
   });
   final String code, language;
   final ValueChanged<String>? onChanged;
   final VoidCallback? onUndo, onRedo;
   final VoidCallback? onFocused;
+  final int Function()? clipboardEpoch;
   @override
   State<NoteCodeBlock> createState() => NoteCodeBlockState();
 }
@@ -118,24 +120,91 @@ class NoteCodeBlockState extends State<NoteCodeBlock> {
   bool copied = false;
   bool _hovered = false;
   Timer? timer;
+  int _revision = 0, _focusEpoch = 0, _clipboardRequest = 0;
+  late String _observedText = controller.text;
   TextSelection? get sourceSelection =>
       controller.selection.isValid ? controller.selection : null;
 
   @override
   void initState() {
     super.initState();
+    controller.addListener(() {
+      if (_observedText != controller.text) {
+        _revision++;
+        _observedText = controller.text;
+      }
+    });
     focus.addListener(() {
+      _focusEpoch++;
       if (focus.hasFocus) widget.onFocused?.call();
     });
   }
 
-  bool selectSource(int offset, {int length = 0}) {
+  Future<void> _clipboard({required bool paste, bool cut = false}) async {
+    final value = controller.value, revision = _revision, owner = _focusEpoch;
+    final epoch = widget.clipboardEpoch?.call(), request = ++_clipboardRequest;
+    final selection = value.selection;
+    if (!selection.isValid ||
+        !value.composing.isCollapsed ||
+        (!paste && selection.isCollapsed) ||
+        ((paste || cut) && widget.onChanged == null)) {
+      return;
+    }
+    try {
+      String replacement = '';
+      if (paste) {
+        final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+        if (text == null) return;
+        replacement = text;
+      } else {
+        await Clipboard.setData(
+          ClipboardData(text: selection.textInside(value.text)),
+        );
+        if (!cut) return;
+      }
+      if (!mounted ||
+          !focus.hasFocus ||
+          widget.onChanged == null ||
+          _revision != revision ||
+          _focusEpoch != owner ||
+          _clipboardRequest != request ||
+          widget.clipboardEpoch?.call() != epoch ||
+          controller.value != value) {
+        return;
+      }
+      controller.value = TextEditingValue(
+        text: value.text.replaceRange(
+          selection.start,
+          selection.end,
+          replacement,
+        ),
+        selection: TextSelection.collapsed(
+          offset: selection.start + replacement.length,
+        ),
+      );
+      widget.onChanged!(controller.text);
+      widget.onFocused?.call();
+      if (mounted) setState(() {});
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not access the clipboard. Your code is unchanged.',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  bool selectSource(int offset, {int length = 0, bool requestFocus = true}) {
     final selection = TextSelection(
       baseOffset: offset.clamp(0, controller.text.length),
       extentOffset: (offset + length).clamp(0, controller.text.length),
     );
     controller.selection = selection;
-    focus.requestFocus();
+    if (requestFocus) focus.requestFocus();
     final text = controller.text;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted ||
@@ -358,29 +427,83 @@ class NoteCodeBlockState extends State<NoteCodeBlock> {
                         }
                         return KeyEventResult.ignored;
                       },
-                      child: KeyedSubtree(
-                        key: _field,
-                        child: TextField(
-                          key: const ValueKey('rich-code'),
-                          controller: controller,
-                          focusNode: focus,
-                          readOnly: widget.onChanged == null,
-                          maxLines: null,
-                          style: const TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 14,
-                            height: 1.6,
+                      child: Actions(
+                        actions: {
+                          CopySelectionTextIntent:
+                              CallbackAction<CopySelectionTextIntent>(
+                                onInvoke: (intent) {
+                                  unawaited(
+                                    _clipboard(
+                                      paste: false,
+                                      cut: intent.collapseSelection,
+                                    ),
+                                  );
+                                  return null;
+                                },
+                              ),
+                          PasteTextIntent: CallbackAction<PasteTextIntent>(
+                            onInvoke: (_) {
+                              unawaited(_clipboard(paste: true));
+                              return null;
+                            },
                           ),
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            filled: false,
-                            contentPadding: EdgeInsets.zero,
+                        },
+                        child: KeyedSubtree(
+                          key: _field,
+                          child: TextField(
+                            key: const ValueKey('rich-code'),
+                            controller: controller,
+                            focusNode: focus,
+                            readOnly: widget.onChanged == null,
+                            maxLines: null,
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 14,
+                              height: 1.6,
+                            ),
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                              filled: false,
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                            onChanged: (v) {
+                              widget.onChanged?.call(v);
+                              widget.onFocused?.call();
+                              setState(() {});
+                            },
+                            contextMenuBuilder: (context, state) =>
+                                AdaptiveTextSelectionToolbar.buttonItems(
+                                  anchors: state.contextMenuAnchors,
+                                  buttonItems: [
+                                    for (final item
+                                        in state.contextMenuButtonItems)
+                                      if ({
+                                        ContextMenuButtonType.copy,
+                                        ContextMenuButtonType.cut,
+                                        ContextMenuButtonType.paste,
+                                      }.contains(item.type))
+                                        ContextMenuButtonItem(
+                                          type: item.type,
+                                          label: item.label,
+                                          onPressed: () {
+                                            state.hideToolbar();
+                                            unawaited(
+                                              _clipboard(
+                                                paste:
+                                                    item.type ==
+                                                    ContextMenuButtonType.paste,
+                                                cut:
+                                                    item.type ==
+                                                    ContextMenuButtonType.cut,
+                                              ),
+                                            );
+                                          },
+                                        )
+                                      else
+                                        item,
+                                  ],
+                                ),
                           ),
-                          onChanged: (v) {
-                            widget.onChanged?.call(v);
-                            widget.onFocused?.call();
-                            setState(() {});
-                          },
                         ),
                       ),
                     ),

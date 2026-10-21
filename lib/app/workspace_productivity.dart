@@ -72,7 +72,7 @@ extension WorkspaceProductivity on WorkspaceController {
     _planningBusy = true;
     final operation = Completer<void>();
     _productivityOperation = operation;
-    final vault = repository.workspaceId;
+    final vault = repository.workspaceId, generation = workspaceGeneration;
     try {
       // Dialogs and external adapters may retain mutable draft maps.
       final committed = Map<String, dynamic>.from(
@@ -94,6 +94,7 @@ extension WorkspaceProductivity on WorkspaceController {
       final current = find(expected.id);
       if (!_alive ||
           !hasWorkspace ||
+          workspaceGeneration != generation ||
           repository.workspaceId != vault ||
           dirty.contains(expected.id) ||
           current == null ||
@@ -115,7 +116,10 @@ extension WorkspaceProductivity on WorkspaceController {
               : {...current.properties, ...committed},
         ),
       );
-      if (!_alive || !hasWorkspace || repository.workspaceId != vault) {
+      if (!_alive ||
+          !hasWorkspace ||
+          workspaceGeneration != generation ||
+          repository.workspaceId != vault) {
         return false;
       }
       mergeRepositoryObjects();
@@ -124,7 +128,10 @@ extension WorkspaceProductivity on WorkspaceController {
       notify();
       return true;
     } on Object catch (e) {
-      if (_alive && hasWorkspace && repository.workspaceId == vault) {
+      if (_alive &&
+          hasWorkspace &&
+          workspaceGeneration == generation &&
+          repository.workspaceId == vault) {
         error = '$e';
         notify();
       }

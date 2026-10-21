@@ -1,3 +1,4 @@
+import 'life_workspace.dart';
 import 'object_tag_dialog.dart';
 import 'course_hub.dart';
 import 'code_ide_workspace.dart';
@@ -182,6 +183,11 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
         )
         .firstOrNull;
     final commands = <({String title, IconData icon, VoidCallback run})>[
+      (
+        title: 'Open Life workspace · goals, habits, fitness and journals',
+        icon: Icons.spa_outlined,
+        run: () => showLifeWorkspace(context, c),
+      ),
       (
         title: 'Open code workspace · HTML / Python / C++',
         icon: Icons.developer_mode,

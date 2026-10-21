@@ -37,7 +37,9 @@ class RichTableEditorState extends State<RichTableEditor> {
   final cellContexts = <(int, int), BuildContext>{};
   String? emitted;
   int _revision = 0, _clipboardRequest = 0;
+  int _focusEpoch = 0;
   int row = 0, col = 0;
+  void restoreEditingFocus() => nodes[(row, col)]?.requestFocus();
   (int, int)? _selectionAnchor, _selectionFocus;
   (int, int)? _pointerCell;
   Offset? _pointerOrigin;
@@ -182,17 +184,25 @@ class RichTableEditorState extends State<RichTableEditor> {
     );
     return TextSelection(
       baseOffset:
-          cell.start + projection.sourceOffset(controller.selection.baseOffset),
+          cell.start +
+          projection.sourceOffset(
+            controller.selection.baseOffset,
+            end:
+                controller.selection.baseOffset >
+                controller.selection.extentOffset,
+          ),
       extentOffset:
           cell.start +
           projection.sourceOffset(
             controller.selection.extentOffset,
-            end: !controller.selection.isCollapsed,
+            end:
+                controller.selection.extentOffset >
+                controller.selection.baseOffset,
           ),
     );
   }
 
-  bool selectSource(int offset, {int length = 0}) {
+  bool selectSource(int offset, {int length = 0, bool requestFocus = true}) {
     final source = emitted ?? widget.source;
     final cells = MarkdownTable.sourceCells(source);
     if (cells.isEmpty) return false;
@@ -217,7 +227,7 @@ class RichTableEditorState extends State<RichTableEditor> {
     _selectionAnchor = (row, col);
     _selectionFocus = (row, col);
     controller.selection = selection;
-    focus.requestFocus();
+    if (requestFocus) focus.requestFocus();
     final revision = _revision;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted ||
@@ -254,25 +264,29 @@ class RichTableEditorState extends State<RichTableEditor> {
       if (entry.value.text != text) {
         entry.value.value = TextEditingValue(
           text: text,
-          selection: TextSelection.collapsed(
-            offset: entry.value.selection.extentOffset.clamp(0, text.length),
+          selection: TextSelection(
+            baseOffset: entry.value.selection.baseOffset.clamp(0, text.length),
+            extentOffset: entry.value.selection.extentOffset.clamp(
+              0,
+              text.length,
+            ),
           ),
         );
       }
     }
     row = row.clamp(0, table.rows.length - 1);
     col = col.clamp(0, table.columns - 1);
-    final range = selectedRectangle;
-    if (range != null) {
+    final anchor = _selectionAnchor, focus = _selectionFocus;
+    if (anchor != null && focus != null) {
       final maxRow = table.rows.length - 1;
       final maxColumn = table.columns - 1;
       _selectionAnchor = (
-        range.$1.clamp(0, maxRow).toInt(),
-        range.$3.clamp(0, maxColumn).toInt(),
+        anchor.$1.clamp(0, maxRow).toInt(),
+        anchor.$2.clamp(0, maxColumn).toInt(),
       );
       _selectionFocus = (
-        range.$2.clamp(0, maxRow).toInt(),
-        range.$4.clamp(0, maxColumn).toInt(),
+        focus.$1.clamp(0, maxRow).toInt(),
+        focus.$2.clamp(0, maxColumn).toInt(),
       );
     }
   }
@@ -576,7 +590,9 @@ class RichTableEditorState extends State<RichTableEditor> {
       return;
     }
     final source = widget.source, revision = _revision;
-    final epoch = widget.clipboardEpoch?.call(), request = ++_clipboardRequest;
+    final epoch = widget.clipboardEpoch?.call(),
+        request = ++_clipboardRequest,
+        focusEpoch = _focusEpoch;
     try {
       await Clipboard.setData(
         ClipboardData(text: selection.textInside(value.text)),
@@ -591,6 +607,7 @@ class RichTableEditorState extends State<RichTableEditor> {
         _revision != revision ||
         widget.clipboardEpoch?.call() != epoch ||
         _clipboardRequest != request ||
+        _focusEpoch != focusEpoch ||
         controllers[(r, c)] != controller ||
         controller.value != value ||
         nodes[(r, c)]?.hasFocus != true ||
@@ -621,7 +638,9 @@ class RichTableEditorState extends State<RichTableEditor> {
     }
     final anchor = _selectionAnchor, focus = _selectionFocus;
     final source = widget.source, revision = _revision;
-    final epoch = widget.clipboardEpoch?.call(), request = ++_clipboardRequest;
+    final epoch = widget.clipboardEpoch?.call(),
+        request = ++_clipboardRequest,
+        focusEpoch = _focusEpoch;
     final keyboardFocus = FocusManager.instance.primaryFocus;
     try {
       await Clipboard.setData(ClipboardData(text: _gridText()));
@@ -634,6 +653,7 @@ class RichTableEditorState extends State<RichTableEditor> {
         _revision != revision ||
         widget.clipboardEpoch?.call() != epoch ||
         _clipboardRequest != request ||
+        _focusEpoch != focusEpoch ||
         _selectionAnchor != anchor ||
         _selectionFocus != focus ||
         FocusManager.instance.primaryFocus != keyboardFocus) {
@@ -657,6 +677,8 @@ class RichTableEditorState extends State<RichTableEditor> {
     final atCol = !atCaret && selected != null ? selected.$3 : col;
     final before = widget.source;
     final revision = _revision, request = ++_clipboardRequest;
+    final keyboardFocus = FocusManager.instance.primaryFocus,
+        focusEpoch = _focusEpoch;
     final controller = controllers[(atRow, atCol)];
     final value = controller?.value;
     if (value != null && !value.composing.isCollapsed) return;
@@ -672,6 +694,8 @@ class RichTableEditorState extends State<RichTableEditor> {
         widget.source != before ||
         _revision != revision ||
         _clipboardRequest != request ||
+        FocusManager.instance.primaryFocus != keyboardFocus ||
+        _focusEpoch != focusEpoch ||
         widget.clipboardEpoch?.call() != epoch ||
         row != activeRow ||
         col != activeColumn ||
@@ -957,6 +981,7 @@ class RichTableEditorState extends State<RichTableEditor> {
                               },
                             );
                             node.addListener(() {
+                              _focusEpoch++;
                               if (node.hasFocus) {
                                 row = r;
                                 col = c;

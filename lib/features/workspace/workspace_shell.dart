@@ -1,3 +1,5 @@
+import '../../domain/life_workspace.dart';
+import 'life_workspace.dart';
 import 'orbit_tab_strip.dart';
 import '../../app/drive_vault_scheduler.dart';
 import '../../platform/vault_discovery.dart';
@@ -2499,6 +2501,11 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                         icon: const Icon(Icons.view_in_ar_outlined, size: 19),
                       ),
                       IconButton(
+                        tooltip: 'Life workspace',
+                        onPressed: () => showLifeWorkspace(context, c),
+                        icon: const Icon(Icons.spa_outlined, size: 19),
+                      ),
+                      IconButton(
                         tooltip: 'Courses & study progress',
                         onPressed: () => showCourseHub(context, c),
                         icon: const Icon(Icons.school_outlined, size: 19),
@@ -3316,8 +3323,20 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                     break;
                   case 'new_template':
                     if (!context.mounted) return;
-                    final template = await NoteTemplateDialog.show(context);
-                    if (template != null) {
+                    final template = await NoteTemplateDialog.show(
+                      context,
+                      personalTemplates: c.personalTemplates,
+                    );
+                    if (template?.personalSourceId != null) {
+                      final source = c.find(template!.personalSourceId!);
+                      if (source != null) {
+                        final copy = await c.usePersonalTemplate(
+                          source,
+                          template.defaultTitle,
+                        );
+                        if (copy != null) c.openObject(copy.id);
+                      }
+                    } else if (template != null) {
                       await c.create(
                         'orbit.note',
                         title: template.defaultTitle,
@@ -3778,8 +3797,20 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       c.create('orbit.note');
     } else if (action == 'new_template') {
       if (!context.mounted) return;
-      final template = await NoteTemplateDialog.show(context);
-      if (template != null) {
+      final template = await NoteTemplateDialog.show(
+        context,
+        personalTemplates: c.personalTemplates,
+      );
+      if (template?.personalSourceId != null) {
+        final source = c.find(template!.personalSourceId!);
+        if (source != null) {
+          final copy = await c.usePersonalTemplate(
+            source,
+            template.defaultTitle,
+          );
+          if (copy != null) c.openObject(copy.id);
+        }
+      } else if (template != null) {
         await c.create(
           'orbit.note',
           title: template.defaultTitle,
@@ -4067,6 +4098,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   }
 
   Widget objectView(UniversalObject object, {String pane = 'primary'}) {
+    final lifeIndex = object.typeId == 'orbit.canvas' ? c.lifeIndex : null;
     final positionKey = '$pane:${object.id}';
     final otherObject = c.find(
       pane == 'primary' ? c.session.secondaryId : c.session.activeId,
@@ -4084,6 +4116,8 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       'orbit.note' => ListenableBuilder(
         listenable: collaboration.viewerChanges,
         builder: (context, _) => NoteEditor(
+          onSavePersonalTemplate: () =>
+              saveObjectAsLifeTemplate(context, c, object),
           viewOnly:
               object.isReadOnly ||
               c.repository.readOnly ||
@@ -4238,19 +4272,20 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         ),
       ),
       'orbit.canvas' => ListenableBuilder(
-        listenable: collaboration,
+        listenable: collaboration.viewerChanges,
         builder: (context, _) => CanvasEditor(
+          onSavePersonalTemplate: () =>
+              saveObjectAsLifeTemplate(context, c, object),
           readOnly:
               object.isReadOnly ||
               c.repository.readOnly ||
               collaboration.viewer && collaboration.shares(object.id),
-          remoteCursors: collaboration.peers
-              .where(
-                (p) => p['objectId'] == object.id && p['space'] == 'canvas',
-              )
-              .toList(),
+          remotePresence: collaboration.presenceChanges,
           onPresence: (x, y) =>
               collaboration.cursor(object.id, x, y, space: 'canvas'),
+          onPresenceSelection: (ids) =>
+              collaboration.selectCanvas(object.id, ids),
+          onPresenceLeave: () => collaboration.clearCursor(object.id),
           captureController: _canvasCaptures.putIfAbsent(
             object.id,
             CanvasCaptureController.new,
@@ -4316,6 +4351,9 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                   title: o.title,
                   typeId: o.typeId,
                   body: o.body,
+                  lifeSummary: lifeKind(o) == null
+                      ? null
+                      : lifeIndex!.summary(o),
                   properties: o.properties,
                   viewMemberIds:
                       o.typeId == 'orbit.view' &&
@@ -4331,7 +4369,13 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                 ),
               )
               .toList(),
-          onOpenObject: openLinkedObject,
+          onOpenObject: (id) {
+            if (lifeKind(c.find(id)) != null) {
+              showLifeWorkspace(context, c, objectId: id);
+            } else {
+              openLinkedObject(id);
+            }
+          },
           onPickReference: () async {
             final picked = await showObjectReferencePicker(
               context,

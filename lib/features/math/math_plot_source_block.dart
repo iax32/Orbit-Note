@@ -27,14 +27,24 @@ class MathPlotSourceBlockState extends State<MathPlotSourceBlock> {
   MathPlotDefinition? _definition;
   bool _sourceEditing = false;
   final _codeKey = GlobalKey<NoteCodeBlockState>();
-  bool selectSource(int offset, {int length = 0}) {
+  bool selectSource(int offset, {int length = 0, bool requestFocus = true}) {
     final existing = _codeKey.currentState;
-    if (existing != null) return existing.selectSource(offset, length: length);
+    if (existing != null) {
+      return existing.selectSource(
+        offset,
+        length: length,
+        requestFocus: requestFocus,
+      );
+    }
     final original = widget.source;
     setState(() => _sourceEditing = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && widget.source == original) {
-        _codeKey.currentState?.selectSource(offset, length: length);
+        _codeKey.currentState?.selectSource(
+          offset,
+          length: length,
+          requestFocus: requestFocus,
+        );
       }
     });
     return true;

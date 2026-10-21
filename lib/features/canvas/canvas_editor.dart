@@ -23,11 +23,14 @@ import '../../canvas/columns.dart';
 import '../../canvas/connectors.dart';
 import '../../canvas/groups.dart';
 import '../../canvas/scene.dart';
+import '../../canvas/starter_templates.dart';
+import 'canvas_starter_dialog.dart';
 import '../../domain/json_values.dart';
 import '../../domain/object_reference.dart';
 import '../../platform/export_file.dart';
 import '../../domain/pdf_quote_transfer.dart';
 import 'canvas_painter.dart';
+import 'canvas_presence_overlay.dart';
 import 'canvas_images.dart';
 import 'canvas_rich_text.dart';
 import 'canvas_import_dialog.dart';
@@ -104,6 +107,7 @@ class CanvasEditor extends StatefulWidget {
     this.readOnly = false,
     this.title = '',
     this.onTitleChanged,
+    this.onSavePersonalTemplate,
     required this.data,
     required this.onChanged,
     this.onDraftChanged,
@@ -136,15 +140,22 @@ class CanvasEditor extends StatefulWidget {
     this.onPickReference,
     this.onShowObjectConnections,
     this.remoteCursors = const [],
+    this.remotePresence,
     this.onPresence,
+    this.onPresenceSelection,
+    this.onPresenceLeave,
   });
   final Future<ObjectReference?> Function()? onPickReference;
   final ValueChanged<String>? onShowObjectConnections;
+  final VoidCallback? onSavePersonalTemplate;
   final String canvasId;
   final CanvasCaptureController? captureController;
   final VoidCallback? onCaptureReferences;
   final List<Map<String, dynamic>> remoteCursors;
+  final ValueListenable<List<Map<String, dynamic>>>? remotePresence;
   final void Function(double x, double y)? onPresence;
+  final ValueChanged<List<String>>? onPresenceSelection;
+  final VoidCallback? onPresenceLeave;
   final String? focusElementId;
   final List<String> focusElementIds;
   final int locationSerial;
@@ -317,6 +328,29 @@ class _CanvasEditorState extends State<CanvasEditor> {
   bool _inMultiTouch = false;
   Size _viewport = Size.zero;
   Map<String, dynamic>? _lastEmitted;
+  List<String>? _lastPresenceSelection;
+  void _publishPresenceSelection() {
+    final selection = _selection.take(64).toList();
+    if (listEquals(selection, _lastPresenceSelection)) return;
+    _lastPresenceSelection = selection;
+    widget.onPresenceSelection?.call(selection);
+  }
+
+  void _clearPresence() {
+    _lastPresenceSelection = null;
+    widget.onPresenceLeave?.call();
+  }
+
+  void _sendPresence(Offset local) {
+    if (!(Offset.zero & _viewport).contains(local)) {
+      _clearPresence();
+      return;
+    }
+    final point = _world(local);
+    widget.onPresence?.call(point.x, point.y);
+    _publishPresenceSelection();
+  }
+
   late Map<String, dynamic> _acceptedData = widget.draftBaseData ?? widget.data;
   Duration _strokeStart = Duration.zero;
   CanvasImageCache? _images;
@@ -559,6 +593,9 @@ class _CanvasEditorState extends State<CanvasEditor> {
             _applyProcessTreePreset();
           case 'rendering_pipeline':
             _applyRenderingPipelinePreset();
+          default:
+            final starter = CanvasStarters.byId(preset);
+            if (starter != null && !_readOnly) _insertStarter(starter);
         }
       });
     }
@@ -637,6 +674,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
 
   @override
   void dispose() {
+    _clearPresence();
     widget.captureController?._placements.remove(this);
     _searchController.dispose();
     _searchFocusNode.dispose();
@@ -693,6 +731,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   void _emit() {
+    _publishPresenceSelection();
     if (_readOnly) return;
     final data = {
       ..._scene.toJson(),
@@ -4166,6 +4205,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
               ),
             ),
             const PopupMenuItem(
+              value: 'starter_library',
+              child: Text('Add from template library…'),
+            ),
+            const PopupMenuItem(
               value: 'place_object',
               child: Row(
                 children: [
@@ -4267,6 +4310,8 @@ class _CanvasEditorState extends State<CanvasEditor> {
           _addSection(at: worldPos);
         case 'add_swatch':
           _addSwatch(at: worldPos);
+        case 'starter_library':
+          _showStarterLibrary();
         case 'add_card':
           _addCard(at: worldPos);
         case 'place_object':
@@ -5532,8 +5577,13 @@ class _CanvasEditorState extends State<CanvasEditor> {
   @override
   Widget build(BuildContext context) => Focus(
     focusNode: _focus,
-    onKeyEvent: _key,
+    onKeyEvent: (node, event) {
+      final result = _key(node, event);
+      _publishPresenceSelection();
+      return result;
+    },
     onFocusChange: (focused) {
+      if (!focused) _clearPresence();
       if (!focused && _spacePressed) {
         setState(() {
           _spacePressed = false;
@@ -5637,10 +5687,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
                           child: MouseRegion(
                             onHover: (event) {
                               _onCanvasHover(event);
-                              final point = _world(event.localPosition);
-                              widget.onPresence?.call(point.x, point.y);
+                              _sendPresence(event.localPosition);
                             },
                             onExit: (_) {
+                              if (_pointer == null) _clearPresence();
                               if (!_isHoveringTooltip) {
                                 _dismissCardTooltip();
                               }
@@ -5653,13 +5703,18 @@ class _CanvasEditorState extends State<CanvasEditor> {
                                 : SystemMouseCursors.precise,
                             child: Listener(
                               behavior: HitTestBehavior.opaque,
-                              onPointerDown: _down,
+                              onPointerDown: (event) {
+                                _down(event);
+                                _sendPresence(event.localPosition);
+                              },
                               onPointerMove: (event) {
                                 _move(event);
-                                final point = _world(event.localPosition);
-                                widget.onPresence?.call(point.x, point.y);
+                                _sendPresence(event.localPosition);
                               },
-                              onPointerUp: _up,
+                              onPointerUp: (event) {
+                                _up(event);
+                                _sendPresence(event.localPosition);
+                              },
                               onPointerCancel: (_) => _cancelGesture(),
                               onPointerPanZoomStart: (_) {
                                 _finishText();
@@ -5754,53 +5809,35 @@ class _CanvasEditorState extends State<CanvasEditor> {
                                   child: Stack(
                                     children: [
                                       const SizedBox.expand(),
-                                      for (final peer in widget.remoteCursors)
-                                        Positioned(
-                                          left: _camera
-                                              .toScreen(
-                                                CanvasPoint(
-                                                  (peer['x'] as num).toDouble(),
-                                                  (peer['y'] as num).toDouble(),
-                                                ),
+                                      Positioned.fill(
+                                        child: widget.remotePresence == null
+                                            ? CanvasPresenceOverlay(
+                                                scene: _scene,
+                                                camera: _camera,
+                                                peers: widget.remoteCursors,
                                               )
-                                              .x,
-                                          top: _camera
-                                              .toScreen(
-                                                CanvasPoint(
-                                                  (peer['x'] as num).toDouble(),
-                                                  (peer['y'] as num).toDouble(),
-                                                ),
-                                              )
-                                              .y,
-                                          child: IgnorePointer(
-                                            child: Semantics(
-                                              label: '${peer['name']} cursor',
-                                              child: DecoratedBox(
-                                                decoration: BoxDecoration(
-                                                  color: Theme.of(context)
-                                                      .colorScheme
-                                                      .primaryContainer,
-                                                  borderRadius:
-                                                      BorderRadius.circular(4),
-                                                ),
-                                                child: Padding(
-                                                  padding: const EdgeInsets.all(
-                                                    4,
-                                                  ),
-                                                  child: Text(
-                                                    '↖ ${peer['name']}',
-                                                    style: TextStyle(
-                                                      fontSize: 11,
-                                                      color: Theme.of(context)
-                                                          .colorScheme
-                                                          .onPrimaryContainer,
+                                            : ValueListenableBuilder<
+                                                List<Map<String, dynamic>>
+                                              >(
+                                                valueListenable:
+                                                    widget.remotePresence!,
+                                                builder: (_, peers, _) =>
+                                                    CanvasPresenceOverlay(
+                                                      scene: _scene,
+                                                      camera: _camera,
+                                                      peers: peers
+                                                          .where(
+                                                            (p) =>
+                                                                p['objectId'] ==
+                                                                    widget
+                                                                        .canvasId &&
+                                                                p['space'] ==
+                                                                    'canvas',
+                                                          )
+                                                          .toList(),
                                                     ),
-                                                  ),
-                                                ),
                                               ),
-                                            ),
-                                          ),
-                                        ),
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -6879,6 +6916,58 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _history.put(result);
     _history.put(mistakes);
     _commit();
+  }
+
+  Future<void> _showStarterLibrary() async {
+    if (_readOnly) return;
+    _finishText();
+    _cancelGesture();
+    final owner = widget.canvasId, scene = _scene;
+    final epoch = _interactionEpoch, revision = scene.revision;
+    final starter = await showDialog<CanvasStarter>(
+      context: context,
+      builder: (_) => const CanvasStarterDialog(),
+    );
+    if (!mounted ||
+        starter == null ||
+        _readOnly ||
+        widget.canvasId != owner ||
+        epoch != _interactionEpoch) {
+      return;
+    }
+    if (!identical(_scene, scene) || scene.revision != revision) {
+      _notice(
+        'The board changed while choosing a template. Open the library again.',
+      );
+      return;
+    }
+    _insertStarter(starter);
+  }
+
+  void _insertStarter(CanvasStarter starter) {
+    if (_readOnly) return;
+    final elements = starter.createElements(_id);
+    final bounds = elements.map((e) => e.bounds).reduce((a, b) => a.union(b));
+    final existing = _scene.contentBounds;
+    final center = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final offset = existing == null
+        ? center - bounds.center
+        : CanvasPoint(
+            existing.right + 80 - bounds.left,
+            existing.top - bounds.top,
+          );
+    if (elements.any((e) => _scene[e.id] != null)) return;
+    for (final element in elements) {
+      _history.put(element.translated(offset));
+    }
+    _selection
+      ..clear()
+      ..addAll(elements.map((e) => e.id));
+    _commit();
+    _fit(selectionOnly: true);
+    _notice('${starter.name} added · Undo removes the whole starter');
   }
 
   void _applyStudyBoardPreset() {
@@ -9684,6 +9773,8 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 enabled: !_readOnly,
                 onSelected: (preset) {
                   switch (preset) {
+                    case 'save_personal_template':
+                      widget.onSavePersonalTemplate?.call();
                     case 'exercise':
                       _applyExercisePreset();
                     case 'study_board':
@@ -9722,8 +9813,13 @@ class _CanvasEditorState extends State<CanvasEditor> {
                       _applyRenderingPipelinePreset();
                   }
                 },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(
+                itemBuilder: (_) => [
+                  if (widget.onSavePersonalTemplate != null)
+                    const PopupMenuItem(
+                      value: 'save_personal_template',
+                      child: Text('Save as personal template…'),
+                    ),
+                  const PopupMenuItem(
                     enabled: false,
                     child: Text(
                       'STUDY / MATH PRESETS',
@@ -9952,6 +10048,11 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 tooltip: 'Layers & element list',
                 onPressed: _showElementList,
                 icon: const Icon(Icons.layers_outlined, size: 20),
+              ),
+              IconButton(
+                tooltip: 'Canvas template library',
+                onPressed: _readOnly ? null : _showStarterLibrary,
+                icon: const Icon(Icons.auto_stories_outlined, size: 20),
               ),
               if (_selection.isNotEmpty)
                 PopupMenuButton<String>(

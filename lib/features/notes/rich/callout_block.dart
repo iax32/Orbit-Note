@@ -353,7 +353,7 @@ class CalloutBlockState extends State<CalloutBlock> {
     widget.onChanged(_emitted!);
   }
 
-  bool selectSource(int offset, {int length = 0}) {
+  bool selectSource(int offset, {int length = 0, bool requestFocus = true}) {
     if (!_expanded) setState(() => _expanded = true);
     final source = _emitted ?? widget.source;
     final parts = CalloutSourceParts(source);
@@ -372,7 +372,7 @@ class CalloutBlockState extends State<CalloutBlock> {
     final start = parts.body.visibleOffset(offset - parts.headerEnd);
     final end = parts.body.visibleOffset(offset + length - parts.headerEnd);
     _bodyCtrl.selection = TextSelection(baseOffset: start, extentOffset: end);
-    _focus.requestFocus();
+    if (requestFocus) _focus.requestFocus();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || (_emitted ?? widget.source) != source) return;
       final context = _focus.context;
@@ -827,6 +827,7 @@ class CalloutElementBuilder extends MarkdownElementBuilder {
                                   child: image,
                                 );
                               },
+                              blockSyntaxes: const [MathTableSyntax()],
                               inlineSyntaxes: [
                                 HighlightInlineSyntax(),
                                 MarkTagInlineSyntax(),

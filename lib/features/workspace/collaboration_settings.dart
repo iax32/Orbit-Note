@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_selector/file_selector.dart';
 import '../../app/collaboration_controller.dart';
+import 'canvas_conflict_dialog.dart';
 import '../../app/orbit_components.dart';
 import '../../application/backup_bundle.dart';
 import '../../platform/import_backup.dart';
@@ -371,6 +372,25 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   Text(entry.value),
+                  if (c.canReviewCanvas(entry.key))
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.compare_arrows),
+                      label: const Text('Review overlapping Canvas items'),
+                      onPressed: busy || c.busy
+                          ? null
+                          : () => run(() async {
+                              final review = await c.reviewCanvas(entry.key);
+                              if (!context.mounted) return;
+                              await showDialog<void>(
+                                context: context,
+                                barrierDismissible: false,
+                                builder: (_) => CanvasConflictDialog(
+                                  controller: c,
+                                  review: review,
+                                ),
+                              );
+                            }),
+                    ),
                   const Text(
                     'Your current version remains saved locally. Adopting the server version keeps the complete before-image in file history for recovery.',
                   ),

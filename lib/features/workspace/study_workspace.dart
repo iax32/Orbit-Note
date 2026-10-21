@@ -532,7 +532,7 @@ class _StudyWorkspaceState extends ConsumerState<StudyWorkspace> {
                   data: object.body,
                   selectable: true,
                   inlineSyntaxes: [MathInlineSyntax()],
-                  blockSyntaxes: const [MathBlockSyntax()],
+                  blockSyntaxes: const [MathBlockSyntax(), MathTableSyntax()],
                   builders: {
                     'math-inline': MathElementBuilder(),
                     'math-block': MathElementBuilder(display: true),

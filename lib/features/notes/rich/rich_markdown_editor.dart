@@ -619,9 +619,26 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
   /// Restore typing focus without changing the selection or scrolling to it.
   void restoreEditingFocus() {
     if (!mounted || document.blocks.isEmpty) return;
-    final editor =
-        keys[document.blocks[active.clamp(0, document.blocks.length - 1)]]
-            ?.currentState;
+    final block = document.blocks[active.clamp(0, document.blocks.length - 1)];
+    var restored = false;
+    void visit(Element element) {
+      if (element is StatefulElement) {
+        final state = element.state;
+        if (state is RichTableEditorState) {
+          state.restoreEditingFocus();
+          restored = true;
+        } else if (state is NoteCodeBlockState) {
+          state.focus.requestFocus();
+          restored = true;
+        }
+      }
+      if (!restored) element.visitChildren(visit);
+    }
+
+    final anchor = anchors[block]?.currentContext;
+    if (anchor is Element) visit(anchor);
+    if (restored) return;
+    final editor = keys[block]?.currentState;
     if (editor != null) {
       editor.focus.requestFocus();
     } else {
@@ -1476,7 +1493,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
     if (focusOffset != null) _focusOffset(start + focusOffset);
   }
 
-  void _focusOffset(int offset, {int length = 0}) {
+  void _focusOffset(int offset, {int length = 0, bool requestFocus = true}) {
     _columnSelection = null;
     final request = ++_focusRequest;
     active = _positions.blockAt(offset).clamp(0, document.blocks.length - 1);
@@ -1562,6 +1579,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
             if (nested != null) {
               nested.jumpTo(
                 raw - partStart,
+                requestFocus: requestFocus,
                 length: length.clamp(
                   0,
                   columns.parts[i].length - raw + partStart,
@@ -1573,7 +1591,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
         }
       }
       if (field != null) {
-        field.focusAt(local, extent: end);
+        field.focusAt(local, extent: end, requestFocus: requestFocus);
       } else {
         // Returning from an empty paragraph must not select the entire preceding
         // code/table block: a repeated Backspace would then delete that block.
@@ -1583,13 +1601,29 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
           if (element is StatefulElement) {
             final state = element.state;
             if (state is RichTableEditorState) {
-              specializedSelection = state.selectSource(raw, length: length);
+              specializedSelection = state.selectSource(
+                raw,
+                length: length,
+                requestFocus: requestFocus,
+              );
             } else if (state is CalloutBlockState) {
-              specializedSelection = state.selectSource(raw, length: length);
+              specializedSelection = state.selectSource(
+                raw,
+                length: length,
+                requestFocus: requestFocus,
+              );
             } else if (state is NoteCodeBlockState) {
-              specializedSelection = state.selectSource(raw, length: length);
+              specializedSelection = state.selectSource(
+                raw,
+                length: length,
+                requestFocus: requestFocus,
+              );
             } else if (state is MathPlotSourceBlockState) {
-              specializedSelection = state.selectSource(raw, length: length);
+              specializedSelection = state.selectSource(
+                raw,
+                length: length,
+                requestFocus: requestFocus,
+              );
             }
           }
           if (element.widget is EditableText) {
@@ -1610,11 +1644,12 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
           editor.controller.selection = TextSelection.collapsed(
             offset: raw == 0 ? 0 : editor.controller.text.length,
           );
-          editor.focusNode.requestFocus();
-        } else {
+          if (requestFocus) editor.focusNode.requestFocus();
+        } else if (requestFocus) {
           _editorFocusNode.requestFocus();
         }
       }
+      record();
       final context = anchors[block]?.currentContext;
       if (context != null) {
         Scrollable.ensureVisible(
@@ -1660,8 +1695,8 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
     return true;
   }
 
-  void jumpTo(int offset, {int length = 0}) =>
-      _focusOffset(offset, length: length);
+  void jumpTo(int offset, {int length = 0, bool requestFocus = true}) =>
+      _focusOffset(offset, length: length, requestFocus: requestFocus);
   MarkdownBlock get current =>
       document.blocks[active.clamp(0, document.blocks.length - 1)];
   void insertMarkdown(String value) {
@@ -2866,6 +2901,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
         );
       }
       return NoteCodeBlock(
+        clipboardEpoch: () => _documentClipboardEpoch,
         code: block.content,
         language: block.language,
         onUndo: widget.onUndo,
@@ -5511,12 +5547,12 @@ class _RichTextBlockState extends State<_RichTextBlock> {
     }
   }
 
-  void focusAt(int offset, {int? extent}) {
+  void focusAt(int offset, {int? extent, bool requestFocus = true}) {
     controller.selection = TextSelection(
       baseOffset: offset.clamp(0, controller.text.length),
       extentOffset: (extent ?? offset).clamp(0, controller.text.length),
     );
-    focus.requestFocus();
+    if (requestFocus) focus.requestFocus();
   }
 
   void insert(String markdown) {

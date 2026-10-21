@@ -20,6 +20,7 @@ class SessionState {
     this.spaces = const {},
     this.projectContext = const {},
     this.dashboard = const {},
+    this.lifeWorkspace = const {},
     List<String> tabs = const [],
     this.activeId,
     this.secondaryId,
@@ -113,6 +114,7 @@ class SessionState {
   Map<String, dynamic> spaces;
   Map<String, dynamic> projectContext;
   Map<String, dynamic> dashboard;
+  Map<String, dynamic> lifeWorkspace;
   OrbitDestination destination;
   List<String> tabs;
   List<String> pinnedTabs;
@@ -267,6 +269,9 @@ class SessionState {
           : const {},
       spaces: json['spaces'] is Map
           ? Map<String, dynamic>.from(json['spaces'] as Map)
+          : const {},
+      lifeWorkspace: json['lifeWorkspace'] is Map
+          ? Map<String, dynamic>.from(json['lifeWorkspace'] as Map)
           : const {},
       dashboard: json['dashboard'] is Map
           ? Map<String, dynamic>.from(json['dashboard'] as Map)
@@ -446,6 +451,7 @@ class SessionState {
     'spaces': spaces,
     'projectContext': projectContext,
     'dashboard': dashboard,
+    'lifeWorkspace': lifeWorkspace,
     'destination': destination.name,
     'tabs': tabs,
     'pinnedTabs': pinnedTabs,

@@ -12,7 +12,13 @@ import 'package:orbit_note/infrastructure/storage/memory_object_index.dart';
 import 'support/memory_store.dart';
 
 Future<(WorkspaceController, UniversalObject, UniversalObject, UniversalObject)>
-fixture(WidgetTester t, {bool readOnlySecondary = false}) async {
+fixture(
+  WidgetTester t, {
+  bool readOnlySecondary = false,
+  String? bodyA,
+  String? bodyB,
+  String mode = 'write',
+}) async {
   t.view.physicalSize = const Size(1400, 1000);
   t.view.devicePixelRatio = 1;
   final container = ProviderContainer(
@@ -32,19 +38,20 @@ fixture(WidgetTester t, {bool readOnlySecondary = false}) async {
   final c = container.read(workspaceProvider.notifier);
   c.pausePdfIndex(true);
   c.cancelAllTimers();
-  c.session.defaultNoteMode = 'write';
+  c.session.defaultNoteMode = mode;
   c.session.sidebarVisible = false;
   c.session.inspectorVisible = false;
   c.session.autoSnapshotOnClose = false;
   final a = (await c.create(
     'orbit.note',
     title: 'Alpha',
-    body: List.generate(400, (i) => 'Alpha paragraph $i.').join('\n\n'),
+    body:
+        bodyA ?? List.generate(400, (i) => 'Alpha paragraph $i.').join('\n\n'),
   ))!;
   final b = (await c.create(
     'orbit.note',
     title: 'Beta',
-    body: List.generate(400, (i) => 'Beta paragraph $i.').join('\n\n'),
+    body: bodyB ?? List.generate(400, (i) => 'Beta paragraph $i.').join('\n\n'),
   ))!;
   final d = (await c.create('orbit.note', title: 'Gamma', body: 'Gamma text'))!;
   if (readOnlySecondary) {

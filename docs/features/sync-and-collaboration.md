@@ -1,5 +1,58 @@
 # Optional sync and future collaboration
 
+## Shared Canvas placement review — 2026-10-20
+
+In Shared Vault settings, a Canvas conflict with a known session base offers
+**Review overlapping Canvas items**. The comparison shows local/shared placement
+alternatives and the common base, including edit-versus-removal. Each overlapping
+placement needs an explicit choice; genuinely competing stacking orders have a
+separate choice. Independent placements/fields continue to merge automatically.
+Choosing a whole placement retains that alternative's unknown fields and stable
+ID. Removing a placement never deletes the referenced knowledge object.
+
+Comparison snapshots are immutable. Local content, workspace/session identity,
+permissions and the latest fetched server version are rechecked before applying.
+A stale comparison must be reloaded. Normal repository saves retain the complete
+before-image; a failed save keeps the conflict and does not publish the draft.
+After saving locally, the normal idempotent known-base protocol publishes the
+resolution. Later overlapping server edits still conflict, including edits that
+arrive while local saving is in progress; this is not a force overwrite. Lost
+acknowledgements use the existing operation replay boundary.
+
+An unknown common base after reconnect, unsupported metadata conflicts and
+non-placement document conflicts retain the existing recovery/adopt-server flow.
+The app does not invent an ancestor or promise a persistent CRDT review session.
+No protocol or durable format migration is required for this review UI.
+[Implementation and validation](../tasks/canvas-review-templates-2026-10-20.md).
+
+## Canvas awareness and session reliability — 2026-10-20
+
+Shared Canvas pointers can include up to 64 selected placement IDs. Matching
+world-coordinate outlines show who is working on visible items; this is awareness,
+not a lock or a durable edit. Names remain grant-bound. The server validates
+session ownership and bounded input, filters missing IDs and caches placement
+membership by snapshot with a bounded cache. Optional `active: false` removes a
+member's own presence when leaving a Canvas. A new connection uses a new ephemeral
+session ID, avoiding a denial when a previous room still retains its old presence.
+
+Presence updates repaint a separate overlay rather than rebuilding Canvas
+controls/gestures. Unchanged positions with only a newer heartbeat do not repaint;
+hidden/missing/offscreen selections and malformed coordinates are excluded. Label
+truncation preserves Unicode scalar boundaries. These fields are not serialized
+to Canvas documents or the server edit journal.
+
+Three-way Canvas merges validate placement identities even for one-sided changes.
+Compatible reorders compare surviving common IDs, so independent deletions do not
+cause a false order conflict. Different surviving orders and edit/delete races
+still require review. Membership/order checks use sets for large boards.
+
+Update the app and standalone server for these additions. Protocol 1, existing
+presence payloads and durable formats remain compatible. Older servers ignore
+selected IDs and may keep a departed pointer until the existing 15-second expiry.
+Disconnect/network loss still uses expiry; clear-on-leave is best effort. This
+does not add CRDT editing, live new-object/attachment streaming or physical-device
+acceptance. [Actual checks and limits](../tasks/canvas-split-quality-2026-10-20.md).
+
 2026-10-15 continuity extension: completed bulk Drive transfers can opt into
 scheduled inactive-Vault checks while Orbit is open, with account binding,
 native locks, individual pause preservation, visible results and pause/retry.

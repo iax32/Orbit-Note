@@ -1,5 +1,21 @@
 # Spatial boards
 
+## Everyday Canvas starters — 2026-10-20
+
+The **Canvas template library** toolbar button and **Add from template library…**
+context action offer searchable starters with vector previews from the existing
+Canvas renderer: Mind Map, Idea Exploration, Reflection Board, Outdoor Adventure,
+Nature Observation, AI Experiment Board, Travel Planner and Story World.
+
+Insertion appends fresh ordinary placement IDs beside existing content, selects
+the inserted items and fits the camera. One Undo removes the complete insertion.
+Existing content/unknown metadata and canonical references remain intact. Sticky
+notes and endpoint-bound connectors are editable, movable and removable using the
+normal tools; templates introduce no special locked content or copied objects.
+Late dialog callbacks refuse changed boards/permissions. Consumed preset markers
+keep a deliberately emptied starter empty on reopen. AI starters run no model.
+[Evidence](../tasks/canvas-review-templates-2026-10-20.md).
+
 ## Selection and transfer quality — 2026-10-18
 
 Gesture cancellation restores prior selection/geometry and cancelled navigation

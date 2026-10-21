@@ -103,6 +103,7 @@ class NoteEditor extends StatefulWidget {
     required this.noteId,
     required this.title,
     required this.body,
+    this.onSavePersonalTemplate,
     required this.onTitleChanged,
     required this.onBodyChanged,
     required this.linkTargets,
@@ -164,6 +165,7 @@ class NoteEditor extends StatefulWidget {
     this.locationLength = 0,
   });
 
+  final VoidCallback? onSavePersonalTemplate;
   final String? editorDraftId;
   final String noteId;
   final String title;
@@ -3403,10 +3405,11 @@ class _NoteEditorState extends State<NoteEditor> {
           _richKey.currentState?.jumpTo(
             match.start,
             length: match.end - match.start,
+            requestFocus: false,
           );
         }
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (stillCurrent()) {
+          if (stillCurrent() && _isLatex) {
             _body.selection = TextSelection(
               baseOffset: match.start,
               extentOffset: match.end,
@@ -3416,6 +3419,7 @@ class _NoteEditorState extends State<NoteEditor> {
         });
       }
 
+      if (!_isLatex) _findFocus.requestFocus();
       if (!_isLatex && _richKey.currentState?.widget.body != searchedSource) {
         // Replacement may change fences/block identity. Navigate only after the
         // child receives the new source, then restore Find after field focus.
@@ -5252,11 +5256,16 @@ class _NoteEditorState extends State<NoteEditor> {
                                       if (action == 'history') {
                                         _showHistoryDialog();
                                       }
+                                      if (action == 'save_personal_template') {
+                                        widget.onSavePersonalTemplate?.call();
+                                      }
                                       if (action == 'insert_template') {
                                         final template =
                                             await NoteTemplateDialog.show(
                                               context,
                                               insertMode: true,
+                                              personalTemplates:
+                                                  widget.allObjects,
                                             );
                                         if (template != null) {
                                           _insertSource(template.body);
@@ -5392,6 +5401,13 @@ class _NoteEditorState extends State<NoteEditor> {
                                           ],
                                         ),
                                       ),
+                                      if (widget.onSavePersonalTemplate != null)
+                                        const PopupMenuItem(
+                                          value: 'save_personal_template',
+                                          child: Text(
+                                            'Save as personal template…',
+                                          ),
+                                        ),
                                       const PopupMenuItem(
                                         value: 'insert_template',
                                         child: Row(
@@ -6533,6 +6549,7 @@ class _NoteEditorState extends State<NoteEditor> {
                         AlignmentBlockSyntax(),
                         CalloutBlockSyntax(),
                         MathBlockSyntax(),
+                        MathTableSyntax(),
                       ],
                       builders: {
                         'orbit-composition': NoteCompositionBuilder(
@@ -6555,6 +6572,7 @@ class _NoteEditorState extends State<NoteEditor> {
                             LinkedSectionSyntax(),
                             CalloutBlockSyntax(),
                             MathBlockSyntax(),
+                            MathTableSyntax(),
                           ],
                           builders: {
                             'orbit-composition': NoteCompositionBuilder(

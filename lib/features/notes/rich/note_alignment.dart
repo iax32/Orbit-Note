@@ -90,6 +90,7 @@ class AlignmentElementBuilder extends MarkdownElementBuilder {
               imageBuilder?.call(uri, title, alt) ??
               Text(alt ?? title ?? uri.toString()),
         ),
+        blockSyntaxes: const [MathTableSyntax()],
         inlineSyntaxes: [
           HighlightInlineSyntax(),
           MarkTagInlineSyntax(),

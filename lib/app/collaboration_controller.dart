@@ -23,6 +23,22 @@ final collaborationProvider = Provider<CollaborationController>((ref) {
   return controller;
 });
 
+class SharedCanvasReview {
+  SharedCanvasReview._(
+    this.id,
+    this.title,
+    this.serverVersion,
+    this.comparison,
+    this._generation,
+    this._session,
+  );
+  final String id, title;
+  final int serverVersion;
+  final CanvasConflictReview comparison;
+  final int _generation;
+  final String _session;
+}
+
 /// Session credentials remain in memory unless explicitly remembered in secure
 /// device storage. Local repository save/history is used
 /// for every accepted remote mutation; server acknowledgement is a separate state.
@@ -46,7 +62,9 @@ class CollaborationController extends ChangeNotifier {
   final conflicts = <String, String>{};
   final _documents = <String, Map<String, dynamic>>{};
   final _inflight = <String, Map<String, dynamic>>{};
-  final session = const Uuid().v4();
+  final _canvasConflictBases = <String, Map<String, dynamic>>{};
+  String _session = const Uuid().v4();
+  String get session => _session;
   Timer? _timer;
   int _generation = 0;
   int _connectionRequest = 0, _failures = 0;
@@ -91,10 +109,19 @@ class CollaborationController extends ChangeNotifier {
   // Note editors only need rebuilding when editing permission changes. Pointer
   // heartbeats must not reconstruct their Markdown preview every half second.
   final viewerChanges = ValueNotifier<bool>(false);
+  final presenceChanges = ValueNotifier<List<Map<String, dynamic>>>(const []);
   Map<String, dynamic>? _cursor;
   DateTime _lastCursor = DateTime.fromMillisecondsSinceEpoch(0);
   bool get connected => room != null;
   bool shares(String id) => _documents.containsKey(id);
+  bool canReviewCanvas(String id) =>
+      connected &&
+      !viewer &&
+      !accessBlocked &&
+      _validWorkspace &&
+      conflicts.containsKey(id) &&
+      _canvasConflictBases.containsKey(id) &&
+      workspace.find(id)?.typeId == 'orbit.canvas';
   bool get viewer => connected && role == 'viewer';
   String get connectionInvitation => jsonEncode({
     'version': 1,
@@ -109,6 +136,13 @@ class CollaborationController extends ChangeNotifier {
   void _notify() {
     if (!_disposed) {
       viewerChanges.value = viewer;
+      final visiblePeers = [
+        for (final peer in peers)
+          Map<String, dynamic>.unmodifiable({...peer}..remove('seen')),
+      ];
+      if (!collaborationEqual(presenceChanges.value, visiblePeers)) {
+        presenceChanges.value = List.unmodifiable(visiblePeers);
+      }
       notifyListeners();
     }
   }
@@ -409,6 +443,7 @@ class CollaborationController extends ChangeNotifier {
         );
       }
       disconnect();
+      _session = const Uuid().v4();
       endpoint = server;
       room = id;
       _token = token;
@@ -433,6 +468,7 @@ class CollaborationController extends ChangeNotifier {
       }
       peers = (state['peers'] as List)
           .map((v) => Map<String, dynamic>.from(v as Map))
+          .where((peer) => peer['session'] != session)
           .toList();
       status = conflicts.isEmpty
           ? 'Connected · saved locally'
@@ -466,8 +502,10 @@ class CollaborationController extends ChangeNotifier {
     peers = [];
     _documents.clear();
     _inflight.clear();
+    _canvasConflictBases.clear();
     conflicts.clear();
     _cursor = null;
+    _lastCursor = DateTime.fromMillisecondsSinceEpoch(0);
     _failures = 0;
     retryAt = lastAcknowledgedAt = null;
     accessBlocked = false;
@@ -476,14 +514,36 @@ class CollaborationController extends ChangeNotifier {
   }
 
   void cursor(String id, double x, double y, {String space = 'note'}) {
-    if (!shares(id) || !x.isFinite || !y.isFinite) return;
+    if (!shares(id) ||
+        !x.isFinite ||
+        !y.isFinite ||
+        x.abs() > 100000000 ||
+        y.abs() > 100000000) {
+      return;
+    }
     _cursor = {
       'session': session,
       'objectId': id,
       'x': x,
       'y': y,
       'space': space,
+      if (space == 'canvas')
+        'selection': _cursor?['objectId'] == id
+            ? collaborationSelectionIds(_cursor?['selection'])
+            : <String>[],
     };
+  }
+
+  void selectCanvas(String id, List<String> ids) {
+    if (_cursor?['objectId'] != id || _cursor?['space'] != 'canvas') return;
+    final selection = collaborationSelectionIds(ids);
+    if (listEquals(selection, _cursor?['selection'] as List?)) return;
+    _cursor = {..._cursor!, 'selection': selection};
+  }
+
+  void clearCursor(String id) {
+    if (_cursor?['objectId'] != id) return;
+    _cursor = {..._cursor!, 'active': false, 'selection': <String>[]};
   }
 
   Future<void> pump() async {
@@ -551,6 +611,9 @@ class CollaborationController extends ChangeNotifier {
           } on CollaborationConflict catch (e) {
             if (!_current(generation)) return;
             conflicts[entry.key] = e.toString();
+            if (object.typeId == 'orbit.canvas') {
+              _canvasConflictBases[entry.key] = base;
+            }
             _inflight.remove(entry.key);
           }
         }
@@ -580,6 +643,10 @@ class CollaborationController extends ChangeNotifier {
           } on CollaborationConflict catch (e) {
             if (!_current(generation)) return;
             conflicts[entry.key as String] = e.toString();
+            if (workspace.find(entry.key as String)?.typeId == 'orbit.canvas') {
+              _canvasConflictBases[entry.key as String] =
+                  Map<String, dynamic>.from(prior['snapshot'] as Map);
+            }
           }
         }
       }
@@ -588,11 +655,17 @@ class CollaborationController extends ChangeNotifier {
           .where((v) => v['session'] != session)
           .toList();
       _sequence = state['sequence'] as int;
-      if (_cursor != null &&
-          DateTime.now().difference(_lastCursor) >
-              const Duration(milliseconds: 400)) {
-        await request(server, token, 'POST', '/v1/rooms/$id/presence', _cursor);
-        _lastCursor = DateTime.now();
+      final cursor = _cursor;
+      if (cursor != null &&
+          (cursor['active'] == false ||
+              _now().difference(_lastCursor) >=
+                  const Duration(milliseconds: 400))) {
+        await request(server, token, 'POST', '/v1/rooms/$id/presence', cursor);
+        if (!_current(generation)) return;
+        _lastCursor = _now();
+        if (cursor['active'] == false && identical(_cursor, cursor)) {
+          _cursor = null;
+        }
       }
       if (!_current(generation)) return;
       _failures = 0;
@@ -716,11 +789,151 @@ class CollaborationController extends ChangeNotifier {
         _documents[id] = next;
         conflicts.remove(id);
         _inflight.remove(id);
+        _canvasConflictBases.remove(id);
       }
       _notify();
     } finally {
       busy = false;
       _notify();
+    }
+  }
+
+  void _checkCanvasReview(
+    int generation,
+    String id,
+    Map<String, dynamic> original,
+  ) {
+    final local = workspace.find(id);
+    if (!_current(generation) ||
+        !canReviewCanvas(id) ||
+        local == null ||
+        local.isDeleted ||
+        local.isReadOnly ||
+        workspace.loading ||
+        !collaborationContentEqual(original, collaborationSnapshot(local))) {
+      throw StateError(
+        'The board or connection changed. Reload the comparison.',
+      );
+    }
+    if (workspace.dirty.contains(id) || workspace.failures.containsKey(id)) {
+      throw StateError(
+        'Save this board locally before reviewing shared edits.',
+      );
+    }
+  }
+
+  Future<SharedCanvasReview> reviewCanvas(String id) async {
+    if (busy || !canReviewCanvas(id)) {
+      throw StateError(
+        'A known common base and editable shared Canvas are required.',
+      );
+    }
+    final generation = _generation;
+    final original = collaborationSnapshot(workspace.find(id)!);
+    busy = true;
+    _notify();
+    try {
+      await workspace.flush(id);
+      _checkCanvasReview(generation, id, original);
+      final state = await inspectRoom(endpoint!, room!, _token!);
+      _checkCanvasReview(generation, id, original);
+      if (state['protocol'] != 1 || state['workspaceId'] != _workspaceId) {
+        throw StateError('Server identity or protocol changed.');
+      }
+      final next = (state['documents'] as Map)[id];
+      if (next is! Map || next['version'] is! int) {
+        throw StateError(
+          'The shared board is unavailable. Keep your local copy.',
+        );
+      }
+      final comparison = CanvasConflictReview.create(
+        _canvasConflictBases[id]!,
+        original,
+        Map<String, dynamic>.from(next['snapshot'] as Map),
+      );
+      return SharedCanvasReview._(
+        id,
+        workspace.find(id)!.title,
+        next['version'] as int,
+        comparison,
+        generation,
+        session,
+      );
+    } finally {
+      busy = false;
+      _notify();
+    }
+  }
+
+  /// Save through the ordinary history boundary, then publish through the normal
+  /// idempotent known-base edit protocol. A later overlapping remote edit still
+  /// conflicts; this is never a force overwrite or a canonical-object deletion.
+  Future<void> resolveCanvas(
+    SharedCanvasReview review,
+    Map<String, CanvasConflictSide> choices, {
+    CanvasConflictSide? order,
+  }) async {
+    if (busy || review._session != session) {
+      throw StateError('Connection changed or busy. Reload the comparison.');
+    }
+    final generation = review._generation, id = review.id;
+    _checkCanvasReview(generation, id, review.comparison.local);
+    final resolved = collaborationObject(
+      review.comparison.resolve(choices, order: order),
+    );
+    busy = true;
+    _notify();
+    try {
+      final state = await inspectRoom(endpoint!, room!, _token!);
+      _checkCanvasReview(generation, id, review.comparison.local);
+      final next = (state['documents'] as Map)[id];
+      if (state['protocol'] != 1 ||
+          state['workspaceId'] != _workspaceId ||
+          next is! Map ||
+          next['version'] != review.serverVersion ||
+          !collaborationContentEqual(
+            review.comparison.shared,
+            Map<String, dynamic>.from(next['snapshot'] as Map),
+          )) {
+        throw StateError(
+          'The shared board changed. Reload before choosing again.',
+        );
+      }
+      workspace.edit(
+        id,
+        title: resolved.title,
+        body: resolved.body,
+        properties: resolved.properties,
+        data: resolved.data,
+      );
+      await workspace.flush(id);
+      if (!_current(generation)) {
+        throw StateError(
+          'The connection changed. The resolution remains in the original Vault.',
+        );
+      }
+      if (workspace.dirty.contains(id) || workspace.failures.containsKey(id)) {
+        throw StateError(
+          'Resolution is still a local draft. Fix saving and reload the comparison.',
+        );
+      }
+      _documents[id] = Map<String, dynamic>.from(next);
+      _inflight.remove(id);
+      _canvasConflictBases.remove(id);
+      conflicts.remove(id);
+      retryAt = null;
+      status = 'Resolution saved locally · synchronization pending';
+    } finally {
+      busy = false;
+      _notify();
+    }
+    if (_current(generation)) {
+      await pump();
+      if (_current(generation) && conflicts.containsKey(id)) {
+        throw StateError(
+          'Resolution saved locally, but a newer shared edit needs review. Reload the comparison.',
+        );
+      }
     }
   }
 
@@ -742,6 +955,7 @@ class CollaborationController extends ChangeNotifier {
     disconnect();
     httpClient.close();
     viewerChanges.dispose();
+    presenceChanges.dispose();
     super.dispose();
   }
 }

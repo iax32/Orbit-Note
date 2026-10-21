@@ -1,4 +1,5 @@
 import 'media_clipboard.dart';
+import 'math_clipboard.dart';
 import 'dart:convert';
 // ignore: implementation_imports
 import 'package:markdown/src/util.dart' as markdown_util;
@@ -14,15 +15,7 @@ String htmlToMarkdown(String html) {
     return html;
   }
 
-  var value = html
-      .replaceAll(RegExp(r'<!--[\s\S]*?-->'), '')
-      .replaceAll(
-        RegExp(
-          r'<(script|style|noscript)[^>]*>[\s\S]*?</\1>',
-          caseSensitive: false,
-        ),
-        '',
-      );
+  var value = html.replaceAll(RegExp(r'<!--[\s\S]*?-->'), '');
 
   // Protect code from prose whitespace normalization and subsequent tag passes.
   var marker = '\u0000orbit-code-';
@@ -72,6 +65,19 @@ String htmlToMarkdown(String html) {
       return protect('$fence$pad$code$pad$fence');
     },
   );
+
+  value =
+      protectClipboardMath(
+        value,
+        protect,
+        markdown_util.decodeHtmlCharacters,
+      ).replaceAll(
+        RegExp(
+          r'<(script|style|noscript)[^>]*>[\s\S]*?</\1>',
+          caseSensitive: false,
+        ),
+        '',
+      );
 
   value = value
       .replaceAllMapped(
@@ -161,7 +167,7 @@ String htmlToMarkdown(String html) {
       .replaceAll(RegExp(r'<[^>]+>'), '')
       .splitMapJoin(RegExp(r'\n[ \t]+\n'), onMatch: (_) => '\n\n');
 
-  value = _decodeEntities(value)
+  value = normalizePastedMath(_decodeEntities(value), protect: protect)
       .replaceAll('\r\n', '\n')
       .replaceAll('\r', '\n')
       .replaceAllMapped(RegExp(r'[^\S\n]{2,}'), (m) => ' ')
@@ -294,9 +300,9 @@ Future<String?> readMarkdownClipboard({
       try {
         return htmlToMarkdown(html);
       } catch (_) {
-        return plain;
+        return plain == null ? null : normalizePastedMath(plain);
       }
     }
   }
-  return plain;
+  return preferHtml && plain != null ? normalizePastedMath(plain) : plain;
 }

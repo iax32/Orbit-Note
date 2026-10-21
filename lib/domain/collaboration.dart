@@ -1,5 +1,17 @@
 import 'universal_object.dart';
 
+part 'canvas_conflict_review.dart';
+
+/// Ephemeral selected placement IDs; never a lock or durable document state.
+List<String> collaborationSelectionIds(Object? value) => value is List
+    ? value
+          .whereType<String>()
+          .where((id) => id.isNotEmpty && id.length <= 160)
+          .take(64)
+          .toSet()
+          .toList()
+    : const [];
+
 Map<String, dynamic> collaborationSnapshot(UniversalObject object) => {
   'object': object.toJson(),
   'body': object.body,
@@ -50,7 +62,14 @@ Map<String, dynamic> mergeCollaboration(
   Map<String, dynamic> base,
   Map<String, dynamic> local,
   Map<String, dynamic> remote,
-) {
+) => _mergeCollaboration(base, local, remote);
+
+Map<String, dynamic> _mergeCollaboration(
+  Map<String, dynamic> base,
+  Map<String, dynamic> local,
+  Map<String, dynamic> remote, {
+  _CanvasReviewChoices? review,
+}) {
   for (final key in [
     'id',
     'workspaceId',
@@ -77,8 +96,27 @@ Map<String, dynamic> mergeCollaboration(
   // These envelopes are retained by local saves, but the editing commands do
   // not mutate them. Refuse such changes instead of falsely acknowledging them.
   final before = collaborationObject(base);
+  void validatePlacements(UniversalObject object) {
+    if (object.typeId != 'orbit.canvas') return;
+    final elements = object.data['elements'];
+    if (elements == null) return;
+    final ids = <String>{};
+    if (elements is! List ||
+        elements.any(
+          (element) =>
+              element is! Map ||
+              element['id'] is! String ||
+              (element['id'] as String).isEmpty ||
+              !ids.add(element['id'] as String),
+        )) {
+      throw const CollaborationConflict('Canvas placement identities');
+    }
+  }
+
+  validatePlacements(before);
   for (final value in [local, remote]) {
     final candidate = collaborationObject(value);
+    validatePlacements(candidate);
     if (!collaborationEqual(before.extra, candidate.extra) ||
         !collaborationEqual(before.documentExtra, candidate.documentExtra)) {
       throw const CollaborationConflict('unsupported document metadata');
@@ -93,13 +131,25 @@ Map<String, dynamic> mergeCollaboration(
     },
   };
   return Map<String, dynamic>.from(
-    _merge(normalize(base), normalize(local), normalize(remote), 'document')
+    _merge(
+          normalize(base),
+          normalize(local),
+          normalize(remote),
+          'document',
+          review,
+        )
         as Map,
   );
 }
 
 const _absent = Object();
-dynamic _merge(dynamic base, dynamic local, dynamic remote, String path) {
+dynamic _merge(
+  dynamic base,
+  dynamic local,
+  dynamic remote,
+  String path, [
+  _CanvasReviewChoices? review,
+]) {
   if (collaborationEqual(local, base)) return remote;
   if (collaborationEqual(remote, base) || collaborationEqual(local, remote)) {
     return local;
@@ -118,6 +168,7 @@ dynamic _merge(dynamic base, dynamic local, dynamic remote, String path) {
         local.containsKey(key) ? local[key] : _absent,
         remote.containsKey(key) ? remote[key] : _absent,
         '$path.$key',
+        review,
       );
       if (!identical(value, _absent)) result[key as String] = value;
     }
@@ -141,30 +192,51 @@ dynamic _merge(dynamic base, dynamic local, dynamic remote, String path) {
       return result;
     }
 
-    final merged =
-        _merge(byId(base), byId(local), byId(remote), '$path.byId') as Map;
+    final b = byId(base), l = byId(local), r = byId(remote);
+    final merged = <String, dynamic>{};
+    for (final id in {...b.keys, ...l.keys, ...r.keys}) {
+      final before = b.containsKey(id) ? b[id] : _absent;
+      final mine = l.containsKey(id) ? l[id] : _absent;
+      final shared = r.containsKey(id) ? r[id] : _absent;
+      dynamic value;
+      try {
+        value = _merge(before, mine, shared, '$path.byId.$id');
+      } on CollaborationConflict {
+        if (review == null) rethrow;
+        value = review.placement(id, before, mine, shared);
+      }
+      if (!identical(value, _absent)) merged[id] = value;
+    }
     // Reordering is itself meaningful. Concurrent independent additions retain
     // server order and append new local placements, never duplicate an ID.
     final baseOrder = base.map((v) => (v as Map)['id']).toList();
     final localOrder = local.map((v) => (v as Map)['id']).toList();
     final remoteOrder = remote.map((v) => (v as Map)['id']).toList();
-    final localExisting = localOrder.where(baseOrder.contains).toList();
-    final remoteExisting = remoteOrder.where(baseOrder.contains).toList();
+    final baseIds = baseOrder.toSet(),
+        localIds = localOrder.toSet(),
+        remoteIds = remoteOrder.toSet();
+    final localExisting = localOrder.where(baseIds.contains).toList();
+    final remoteExisting = remoteOrder.where(baseIds.contains).toList();
     final localReordered = !collaborationEqual(
       localExisting,
-      baseOrder.where(localExisting.contains).toList(),
+      baseOrder.where(localIds.contains).toList(),
     );
     final remoteReordered = !collaborationEqual(
       remoteExisting,
-      baseOrder.where(remoteExisting.contains).toList(),
+      baseOrder.where(remoteIds.contains).toList(),
     );
+    var useLocalOrder = localReordered;
     if (localReordered &&
         remoteReordered &&
-        !collaborationEqual(localExisting, remoteExisting)) {
-      throw CollaborationConflict('$path.order');
+        !collaborationEqual(
+          localExisting.where(remoteIds.contains).toList(),
+          remoteExisting.where(localIds.contains).toList(),
+        )) {
+      if (review == null) throw CollaborationConflict('$path.order');
+      useLocalOrder = review.order() == CanvasConflictSide.local;
     }
     final order = <dynamic>{
-      ...(localReordered ? localOrder : remoteOrder),
+      ...(useLocalOrder ? localOrder : remoteOrder),
       ...localOrder,
       ...remoteOrder,
     };
