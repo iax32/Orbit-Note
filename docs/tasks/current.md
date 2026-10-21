@@ -1,11 +1,25 @@
-# In progress — GitHub Windows/Android publication, 2026-10-21
+# Published — GitHub Windows/Android 1.0.2 preview, 2026-10-21
 
-Owner explicitly requested pushing current source and uploading Windows/Android
-releases. Publish version 1.0.2+3 with the existing signed Android preview identity
-and configured Windows setup EXE. Audit source, retain private configuration/keys
-outside Git, push without force, build the same commit, verify artifacts/signatures
-and publish a dated preview. No new product behavior, app launch or desktop control.
-[Scope and evidence](github-publication-2026-10-21.md).
+Source pushed without force at `10c5cef8778e8f468edfadb966804455079f1e9b`;
+version 1.0.2+3. [Published release](https://github.com/iax32/Orbit-Note/releases/tag/preview-2026-10-21)
+contains a Windows setup EXE and signed Android preview APK, plus checksums and
+runtime/signature/package evidence. All seven hosted asset SHA-256 digests and
+sizes match the verified local files; the tag resolves to the exact build source.
+Android retains its previous preview application ID/key and increments code to 3.
+
+Both hosted platform builds succeeded. Source audit: 1,059 files, no private
+material found. Formatting/strict check clean across 714 files; analysis clean.
+Preceding full suite: 2,815 passed, 2 existing skips; app behavior is unchanged by
+version/packaging. Additional repository CI was still running at publication and
+is explicitly not claimed as passing.
+
+Local configured runnable Windows build verified at
+`build/releases/1.0.2/orbit_note.exe`, with runtime siblings and matching font files.
+No app/installer/server launched, personal Vault access or desktop-control testing.
+Windows is unsigned; Android Google sign-in remains local-only and physical-device
+acceptance remains pending. [Evidence and limits](github-publication-2026-10-21.md).
+Next suggested task: physical Android update/import and cross-device acceptance;
+stop before implementing it.
 
 ## Previous task
 
