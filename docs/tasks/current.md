@@ -1,3 +1,21 @@
+# Published — Windows preview, 2026-10-24
+
+Owner requested the current source and Windows release on GitHub with long tests
+skipped for this publication. Source commit `b073496` was pushed to `main`.
+[Windows release](https://github.com/iax32/Orbit-Note/releases/tag/preview-2026-10-24)
+contains the complete per-user setup EXE, SHA-256 checksum and package/source
+manifest. The installer is unsigned and the release is labeled preview.
+
+Quick checks: staged-source credential/path scan clean (178 files), installer
+hash matches its manifest, manifest source commit matches the pushed source,
+and all three assets are published. Private Google config, signing keys, local
+Vaults, temporary PDFs, SDKs and build output are excluded from source commits.
+No long tests/builds were rerun and CI was skipped as requested. The existing
+3,030-test validation below predates publication. Android was not rebuilt.
+Further PDF-performance work was paused before implementation at owner request.
+
+## Previous task
+
 # Validated — Native Canvas raster profiling, 2026-10-24
 
 Native Windows profiling reproduced expensive raster replay of saved pressure
