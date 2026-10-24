@@ -1,3 +1,4 @@
+import '../../app/orbit_theme.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' show AppExitResponse;
@@ -203,6 +204,16 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
   int serial = 0;
   late final int? vaultGeneration;
   _CodeTab? get tab => tabs[selected];
+  bool defaultsLoaded = false;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!defaultsLoaded) {
+      wrap = OrbitCodePreferences.of(context).wrap;
+      defaultsLoaded = true;
+    }
+  }
+
   @override
   void initState() {
     super.initState();

@@ -5,6 +5,7 @@ import '../../app/orbit_theme.dart';
 import '../../canvas/geometry.dart';
 import '../../canvas/scene.dart';
 import '../../canvas/uml.dart';
+import '../../canvas/uml_interaction.dart';
 import 'canvas_painter.dart';
 
 /// Native vector view of the shared scene; no screenshot or image attachment.
@@ -46,6 +47,7 @@ class _CanvasDiagramPreviewState extends State<CanvasDiagramPreview> {
       child: CustomPaint(
         key: const ValueKey('note-diagram-vector'),
         painter: OrbitCanvasPainter(
+          semanticColors: OrbitColors.of(context),
           scene: widget.scene,
           camera: CanvasCamera(
             x: bounds.center.x - width / zoom / 2,
@@ -123,7 +125,7 @@ class _CanvasDiagramPreviewState extends State<CanvasDiagramPreview> {
           (e) =>
               !isUmlClass(e) &&
               !['arrow', 'line', 'connector'].contains(e.type) &&
-              e.text.isNotEmpty,
+              (isInteractionNode(e) || e.text.isNotEmpty),
         )
         .toList();
     final edges = widget.scene.elementsInOrder
@@ -132,6 +134,7 @@ class _CanvasDiagramPreviewState extends State<CanvasDiagramPreview> {
         )
         .length;
     final bounds = widget.scene.contentBounds;
+    final interaction = widget.scene.elementsInOrder.any(isInteractionNode);
     return Material(
       key: const ValueKey('note-diagram-surface'),
       color: colors.panel,
@@ -156,7 +159,9 @@ class _CanvasDiagramPreviewState extends State<CanvasDiagramPreview> {
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
                 Text(
-                  otherNodes.isEmpty
+                  interaction
+                      ? 'Live UML diagram · ${nodes.length + otherNodes.length} items · $edges relationships'
+                      : otherNodes.isEmpty
                       ? 'Live diagram · ${nodes.length} classes · $edges relationships'
                       : 'Research diagram · ${otherNodes.length + nodes.length} items · $edges relationships',
                   style: TextStyle(color: colors.muted, fontSize: 12),
@@ -255,8 +260,20 @@ class _CanvasDiagramPreviewState extends State<CanvasDiagramPreview> {
                 for (final e in otherNodes)
                   Padding(
                     padding: const EdgeInsets.all(12),
-                    child: SelectableText(e.text),
+                    child: SelectableText(
+                      isInteractionNode(e) ? interactionSearchText(e) : e.text,
+                    ),
                   ),
+                if (interaction)
+                  for (final e in widget.scene.elementsInOrder.where(
+                    (e) => umlLinkKind(e) != null,
+                  ))
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: SelectableText(
+                        interactionLinkDescription(e, widget.scene),
+                      ),
+                    ),
               ],
             ),
         ],

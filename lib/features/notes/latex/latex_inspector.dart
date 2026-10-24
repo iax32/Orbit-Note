@@ -1,3 +1,4 @@
+import '../../../app/orbit_theme.dart';
 import 'package:flutter/material.dart';
 import 'latex_document.dart';
 
@@ -56,10 +57,9 @@ class _LatexInspectorState extends State<LatexInspector> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     return Material(
-      color: isDark ? const Color(0xFF1E1F24) : Colors.white,
+      color: OrbitColors.of(context).workspace,
       child: Container(
         width: 320,
         decoration: BoxDecoration(

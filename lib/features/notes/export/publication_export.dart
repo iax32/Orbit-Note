@@ -26,8 +26,12 @@ class _PublicationAnchor extends pw.Anchor {
   final Map<String, int> pages;
   @override
   void paint(pw.Context context) {
-    pages[name] = context.pageNumber;
-    super.paint(context);
+    if (pages.containsKey(name)) {
+      paintChild(context);
+    } else {
+      pages[name] = context.pageNumber;
+      super.paint(context);
+    }
   }
 }
 
@@ -278,7 +282,7 @@ class PublicationExport {
   Future<Uint8List> pdf() => _pdf(false);
   Future<Uint8List> _pdf(bool finalPass) async {
     final tocPages = Map<String, int>.of(headingPages);
-    if (!finalPass) headingPages.clear();
+    headingPages.clear();
     final s = document.style;
     final family = s.serif ? 'CrimsonText' : 'Lato';
     final base = pw.Font.ttf(
@@ -287,10 +291,23 @@ class PublicationExport {
     final coverage = TtfParser(
       await rootBundle.load('assets/publishing/$family-Regular.ttf'),
     ).charToGlyphIndexMap;
+    final fallbackData = await rootBundle.load(
+      'assets/publishing/Lato-Regular.ttf',
+    );
+    final fallbackCoverage = TtfParser(fallbackData).charToGlyphIndexMap;
+    final fallback = pw.Font.ttf(fallbackData);
+    final mono = pw.Font.ttf(
+      await rootBundle.load('assets/writing/SpaceMono-Regular.ttf'),
+    );
     final missingRunes =
         ('${document.title}\n${s.author}\n${s.header}\n${document.nodes.map((n) => n.textContent).join()}\n${document.footnotes.values.join()}')
             .runes
-            .where((r) => r > 32 && !coverage.containsKey(r))
+            .where(
+              (r) =>
+                  r > 32 &&
+                  !coverage.containsKey(r) &&
+                  !fallbackCoverage.containsKey(r),
+            )
             .toSet();
     if (missingRunes.isNotEmpty) {
       warn(
@@ -317,6 +334,7 @@ class PublicationExport {
             font: base,
             fontSize: s.fontSize,
             lineSpacing: 3,
+            fontFallback: [fallback],
           ),
         );
     final pdf = pw.Document(
@@ -325,7 +343,11 @@ class PublicationExport {
       creator: 'Orbit Note',
     );
     final format = PdfPageFormat(s.width, s.height, marginAll: s.margin);
-    pw.InlineSpan inline(md.Node n) {
+    final pageWidth = s.width - 2 * s.margin;
+    // Reserve room for running text/footer and breathing space on every page.
+    final pageHeight = s.height - 2 * s.margin - 100;
+    pw.InlineSpan inline(md.Node n, {double? maxWidth}) {
+      final availableWidth = maxWidth ?? pageWidth;
       if (n is md.Text) return pw.TextSpan(text: n.text);
       final e = n as md.Element;
       if (e.tag == 'input') {
@@ -352,10 +374,7 @@ class PublicationExport {
           final ratio =
               (png?.getUint32(16) ?? 400) / (png?.getUint32(20) ?? 250);
           final desiredHeight = e.tag == 'img' ? 160.0 : s.fontSize * 1.6;
-          final width = (ratio * desiredHeight).clamp(
-            1.0,
-            s.width - 2 * s.margin,
-          );
+          final width = (ratio * desiredHeight).clamp(1.0, availableWidth);
           return pw.WidgetSpan(
             child: pw.Image(
               pw.MemoryImage(bytes),
@@ -376,6 +395,8 @@ class PublicationExport {
           fontWeight: e.tag == 'strong' ? pw.FontWeight.bold : null,
           fontStyle: e.tag == 'em' ? pw.FontStyle.italic : null,
           decoration: e.tag == 'del' ? pw.TextDecoration.lineThrough : null,
+          font: e.tag == 'code' ? mono : null,
+          fontFallback: [fallback],
         ),
         annotation:
             e.tag == 'a' && safePublicationLink(e.attributes['href'] ?? '')
@@ -383,7 +404,9 @@ class PublicationExport {
                   ? pw.AnnotationLink(e.attributes['href']!.substring(1))
                   : pw.AnnotationUrl(e.attributes['href']!))
             : null,
-        children: (e.children ?? []).map((c) => inline(c)).toList(),
+        children: (e.children ?? [])
+            .map((c) => inline(c, maxWidth: availableWidth))
+            .toList(),
       );
     }
 
@@ -408,6 +431,16 @@ class PublicationExport {
                 level: int.parse(e.tag[1]) - 1,
                 title: e.textContent,
                 text: e.textContent,
+                child: pw.RichText(
+                  text: pw.TextSpan(
+                    children: [inline(e)],
+                    style: pw.TextStyle(
+                      fontSize: (25 - int.parse(e.tag[1]) * 2).toDouble(),
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  overflow: pw.TextOverflow.span,
+                ),
               ),
             ),
           );
@@ -416,35 +449,112 @@ class PublicationExport {
         if (e.tag == 'table') {
           final options = publicationBlockLayout(e);
           if (options.pageBreakBefore) result.add(pw.NewPage());
-          final rows = <pw.TableRow>[];
+          final sourceRows = <List<md.Node>>[];
           void collect(md.Node child) {
-            if (child is md.Element) {
-              if (child.tag == 'tr') {
-                final cells = child.children ?? [];
-                rows.add(
-                  pw.TableRow(
-                    repeat:
-                        options.repeatHeader &&
-                        cells.any((c) => c is md.Element && c.tag == 'th'),
-                    children: cells
-                        .map(
-                          (c) => pw.Padding(
-                            padding: const pw.EdgeInsets.all(5),
-                            child: pw.RichText(text: inline(c)),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                );
-              } else {
-                for (final c in child.children ?? []) {
-                  collect(c);
-                }
+            if (child is! md.Element) return;
+            if (child.tag == 'tr') {
+              sourceRows.add(child.children ?? []);
+            } else {
+              for (final c in child.children ?? []) {
+                collect(c);
               }
             }
           }
 
           collect(e);
+          final tableWidth = pageWidth * options.width / 100;
+          final columns = sourceRows.fold<int>(
+            0,
+            (max, row) => row.length > max ? row.length : max,
+          );
+          final cellWidth = tableWidth / (columns == 0 ? 1 : columns) - 10;
+          pw.Widget table(pw.Context context, pw.BoxConstraints? constraints) {
+            // The PDF table engine can paginate between rows, never within a
+            // row. Measure before deciding; do not drop a row that exceeds a page.
+            var records = cellWidth < 60;
+            for (final row in sourceRows) {
+              for (final cell in row) {
+                final measured = pw.RichText(
+                  text: inline(cell, maxWidth: cellWidth.clamp(1, pageWidth)),
+                );
+                measured.layout(
+                  context,
+                  pw.BoxConstraints(maxWidth: cellWidth.clamp(1, pageWidth)),
+                );
+                if (measured.box!.height > pageHeight / 2) records = true;
+              }
+            }
+            if (records) {
+              warn(
+                'A wide table or tall row uses labelled records in PDF so every cell can flow across pages. HTML and Word retain the table.',
+              );
+              final headers = sourceRows.isEmpty
+                  ? <md.Node>[]
+                  : sourceRows.first;
+              final spans = <pw.InlineSpan>[];
+              for (var r = 0; r < sourceRows.length; r++) {
+                final row = sourceRows[r];
+                final isHeader = row.any(
+                  (c) => c is md.Element && c.tag == 'th',
+                );
+                if (isHeader && sourceRows.length > 1) continue;
+                spans.add(
+                  pw.TextSpan(
+                    text: 'Row $r\n',
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                  ),
+                );
+                for (var c = 0; c < row.length; c++) {
+                  final label = c < headers.length
+                      ? headers[c].textContent
+                      : 'Column ${c + 1}';
+                  spans.add(
+                    pw.TextSpan(
+                      text: '$label: ',
+                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                    ),
+                  );
+                  spans.add(inline(row[c], maxWidth: tableWidth));
+                  spans.add(const pw.TextSpan(text: '\n'));
+                }
+                spans.add(const pw.TextSpan(text: '\n'));
+              }
+              return pw.RichText(
+                text: pw.TextSpan(children: spans),
+                overflow: pw.TextOverflow.span,
+              );
+            }
+            return pw.Table(
+              defaultColumnWidth: const pw.FlexColumnWidth(),
+              border: pw.TableBorder.all(color: PdfColors.grey400),
+              children: [
+                for (final row in sourceRows)
+                  pw.TableRow(
+                    repeat:
+                        options.repeatHeader &&
+                        row.any((c) => c is md.Element && c.tag == 'th'),
+                    children: [
+                      for (final cell in row)
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(5),
+                          child: pw.RichText(
+                            text: pw.TextSpan(
+                              children: [inline(cell, maxWidth: cellWidth)],
+                              style: pw.TextStyle(
+                                fontWeight:
+                                    cell is md.Element && cell.tag == 'th'
+                                    ? pw.FontWeight.bold
+                                    : null,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+              ],
+            );
+          }
+
           final spare = (s.width - 2 * s.margin) * (100 - options.width) / 100;
           result.add(
             pw.Padding(
@@ -460,10 +570,7 @@ class PublicationExport {
                     ? spare / 2
                     : 0,
               ),
-              child: pw.Table(
-                border: pw.TableBorder.all(color: PdfColors.grey400),
-                children: rows,
-              ),
+              child: pw.LayoutBuilder(builder: table),
             ),
           );
           if (options.caption.isNotEmpty) {
@@ -498,80 +605,111 @@ class PublicationExport {
           final desiredWidth = (s.width - 2 * s.margin) * options.width / 100;
           final fittedWidth = bytes == null
               ? desiredWidth
-              : _imageWidth(bytes, desiredWidth, s.height - 2 * s.margin - 100);
-          final alignment = options.alignment == 'center'
-              ? pw.Alignment.center
-              : options.alignment == 'right'
-              ? pw.Alignment.centerRight
-              : pw.Alignment.centerLeft;
+              : _imageWidth(bytes, desiredWidth, pageHeight);
+          final spare = pageWidth - fittedWidth;
+          final padding = pw.EdgeInsets.only(
+            bottom: 8,
+            left: options.alignment == 'right'
+                ? spare
+                : options.alignment == 'center'
+                ? spare / 2
+                : 0,
+            right: options.alignment == 'left'
+                ? spare
+                : options.alignment == 'center'
+                ? spare / 2
+                : 0,
+          );
           result.add(
-            pw.Align(
-              alignment: alignment,
-              child: pw.SizedBox(
-                width: fittedWidth,
-                child: pw.Column(
-                  mainAxisSize: pw.MainAxisSize.min,
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    if (bytes == null)
-                      pw.Paragraph(
-                        text:
-                            '[Image: ${image.attributes['alt'] ?? image.attributes['src']}]',
-                      )
-                    else
-                      pw.Image(
-                        pw.MemoryImage(bytes),
-                        width: fittedWidth,
-                        height: _imageHeight(
-                          bytes,
-                          fittedWidth,
-                          s.height - 2 * s.margin - 100,
-                        ),
-                        fit: pw.BoxFit.contain,
-                      ),
-                    if (options.caption.isNotEmpty)
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.only(top: 5),
-                        child: pw.Text(
-                          options.caption,
-                          style: pw.TextStyle(fontSize: s.fontSize - 1),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
+            pw.Padding(
+              padding: padding,
+              child: bytes == null
+                  ? pw.Paragraph(
+                      text:
+                          '[Image: ${image.attributes['alt'] ?? image.attributes['src']}]',
+                    )
+                  : pw.Image(
+                      pw.MemoryImage(bytes),
+                      width: fittedWidth,
+                      height: _imageHeight(bytes, fittedWidth, pageHeight),
+                      fit: pw.BoxFit.contain,
+                    ),
             ),
           );
+          if (options.caption.isNotEmpty) {
+            final captionSpare = pageWidth - desiredWidth;
+            result.add(
+              pw.Padding(
+                padding: pw.EdgeInsets.only(
+                  left: options.alignment == 'right'
+                      ? captionSpare
+                      : options.alignment == 'center'
+                      ? captionSpare / 2
+                      : 0,
+                  right: options.alignment == 'left'
+                      ? captionSpare
+                      : options.alignment == 'center'
+                      ? captionSpare / 2
+                      : 0,
+                ),
+                child: pw.Paragraph(
+                  text: options.caption,
+                  style: pw.TextStyle(fontSize: s.fontSize - 1),
+                ),
+              ),
+            );
+          }
           continue;
         }
         if (e.tag == 'ul' || e.tag == 'ol') {
           var number = int.tryParse(e.attributes['start'] ?? '') ?? 1;
           for (final li in e.children ?? <md.Node>[]) {
             if (li is md.Element) {
-              final nested = (li.children ?? [])
-                  .where(
-                    (c) => c is md.Element && (c.tag == 'ul' || c.tag == 'ol'),
-                  )
-                  .toList();
-              final prose = (li.children ?? [])
-                  .where((c) => !nested.contains(c))
-                  .toList();
-              result.add(
-                pw.Padding(
-                  padding: pw.EdgeInsets.only(left: depth * 14, bottom: 4),
-                  child: pw.RichText(
-                    text: pw.TextSpan(
-                      children: [
-                        pw.TextSpan(
-                          text: '${e.tag == 'ol' ? '${number++}.' : '•'} ',
-                        ),
-                        ...prose.map(inline),
-                      ],
+              final indent = (depth * 14.0).clamp(0.0, pageWidth - 80);
+              var marker = '${e.tag == 'ol' ? '${number++}.' : '•'} ';
+              final pending = <md.Node>[];
+              void flush() {
+                if (pending.isEmpty && marker.isEmpty) return;
+                result.add(
+                  pw.Padding(
+                    padding: pw.EdgeInsets.only(left: indent, bottom: 4),
+                    child: pw.RichText(
+                      overflow: pw.TextOverflow.span,
+                      text: pw.TextSpan(
+                        children: [
+                          pw.TextSpan(text: marker),
+                          for (final child in pending)
+                            inline(child, maxWidth: pageWidth - indent),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              );
-              result.addAll(blocks(nested, depth: depth + 1));
+                );
+                marker = '';
+                pending.clear();
+              }
+
+              for (final child in li.children ?? <md.Node>[]) {
+                if (child is md.Element && child.tag == 'p') {
+                  if (pending.isNotEmpty) flush();
+                  pending.addAll(child.children ?? []);
+                  flush();
+                } else if (child is md.Element &&
+                    const {
+                      'ul',
+                      'ol',
+                      'pre',
+                      'table',
+                      'math',
+                      'blockquote',
+                    }.contains(child.tag)) {
+                  if (pending.isNotEmpty || marker.isNotEmpty) flush();
+                  result.addAll(blocks([child], depth: depth + 1));
+                } else {
+                  pending.add(child);
+                }
+              }
+              if (pending.isNotEmpty) flush();
             }
           }
           continue;
@@ -580,7 +718,12 @@ class PublicationExport {
           result.add(
             pw.Paragraph(
               text: e.textContent,
-              style: pw.TextStyle(fontSize: s.fontSize - 1),
+              style: pw.TextStyle(
+                font: mono,
+                fontSize: s.fontSize - 1,
+                fontFallback: [fallback],
+              ),
+              textAlign: pw.TextAlign.left,
             ),
           );
           continue;
@@ -595,117 +738,174 @@ class PublicationExport {
         }
         if (e.tag == 'math') {
           final bytes = equations[e.textContent];
+          final desiredWidth = bytes == null
+              ? pageWidth
+              : _imageWidth(
+                  bytes,
+                  ByteData.sublistView(bytes).getUint32(16) *
+                      s.fontSize /
+                      44 *
+                      1.3,
+                  pageHeight,
+                ).clamp(1.0, pageWidth);
           result.add(
             bytes == null
                 ? pw.Paragraph(text: e.textContent)
-                : pw.Center(
-                    child: pw.Image(
-                      pw.MemoryImage(bytes),
-                      height: 38,
-                      fit: pw.BoxFit.contain,
+                : pw.Padding(
+                    padding: const pw.EdgeInsets.symmetric(vertical: 8),
+                    child: pw.Center(
+                      child: pw.Image(
+                        pw.MemoryImage(bytes),
+                        width: _imageWidth(bytes, desiredWidth, pageHeight),
+                        height: _imageHeight(bytes, desiredWidth, pageHeight),
+                        fit: pw.BoxFit.contain,
+                      ),
                     ),
                   ),
           );
+          if (bytes != null &&
+              (ByteData.sublistView(bytes).getUint32(16) * s.fontSize / 44 >
+                      pageWidth * 1.5 ||
+                  ByteData.sublistView(bytes).getUint32(20) * s.fontSize / 44 >
+                      pageHeight)) {
+            warn(
+              'Large equations are fitted to the page and followed by their complete TeX source for readability.',
+            );
+            result.add(
+              pw.Paragraph(
+                text: e.textContent,
+                textAlign: pw.TextAlign.left,
+                style: pw.TextStyle(
+                  font: mono,
+                  fontSize: s.fontSize - 1,
+                  fontFallback: [fallback],
+                ),
+              ),
+            );
+          }
           continue;
         }
         result.add(
           pw.Padding(
             padding: const pw.EdgeInsets.only(bottom: 9),
-            child: pw.RichText(text: inline(e)),
+            child: pw.RichText(text: inline(e), overflow: pw.TextOverflow.span),
           ),
         );
       }
       return result;
     }
 
-    if (s.titlePage) {
-      pdf.addPage(
-        pw.Page(
-          pageFormat: format,
-          theme: theme,
-          build: (_) => pw.Center(
-            child: pw.Column(
-              mainAxisSize: pw.MainAxisSize.min,
-              children: [
-                pw.Text(
-                  document.title,
-                  style: pw.TextStyle(font: bold, fontSize: 28),
-                ),
-                pw.SizedBox(height: 20),
-                pw.Text(s.author),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
     if (document.footnotes.isNotEmpty) {
       warn(
         'PDF/HTML collect footnotes as linked endnotes. Word exports native footnotes.',
       );
     }
-    pdf.addPage(
-      pw.MultiPage(
-        pageFormat: format,
-        theme: theme,
-        maxPages: 500,
-        header: (_) => pw.Text(
-          s.header,
-          style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
-        ),
-        footer: (context) => s.pageNumbers
-            ? pw.Align(
-                alignment: pw.Alignment.centerRight,
+    final endnotePages = <String, int>{};
+    final first = document.nodes.firstOrNull;
+    final titleInBody =
+        first is md.Element &&
+        first.tag == 'h1' &&
+        first.textContent.replaceFirst(RegExp(r'^\d+(?:\.\d+)*\.\s+'), '') ==
+            document.title;
+    try {
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: format,
+          theme: theme,
+          maxPages: 500,
+          header: (context) {
+            // MultiPage's maxPages is a debug progress guard, not a release-mode
+            // document limit. Fail visibly rather than silently truncate or hang.
+            if (context.pageNumber > 500) {
+              throw const FormatException(
+                'PDF exceeds 500 pages. Export smaller sections; no partial PDF was saved.',
+              );
+            }
+            return pw.Padding(
+              padding: const pw.EdgeInsets.only(bottom: 8),
+              child: pw.Text(
+                s.header,
+                style: const pw.TextStyle(
+                  fontSize: 9,
+                  color: PdfColors.grey700,
+                ),
+              ),
+            );
+          },
+          footer: (context) => s.pageNumbers
+              ? pw.Align(
+                  alignment: pw.Alignment.centerRight,
+                  child: pw.Padding(
+                    padding: const pw.EdgeInsets.only(top: 8),
+                    child: pw.Text(
+                      '${context.pageNumber} / ${context.pagesCount}',
+                      style: const pw.TextStyle(fontSize: 9),
+                    ),
+                  ),
+                )
+              : pw.SizedBox(),
+          build: (_) => [
+            if (s.titlePage) ...[
+              pw.SizedBox(height: 80),
+              pw.Text(
+                document.title,
+                style: pw.TextStyle(font: bold, fontSize: 28),
+                overflow: pw.TextOverflow.span,
+              ),
+              pw.SizedBox(height: 20),
+              pw.Text(s.author, overflow: pw.TextOverflow.span),
+              pw.NewPage(),
+            ] else if (!titleInBody)
+              pw.Header(
+                level: 0,
+                title: document.title,
+                text: document.title,
                 child: pw.Text(
-                  '${context.pageNumber} / ${context.pagesCount}',
-                  style: const pw.TextStyle(fontSize: 9),
+                  document.title,
+                  style: pw.TextStyle(font: bold, fontSize: 24),
+                  overflow: pw.TextOverflow.span,
                 ),
-              )
-            : pw.SizedBox(),
-        build: (_) => [
-          if (!s.titlePage) pw.Header(level: 0, text: document.title),
-          if (s.contents && document.headings.isNotEmpty) ...[
-            pw.Text('Contents', style: pw.TextStyle(font: bold, fontSize: 22)),
-            pw.SizedBox(height: 16),
-            for (final heading in document.headings)
-              pw.Padding(
-                padding: pw.EdgeInsets.only(
-                  left: (heading.level - 1) * 12,
-                  bottom: 8,
-                ),
-                child: pw.Link(
-                  destination: heading.id,
-                  child: pw.Row(
-                    children: [
-                      pw.Expanded(child: pw.Text(heading.text)),
-                      pw.SizedBox(width: 8),
-                      pw.SizedBox(
-                        width: 28,
-                        child: pw.Text(
-                          '${tocPages[heading.id] ?? ''}',
-                          textAlign: pw.TextAlign.right,
-                        ),
-                      ),
-                    ],
+              ),
+            if (s.contents && document.headings.isNotEmpty) ...[
+              pw.Text(
+                'Contents',
+                style: pw.TextStyle(font: bold, fontSize: 22),
+              ),
+              pw.SizedBox(height: 16),
+              for (final heading in document.headings)
+                pw.Padding(
+                  padding: pw.EdgeInsets.only(
+                    left: (heading.level - 1) * 12,
+                    bottom: 8,
+                  ),
+                  child: pw.RichText(
+                    overflow: pw.TextOverflow.span,
+                    text: pw.TextSpan(
+                      text: '${heading.text}  ${tocPages[heading.id] ?? ''}',
+                      annotation: pw.AnnotationLink(heading.id),
+                    ),
                   ),
                 ),
-              ),
-            pw.NewPage(),
-          ],
-          ...blocks(document.nodes),
-          if (document.footnotes.isNotEmpty) ...[
-            pw.Header(level: 0, text: 'Footnotes'),
-            for (final entry in document.footnotes.entries)
-              pw.Anchor(
-                name: 'fn-${footnoteNumber(entry.key)}',
-                child: pw.Paragraph(
-                  text: '${footnoteNumber(entry.key)}. ${entry.value}',
+              pw.NewPage(),
+            ],
+            ...blocks(document.nodes),
+            if (document.footnotes.isNotEmpty) ...[
+              pw.Header(level: 0, text: 'Footnotes'),
+              for (final entry in document.footnotes.entries)
+                _PublicationAnchor(
+                  pages: endnotePages,
+                  name: 'fn-${footnoteNumber(entry.key)}',
+                  child: pw.Paragraph(
+                    text: '${footnoteNumber(entry.key)}. ${entry.value}',
+                  ),
                 ),
-              ),
+            ],
           ],
-        ],
-      ),
-    );
+        ),
+      );
+    } on FormatException catch (error) {
+      return Future<Uint8List>.error(error);
+    }
     final bytes = await pdf.save();
     pageCount = pdf.document.pdfPageList.pages.length;
     return !finalPass && s.contents && document.headings.isNotEmpty

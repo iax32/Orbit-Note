@@ -117,6 +117,11 @@ void main() {
     'divergent reconnect without a known base cannot invent a placement merge',
     () async {
       f.edit(f.secondWorkspace, 0, 123);
+      // A v2 client normally retains a durable common base. Simulate a fresh
+      // device with no recovery journal to exercise the unknown-base boundary.
+      f.secondStore.files.removeWhere(
+        (path, _) => path.startsWith('.orbit/device/shared/'),
+      );
       await f.second.connect(f.endpoint, f.room, f.secondToken);
       expect(f.second.conflicts, contains(f.id));
       expect(f.second.canReviewCanvas(f.id), isFalse);

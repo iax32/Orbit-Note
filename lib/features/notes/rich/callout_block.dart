@@ -121,6 +121,17 @@ enum CalloutType {
   final IconData icon;
   final Color color;
 
+  Color colorFor(OrbitColors palette) => switch (this) {
+    CalloutType.warning || CalloutType.example => palette.warning,
+    CalloutType.caution || CalloutType.counterexample => palette.danger,
+    CalloutType.proof || CalloutType.tip => palette.success,
+    CalloutType.remark => palette.subtle,
+    CalloutType.lemma ||
+    CalloutType.proposition ||
+    CalloutType.corollary => palette.secondary,
+    _ => palette.accent,
+  };
+
   static CalloutType fromString(String raw) {
     final upper = raw.trim().toUpperCase();
     for (final type in CalloutType.values) {
@@ -450,11 +461,7 @@ class CalloutBlockState extends State<CalloutBlock> {
   Widget build(BuildContext context) {
     final colors = OrbitColors.of(context);
     final type = _parsed.type;
-    final effectiveColor =
-        type == CalloutType.btw &&
-            Theme.of(context).brightness == Brightness.light
-        ? const Color(0xFF2F648F)
-        : type.color;
+    final effectiveColor = type.colorFor(colors);
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
@@ -483,7 +490,7 @@ class CalloutBlockState extends State<CalloutBlock> {
                     horizontal: 12,
                     vertical: 8,
                   ),
-                  color: effectiveColor.withValues(alpha: 0.08),
+                  color: colors.tinted(effectiveColor, opacity: .08),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -532,7 +539,11 @@ class CalloutBlockState extends State<CalloutBlock> {
                               value: t,
                               child: Row(
                                 children: [
-                                  Icon(t.icon, size: 16, color: t.color),
+                                  Icon(
+                                    t.icon,
+                                    size: 16,
+                                    color: t.colorFor(colors),
+                                  ),
                                   const SizedBox(width: 8),
                                   Text(t.label),
                                 ],
@@ -725,11 +736,7 @@ class CalloutElementBuilder extends MarkdownElementBuilder {
         : '';
 
     final colors = OrbitColors.of(context);
-    final effectiveColor =
-        type == CalloutType.btw &&
-            Theme.of(context).brightness == Brightness.light
-        ? const Color(0xFF2F648F)
-        : type.color;
+    final effectiveColor = type.colorFor(colors);
     final headerDisplay = title.isNotEmpty
         ? (title.toLowerCase().startsWith(type.name.toLowerCase()) ||
                   title.toLowerCase().startsWith(type.label.toLowerCase())
@@ -762,7 +769,7 @@ class CalloutElementBuilder extends MarkdownElementBuilder {
                         horizontal: 14,
                         vertical: 9,
                       ),
-                      color: effectiveColor.withValues(alpha: 0.08),
+                      color: colors.tinted(effectiveColor, opacity: .08),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [

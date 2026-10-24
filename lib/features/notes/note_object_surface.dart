@@ -1,3 +1,4 @@
+import '../../app/orbit_theme.dart';
 import '../workspace/object_bridges.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -341,6 +342,7 @@ class _NoteObjectSurfaceState extends State<NoteObjectSurface> {
                     return RepaintBoundary(
                       child: CustomPaint(
                         painter: OrbitCanvasPainter(
+                          semanticColors: OrbitColors.of(context),
                           scene: scene,
                           camera: camera,
                           selection: const {},

@@ -1,3 +1,9 @@
+import '../workspace/motion_studio.dart';
+import '../../domain/publication_image.dart';
+import 'shared_text_presence.dart';
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
+import 'package:flutter/rendering.dart';
 import '../workspace/object_bridges.dart';
 import 'editor_draft_review.dart';
 import '../math/math_lab_dialog.dart';
@@ -163,6 +169,9 @@ class NoteEditor extends StatefulWidget {
     this.locationSerial = 0,
     this.locationOffset,
     this.locationLength = 0,
+    this.remotePresence,
+    this.onTextSelection,
+    this.onPresenceLeave,
   });
 
   final VoidCallback? onSavePersonalTemplate;
@@ -233,6 +242,9 @@ class NoteEditor extends StatefulWidget {
   final int locationSerial;
   final int? locationOffset;
   final int locationLength;
+  final ValueListenable<List<Map<String, dynamic>>>? remotePresence;
+  final void Function(String, TextSelection)? onTextSelection;
+  final VoidCallback? onPresenceLeave;
 
   @override
   State<NoteEditor> createState() => _NoteEditorState();
@@ -299,8 +311,8 @@ class _GrammarAnnotatedController extends TextEditingController {
                   decoration: TextDecoration.underline,
                   decorationStyle: TextDecorationStyle.wavy,
                   decorationColor: currentIssue.type == IssueType.spelling
-                      ? const Color(0xFFEF4444)
-                      : const Color(0xFF3B82F6),
+                      ? OrbitColors.of(context).danger
+                      : OrbitColors.of(context).accent,
                 ),
         ),
       );
@@ -1188,6 +1200,7 @@ class _NoteEditorState extends State<NoteEditor> {
   @override
   void initState() {
     super.initState();
+    widget.remotePresence?.addListener(_presenceChanged);
     final retained =
         widget.controller?.editorDraftConflicts[widget.editorDraftId];
     if (retained != null) {
@@ -1392,6 +1405,11 @@ class _NoteEditorState extends State<NoteEditor> {
   void _recordSelection() {
     if (_lastSelection != _body.selection) {
       _lastSelection = _body.selection;
+      if (_bodyFocus.hasFocus ||
+          (_mode == NoteEditorMode.rich &&
+              _richKey.currentState?.hasEditingFocus == true)) {
+        widget.onTextSelection?.call(_body.text, _body.selection);
+      }
       if (mounted) {
         if (SchedulerBinding.instance.schedulerPhase ==
             SchedulerPhase.persistentCallbacks) {
@@ -1403,6 +1421,79 @@ class _NoteEditorState extends State<NoteEditor> {
         }
       }
     }
+  }
+
+  String? _presenceSource, _presenceHash;
+  List<Map<String, dynamic>> get _sharedPeers =>
+      widget.remotePresence?.value
+          .where((p) => p['objectId'] == widget.noteId && p['space'] == 'note')
+          .take(16)
+          .toList() ??
+      [];
+  List<Map<String, dynamic>> get _matchingPeers {
+    if (_presenceSource != _body.text) {
+      _presenceSource = _body.text;
+      _presenceHash = sha256.convert(utf8.encode(_body.text)).toString();
+    }
+    return _sharedPeers.where((p) {
+      final a = p['textBase'], b = p['textExtent'];
+      return p['textHash'] == _presenceHash &&
+          a is int &&
+          b is int &&
+          a >= 0 &&
+          b >= 0 &&
+          a <= _body.text.length &&
+          b <= _body.text.length;
+    }).toList();
+  }
+
+  void _presenceChanged() {
+    if (!mounted) return;
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+    } else {
+      setState(() {});
+    }
+  }
+
+  Widget _presenceBar() {
+    final matching = _matchingPeers.map((p) => p['session']).toSet();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 4,
+        children: [
+          for (final peer in _sharedPeers)
+            ActionChip(
+              avatar: Icon(
+                Icons.person_outline,
+                size: 16,
+                color: sharedPeerColor(peer),
+              ),
+              label: Text(
+                '${peer['name'] ?? 'Collaborator'} · ${matching.contains(peer['session']) ? 'Ln ${_textIndex.lineAndColumn(peer['textExtent'] as int).line}, Col ${_textIndex.lineAndColumn(peer['textExtent'] as int).column}' : 'updating position'}',
+              ),
+              onPressed: !matching.contains(peer['session'])
+                  ? null
+                  : () {
+                      final offset = peer['textExtent'] as int;
+                      if (_mode == NoteEditorMode.rich) {
+                        _richKey.currentState?.jumpTo(offset);
+                      } else {
+                        _body.selection = TextSelection.collapsed(
+                          offset: offset,
+                        );
+                        _bodyFocus.requestFocus();
+                      }
+                    },
+            ),
+        ],
+      ),
+    );
   }
 
   late Object? _writingAppearanceData =
@@ -1657,6 +1748,10 @@ class _NoteEditorState extends State<NoteEditor> {
   @override
   void didUpdateWidget(NoteEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.remotePresence, widget.remotePresence)) {
+      oldWidget.remotePresence?.removeListener(_presenceChanged);
+      widget.remotePresence?.addListener(_presenceChanged);
+    }
     if (widget.focusRequestSerial > 0 &&
         widget.focusRequestSerial != oldWidget.focusRequestSerial) {
       _scheduleEditingFocus();
@@ -1938,6 +2033,8 @@ class _NoteEditorState extends State<NoteEditor> {
 
   @override
   void dispose() {
+    widget.remotePresence?.removeListener(_presenceChanged);
+    widget.onPresenceLeave?.call();
     _embedObjects.dispose();
     _stopCompositionHistoryListener();
     _body.removeListener(_recordSelection);
@@ -2815,12 +2912,20 @@ class _NoteEditorState extends State<NoteEditor> {
           ? _richKey.currentState?.currentDocumentSelection ?? _body.selection
           : _body.selection;
       final workspace = controller?.repository.workspaceId;
+      final repository = controller?.repository;
+      final generation = controller?.workspaceGeneration;
       await showPublicationWorkspace(
         context,
         title: _title.text,
         source: _body.text,
         ownerId: widget.noteId,
-        objects: List.of(widget.allObjects),
+        objects: List.of(controller?.activeObjects ?? widget.allObjects),
+        objectPaths: {
+          if (controller != null)
+            for (final o in controller.activeObjects)
+              if (repository?.objectPath(o.id) case final String path)
+                o.id: path,
+        },
         onApply: widget.viewOnly
             ? null
             : (before, next) {
@@ -2854,10 +2959,19 @@ class _NoteEditorState extends State<NoteEditor> {
         readImage: controller == null
             ? null
             : (source) async {
-                if (controller.repository.workspaceId != workspace) return null;
+                bool current() =>
+                    controller.repository == repository &&
+                    controller.workspaceGeneration == generation &&
+                    controller.repository.workspaceId == workspace;
+                if (!current()) return null;
                 final path =
-                    widget.resolveClipboardImage?.call(source) ?? source;
-                return controller.repository.readAttachment(path);
+                    publicationAttachmentPath(source) ??
+                    publicationAttachmentPath(
+                      widget.resolveClipboardImage?.call(source) ?? '',
+                    );
+                if (path == null) return null;
+                final bytes = await repository!.readAttachment(path);
+                return current() ? bytes : null;
               },
       );
       return;
@@ -4516,6 +4630,7 @@ class _NoteEditorState extends State<NoteEditor> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (_sharedPeers.isNotEmpty) _presenceBar(),
               if (_hasDraftConflict)
                 Material(
                   color: Theme.of(context).colorScheme.errorContainer,
@@ -4591,7 +4706,9 @@ class _NoteEditorState extends State<NoteEditor> {
                                   ? Icons.functions_rounded
                                   : Icons.description_outlined,
                               size: 16,
-                              color: _isLatex ? const Color(0xFF8B7CF6) : null,
+                              color: _isLatex
+                                  ? OrbitColors.of(context).accent
+                                  : null,
                             ),
                           const SizedBox(width: 8),
                           if (constraints.maxWidth > 650)
@@ -4599,7 +4716,7 @@ class _NoteEditorState extends State<NoteEditor> {
                               _isLatex ? 'LaTeX' : 'Markdown',
                               style: theme.textTheme.labelMedium?.copyWith(
                                 color: _isLatex
-                                    ? const Color(0xFF8B7CF6)
+                                    ? OrbitColors.of(context).accent
                                     : null,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -4718,7 +4835,7 @@ class _NoteEditorState extends State<NoteEditor> {
                                           : Icons.toc_outlined,
                                       size: 18,
                                       color: _showOutlinePanel
-                                          ? const Color(0xFF8B7CF6)
+                                          ? OrbitColors.of(context).accent
                                           : null,
                                     ),
                                     tooltip: _showOutlinePanel
@@ -4930,7 +5047,7 @@ class _NoteEditorState extends State<NoteEditor> {
                                           : Icons.description_outlined,
                                       size: 14,
                                       color: _isLatex
-                                          ? const Color(0xFF8B7CF6)
+                                          ? OrbitColors.of(context).accent
                                           : null,
                                     ),
                                     label: Row(
@@ -4942,7 +5059,7 @@ class _NoteEditorState extends State<NoteEditor> {
                                             fontSize: 11,
                                             fontWeight: FontWeight.w600,
                                             color: _isLatex
-                                                ? const Color(0xFF8B7CF6)
+                                                ? OrbitColors.of(context).accent
                                                 : null,
                                           ),
                                         ),
@@ -4985,9 +5102,9 @@ class _NoteEditorState extends State<NoteEditor> {
                                           ),
                                           decoration: BoxDecoration(
                                             color: words >= _targetWords!
-                                                ? Colors.green.withValues(
-                                                    alpha: 0.15,
-                                                  )
+                                                ? OrbitColors.of(context)
+                                                      .success
+                                                      .withValues(alpha: 0.15)
                                                 : const Color(
                                                     0xFF8B7CF6,
                                                   ).withValues(alpha: 0.15),
@@ -4996,9 +5113,9 @@ class _NoteEditorState extends State<NoteEditor> {
                                             ),
                                             border: Border.all(
                                               color: words >= _targetWords!
-                                                  ? Colors.green.withValues(
-                                                      alpha: 0.4,
-                                                    )
+                                                  ? OrbitColors.of(context)
+                                                        .success
+                                                        .withValues(alpha: 0.4)
                                                   : const Color(
                                                       0xFF8B7CF6,
                                                     ).withValues(alpha: 0.4),
@@ -5019,8 +5136,12 @@ class _NoteEditorState extends State<NoteEditor> {
                                                   fontSize: 11,
                                                   fontWeight: FontWeight.w600,
                                                   color: words >= _targetWords!
-                                                      ? Colors.green
-                                                      : const Color(0xFF8B7CF6),
+                                                      ? OrbitColors.of(
+                                                          context,
+                                                        ).success
+                                                      : OrbitColors.of(
+                                                          context,
+                                                        ).accent,
                                                 ),
                                               ),
                                             ],
@@ -5163,6 +5284,13 @@ class _NoteEditorState extends State<NoteEditor> {
                                       size: 18,
                                     ),
                                     onSelected: (action) async {
+                                      if (action == 'text_presentation') {
+                                        await showMotionStudio(
+                                          context,
+                                          text: _body.text,
+                                        );
+                                        return;
+                                      }
                                       if (action == 'block_reference' ||
                                           action == 'place_block') {
                                         await _referenceCurrentBlock(
@@ -5280,6 +5408,10 @@ class _NoteEditorState extends State<NoteEditor> {
                                       }
                                     },
                                     itemBuilder: (_) => [
+                                      const PopupMenuItem(
+                                        value: 'text_presentation',
+                                        child: Text('Text presentation…'),
+                                      ),
                                       PopupMenuItem(
                                         value: 'markdown',
                                         child: Row(
@@ -5460,7 +5592,7 @@ class _NoteEditorState extends State<NoteEditor> {
                                             : Icons.push_pin_outlined,
                                         size: 18,
                                         color: widget.isPinned
-                                            ? const Color(0xFF8B7CF6)
+                                            ? OrbitColors.of(context).accent
                                             : null,
                                       ),
                                     ),
@@ -5479,7 +5611,7 @@ class _NoteEditorState extends State<NoteEditor> {
                                             : Icons.bookmark_border_rounded,
                                         size: 18,
                                         color: widget.isBookmarked
-                                            ? const Color(0xFFF59E0B)
+                                            ? OrbitColors.of(context).warning
                                             : null,
                                       ),
                                     ),
@@ -5499,7 +5631,7 @@ class _NoteEditorState extends State<NoteEditor> {
                                                   .center_focus_strong_outlined,
                                         size: 18,
                                         color: widget.isFocusMode
-                                            ? const Color(0xFF8B7CF6)
+                                            ? OrbitColors.of(context).accent
                                             : null,
                                       ),
                                     ),
@@ -5542,7 +5674,7 @@ class _NoteEditorState extends State<NoteEditor> {
                                           : Icons.auto_stories_outlined,
                                       size: 18,
                                       color: _bionicReading
-                                          ? const Color(0xFF8B7CF6)
+                                          ? OrbitColors.of(context).accent
                                           : null,
                                     ),
                                   ),
@@ -5895,6 +6027,7 @@ class _NoteEditorState extends State<NoteEditor> {
                                         body: _body.text,
                                         fontSize: widget.fontSize,
                                         contentWidth: widget.contentWidth,
+                                        remoteSelections: _matchingPeers,
                                         initialState: _richState,
                                         onState: (v) {
                                           _richState = v;
@@ -6413,6 +6546,42 @@ class _NoteEditorState extends State<NoteEditor> {
     );
   }
 
+  SharedTextPresencePainter _sourcePresencePainter() {
+    final source = _body.text;
+    RenderBox? owner() {
+      final object = _sourceFieldKey.currentContext?.findRenderObject();
+      return object is RenderBox ? object : null;
+    }
+
+    RenderEditable? editable() => sharedEditable(owner());
+    Offset shift(RenderEditable field) =>
+        owner()!.globalToLocal(field.localToGlobal(Offset.zero));
+    return SharedTextPresencePainter(
+      peers: _matchingPeers,
+      repaint: Listenable.merge([
+        _body,
+        _sourceScroll,
+        if (widget.remotePresence != null) widget.remotePresence!,
+      ]),
+      sourceCurrent: () => source == _body.text,
+      boxes: (selection) {
+        final field = editable();
+        if (field == null || !field.hasSize) return [];
+        return field
+            .getBoxesForSelection(selection)
+            .map((box) => box.toRect().shift(shift(field)))
+            .toList();
+      },
+      caret: (offset) {
+        final field = editable();
+        if (field == null || !field.hasSize) return null;
+        return field
+            .getLocalRectForCaret(TextPosition(offset: offset))
+            .shift(shift(field));
+      },
+    );
+  }
+
   Widget _source(BuildContext context) => Center(
     child: ConstrainedBox(
       constraints: BoxConstraints(maxWidth: widget.contentWidth + 56),
@@ -6420,58 +6589,64 @@ class _NoteEditorState extends State<NoteEditor> {
         controller: _sourceScroll,
         child: SizedBox(
           key: _sourceFieldKey,
-          child: Actions(
-            actions: {
-              CopySelectionTextIntent: CallbackAction<CopySelectionTextIntent>(
-                onInvoke: (intent) {
-                  _transferSourceSelection(cut: intent.collapseSelection);
-                  return null;
-                },
-              ),
-              PasteTextIntent: CallbackAction<PasteTextIntent>(
-                onInvoke: (_) {
-                  _pasteSource(plain: HardwareKeyboard.instance.isShiftPressed);
-                  return null;
-                },
-              ),
-            },
-            child: TextField(
-              key: const ValueKey('note-body'),
-              controller: _body,
-              focusNode: _bodyFocus,
-              scrollController: _sourceScroll,
-              contextMenuBuilder: (context, state) =>
-                  _buildEditorContextMenu(context, state, _body, (v) {
-                    _publishBody(v);
-                    setState(() {});
-                  }),
-              expands: true,
-              maxLines: null,
-              minLines: null,
-              textAlignVertical: TextAlignVertical.top,
-              keyboardType: TextInputType.multiline,
-              style: NoteTypography(
-                fontFamily: _editorFont,
-                fontSize: widget.fontSize,
-                lineHeight: widget.lineHeight,
-              ).body(),
-              decoration: InputDecoration(
-                hintText:
-                    'Start writing. Your ideas belong here.\n\nUse [[ to write a link, or Ctrl+K to choose an object.',
-                hintStyle: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  height: widget.lineHeight,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+          child: CustomPaint(
+            foregroundPainter: _sourcePresencePainter(),
+            child: Actions(
+              actions: {
+                CopySelectionTextIntent:
+                    CallbackAction<CopySelectionTextIntent>(
+                      onInvoke: (intent) {
+                        _transferSourceSelection(cut: intent.collapseSelection);
+                        return null;
+                      },
+                    ),
+                PasteTextIntent: CallbackAction<PasteTextIntent>(
+                  onInvoke: (_) {
+                    _pasteSource(
+                      plain: HardwareKeyboard.instance.isShiftPressed,
+                    );
+                    return null;
+                  },
                 ),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                filled: false,
-                contentPadding: const EdgeInsets.fromLTRB(28, 8, 28, 40),
-              ),
-              onChanged: (value) {
-                _publishBody(value);
-                setState(() {});
               },
+              child: TextField(
+                key: const ValueKey('note-body'),
+                controller: _body,
+                focusNode: _bodyFocus,
+                scrollController: _sourceScroll,
+                contextMenuBuilder: (context, state) =>
+                    _buildEditorContextMenu(context, state, _body, (v) {
+                      _publishBody(v);
+                      setState(() {});
+                    }),
+                expands: true,
+                maxLines: null,
+                minLines: null,
+                textAlignVertical: TextAlignVertical.top,
+                keyboardType: TextInputType.multiline,
+                style: NoteTypography(
+                  fontFamily: _editorFont,
+                  fontSize: widget.fontSize,
+                  lineHeight: widget.lineHeight,
+                ).body(),
+                decoration: InputDecoration(
+                  hintText:
+                      'Start writing. Your ideas belong here.\n\nUse [[ to write a link, or Ctrl+K to choose an object.',
+                  hintStyle: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    height: widget.lineHeight,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  filled: false,
+                  contentPadding: const EdgeInsets.fromLTRB(28, 8, 28, 40),
+                ),
+                onChanged: (value) {
+                  _publishBody(value);
+                  setState(() {});
+                },
+              ),
             ),
           ),
         ),

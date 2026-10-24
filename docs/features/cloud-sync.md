@@ -1,5 +1,50 @@
 # Cloud sync — delivery status
 
+## Incremental personal sync — 2026-10-22
+
+Active native Vaults check the Drive changes feed every **5 seconds** while Orbit
+runs. Saved edits retain the earliest **2-second** scheduled pass even during
+continuous typing. Cheap unchanged-cloud checks avoid a full local inventory;
+normal local reconciliation still runs about every **30 seconds**, including
+external file edits. Full cloud history audits run every **15 minutes**, on
+missing/rejected checkpoints and after a backwards clock. These are scheduling
+intervals, not end-to-end delivery guarantees; network, drafts, conflicts and
+backoff can delay transfer. Inactive selected Vaults retain their 1/5/15-minute
+schedule. Manual Sync now and foreground return perform normal reconciliation.
+
+The account/Vault-bound upload journal stores a complete revision membership and
+Drive cursor together. Every page and graph parent must validate before advancing.
+A baseline token is taken before listing so racing publications replay. Failed
+pages, lost access, modified/missing retained records and uncertain local applies
+never skip content or silently choose a branch. Unchanged checks do not rewrite
+the journal. Existing narrow `drive.file` access and resumable attachment uploads
+remain; Settings exposes upload bytes and separate cloud-check/full-sync times.
+
+**This is not OneNote-level acceptance or character-level Drive coauthoring.**
+Separate negotiated [live shared rooms](sync-and-collaboration.md) now add new/
+deleted objects, verified assets and source-checked carets. Closed-app/mobile
+workers, arbitrary-overlap CRDT, public OAuth rollout and physical two-device
+acceptance remain unfinished. Personal Drive limits include 10,000 retained revisions, 16 MiB checkpoints and no
+revision garbage collection. Frequent edits consume retained cloud storage.
+[Source audit and actual checks](../tasks/cross-device-sync-2026-10-22.md).
+
+The dated sections below record earlier deliveries; the foundation table is
+historical and does not describe today's personal-sync controls.
+
+## Foreground synchronization recovery — 2026-10-21
+
+Drive retains changes made while a transfer or exclusive sync action is busy,
+then coalesces a follow-up pass. A completed older pass does not label newer local
+edits up to date. Transient failures schedule their actual retry deadline rather
+than waiting for the general 30-second poll. Pause cancels those requests.
+Returning to the app checks the active opted-in Vault; checks requested during
+an active pass are retained. Account/access blocks and shared-session suspension
+remain authoritative; a foreground event never enables sync or changes accounts.
+Settings show newer queued edits and the next retry time. Background execution
+and physical-device acceptance are still outside this validation.
+[Evidence](../tasks/device-sync-recovery-2026-10-21.md).
+
+
 2026-10-15 continuity extension: successful bulk transfers can explicitly add
 selected inactive Vaults to a secure device-local schedule, checked every 1/5/15
 minutes while Orbit is open. Manage scheduled Vault checks exposes status,

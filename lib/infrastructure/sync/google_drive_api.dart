@@ -13,6 +13,7 @@ import '../storage/workspace_store.dart';
 
 part 'google_drive_backups.dart';
 part 'google_drive_replica.dart';
+part 'google_drive_changes.dart';
 
 class GoogleRemoteVault {
   const GoogleRemoteVault({
@@ -155,6 +156,10 @@ class GoogleDriveApi {
       404 => const GoogleCloudError(
         'missing',
         'This Google Drive folder is no longer available.',
+      ),
+      410 => const GoogleCloudError(
+        'cursor',
+        'Google Drive change tracking needs a fresh inventory.',
       ),
       429 => const GoogleCloudError(
         'rate',

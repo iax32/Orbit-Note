@@ -1,5 +1,32 @@
 # Implemented open formats — v1 subset
 
+## Use-case and sequence notation — 2026-10-23
+
+Existing Canvas schema 1 primitives carry optional `umlNode` maps. `kind` is
+`actor`, `useCase`, `system`, `note`, `lifeline`, `activation` or `fragment`.
+The use-case primitive is `ellipse`; the others use `rectangle` as a useful
+old-reader fallback. `text` retains the authored name/note. Optional metadata:
+`stereotype` (string), `lines` (up to 16 strings, at most 160 characters each;
+extension points or operand guards), `operator` (alt/opt/loop/par/critical/
+strict/seq/break/assert/neg/ignore/consider), and `destroyed` (boolean).
+Normal geometry/layering/grouping remains authoritative; frames and activation
+bars do not implicitly own other placements.
+
+Existing connectors carry `umlLink.kind`: association/include/extend/
+generalization/constraint/synchronous/asynchronous/reply/create/destroy, with
+authored `label`, `detail` and finite `position` (fraction .12–.9 for sequence
+message depth on each bound lifeline). `startId` / `endId` remain placement IDs.
+Ordinary `text`/dash/marker fields retain old-reader presentation. Optional
+endpoint multiplicities reuse existing fields. `filledTriangle` extends the
+existing marker set for synchronous messages; no universal object is created.
+Creation targets the receiver header, destruction the receiver end; other
+sequence messages attach to the central lifeline axis. Self calls have two
+orthogonal controls. Unknown nested and placement/root fields survive edits.
+
+Both kinds use existing `#elements=` live Markdown references, SVG presentation
+and publication snapshots. Missing sources stay explicit; exports do not silently
+substitute a different board. No source migration or database-only authority.
+
 ## Connected Life metadata — 2026-10-21
 
 Life knowledge uses ordinary `orbit.note` Markdown documents and their existing
@@ -1156,3 +1183,16 @@ from content sync and bytes are never embedded in repeatedly saved noteViews JSO
 These are presentation copies, not ordinary attachments or authored object IDs.
 Unused copies remain until device state is deliberately cleaned; no migration,
 automatic garbage collection, live external-file reference or image deletion command.
+
+## Device motion options — 2026-10-23
+
+Existing device/session JSON adds optional `motionOptions` (object). Old/malformed
+values read with safe defaults; unknown keys and nested values survive unrelated
+preference changes. `profile` supports `fluid/paper/experimental`; finite `speed`
+is clamped to 0.5–2; category booleans `navigation/editing/drawing/reading/smart`
+default true. `focusTyping/readingSpotlight/readingProgress` default false.
+`textStyle` selects presentation only; `pageStyle` supports fade/slide/paper/curl
+(the latter is a perspective tilt). Existing `motion` Normal/Reduced/Off plus the
+OS cap still control effective timing. No durable content metadata stores replay
+position, laser samples or animation frames. Ordinary Canvas JSON and Markdown
+remain byte/content compatible; export painters default to complete content.

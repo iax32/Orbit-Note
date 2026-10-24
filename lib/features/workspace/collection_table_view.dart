@@ -698,17 +698,21 @@ class _CollectionTableViewState extends State<CollectionTableView> {
                     color: colors.accent,
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.add, size: 14, color: Colors.white),
+                      Icon(
+                        Icons.add,
+                        size: 14,
+                        color: OrbitColors.of(context).onAccent,
+                      ),
                       SizedBox(width: 6),
                       Text(
                         'Add Item',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white,
+                          color: OrbitColors.of(context).onAccent,
                         ),
                       ),
                     ],
@@ -942,12 +946,7 @@ class _CollectionTableViewState extends State<CollectionTableView> {
       _ => 'Note',
     };
 
-    final typeColor = switch (o.typeId) {
-      'orbit.task' => Colors.green,
-      'orbit.canvas' => Colors.purple,
-      'orbit.file' => Colors.orange,
-      _ => colors.accent,
-    };
+    final typeColor = colors.objectType(o.typeId);
 
     final typeIcon = switch (o.typeId) {
       'orbit.task' => Icons.checklist_outlined,
@@ -1332,23 +1331,11 @@ class _CollectionTableViewState extends State<CollectionTableView> {
   }
 
   Color _statusColor(String status, OrbitColors colors) {
-    return switch (status.toLowerCase()) {
-      'done' || 'closed' || 'confirmed' => Colors.green,
-      'in-progress' || 'testing' || 'investigating' => Colors.blue,
-      'review' || 'verify' => Colors.amber,
-      'blocked' || 'rejected' => Colors.red,
-      _ => colors.subtle,
-    };
+    return colors.status(status);
   }
 
   Color _priorityColor(String priority, OrbitColors colors) {
-    return switch (priority.toLowerCase()) {
-      'urgent' => Colors.red,
-      'high' => Colors.orange,
-      'medium' => Colors.blue,
-      'low' => colors.subtle,
-      _ => colors.subtle,
-    };
+    return colors.priority(priority);
   }
 }
 

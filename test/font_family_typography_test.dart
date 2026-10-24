@@ -1,3 +1,4 @@
+import 'support/settings_navigation.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -136,6 +137,7 @@ void main() {
       c.navigate(OrbitDestination.settings);
       await tester.pumpAndSettle();
 
+      await searchSettings(tester, 'Font family');
       final dropdownFinder = find.byKey(
         const ValueKey('settings-font-family-dropdown'),
       );
@@ -151,6 +153,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 700));
 
       expect(c.session.fontFamily, 'Times New Roman');
+      await searchSettings(tester, 'Reading preview');
       final preview = tester.widget<Text>(
         find.byKey(const ValueKey('settings-reading-font-preview')),
       );

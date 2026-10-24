@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'code_editing.dart';
+import '../../../app/orbit_theme.dart';
 
 /// One native text field with a viewport-sized, wrap-aware line-number gutter.
 /// The gutter reads rendered caret positions rather than estimating row heights.
@@ -16,13 +17,14 @@ class CodeSurface extends StatefulWidget {
     required this.onChanged,
     this.readOnly = false,
     this.autofocus = false,
-    this.numbers = true,
+    this.numbers,
   });
   final TextEditingController controller;
   final FocusNode focus;
   final Key fieldKey;
   final List<({int start, int contentEnd, int end})> lines;
-  final bool wrap, readOnly, autofocus, numbers;
+  final bool wrap, readOnly, autofocus;
+  final bool? numbers;
   final ValueChanged<String> onChanged;
   @override
   State<CodeSurface> createState() => _CodeSurfaceState();
@@ -132,13 +134,15 @@ class _CodeSurfaceState extends State<CodeSurface> {
     }
     final scale = MediaQuery.textScalerOf(context);
     final theme = Theme.of(context);
+    final codeStyle = OrbitCodePreferences.of(context);
+    final numbers = widget.numbers ?? codeStyle.lineNumbers;
     final digits = widget.lines.length.toString().length;
-    final gutterWidth = widget.numbers
-        ? scale.scale(10) * math.max(digits, 2) + 18
+    final gutterWidth = numbers
+        ? scale.scale(codeStyle.fontSize * 10 / 14) * math.max(digits, 2) + 18
         : 0.0;
     return Row(
       children: [
-        if (widget.numbers)
+        if (numbers)
           SizedBox(
             width: gutterWidth,
             child: GestureDetector(
@@ -155,6 +159,10 @@ class _CodeSurfaceState extends State<CodeSurface> {
                     widget.lines,
                     theme.colorScheme,
                     scale,
+                    TextStyle(
+                      fontFamily: codeStyle.fontFamily,
+                      fontSize: codeStyle.fontSize * 12 / 14,
+                    ),
                     repaint,
                   ),
                   child: const SizedBox.expand(),
@@ -182,9 +190,9 @@ class _CodeSurfaceState extends State<CodeSurface> {
                   textAlignVertical: TextAlignVertical.top,
                   enableSuggestions: false,
                   autocorrect: false,
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 14,
+                  style: TextStyle(
+                    fontFamily: codeStyle.fontFamily,
+                    fontSize: codeStyle.fontSize,
                     height: 1.6,
                   ),
                   decoration: const InputDecoration(
@@ -203,7 +211,10 @@ class _CodeSurfaceState extends State<CodeSurface> {
                 child: field(
                   math.max(
                     area.maxWidth,
-                    math.min(100000, longest * scale.scale(9) + 40),
+                    math.min(
+                      100000,
+                      longest * scale.scale(codeStyle.fontSize * .7) + 40,
+                    ),
                   ),
                 ),
               );
@@ -223,6 +234,7 @@ class _LineNumbers extends CustomPainter {
     this.lines,
     this.colors,
     this.scaler,
+    this.numberStyle,
     Listenable repaint,
   ) : super(repaint: repaint);
   final RenderEditable? Function() render;
@@ -231,6 +243,7 @@ class _LineNumbers extends CustomPainter {
   final List<({int start, int contentEnd, int end})> lines;
   final ColorScheme colors;
   final TextScaler scaler;
+  final TextStyle numberStyle;
   @override
   void paint(Canvas canvas, Size size) {
     final editable = render();
@@ -272,9 +285,7 @@ class _LineNumbers extends CustomPainter {
       }
       painter.text = TextSpan(
         text: '${i + 1}',
-        style: TextStyle(
-          fontFamily: 'monospace',
-          fontSize: 12,
+        style: numberStyle.copyWith(
           color: i == active ? colors.primary : colors.onSurfaceVariant,
           fontWeight: i == active ? FontWeight.w600 : FontWeight.normal,
         ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../app/orbit_theme.dart';
 
 /// Syntax highlighter and tokenizing controller for raw LaTeX code.
 class LatexTextEditingController extends TextEditingController {
@@ -11,29 +12,25 @@ class LatexTextEditingController extends TextEditingController {
     required bool withComposing,
   }) {
     final baseStyle = style ?? DefaultTextStyle.of(context).style;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colors = OrbitColors.of(context);
 
     // Palette calibrated for Orbit Note's calm graphite theme
     final commentStyle = TextStyle(
-      color: isDark ? const Color(0xFF6B7280) : const Color(0xFF9CA3AF),
+      color: colors.muted,
       fontStyle: FontStyle.italic,
     );
     final commandStyle = TextStyle(
-      color: isDark ? const Color(0xFFA78BFA) : const Color(0xFF7C3AED),
+      color: colors.accent,
       fontWeight: FontWeight.w600,
     );
     final envStyle = TextStyle(
-      color: isDark ? const Color(0xFFFBBF24) : const Color(0xFFD97706),
+      color: colors.warning,
       fontWeight: FontWeight.w600,
     );
-    final mathStyle = TextStyle(
-      color: isDark ? const Color(0xFF34D399) : const Color(0xFF059669),
-    );
-    final bracketStyle = TextStyle(
-      color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF2563EB),
-    );
+    final mathStyle = TextStyle(color: colors.success);
+    final bracketStyle = TextStyle(color: colors.secondary);
     final specialStyle = TextStyle(
-      color: isDark ? const Color(0xFFF472B6) : const Color(0xFFDB2777),
+      color: colors.linkVisited,
       fontWeight: FontWeight.bold,
     );
 

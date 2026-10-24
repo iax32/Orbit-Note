@@ -341,15 +341,9 @@ class _OrbitInternalLinkState extends State<OrbitInternalLink> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final linkColor = _isMissing
-        ? (theme.brightness == Brightness.dark
-              ? const Color(0xFFFBBF24)
-              : const Color(0xFFD97706))
-        : (_isAmbiguous
-              ? (theme.brightness == Brightness.dark
-                    ? const Color(0xFFFB923C)
-                    : const Color(0xFFEA580C))
-              : theme.colorScheme.primary);
+    final linkColor = _isMissing || _isAmbiguous
+        ? OrbitColors.of(context).warning
+        : theme.colorScheme.primary;
 
     final effectiveStyle = (widget.style ?? const TextStyle()).copyWith(
       color: linkColor,
@@ -691,14 +685,14 @@ class OrbitPeekCard extends StatelessWidget {
           Icon(
             completed ? Icons.check_circle : Icons.circle_outlined,
             size: 14,
-            color: completed ? const Color(0xFF10B981) : colors.subtle,
+            color: completed ? colors.success : colors.subtle,
           ),
           const SizedBox(width: 6),
           Text(
             completed ? 'Completed' : 'Pending',
             style: TextStyle(
               fontSize: 12,
-              color: completed ? const Color(0xFF10B981) : colors.subtle,
+              color: completed ? colors.success : colors.subtle,
               fontWeight: FontWeight.w500,
             ),
           ),

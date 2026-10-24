@@ -189,13 +189,15 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
     required this.stage,
     required this.isCurrent,
     this.onProgress,
-  });
+    DateTime Function()? now,
+  }) : _now = now ?? DateTime.now;
   final GoogleDriveApi api;
   final GoogleRemoteVault vault;
   final SyncStateStore journal;
   final Future<WorkspaceStage> Function(Stream<List<int>>, String) stage;
   final bool Function() isCurrent;
   final void Function(int, int)? onProgress;
+  final DateTime Function() _now;
   Map<String, dynamic> _journal = {};
   final _records = <String, _DriveRevision>{};
   final _heads = <String, List<_DriveRevision>>{};
@@ -340,7 +342,7 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
   }
 
   @override
-  Future<SyncDelta> fetchChanges(String? cursor) => _scan(null);
+  Future<SyncDelta> fetchChanges(String? cursor) => _fetchChanges();
 
   Future<SyncDelta> _scan(String? key) async {
     await _load();
@@ -373,43 +375,50 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
       _records.removeWhere((_, r) => r.entry.key == key);
     }
     for (final f in files) {
-      final id = f['id'] as String, cached = _cache[id] as Map?;
-      final properties = f['appProperties'] as Map?;
-      if (f['ownedByMe'] != true ||
-          f['trashed'] == true ||
-          !(f['parents'] as List? ?? []).contains(vault.folderId) ||
-          properties?['orbitProtocol'] != '2' ||
-          properties?['orbitVaultId'] != workspaceId) {
-        throw const WorkspaceConflict(
-          'Retained cloud revision metadata changed.',
-        );
-      }
-      if (cached != null && cached['checksum'] != f['md5Checksum']) {
-        throw const WorkspaceConflict(
-          'An immutable cloud revision was modified externally.',
-        );
-      }
-      final record = cached == null
-          ? await _readRecord(id, metadata: f)
-          : _DriveRevision.parse(
-              id,
-              Map<String, dynamic>.from(cached['record'] as Map),
-              workspaceId,
-            );
-      if (properties?['orbitKey'] !=
-              sha256.convert(utf8.encode(record.entry.key)).toString() ||
-          properties?['orbitOp'] != record.operation ||
-          (key != null && record.entry.key != key)) {
-        throw const WorkspaceConflict(
-          'Cloud revision routing metadata changed.',
-        );
-      }
-      _records[id] = record;
-      _cache[id] = {
-        'checksum': f['md5Checksum'],
-        'record': record.toJson(workspaceId),
-      };
+      await _acceptRevision(f, key: key);
     }
+    return _buildDelta(key);
+  }
+
+  Future<void> _acceptRevision(Map<String, dynamic> f, {String? key}) async {
+    final id = f['id'] as String, cached = _cache[id] as Map?;
+    final properties = f['appProperties'] as Map?;
+    if (f['ownedByMe'] != true ||
+        f['trashed'] == true ||
+        !(f['parents'] as List? ?? []).contains(vault.folderId) ||
+        properties?['orbitRole'] != 'sync-revision' ||
+        properties?['orbitProtocol'] != '2' ||
+        properties?['orbitVaultId'] != workspaceId) {
+      throw const WorkspaceConflict(
+        'Retained cloud revision metadata changed.',
+      );
+    }
+    if (cached != null && cached['checksum'] != f['md5Checksum']) {
+      throw const WorkspaceConflict(
+        'An immutable cloud revision was modified externally.',
+      );
+    }
+    final record = cached == null
+        ? await _readRecord(id, metadata: f)
+        : _DriveRevision.parse(
+            id,
+            Map<String, dynamic>.from(cached['record'] as Map),
+            workspaceId,
+          );
+    if (properties?['orbitKey'] !=
+            sha256.convert(utf8.encode(record.entry.key)).toString() ||
+        properties?['orbitOp'] != record.operation ||
+        (key != null && record.entry.key != key)) {
+      throw const WorkspaceConflict('Cloud revision routing metadata changed.');
+    }
+    _records[id] = record;
+    _cache[id] = {
+      'checksum': f['md5Checksum'],
+      'record': record.toJson(workspaceId),
+    };
+  }
+
+  Future<SyncDelta> _buildDelta(String? key, {bool persist = true}) async {
     final children = <String, List<String>>{};
     final degrees = <String, int>{};
     final referenced = <String>{};
@@ -450,8 +459,8 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
     for (final heads in _heads.values) {
       heads.sort((a, b) => a.id.compareTo(b.id));
     }
-    await _save();
-    final sorted = ids.toList()..sort();
+    if (persist) await _save();
+    final sorted = _records.keys.toList()..sort();
     return SyncDelta(
       entries: [
         for (final heads in _heads.values)

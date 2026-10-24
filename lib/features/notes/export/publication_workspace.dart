@@ -1,3 +1,4 @@
+import '../../../platform/publication_image_download.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' as ui;
@@ -13,6 +14,8 @@ import '../../../domain/universal_object.dart';
 import '../../../platform/export_file.dart';
 import 'publication_export.dart';
 import 'publication_math.dart';
+import 'publication_svg.dart';
+import 'publication_canvas.dart';
 
 Future<void> showPublicationWorkspace(
   BuildContext context, {
@@ -20,6 +23,7 @@ Future<void> showPublicationWorkspace(
   required String source,
   required String ownerId,
   List<UniversalObject> objects = const [],
+  Map<String, String> objectPaths = const {},
   Future<Uint8List?> Function(String)? readImage,
   bool Function(String, String)? onApply,
 }) => showDialog<void>(
@@ -29,6 +33,7 @@ Future<void> showPublicationWorkspace(
     source: source,
     ownerId: ownerId,
     objects: objects,
+    objectPaths: objectPaths,
     readImage: readImage,
     onApply: onApply,
   ),
@@ -41,17 +46,21 @@ class PublicationWorkspace extends StatefulWidget {
     required this.source,
     this.ownerId = '',
     this.objects = const [],
+    this.objectPaths = const {},
     this.readImage,
     this.previewBuilder,
     this.onApply,
     this.onNavigatePage,
+    this.imageDownloader,
   });
   final String title, source, ownerId;
   final List<UniversalObject> objects;
+  final Map<String, String> objectPaths;
   final Future<Uint8List?> Function(String)? readImage;
   final Widget Function(Uint8List)? previewBuilder;
   final bool Function(String before, String next)? onApply;
   final ValueChanged<int>? onNavigatePage;
+  final PublicationImageDownload? imageDownloader;
   @override
   State<PublicationWorkspace> createState() => _PublicationWorkspaceState();
 }
@@ -84,6 +93,13 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
   Map<String, Uint8List>? images, equations;
   Future<void>? resourceFuture;
   final resourceWarnings = <String>[];
+  late final publicationObjects = List<UniversalObject>.unmodifiable(
+    widget.objects,
+  );
+  late final publicationPaths = Map<String, String>.unmodifiable(
+    widget.objectPaths,
+  );
+  late final snapshotTime = DateTime.now();
   late String source;
   final layouts = <String, Map<String, dynamic>>{};
   final layoutResetSerial = <String, int>{};
@@ -91,7 +107,34 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
   int contentsPage = 0, layoutsPage = 0;
   final viewerController = PdfViewerController();
   String? settingsWarning;
-  bool saved = false;
+  bool saved = false, includeWebImages = false, webImagesCancelled = false;
+  late final imageDownloader =
+      widget.imageDownloader ?? PublicationImageDownload();
+  bool get hasWebImages =>
+      ready?.elements.any(
+        (element) =>
+            element.tag == 'img' &&
+            (Uri.tryParse(element.attributes['src'] ?? '')?.hasScheme == true ||
+                (element.attributes['src'] ?? '').startsWith('//')) &&
+            Uri.tryParse(element.attributes['src'] ?? '')?.scheme != 'data' &&
+            !ready!.document.objectSnapshots.canvases.containsKey(
+              element.attributes['src'],
+            ),
+      ) ??
+      false;
+
+  void reloadImages({bool web = false}) {
+    if (busy || exporting) return;
+    imageDownloader.cancel();
+    change(() {
+      includeWebImages = includeWebImages || web;
+      webImagesCancelled = false;
+      images = equations = null;
+      resourceFuture = null;
+      resourceWarnings.clear();
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -132,6 +175,7 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
   void dispose() {
     revision++;
     debounce?.cancel();
+    imageDownloader.dispose();
     author.dispose();
     header.dispose();
     contentsFind.dispose();
@@ -169,11 +213,12 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
     final loadedImages = <String, Uint8List>{},
         loadedMath = <String, Uint8List>{};
     var totalBytes = 0, count = 0;
+    final seenImages = <String>{};
     for (final element in export.elements) {
       if (!mounted) return;
       if (element.tag == 'img') {
         final src = element.attributes['src'] ?? '';
-        if (loadedImages.containsKey(src)) continue;
+        if (!seenImages.add(src)) continue;
         if (++count > 100) {
           resourceWarnings.add(
             'Only the first 100 image/equation resources are embedded.',
@@ -181,54 +226,75 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
           break;
         }
         try {
-          final uri = Uri.tryParse(src);
+          final uri = Uri.tryParse(src.startsWith('//') ? 'https:$src' : src);
           Uint8List? bytes;
-          if (uri?.scheme == 'data' && src.startsWith('data:image/')) {
+          final canvasSnapshot = export.document.objectSnapshots.canvases[src];
+          if (canvasSnapshot != null) {
+            bytes = await renderPublicationCanvas(
+              canvasSnapshot,
+              objects: export.document.objectSnapshots.objects,
+              readImage: widget.readImage,
+              warn: (message) {
+                if (!resourceWarnings.contains(message)) {
+                  resourceWarnings.add(message);
+                }
+              },
+            );
+          } else if (uri?.scheme == 'data' && src.startsWith('data:image/')) {
             bytes = UriData.parse(src).contentAsBytes();
           } else if (uri?.hasScheme != true && !src.startsWith('//')) {
             bytes = await widget.readImage?.call(src);
+          } else if (uri != null &&
+              includeWebImages &&
+              !webImagesCancelled &&
+              PublicationImageDownload.allows(uri)) {
+            bytes = await imageDownloader.read(uri);
           }
+          if (!mounted) return;
           if (bytes == null ||
               bytes.length > 20 * 1024 * 1024 ||
               totalBytes + bytes.length > 64 * 1024 * 1024) {
             throw const FormatException('Missing, external or oversized image');
           }
-          final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
-          late ui.Codec codec;
-          try {
-            final descriptor = await ui.ImageDescriptor.encoded(buffer);
-            try {
-              if (descriptor.width * descriptor.height > 100000000) {
-                throw const FormatException(
-                  'Image exceeds 100 million pixels.',
-                );
-              }
-              final scale =
-                  1600 /
-                  (descriptor.width > descriptor.height
-                      ? descriptor.width
-                      : descriptor.height);
-              codec = await descriptor.instantiateCodec(
-                targetWidth: scale < 1
-                    ? (descriptor.width * scale).round().clamp(1, 1600)
-                    : descriptor.width,
-                targetHeight: scale < 1
-                    ? (descriptor.height * scale).round().clamp(1, 1600)
-                    : descriptor.height,
-              );
-            } finally {
-              descriptor.dispose();
-            }
-          } finally {
-            buffer.dispose();
+          if (isPublicationSvg(bytes)) {
+            bytes = await renderPublicationSvg(bytes);
+            resourceWarnings.add(
+              'SVG diagram uses a static image preview in publishing: $src',
+            );
           }
+          final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+          ui.ImageDescriptor? descriptor;
+          ui.Codec? codec;
           try {
+            // The encoded buffer and descriptor must outlive frame decoding.
+            // Disposing either after instantiateCodec can leave an otherwise
+            // valid PNG/JPEG without its source bytes when getNextFrame runs.
+            descriptor = await ui.ImageDescriptor.encoded(buffer);
+            if (descriptor.width * descriptor.height > 100000000) {
+              throw const FormatException('Image exceeds 100 million pixels.');
+            }
+            final scale =
+                1600 /
+                (descriptor.width > descriptor.height
+                    ? descriptor.width
+                    : descriptor.height);
+            codec = await descriptor.instantiateCodec(
+              targetWidth: scale < 1
+                  ? (descriptor.width * scale).round().clamp(1, 1600)
+                  : descriptor.width,
+              targetHeight: scale < 1
+                  ? (descriptor.height * scale).round().clamp(1, 1600)
+                  : descriptor.height,
+            );
             final frame = await codec.getNextFrame();
             try {
               final png = await frame.image.toByteData(
                 format: ui.ImageByteFormat.png,
               );
-              final encoded = png!.buffer.asUint8List();
+              final encoded = png!.buffer.asUint8List(
+                png.offsetInBytes,
+                png.lengthInBytes,
+              );
               if (totalBytes + encoded.length > 64 * 1024 * 1024) {
                 throw const FormatException('Image memory limit reached.');
               }
@@ -243,7 +309,9 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
               frame.image.dispose();
             }
           } finally {
-            codec.dispose();
+            codec?.dispose();
+            descriptor?.dispose();
+            buffer.dispose();
           }
         } catch (_) {
           resourceWarnings.add('Image retained as labelled fallback: $src');
@@ -271,6 +339,7 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
         }
       }
     }
+    if (!mounted) return;
     images = loadedImages;
     equations = loadedMath;
   }
@@ -282,7 +351,9 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
         widget.title,
         source,
         style,
-        objects: widget.objects,
+        objects: publicationObjects,
+        objectPaths: publicationPaths,
+        snapshotTime: snapshotTime,
         ownerId: widget.ownerId,
         layouts: layouts,
       );
@@ -471,6 +542,44 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
             ),
           ],
         ),
+        const SizedBox(height: 12),
+        const Text('Images', style: TextStyle(fontWeight: FontWeight.w600)),
+        if (images != null)
+          Text('${images!.length} image(s) embedded in this export.'),
+        if (hasWebImages || includeWebImages) ...[
+          const Text(
+            'Web images need an explicit download. HTTPS images are embedded in this export only; your note and Vault are not uploaded. Some sites require sign-in or block downloads.',
+          ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: busy || exporting
+                    ? null
+                    : () => reloadImages(web: true),
+                icon: const Icon(Icons.image_outlined),
+                label: Text(
+                  includeWebImages ? 'Retry web images' : 'Load web images',
+                ),
+              ),
+              if (busy && includeWebImages)
+                TextButton(
+                  onPressed: () {
+                    webImagesCancelled = true;
+                    imageDownloader.cancel();
+                  },
+                  child: const Text('Cancel web image loading'),
+                ),
+            ],
+          ),
+        ],
+        if (resourceWarnings.any((w) => w.startsWith('Image retained')))
+          TextButton(
+            onPressed: busy || exporting ? null : () => reloadImages(),
+            child: const Text('Retry missing images'),
+          ),
+        const SizedBox(height: 12),
         Text('Margins · ${margin.round()} pt'),
         Slider(
           value: margin,
@@ -591,6 +700,20 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
               targets.length,
               (page) => setState(() => layoutsPage = page),
             ),
+        ],
+        if (ready != null &&
+            ready!.document.objectSnapshots.objectCount > 0) ...[
+          const SizedBox(height: 16),
+          const Text(
+            'Connected content',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          Text(
+            '${ready!.document.objectSnapshots.objectCount} linked object block(s) · ${ready!.document.objectSnapshots.canvases.length} Canvas snapshot(s)',
+          ),
+          const Text(
+            'Captured when publishing opened. Reopen to refresh linked content. Source objects are unchanged.',
+          ),
         ],
         if (ready != null && ready!.warnings.isNotEmpty) ...[
           const SizedBox(height: 16),

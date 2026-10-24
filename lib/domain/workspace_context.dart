@@ -33,6 +33,7 @@ class WorkspaceContext {
     'fontFamily',
     'compact',
     'themePreset',
+    'followSystemAppearance',
     'accentColor',
     'cornerStyle',
     'documentFontFamily',

@@ -540,7 +540,7 @@ class _DocumentStatsDialogViewState extends State<_DocumentStatsDialogView> {
                     icon: Icon(
                       _copied ? Icons.check : Icons.copy_rounded,
                       size: 16,
-                      color: _copied ? Colors.green : null,
+                      color: _copied ? OrbitColors.of(context).success : null,
                     ),
                     label: Text(_copied ? 'Copied' : 'Copy Stats'),
                     style: OutlinedButton.styleFrom(
@@ -552,7 +552,7 @@ class _DocumentStatsDialogViewState extends State<_DocumentStatsDialogView> {
                     onPressed: () => Navigator.of(context).pop(),
                     style: FilledButton.styleFrom(
                       backgroundColor: c.accent,
-                      foregroundColor: Colors.white,
+                      foregroundColor: OrbitColors.of(context).onAccent,
                       visualDensity: VisualDensity.compact,
                     ),
                     child: const Text('Done'),
@@ -696,7 +696,9 @@ class _TargetGoalCard extends StatelessWidget {
         color: c.raised,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: isReached ? Colors.green.withValues(alpha: 0.4) : c.border,
+          color: isReached
+              ? OrbitColors.of(context).success.withValues(alpha: 0.4)
+              : c.border,
         ),
       ),
       child: Column(
@@ -707,7 +709,7 @@ class _TargetGoalCard extends StatelessWidget {
               Icon(
                 isReached ? Icons.check_circle_outline : Icons.flag_rounded,
                 size: 14,
-                color: isReached ? Colors.green : c.accent,
+                color: isReached ? OrbitColors.of(context).success : c.accent,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -724,7 +726,7 @@ class _TargetGoalCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: isReached ? Colors.green : c.accent,
+                  color: isReached ? OrbitColors.of(context).success : c.accent,
                 ),
               ),
               const SizedBox(width: 8),
@@ -742,7 +744,7 @@ class _TargetGoalCard extends StatelessWidget {
               minHeight: 5,
               backgroundColor: c.border,
               valueColor: AlwaysStoppedAnimation(
-                isReached ? Colors.green : c.accent,
+                isReached ? OrbitColors.of(context).success : c.accent,
               ),
             ),
           ),
@@ -753,7 +755,9 @@ class _TargetGoalCard extends StatelessWidget {
                 : '${target - currentWords} words remaining to target',
             style: TextStyle(
               fontSize: 10,
-              color: isReached ? Colors.green : c.muted.withValues(alpha: 0.8),
+              color: isReached
+                  ? OrbitColors.of(context).success
+                  : c.muted.withValues(alpha: 0.8),
             ),
           ),
         ],
@@ -808,10 +812,12 @@ class _ReadabilityCard extends StatelessWidget {
     final c = OrbitColors.of(context);
 
     final scoreColor = stats.fleschReadingEase >= 60
-        ? const Color(0xFF10B981) // Emerald
+        ? OrbitColors.of(context)
+              .success // Emerald
         : (stats.fleschReadingEase >= 40
-              ? const Color(0xFFF59E0B) // Amber
-              : const Color(0xFFF43F5E)); // Rose
+              ? OrbitColors.of(context)
+                    .warning // Amber
+              : OrbitColors.of(context).danger); // Rose
 
     return Container(
       padding: const EdgeInsets.all(12),

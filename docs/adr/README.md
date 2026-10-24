@@ -48,3 +48,4 @@ for the earlier decision. Routine files, widgets and bug fixes do not need ADRs.
 - [0029 — Code launch and loopback preview](0029-code-launch-and-loopback-preview.md): recoverable project command profiles, ordered cancellation, scoped HTTP assets and ephemeral preview lifecycle.
 - [0030 — Immutable personal Drive revisions](0030-immutable-drive-revisions.md): append-only branch preservation, durable upload IDs/sessions, explicit conflict resolution and opt-in native foreground coordination.
 - [0031 — Device sync continuity](0031-device-sync-continuity.md): opt-in inactive-Vault scheduling, secure explicit shared reconnect, authority handover and standalone server readiness.
+- [0032 — Live shared Vault replication](0032-live-shared-vault-replication.md): negotiated lifecycle/blob replication, durable device outbox, authenticated wakeups and source-checked note awareness.

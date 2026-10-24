@@ -1,3 +1,4 @@
+import 'support/settings_navigation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,7 +18,7 @@ void main() {
   group('SessionState Settings Serialization', () {
     test('default settings values are initialized correctly', () {
       final s = SessionState();
-      expect(s.accentColor, 'violet');
+      expect(s.accentColor, 'theme');
       expect(s.autoSaveInterval, 1000);
       expect(s.autoSnapshotOnClose, isTrue);
       expect(s.defaultNoteMode, 'rich');
@@ -103,7 +104,7 @@ void main() {
       };
 
       final restored = SessionState.fromJson(json);
-      expect(restored.accentColor, 'violet'); // fallback
+      expect(restored.accentColor, 'theme'); // follow the current palette
       expect(restored.autoSaveInterval, 10000); // clamped to max 10000
       expect(restored.autoSnapshotOnClose, isFalse);
       expect(restored.defaultNoteMode, 'rich'); // fallback
@@ -133,8 +134,14 @@ void main() {
 
     test('accentFromPreset returns correct color and fallback', () {
       expect(OrbitColors.accentFromPreset('emerald'), const Color(0xFF10B981));
-      expect(OrbitColors.accentFromPreset('unknown'), const Color(0xFF8B7CF6));
-      expect(OrbitColors.accentFromPreset(null), const Color(0xFF8B7CF6));
+      expect(
+        OrbitColors.accentFromPreset('unknown'),
+        OrbitThemePack.orbit.colors.accent,
+      );
+      expect(
+        OrbitColors.accentFromPreset(null),
+        OrbitThemePack.orbit.colors.accent,
+      );
     });
 
     test('copyWith updates accent and recalculates accentHover', () {
@@ -572,6 +579,7 @@ void main() {
           ),
         );
 
+        await searchSettings(tester, 'bionic');
         // Verify Bionic reading switch
         expect(
           find.byKey(const ValueKey('settings-bionic-reading-switch')),
@@ -583,6 +591,7 @@ void main() {
         await tester.pump();
         expect(ctrl.session.bionicReadingDefault, isTrue);
 
+        await searchSettings(tester, 'auto-snapshot');
         // Verify Auto-snapshot switch
         expect(
           find.byKey(const ValueKey('settings-auto-snapshot-switch')),
@@ -594,23 +603,34 @@ void main() {
         await tester.pump();
         expect(ctrl.session.autoSnapshotOnClose, isFalse);
 
+        await searchSettings(tester, 'Vault overview');
         // Verify Vault Analytics card exists
         await tester.scrollUntilVisible(
           find.byKey(const ValueKey('settings-vault-analytics-card')),
           300,
-          scrollable: find.byType(Scrollable).first,
+          scrollable: find
+              .descendant(
+                of: find.byKey(const ValueKey('settings-content')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
         );
         await tester.pump();
         expect(
           find.byKey(const ValueKey('settings-vault-analytics-card')),
           findsOneWidget,
         );
-        expect(find.text('Observatory Vault Analytics'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('settings-vault-analytics-card')),
+            matching: find.text('Vault overview'),
+          ),
+          findsOneWidget,
+        );
         expect(find.text('Notes'), findsOneWidget);
         expect(find.text('Canvases'), findsOneWidget);
         expect(find.text('Tasks'), findsOneWidget);
-        expect(find.text('Snapshots'), findsOneWidget);
-        expect(find.text('Total Words'), findsOneWidget);
+        expect(find.text('Attachments'), findsOneWidget);
 
         // Drain session debounce timer cleanly
         await tester.pump(const Duration(seconds: 1));
@@ -649,12 +669,14 @@ void main() {
           ),
         );
 
+        await searchSettings(tester, 'line spacing');
         // Verify line spacing dropdown
         expect(
           find.byKey(const ValueKey('settings-line-spacing-dropdown')),
           findsOneWidget,
         );
 
+        await searchSettings(tester, 'Canvas');
         // Verify canvas grid dropdown and snap switch
         expect(
           find.byKey(const ValueKey('settings-canvas-grid-dropdown')),
@@ -664,16 +686,26 @@ void main() {
           find.byKey(const ValueKey('settings-canvas-snap-switch')),
           findsOneWidget,
         );
+        await tester.ensureVisible(
+          find.byKey(const ValueKey('settings-canvas-snap-switch')),
+        );
+        await tester.pump();
         await tester.tap(
           find.byKey(const ValueKey('settings-canvas-snap-switch')),
         );
         await tester.pump();
         expect(ctrl.session.canvasSnapToGrid, isTrue);
 
+        await searchSettings(tester, 'Default playback speed');
         await tester.scrollUntilVisible(
           find.byKey(const ValueKey('settings-audio-speed-dropdown')),
           200,
-          scrollable: find.byType(Scrollable).first,
+          scrollable: find
+              .descendant(
+                of: find.byKey(const ValueKey('settings-content')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
         );
         await tester.pump();
         // Verify audio speed dropdown
@@ -682,37 +714,28 @@ void main() {
           findsOneWidget,
         );
 
+        await searchSettings(tester, 'Vault overview');
         // Verify Live Telemetry badge
         await tester.scrollUntilVisible(
           find.byKey(const ValueKey('settings-vault-analytics-card')),
           300,
-          scrollable: find.byType(Scrollable).first,
+          scrollable: find
+              .descendant(
+                of: find.byKey(const ValueKey('settings-content')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
         );
         await tester.pump();
         expect(
           find.byKey(const ValueKey('settings-vault-live-badge')),
           findsOneWidget,
         );
-        expect(find.text('TELEMETRY LIVE'), findsOneWidget);
+        expect(find.text('LOCAL ONLY'), findsOneWidget);
 
-        // Verify Optimize Vault Cache button
-        final optButton = find.byKey(
-          const ValueKey('settings-optimize-vault-button'),
-        );
-        await tester.scrollUntilVisible(
-          optButton,
-          300,
-          scrollable: find.byType(Scrollable).first,
-        );
-        await tester.pump();
-        expect(optButton, findsOneWidget);
-        await tester.tap(optButton);
-        await tester.pump();
         expect(
-          find.text(
-            'Vault integrity verified. Local indexes and snapshot caches pruned.',
-          ),
-          findsOneWidget,
+          find.byKey(const ValueKey('settings-optimize-vault-button')),
+          findsNothing,
         );
 
         await tester.pump(const Duration(seconds: 1));

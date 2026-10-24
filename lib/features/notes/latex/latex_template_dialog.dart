@@ -1,3 +1,4 @@
+import '../../../app/orbit_theme.dart';
 import 'package:flutter/material.dart';
 import 'latex_templates.dart';
 
@@ -18,9 +19,13 @@ class LatexTemplateDialog extends StatelessWidget {
     final templates = LatexTemplates.all;
 
     return AlertDialog(
-      title: const Row(
+      title: Row(
         children: [
-          Icon(Icons.functions_rounded, color: Color(0xFF8B7CF6), size: 24),
+          Icon(
+            Icons.functions_rounded,
+            color: OrbitColors.of(context).accent,
+            size: 24,
+          ),
           SizedBox(width: 10),
           Text('New LaTeX Document'),
         ],
@@ -54,13 +59,15 @@ class LatexTemplateDialog extends StatelessWidget {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF8B7CF6).withValues(alpha: 0.12),
+                        color: OrbitColors.of(
+                          context,
+                        ).accent.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: const Center(
+                      child: Center(
                         child: Icon(
                           Icons.description_outlined,
-                          color: Color(0xFF8B7CF6),
+                          color: OrbitColors.of(context).accent,
                           size: 20,
                         ),
                       ),

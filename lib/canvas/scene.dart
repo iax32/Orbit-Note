@@ -192,6 +192,21 @@ class CanvasElement {
   bool hit(CanvasPoint point, {double tolerance = 5}) {
     if (!bounds.inflate(tolerance).contains(point)) return false;
     final local = point - CanvasPoint(x, y);
+    final uml = data['umlNode'];
+    if (uml is Map) {
+      final kind = uml['kind'];
+      if (kind == 'system' || kind == 'fragment') {
+        // Empty frame interiors must not steal selection from their contents.
+        return local.y <= (kind == 'fragment' ? 38 : 56) ||
+            local.x <= tolerance ||
+            local.x >= width - tolerance ||
+            local.y >= height - tolerance;
+      }
+      if (kind == 'lifeline') {
+        return local.y <= math.min(64, height * .25) ||
+            (local.x - width / 2).abs() <= tolerance + strokeWidth;
+      }
+    }
     if (type == 'column') {
       return local.y <= 44;
     }

@@ -25,23 +25,26 @@ void main() {
   late DriveSyncService server;
   late FakeGoogleAuth auth;
   var current = true, drafts = false;
-  GoogleDriveSyncProvider provider(WorkspaceSyncReplica replica) =>
-      GoogleDriveSyncProvider(
-        api: GoogleDriveApi(
-          auth: auth,
-          client: server.client,
-          localMetadata: TestGoogleCredentials(),
-        ),
-        vault: GoogleRemoteVault(
-          folderId: 'sync-vault',
-          workspaceId: a.workspaceId,
-          name: 'Synced Vault',
-          accountSubject: 'subject-1',
-        ),
-        journal: replica.createDriveJournalStore(),
-        stage: replica.stageTransfer,
-        isCurrent: () => current,
-      );
+  GoogleDriveSyncProvider provider(
+    WorkspaceSyncReplica replica, {
+    DateTime Function()? now,
+  }) => GoogleDriveSyncProvider(
+    api: GoogleDriveApi(
+      auth: auth,
+      client: server.client,
+      localMetadata: TestGoogleCredentials(),
+    ),
+    vault: GoogleRemoteVault(
+      folderId: 'sync-vault',
+      workspaceId: a.workspaceId,
+      name: 'Synced Vault',
+      accountSubject: 'subject-1',
+    ),
+    journal: replica.createDriveJournalStore(),
+    stage: replica.stageTransfer,
+    isCurrent: () => current,
+    now: now,
+  );
   SyncEngine engine(WorkspaceSyncReplica replica, GoogleDriveSyncProvider p) =>
       SyncEngine(
         replica: replica,
@@ -255,7 +258,13 @@ void main() {
       await seed();
       server.partialList = true;
       await expectLater(
-        engine(rb, pb).sync(),
+        engine(
+          rb,
+          provider(
+            rb,
+            now: () => DateTime.now().add(const Duration(minutes: 16)),
+          ),
+        ).sync(),
         throwsA(isA<GoogleCloudError>()),
       );
       server.partialList = false;
@@ -460,6 +469,373 @@ void main() {
         isTrue,
       );
       expect(b.objects.single.id, note.id);
+    },
+  );
+  test(
+    'unchanged change-feed checks avoid history lists and media reads across restart',
+    () async {
+      await seed();
+      final baseline = await pb.fetchChanges(null);
+      final lists = server.historyLists, reads = server.mediaReads;
+      final journalFile = File(
+        '${root.path}/b/.orbit/device/sync/drive-uploads-v1.json',
+      );
+      final stamp = DateTime.utc(2020, 1, 1);
+      await journalFile.setLastModified(stamp);
+      pb = provider(rb);
+      for (var i = 0; i < 8; i++) {
+        final delta = await pb.fetchChanges(baseline.cursor);
+        expect(delta.cursor, baseline.cursor);
+        expect(
+          delta.entries.map((e) => e.entry.key),
+          contains(b.objects.single.id),
+        );
+      }
+      expect(server.historyLists, lists);
+      expect(server.mediaReads, reads);
+      expect(server.changeLists, greaterThanOrEqualTo(8));
+      expect(
+        (await journalFile.lastModified()).toUtc(),
+        stamp,
+        reason:
+            'An unchanged cloud must not rewrite the potentially large journal every five seconds.',
+      );
+    },
+  );
+
+  test(
+    'paginated changes restore a complete snapshot and reach every new note',
+    () async {
+      await seed();
+      for (var i = 0; i < 4; i++) {
+        await a.create(typeId: 'orbit.note', title: 'New $i', body: 'page $i');
+      }
+      await engine(ra, pa).sync();
+      server.changePageSize = 1;
+      final lists = server.historyLists;
+      final delta = await provider(rb).fetchChanges(null);
+      expect(
+        delta.entries.map((e) => e.entry.key),
+        containsAll(a.objects.map((o) => o.id)),
+      );
+      expect(server.historyLists, lists);
+      await engine(rb, provider(rb)).sync();
+      expect(b.objects.length, 5);
+      expect(
+        b.objects.map((o) => o.id).toSet(),
+        a.objects.map((o) => o.id).toSet(),
+      );
+    },
+  );
+
+  test(
+    'failed later change page never checkpoints a partial inventory',
+    () async {
+      await seed();
+      final store = rb.createDriveJournalStore();
+      final before = await store.load();
+      for (var i = 0; i < 3; i++) {
+        await a.create(
+          typeId: 'orbit.note',
+          title: 'Interrupted $i',
+          body: 'retained $i',
+        );
+      }
+      await engine(ra, pa).sync();
+      server.changePageSize = 1;
+      server.failChangePage = int.parse(before!['changeFeed']['token']) + 1;
+      await expectLater(
+        pb.fetchChanges(null),
+        throwsA(isA<GoogleCloudError>()),
+      );
+      final after = await rb.createDriveJournalStore().load();
+      expect(jsonEncode(after), jsonEncode(before));
+      expect(b.objects.length, 1);
+      server.failChangePage = null;
+      expect((await engine(rb, provider(rb)).sync()).upToDate, true);
+      expect(b.objects.length, 4);
+    },
+  );
+
+  for (final broken in ['repeated-page', 'missing-checkpoint']) {
+    test('$broken cannot advance the durable change cursor', () async {
+      await seed();
+      final before = await rb.createDriveJournalStore().load();
+      server.repeatChangePage = broken == 'repeated-page';
+      server.incompleteChanges = broken == 'missing-checkpoint';
+      await expectLater(
+        pb.fetchChanges(null),
+        throwsA(isA<GoogleCloudError>()),
+      );
+      expect(await rb.createDriveJournalStore().load(), before);
+      server.repeatChangePage = server.incompleteChanges = false;
+      expect((await engine(rb, provider(rb)).sync()).upToDate, true);
+    });
+  }
+
+  test(
+    'expired cursor rebuilds safely and still downloads pending remote edits',
+    () async {
+      await seed();
+      await a.save(
+        a.objects.single.copyWith(body: 'after cursor invalidation'),
+      );
+      await engine(ra, pa).sync();
+      server.expireCursorOnce = true;
+      final lists = server.historyLists;
+      await engine(rb, pb).sync();
+      expect(server.historyLists, greaterThan(lists));
+      expect(b.objects.single.body, 'after cursor invalidation');
+    },
+  );
+
+  test(
+    'old upload journals upgrade without changing retained operations or bytes',
+    () async {
+      await seed();
+      final store = rb.createDriveJournalStore();
+      final old = (await store.load())!..remove('changeFeed');
+      old['futureExtension'] = {'preserve': true};
+      await store.save(old);
+      final lists = server.historyLists;
+      await provider(rb).fetchChanges(null);
+      final upgraded = await rb.createDriveJournalStore().load();
+      expect(upgraded!['futureExtension'], {'preserve': true});
+      expect(upgraded['operations'], old['operations']);
+      expect(upgraded['records'], old['records']);
+      expect(upgraded['changeFeed']['ids'], isNotEmpty);
+      expect(server.historyLists, lists + 1);
+      expect(b.objects.single.body, 'original 😀\r\n');
+    },
+  );
+
+  for (final change in ['moved', 'routing', 'trashed', 'content']) {
+    test(
+      'incremental $change tampering preserves the local source and checkpoint',
+      () async {
+        await seed();
+        final before = await rb.createDriveJournalStore().load();
+        final record = server.revisions.first;
+        switch (change) {
+          case 'moved':
+            record.metadata['parents'] = ['another-vault'];
+          case 'routing':
+            (record.metadata['appProperties'] as Map)['orbitRole'] = 'other';
+          case 'trashed':
+            record.metadata['trashed'] = true;
+          case 'content':
+            record.bytes = Uint8List.fromList(utf8.encode('changed'));
+        }
+        await expectLater(
+          engine(rb, pb).sync(),
+          throwsA(isA<WorkspaceConflict>()),
+        );
+        expect(await rb.createDriveJournalStore().load(), before);
+        expect(b.objects.single.body, 'original 😀\r\n');
+      },
+    );
+  }
+
+  test(
+    'periodic full audit and backwards clocks retain integrity checks',
+    () async {
+      await seed();
+      var clock = DateTime.now().add(const Duration(minutes: 16));
+      final auditing = provider(rb, now: () => clock);
+      var lists = server.historyLists;
+      await auditing.fetchChanges(null);
+      expect(server.historyLists, lists + 1);
+      lists = server.historyLists;
+      clock = clock.subtract(const Duration(days: 1));
+      await auditing.fetchChanges(null);
+      expect(server.historyLists, lists + 1);
+    },
+  );
+
+  test(
+    'interrupted middle attachment range resumes at the server-confirmed offset',
+    () async {
+      final bytes = Uint8List.fromList(
+        List.generate(3 * 1024 * 1024 + 19, (i) => i % 251),
+      );
+      final entry = SyncEntry(
+        key: 'blob:Attachments/large/data.bin',
+        path: 'Attachments/large/data.bin',
+        hash: sha256.convert(bytes).toString(),
+      );
+      server.interruptChunkOnce = true;
+      await expectLater(
+        pa.upload(
+          entry,
+          Stream.value(bytes),
+          operationId: 'interrupted-range',
+          expectedVersion: null,
+        ),
+        throwsA(anything),
+      );
+      expect(server.uploadedOffsets, [0]);
+      final sessions = server.blobCreates;
+      final uploaded = await provider(ra).upload(
+        entry,
+        Stream.value(bytes),
+        operationId: 'interrupted-range',
+        expectedVersion: null,
+      );
+      expect(server.blobCreates, sessions);
+      expect(server.uploadedOffsets, [
+        0,
+        1024 * 1024,
+        2 * 1024 * 1024,
+        3 * 1024 * 1024,
+      ]);
+      expect(
+        sha256
+            .convert(await pb.download(uploaded).expand((c) => c).toList())
+            .toString(),
+        entry.hash,
+      );
+    },
+  );
+  test(
+    'publication racing the baseline listing is replayed from its earlier cursor',
+    () async {
+      await seed();
+      final store = rb.createDriveJournalStore();
+      final state = (await store.load())!..remove('changeFeed');
+      await store.save(state);
+      String? newId;
+      server.afterHistoryList = () async {
+        server.afterHistoryList = null;
+        newId = (await a.create(
+          typeId: 'orbit.note',
+          title: 'Racing list',
+          body: 'not in list reply',
+        )).id;
+        await engine(ra, pa).sync();
+      };
+      final initial = await pb.fetchChanges(null);
+      expect(initial.entries.map((e) => e.entry.key), isNot(contains(newId)));
+      final replayed = await provider(rb).fetchChanges(initial.cursor);
+      expect(replayed.entries.map((e) => e.entry.key), contains(newId));
+      await engine(rb, provider(rb)).sync();
+      expect(b.objects.any((o) => o.id == newId), true);
+    },
+  );
+
+  test(
+    'account change during a feed page never checkpoints or applies it',
+    () async {
+      await seed();
+      final before = await rb.createDriveJournalStore().load();
+      final original = auth.current;
+      server.beforeChangePage = () async {
+        auth.current = const GoogleAccount(subject: 'other-account');
+      };
+      await expectLater(
+        pb.fetchChanges(null),
+        throwsA(isA<GoogleCloudError>()),
+      );
+      expect(await rb.createDriveJournalStore().load(), before);
+      expect(b.objects.single.body, 'original 😀\r\n');
+      auth.current = original;
+      server.beforeChangePage = null;
+      expect((await engine(rb, provider(rb)).sync()).upToDate, true);
+    },
+  );
+
+  test(
+    'new malformed graph cannot commit its change cursor before parent validation',
+    () async {
+      await seed();
+      final before = await rb.createDriveJournalStore().load();
+      final record = server.revisions.first;
+      final body =
+          jsonDecode(utf8.decode(record.bytes)) as Map<String, dynamic>;
+      body['parents'] = ['absent-parent'];
+      server.files['orphan-record'] = DriveTestFile({
+        ...record.metadata,
+        'id': 'orphan-record',
+      }, utf8.encode(jsonEncode(body)));
+      await expectLater(
+        pb.fetchChanges(null),
+        throwsA(isA<WorkspaceConflict>()),
+      );
+      expect(await rb.createDriveJournalStore().load(), before);
+      expect(b.objects.single.body, 'original 😀\r\n');
+    },
+  );
+  test(
+    'Google can omit an empty changes array without making sync fail',
+    () async {
+      await seed();
+      await pb.fetchChanges(null);
+      server.omitEmptyChanges = true;
+      expect((await engine(rb, pb).sync()).upToDate, true);
+      expect(b.objects.single.body, 'original 😀\r\n');
+    },
+  );
+
+  test(
+    'thousand-revision history stays complete with one-record incremental reads',
+    () async {
+      await seed();
+      final base = server.revisions.firstWhere(
+        (f) =>
+            jsonDecode(utf8.decode(f.bytes))['entry']['key'] ==
+            b.objects.single.id,
+      );
+      final source =
+          jsonDecode(utf8.decode(base.bytes)) as Map<String, dynamic>;
+      var parent = base.metadata['id'] as String;
+      void append(String id) {
+        final value = {
+          ...source,
+          'operation': id,
+          'parents': [parent],
+        };
+        final metadata = {
+          ...base.metadata,
+          'id': id,
+          'appProperties': {
+            ...base.metadata['appProperties'] as Map,
+            'orbitOp': id,
+          },
+        };
+        server.files[id] = DriveTestFile(
+          metadata,
+          utf8.encode(jsonEncode(value)),
+        );
+        parent = id;
+      }
+
+      for (var i = 0; i < 1000; i++) {
+        append('stress-revision-$i');
+      }
+      server.changePageSize = 73;
+      final snapshot = await pb.fetchChanges(null);
+      expect(
+        snapshot.entries
+            .singleWhere((e) => e.entry.key == b.objects.single.id)
+            .version,
+        'stress-revision-999',
+      );
+      expect(snapshot.forks, isEmpty);
+      final lists = server.historyLists, reads = server.mediaReads;
+      append('stress-last');
+      final delta = await provider(rb).fetchChanges(snapshot.cursor);
+      expect(
+        delta.entries
+            .singleWhere((e) => e.entry.key == b.objects.single.id)
+            .version,
+        'stress-last',
+      );
+      expect(server.historyLists, lists);
+      expect(server.mediaReads, reads + 1);
+      final state = await rb.createDriveJournalStore().load();
+      expect(
+        (state!['changeFeed']['ids'] as List).length,
+        server.revisions.length,
+      );
     },
   );
 }

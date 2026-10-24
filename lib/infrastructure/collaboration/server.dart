@@ -7,7 +7,12 @@ import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import '../../application/backup_bundle.dart';
 import '../../domain/collaboration.dart';
+import '../../domain/object_tombstone.dart';
+import '../../domain/sync_entry.dart';
+import '../../application/sync/sync_policy.dart';
 import '../storage/object_codec.dart';
+
+part 'shared_replication.dart';
 
 String collaborationToken() => base64Url
     .encode(List<int>.generate(32, (_) => Random.secure().nextInt(256)))
@@ -67,7 +72,14 @@ class CollaborationServer {
   HttpServer? _server;
   RandomAccessFile? _lock;
   bool _writeFailed = false;
+  String _epoch = collaborationToken();
+  final _signals = <String, StreamController<void>>{};
+  final _awareness = <String, int>{};
+  final _watchers = <String, int>{};
+  final _documentBytes = <(String, String), int>{};
+  final _roomDocumentBytes = <String, int>{};
   static const maxDocumentBytes = 2 * 1024 * 1024;
+  static const maxRoomBytes = 128 * 1024 * 1024;
 
   Future<int> start({InternetAddress? address, int port = 47831}) async {
     try {
@@ -97,6 +109,7 @@ class CollaborationServer {
           await file.close();
         }
       }
+      _epoch = collaborationToken();
       _server = await HttpServer.bind(
         address ?? InternetAddress.loopbackIPv4,
         port,
@@ -113,8 +126,15 @@ class CollaborationServer {
   }
 
   Future<void> close() async {
+    for (final signal in _signals.values) {
+      signal.add(null);
+    }
     await _server?.close(force: true);
     _server = null;
+    for (final signal in _signals.values) {
+      await signal.close();
+    }
+    _signals.clear();
     await _queue;
     final lock = _lock;
     _lock = null;
@@ -133,6 +153,17 @@ class CollaborationServer {
       (_rooms[room]!['grants'] as Map)[event['hash']] = event['grant'];
     } else if (event['kind'] == 'revoke') {
       (_rooms[room]!['grants'] as Map).remove(event['hash']);
+    } else if (event['kind'] == 'attachment') {
+      final state = _rooms[room]!;
+      state['replicationVersion'] = 2;
+      (state['attachments'] ??= <String, dynamic>{})[event['path']] =
+          event['attachment'];
+      state['sequence'] = event['sequence'];
+    } else if (event['kind'] == 'put') {
+      final state = _rooms[room]!;
+      state['replicationVersion'] = 2;
+      (state['documents'] as Map)[event['id']] = event['document'];
+      state['sequence'] = event['sequence'];
     } else if (event['kind'] == 'edit') {
       final state = _rooms[room]!;
       final id = event['id'] as String;
@@ -140,6 +171,11 @@ class CollaborationServer {
       (doc['history'] as Map)['${doc['version']}'] = doc['snapshot'];
       doc['version'] = event['version'];
       doc['snapshot'] = event['snapshot'];
+      if (event['path'] != null) doc['path'] = event['path'];
+      if (event['removed'] == true) {
+        doc['removed'] = true;
+        doc['tombstone'] = event['tombstone'];
+      }
       doc['sequence'] = event['sequence'];
       while ((doc['history'] as Map).length > 32 ||
           utf8.encode(jsonEncode(doc['history'])).length > 8 * 1024 * 1024) {
@@ -158,6 +194,70 @@ class CollaborationServer {
     } else {
       throw const FormatException('Unsupported complete journal record.');
     }
+    if (event['kind'] == 'create') {
+      for (final entry in (_rooms[room]!['documents'] as Map).entries) {
+        _recordDocumentBytes(room, entry.key as String, entry.value as Map);
+      }
+    } else if (event['kind'] == 'edit' || event['kind'] == 'put') {
+      _recordDocumentBytes(
+        room,
+        event['id'] as String,
+        (_rooms[room]!['documents'] as Map)[event['id']] as Map,
+      );
+    }
+  }
+
+  void _recordDocumentBytes(String room, String id, Map document) {
+    final key = (room, id), size = utf8.encode(jsonEncode(document)).length;
+    _roomDocumentBytes[room] =
+        (_roomDocumentBytes[room] ?? 0) - (_documentBytes[key] ?? 0) + size;
+    _documentBytes[key] = size;
+  }
+
+  void _checkRoomBudget(Map<String, dynamic> event) {
+    final room = event['room'] as String;
+    if (event['kind'] == 'create') {
+      if (utf8.encode(jsonEncode(event['state'])).length > maxRoomBytes) {
+        throw const FormatException('Shared room metadata limit reached.');
+      }
+      return;
+    }
+    final state = _rooms[room]!;
+    final metadata = {...state}..remove('documents');
+    var size = _roomDocumentBytes[room] ?? 0;
+    if (event['kind'] == 'put' || event['kind'] == 'edit') {
+      final id = event['id'] as String;
+      Map next;
+      if (event['kind'] == 'put') {
+        next = event['document'] as Map;
+      } else {
+        final old = (state['documents'] as Map)[id] as Map;
+        final history = Map<String, dynamic>.from(old['history'] as Map)
+          ..['${old['version']}'] = old['snapshot'];
+        while (history.length > 32 ||
+            utf8.encode(jsonEncode(history)).length > 8 * 1024 * 1024) {
+          history.remove(history.keys.first);
+        }
+        next = {
+          ...old,
+          'history': history,
+          'snapshot': event['snapshot'],
+          'version': event['version'],
+          'sequence': event['sequence'],
+        };
+      }
+      size +=
+          utf8.encode(jsonEncode(next)).length -
+          (_documentBytes[(room, id)] ?? 0);
+    } else if (event['kind'] == 'attachment') {
+      metadata['attachments'] = {
+        ...?state['attachments'] as Map?,
+        event['path']: event['attachment'],
+      };
+    }
+    if (size + utf8.encode(jsonEncode(metadata)).length > maxRoomBytes) {
+      throw const FormatException('Shared room metadata limit reached.');
+    }
   }
 
   Future<T> _serial<T>(Future<T> Function() action) {
@@ -170,12 +270,35 @@ class CollaborationServer {
     if (_writeFailed) {
       throw StateError('Restart the server after repairing its storage.');
     }
+    _checkRoomBudget(event);
     final serialized = jsonEncode(event);
     try {
+      if ({'put', 'attachment'}.contains(event['kind'])) {
+        final before = File('${directory.path}/events.before-live-v2.jsonl');
+        final log = File('${directory.path}/events.jsonl');
+        if (!await before.exists() && await log.exists()) {
+          final pending = File('${before.path}.pending');
+          final sink = pending.openWrite();
+          try {
+            await sink.addStream(log.openRead());
+            await sink.flush();
+          } finally {
+            await sink.close();
+          }
+          if ((await sha256.bind(log.openRead()).first).toString() !=
+              (await sha256.bind(pending.openRead()).first).toString()) {
+            throw StateError(
+              'Host journal changed during recovery checkpoint.',
+            );
+          }
+          await pending.rename(before.path);
+        }
+      }
       await File(
         '${directory.path}/events.jsonl',
       ).writeAsString('$serialized\n', mode: FileMode.append, flush: true);
       _replay(Map<String, dynamic>.from(jsonDecode(serialized) as Map));
+      _signals[event['room']]?.add(null);
     } on Object {
       // A failed append may have left a partial record. Do not append another
       // acknowledged edit after it; restart repairs only a torn final record.
@@ -268,6 +391,10 @@ class CollaborationServer {
               'presence',
               'durable-journal',
               'snapshot-attachments',
+              'live-objects',
+              'live-attachments',
+              'events',
+              'text-ranges',
             ],
             'maxSnapshotBytes': BackupBundle.maxEncodedBytes,
           }),
@@ -294,11 +421,23 @@ class CollaborationServer {
                     as Map)['id']
                 as String;
         for (final entry in bundle.files.entries) {
-          if (!entry.key.startsWith('Notes/') &&
-              !entry.key.startsWith('Boards/')) {
+          if (syncPathRole(entry.key) == SyncPathRole.tombstone) {
+            final tombstone = ObjectTombstone.fromJson(
+              jsonDecode(utf8.decode(entry.value)) as Map<String, dynamic>,
+            );
+            if (tombstone.workspaceId != workspace) {
+              throw const FormatException('Wrong deletion Vault.');
+            }
+            documents[tombstone.objectId] = {
+              'version': 1,
+              'sequence': 1,
+              'removed': true,
+              'tombstone': tombstone.toJson(),
+              'path': tombstone.path,
+            };
             continue;
           }
-          if (!entry.key.endsWith('.md') && !entry.key.endsWith('.json')) {
+          if (syncPathRole(entry.key) != SyncPathRole.object) {
             continue;
           }
           final object = ObjectCodec().decode(
@@ -306,9 +445,7 @@ class CollaborationServer {
             workspace,
             markdown: entry.key.endsWith('.md'),
           );
-          if (object.isReadOnly ||
-              object.isDeleted ||
-              !['orbit.note', 'orbit.canvas'].contains(object.typeId)) {
+          if (object.isReadOnly) {
             continue;
           }
           final snapshot = collaborationSnapshot(object);
@@ -325,7 +462,20 @@ class CollaborationServer {
             'path': entry.key,
           };
         }
+        if (documents.length > 10000) {
+          throw const FormatException('Shared object limit reached.');
+        }
         await _serial(() async {
+          final attachments = <String, dynamic>{};
+          for (final entry in bundle.files.entries.where(
+            (e) => e.key.startsWith('Attachments/'),
+          )) {
+            final hash = sha256.convert(entry.value).toString();
+            final file = _blobFile(room, hash);
+            await file.parent.create(recursive: true);
+            await file.writeAsBytes(entry.value, flush: true);
+            attachments[entry.key] = {'hash': hash, 'size': entry.value.length};
+          }
           await File(
             '${directory.path}/$room.backup.json',
           ).writeAsString(source, flush: true);
@@ -334,9 +484,11 @@ class CollaborationServer {
             'room': room,
             'state': {
               'workspaceId': workspace,
+              'replicationVersion': body['replicationVersion'] == 2 ? 2 : 1,
               'name': bundle.name,
               'sequence': 1,
               'documents': documents,
+              'attachments': attachments,
               'operations': <String, dynamic>{},
               'grants': {
                 _hash(invitation): {
@@ -358,12 +510,22 @@ class CollaborationServer {
           throw const HttpException('Access denied.');
         }
         final access = _access(room, token);
+        if (access.state['replicationVersion'] == 2 &&
+            request.headers.value('x-orbit-client') != '2') {
+          throw const FormatException(
+            'This shared Vault requires an updated Orbit client.',
+          );
+        }
+        if (await _replicationRequest(request, room, token, action)) return;
         switch ((request.method, action)) {
           case ('GET', 'state'):
             final documents = access.state['documents'] as Map;
-            final since = int.tryParse(
-              request.uri.queryParameters['since'] ?? '0',
-            );
+            // A restarted/restored host has a new incarnation. A client's old
+            // cursor may exceed this journal, so return a full snapshot instead.
+            final requestedEpoch = request.uri.queryParameters['epoch'];
+            final since = requestedEpoch != null && requestedEpoch != _epoch
+                ? 0
+                : int.tryParse(request.uri.queryParameters['since'] ?? '0');
             if (since == null ||
                 since < 0 ||
                 since > (access.state['sequence'] as int)) {
@@ -372,16 +534,35 @@ class CollaborationServer {
             request.response.write(
               jsonEncode({
                 'protocol': 1,
+                'epoch': _epoch,
                 'workspaceId': access.state['workspaceId'],
                 'name': access.state['name'],
                 'sequence': access.state['sequence'],
                 'role': access.grant['role'],
+                'capabilities': access.state['replicationVersion'] == 2
+                    ? [
+                        'live-objects',
+                        'live-attachments',
+                        'events',
+                        'text-ranges',
+                      ]
+                    : <String>[],
+                'minimumClient': access.state['replicationVersion'] == 2
+                    ? 2
+                    : 1,
+                'attachments':
+                    access.state['attachments'] ?? <String, dynamic>{},
                 'documents': {
                   for (final e in documents.entries)
                     if (((e.value as Map)['sequence'] as int? ?? 1) > since)
                       e.key: {
                         'version': (e.value as Map)['version'],
                         'snapshot': (e.value as Map)['snapshot'],
+                        'path': (e.value as Map)['path'],
+                        if ((e.value as Map)['removed'] == true)
+                          'removed': true,
+                        if ((e.value as Map)['tombstone'] != null)
+                          'tombstone': (e.value as Map)['tombstone'],
                       },
                 },
                 'peers': _peers(room),
@@ -396,16 +577,53 @@ class CollaborationServer {
                     )
                     as Map;
             final files = root['files'] as Map;
+            final attachments = access.state['attachments'] as Map? ?? {};
+            if (attachments.values.whereType<Map>().fold<int>(
+                  0,
+                  (sum, a) => sum + (a['size'] as int) * 4 ~/ 3 + 4,
+                ) >
+                BackupBundle.maxEncodedBytes) {
+              throw const FormatException(
+                'Attachments exceed the snapshot limit; use live replication.',
+              );
+            }
             for (final doc
                 in (access.state['documents'] as Map).values.cast<Map>()) {
+              if (doc['removed'] == true) {
+                files.remove(doc['path']);
+                final tombstone = ObjectTombstone.fromJson(
+                  Map<String, dynamic>.from(doc['tombstone'] as Map),
+                );
+                files[tombstone.storagePath] = base64Encode(
+                  utf8.encode(jsonEncode(tombstone.toJson())),
+                );
+                continue;
+              }
               files[doc['path']] = base64Encode(
                 utf8.encode(
                   ObjectCodec().encode(
                     collaborationObject(
                       Map<String, dynamic>.from(doc['snapshot'] as Map),
+                      allowDeleted: true,
                     ),
                   ),
                 ),
+              );
+            }
+            for (final entry
+                in (access.state['attachments'] as Map? ?? {}).entries) {
+              final attachment = entry.value as Map;
+              files[entry.key] = base64Encode(
+                await _blobFile(
+                  room,
+                  attachment['hash'] as String,
+                ).readAsBytes(),
+              );
+            }
+            if (utf8.encode(jsonEncode(root)).length >
+                BackupBundle.maxEncodedBytes) {
+              throw const FormatException(
+                'Shared backup exceeds snapshot limit.',
               );
             }
             request.response.write(jsonEncode(root));
@@ -453,6 +671,8 @@ class CollaborationServer {
             if (body['active'] == false) {
               _presence[room]?.remove(session);
               _sessions.remove(session);
+              _awareness[room] = (_awareness[room] ?? 0) + 1;
+              _signals[room]?.add(null);
               request.response.write('{}');
               return;
             }
@@ -482,6 +702,9 @@ class CollaborationServer {
             }
             final document =
                 (access.state['documents'] as Map)[objectId] as Map;
+            if (document['removed'] == true) {
+              throw const FormatException('Object was removed.');
+            }
             final snapshot = document['snapshot'] as Map;
             final knownIds = _knownPlacements(
               room,
@@ -489,6 +712,7 @@ class CollaborationServer {
               snapshot,
             );
             _sessions[session] = (room: room, grant: access.hash);
+            final textRange = _textRange(body, document);
             (_presence[room] ??= {})[session] = {
               'session': session,
               'name': access.grant['name'],
@@ -504,13 +728,19 @@ class CollaborationServer {
                     ).where(knownIds.contains).toList()
                   : <String>[],
               'seen': DateTime.now().toUtc().toIso8601String(),
+              ...textRange,
             };
+            _awareness[room] = (_awareness[room] ?? 0) + 1;
+            _signals[room]?.add(null);
             request.response.write('{}');
           case ('POST', 'edit'):
             _access(room, token, edit: true);
             final body = await _body(request, maxDocumentBytes + 2048);
             await _serial(() async {
               _access(room, token, edit: true);
+              if (body['epoch'] != null && body['epoch'] != _epoch) {
+                throw const CollaborationHostChanged();
+              }
               final state = _rooms[room]!;
               final operation = body['operation'] as String;
               if (!RegExp(r'^[A-Za-z0-9-]{1,80}$').hasMatch(operation)) {
@@ -528,16 +758,12 @@ class CollaborationServer {
                 final latest =
                     (state['documents'] as Map)[oldResult['id']] as Map;
                 request.response.write(
-                  jsonEncode({
-                    'id': oldResult['id'],
-                    'version': latest['version'],
-                    'snapshot': latest['snapshot'],
-                  }),
+                  jsonEncode({'id': oldResult['id'], ..._document(latest)}),
                 );
                 return;
               }
               final doc = (state['documents'] as Map)[body['id']] as Map?;
-              if (doc == null) {
+              if (doc == null || doc['removed'] == true) {
                 throw const FormatException('Object is not shared.');
               }
               final base = body['version'] == doc['version']
@@ -549,16 +775,29 @@ class CollaborationServer {
               final proposed = Map<String, dynamic>.from(
                 body['snapshot'] as Map,
               );
-              final merged = mergeCollaboration(
-                Map<String, dynamic>.from(base as Map),
-                proposed,
-                Map<String, dynamic>.from(doc['snapshot'] as Map),
-              );
-              final object = collaborationObject(merged);
-              if (!['orbit.note', 'orbit.canvas'].contains(object.typeId) ||
-                  object.workspaceId != state['workspaceId']) {
+              final merged =
+                  (state['replicationVersion'] == 2
+                  ? mergeSharedDocument
+                  : mergeCollaboration)(
+                    Map<String, dynamic>.from(base as Map),
+                    proposed,
+                    Map<String, dynamic>.from(doc['snapshot'] as Map),
+                  );
+              final object = collaborationObject(merged, allowDeleted: true);
+              if (object.workspaceId != state['workspaceId']) {
                 throw const FormatException('Invalid shared document.');
               }
+              final path = body['path'] as String? ?? doc['path'] as String;
+              if (path != doc['path']) {
+                throw const CollaborationConflict('a physical owner-file move');
+              }
+              _validateSharedPath(path, object.id, object.typeId, state);
+              await _validateFileObject(
+                room,
+                state,
+                object.properties,
+                object.typeId,
+              );
               if (utf8.encode(jsonEncode(merged)).length > maxDocumentBytes) {
                 throw const FormatException('Shared document exceeds 2 MiB.');
               }
@@ -568,16 +807,13 @@ class CollaborationServer {
                 'id': body['id'],
                 'version': (doc['version'] as int) + 1,
                 'snapshot': merged,
+                'path': path,
                 'operation': operationKey,
                 'proposalHash': proposalHash,
                 'sequence': (state['sequence'] as int) + 1,
               });
               request.response.write(
-                jsonEncode({
-                  'id': body['id'],
-                  'version': doc['version'],
-                  'snapshot': doc['snapshot'],
-                }),
+                jsonEncode({'id': body['id'], ..._document(doc)}),
               );
             });
           default:
@@ -586,7 +822,12 @@ class CollaborationServer {
       }
     } on CollaborationConflict catch (e) {
       request.response.statusCode = 409;
-      request.response.write(jsonEncode({'error': e.toString()}));
+      request.response.write(
+        jsonEncode({
+          'error': e.toString(),
+          if (e is CollaborationHostChanged) 'code': 'host-restarted',
+        }),
+      );
     } on HttpException {
       request.response.statusCode = 403;
       request.response.write('{"error":"Access denied."}');

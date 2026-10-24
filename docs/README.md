@@ -1,5 +1,32 @@
 # Documentation map
 
+2026-10-23 Canvas: [Use-case and sequence diagram tools](tasks/uml-interaction-diagrams-2026-10-23.md)
+adds actors, UML relationships, messages/lifelines, combined fragments and live
+Markdown/publication presentation using the existing engine.
+
+2026-10-23 Settings: [categorized, searchable preferences](tasks/settings-workspace-2026-10-23.md) adds
+working code/layout/Canvas/dictionary controls, grouped cards and guarded reset/Undo.
+
+2026-10-23 appearance: [shared semantic colors and refreshed Orbit defaults](tasks/semantic-color-system-2026-10-23.md)
+connect controls, statuses, graphs, code/math and Canvas previews to the current
+palette, with contrast calibration and preserved authored colors.
+
+2026-10-22 appearance continuation: [optional system light/dark switching](tasks/system-appearance-2026-10-22.md)
+for paired families, with manual fallback, remembered Spaces and matching previews/export.
+
+2026-10-22 appearance: [100 coordinated light/dark palettes](tasks/appearance-palettes-2026-10-22.md)
+adds 50 paired families, contrast checks, searchable bounded browsing and
+accent-following while retaining original/custom themes and recovery paths.
+
+2026-10-22: Personal Drive synchronization uses incremental change tracking while
+Orbit runs. Newly created self-hosted live rooms add continuous objects/lifecycle,
+verified resumable assets, source-checked note awareness and optional launch/resume
+reconnect. See [current delivery](features/sync-and-collaboration.md),
+[protocol/recovery](adr/0032-live-shared-vault-replication.md) and
+[validation/limits](tasks/live-shared-sync-2026-10-22.md). Closed-app/mobile
+workers, arbitrary-overlap CRDT and physical-device acceptance remain unfinished.
+Earlier dated entries below record historical milestones.
+
 2026-10-13: Windows Google registration and real owner account access are verified;
 a configured release is available. Manual backup/restore remains explicit.
 
@@ -100,3 +127,5 @@ Historical change record: [2026-09-08 documentation expansion](planning/document
 - [Historical local hardening batch report](planning/local-hardening-report.md).
 
 Current implementation evidence: [incremental audit polish batch](planning/audit-polish-batch.md).
+
+Motion update: [Motion studio, authored Canvas replay and connected feedback](tasks/motion-studio-2026-10-23.md), including exact guide coverage and remaining concept-only effects.

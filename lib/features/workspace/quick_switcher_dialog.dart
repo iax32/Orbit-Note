@@ -441,7 +441,7 @@ class _SwitcherItemRow extends StatelessWidget {
             _ => isLatex ? Icons.functions_rounded : Icons.description_outlined,
           };
     final badgeColor = item.badge == 'BOOKMARKED'
-        ? const Color(0xFFF59E0B)
+        ? OrbitColors.of(context).warning
         : item.isCreate || item.badge == 'ACTIVE' || item.badge == 'OPEN'
         ? c.accent
         : c.muted;

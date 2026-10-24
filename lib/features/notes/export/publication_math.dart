@@ -10,6 +10,13 @@ Future<Uint8List> renderPublicationMath(String tex) async {
     throw const FormatException('Equation preview is too large.');
   }
   final boundary = RenderRepaintBoundary();
+  final surface = RenderConstrainedOverflowBox(
+    minWidth: 0,
+    minHeight: 0,
+    maxWidth: double.infinity,
+    maxHeight: double.infinity,
+    child: boundary,
+  );
   final view = RenderView(
     view: ui.PlatformDispatcher.instance.views.first,
     configuration: const ViewConfiguration(
@@ -17,7 +24,7 @@ Future<Uint8List> renderPublicationMath(String tex) async {
       physicalConstraints: BoxConstraints.tightFor(width: 1000, height: 400),
       devicePixelRatio: 1,
     ),
-    child: RenderPositionedBox(alignment: Alignment.center, child: boundary),
+    child: surface,
   );
   final pipeline = PipelineOwner()..rootNode = view;
   final owner = BuildOwner(focusManager: FocusManager());
@@ -46,13 +53,26 @@ Future<Uint8List> renderPublicationMath(String tex) async {
       throw FormatException('Unsupported equation: $parseError');
     }
     pipeline.flushLayout();
+    // Measure the complete formula before allocating pixels. A fixed viewport
+    // can silently crop long aligned equations and tall matrices.
+    final size = boundary.size;
+    if (!size.width.isFinite ||
+        !size.height.isFinite ||
+        size.width <= 0 ||
+        size.height <= 0 ||
+        size.width > 8192 ||
+        size.height > 8192 ||
+        size.width * size.height > 4000000) {
+      throw const FormatException(
+        'Equation dimensions exceed the export limit.',
+      );
+    }
     pipeline.flushCompositingBits();
     pipeline.flushPaint();
     final image = await boundary.toImage(pixelRatio: 2);
     try {
-      return (await image.toByteData(
-        format: ui.ImageByteFormat.png,
-      ))!.buffer.asUint8List();
+      final png = (await image.toByteData(format: ui.ImageByteFormat.png))!;
+      return png.buffer.asUint8List(png.offsetInBytes, png.lengthInBytes);
     } finally {
       image.dispose();
     }
@@ -62,6 +82,10 @@ Future<Uint8List> renderPublicationMath(String tex) async {
     ).attachToRenderTree(owner, root);
     owner.finalizeTree();
     pipeline.rootNode = null;
+    view.child = null;
+    surface.child = null;
+    boundary.dispose();
+    surface.dispose();
     view.dispose();
     owner.focusManager.dispose();
   }

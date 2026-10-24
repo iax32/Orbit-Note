@@ -116,3 +116,44 @@ Uint8List formPdf() {
   );
   return Uint8List.fromList(ascii.encode(pdf.toString()));
 }
+
+/// Long, text-heavy synthetic document with vector diagrams. No user material
+/// or network fixture is needed for native PDF performance/interaction checks.
+Uint8List largeResearchPdf({int pageCount = 300, int linesPerPage = 40}) {
+  final objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [${List.generate(pageCount, (i) => '${4 + i * 2} 0 R').join(' ')}] /Count $pageCount >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+  for (var p = 0; p < pageCount; p++) {
+    final stream = StringBuffer('BT /F1 10 Tf 40 750 Td 14 TL\n');
+    for (var line = 0; line < linesPerPage; line++) {
+      stream.writeln(
+        '(Orbit page ${p + 1} line $line - evidence and notes) Tj T*',
+      );
+    }
+    stream.writeln('ET 0.5 w');
+    for (var i = 0; i < 100; i++) {
+      stream.writeln('${40 + i % 20 * 25} ${40 + i ~/ 20 * 16} 20 12 re S');
+    }
+    objects.add(
+      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${5 + p * 2} 0 R >>',
+    );
+    objects.add('<< /Length ${stream.length} >>\nstream\n$stream\nendstream');
+  }
+  final pdf = StringBuffer('%PDF-1.4\n');
+  final offsets = <int>[0];
+  for (var i = 0; i < objects.length; i++) {
+    offsets.add(pdf.length);
+    pdf.write('${i + 1} 0 obj\n${objects[i]}\nendobj\n');
+  }
+  final xref = pdf.length;
+  pdf.write('xref\n0 ${offsets.length}\n0000000000 65535 f \n');
+  for (final offset in offsets.skip(1)) {
+    pdf.write('${offset.toString().padLeft(10, '0')} 00000 n \n');
+  }
+  pdf.write(
+    'trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n$xref\n%%EOF\n',
+  );
+  return Uint8List.fromList(ascii.encode(pdf.toString()));
+}

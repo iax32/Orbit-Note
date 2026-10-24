@@ -467,7 +467,7 @@ class _CanvasSearchOverlayState extends State<CanvasSearchOverlay> {
           style: TextStyle(
             fontSize: 10,
             fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-            color: selected ? Colors.white : colors.subtle,
+            color: selected ? OrbitColors.of(context).onAccent : colors.subtle,
           ),
         ),
       ),

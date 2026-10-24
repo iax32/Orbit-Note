@@ -26,20 +26,7 @@ class GraphNode {
   int connectionCount = 0;
   bool matchesQuery = true;
 
-  Color get color {
-    switch (type) {
-      case 'orbit.note':
-        return const Color(0xFF8B7CF6); // Orbit Accent
-      case 'orbit.task':
-        return const Color(0xFFD8B56A); // Orbit Warning
-      case 'orbit.canvas':
-        return const Color(0xFF6F7FEA); // Orbit Secondary
-      case 'orbit.event':
-        return const Color(0xFF65C6A3); // Orbit Success
-      default:
-        return const Color(0xFFB6B2C2); // Orbit Subtle
-    }
-  }
+  Color colorFor(OrbitColors palette) => palette.objectType(type);
 
   double get radius => (9.0 + (connectionCount * 1.5)).clamp(9.0, 24.0);
 }
@@ -251,8 +238,7 @@ class GraphView extends StatefulWidget {
   State<GraphView> createState() => _GraphViewState();
 }
 
-class _GraphViewState extends State<GraphView>
-    with SingleTickerProviderStateMixin {
+class _GraphViewState extends State<GraphView> with TickerProviderStateMixin {
   final TransformationController _transformCtrl = TransformationController();
   String _query = '';
   bool _localMode = false;
@@ -277,6 +263,25 @@ class _GraphViewState extends State<GraphView>
           end: _cameraTo,
         ).transform(Curves.easeOutCubic.transform(_cameraMotion.value));
       });
+  late final AnimationController _pathMotion = AnimationController(
+    vsync: this,
+    value: 1,
+  );
+  void _revealPaths() {
+    _pathMotion.duration = OrbitMotionScope.settings(context).navigation
+        ? OrbitMotionScope.duration(
+            context,
+            const Duration(milliseconds: 900),
+            spatial: true,
+          )
+        : Duration.zero;
+    if (_pathMotion.duration == Duration.zero) {
+      _pathMotion.value = 1;
+    } else {
+      _pathMotion.forward(from: 0);
+    }
+  }
+
   Matrix4 _cameraFrom = Matrix4.identity(), _cameraTo = Matrix4.identity();
 
   void _moveCamera(Matrix4 target) {
@@ -299,6 +304,8 @@ class _GraphViewState extends State<GraphView>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _pathMotion.stop();
+    _pathMotion.value = 1;
     if (_cameraMotion.isAnimating &&
         OrbitMotionScope.duration(context, OrbitMotion.dialog, spatial: true) ==
             Duration.zero) {
@@ -309,6 +316,7 @@ class _GraphViewState extends State<GraphView>
 
   @override
   void dispose() {
+    _pathMotion.dispose();
     _cameraMotion.dispose();
     _transformCtrl.dispose();
     super.dispose();
@@ -396,7 +404,11 @@ class _GraphViewState extends State<GraphView>
               child: InteractiveViewer(
                 constrained: false,
                 transformationController: _transformCtrl,
-                onInteractionStart: (_) => _cameraMotion.stop(),
+                onInteractionStart: (_) {
+                  _cameraMotion.stop();
+                  _pathMotion.stop();
+                  _pathMotion.value = 1;
+                },
                 boundaryMargin: const EdgeInsets.all(1200),
                 minScale: 0.15,
                 maxScale: 3.5,
@@ -444,6 +456,7 @@ class _GraphViewState extends State<GraphView>
                         ),
                       ),
                       painter: _GraphCanvasPainter(
+                        reveal: _pathMotion,
                         data: graphData,
                         hoveredNode: _hoveredNode,
                         colors: colors,
@@ -596,7 +609,7 @@ class _GraphViewState extends State<GraphView>
                       children: [
                         _TypeFilterChip(
                           label: 'Notes',
-                          color: const Color(0xFF8B7CF6),
+                          color: colors.objectType('orbit.note'),
                           selected: _typeFilters.contains('orbit.note'),
                           onTap: () => setState(() {
                             _typeFilters.contains('orbit.note')
@@ -607,7 +620,7 @@ class _GraphViewState extends State<GraphView>
                         const SizedBox(width: 4),
                         _TypeFilterChip(
                           label: 'Tasks',
-                          color: const Color(0xFFD8B56A),
+                          color: colors.objectType('orbit.task'),
                           selected: _typeFilters.contains('orbit.task'),
                           onTap: () => setState(() {
                             _typeFilters.contains('orbit.task')
@@ -618,7 +631,7 @@ class _GraphViewState extends State<GraphView>
                         const SizedBox(width: 4),
                         _TypeFilterChip(
                           label: 'Canvases',
-                          color: const Color(0xFF6F7FEA),
+                          color: colors.objectType('orbit.canvas'),
                           selected: _typeFilters.contains('orbit.canvas'),
                           onTap: () => setState(() {
                             _typeFilters.contains('orbit.canvas')
@@ -633,7 +646,7 @@ class _GraphViewState extends State<GraphView>
                         }.entries)
                           _TypeFilterChip(
                             label: entry.value,
-                            color: const Color(0xFF65C6A3),
+                            color: colors.objectType(entry.key),
                             selected: _typeFilters.contains(entry.key),
                             onTap: () => setState(() {
                               if (!_typeFilters.remove(entry.key)) {
@@ -642,6 +655,11 @@ class _GraphViewState extends State<GraphView>
                             }),
                           ),
                         const SizedBox(width: 8),
+                        IconButton(
+                          tooltip: 'Reveal graph paths',
+                          icon: const Icon(Icons.slow_motion_video, size: 18),
+                          onPressed: _revealPaths,
+                        ),
                         Tooltip(
                           message: 'Fit graph to view',
                           child: IconButton(
@@ -691,10 +709,12 @@ class _GraphViewState extends State<GraphView>
                   decoration: BoxDecoration(
                     color: colors.raised.withValues(alpha: 0.95),
                     borderRadius: BorderRadius.circular(OrbitRadius.control),
-                    border: Border.all(color: _hoveredNode!.color),
+                    border: Border.all(color: _hoveredNode!.colorFor(colors)),
                     boxShadow: [
                       BoxShadow(
-                        color: _hoveredNode!.color.withValues(alpha: 0.2),
+                        color: _hoveredNode!
+                            .colorFor(colors)
+                            .withValues(alpha: 0.2),
                         blurRadius: 10,
                         spreadRadius: 2,
                       ),
@@ -757,13 +777,15 @@ class _TypeFilterChip extends StatelessWidget {
 class _GraphCanvasPainter extends CustomPainter {
   _GraphCanvasPainter({
     required this.data,
+    required this.reveal,
     required this.hoveredNode,
     required this.colors,
     required this.transform,
     this.focusId,
-  }) : super(repaint: transform);
+  }) : super(repaint: Listenable.merge([transform, reveal]));
 
   final GraphData data;
+  final Animation<double> reveal;
   final GraphNode? hoveredNode;
   final OrbitColors colors;
   final TransformationController transform;
@@ -812,11 +834,19 @@ class _GraphCanvasPainter extends CustomPainter {
         edgePaint.color = colors.border.withValues(alpha: 0.2);
         edgePaint.strokeWidth = 0.8;
       } else {
-        edgePaint.color = colors.subtle.withValues(alpha: 0.22);
+        edgePaint.color = colors.graphEdge;
         edgePaint.strokeWidth = 1.0;
       }
 
-      canvas.drawLine(Offset(n1.x, n1.y), Offset(n2.x, n2.y), edgePaint);
+      canvas.drawLine(
+        Offset(n1.x, n1.y),
+        Offset.lerp(
+          Offset(n1.x, n1.y),
+          Offset(n2.x, n2.y),
+          Curves.easeOutCubic.transform(reveal.value),
+        )!,
+        edgePaint,
+      );
     }
 
     // 3. Draw nodes
@@ -832,9 +862,7 @@ class _GraphCanvasPainter extends CustomPainter {
           hovered != null && activeConnectedIds.contains(node.id);
       final isDimmed = hovered != null && !isConnected;
 
-      final baseColor = node.type == 'orbit.canvas'
-          ? colors.secondary
-          : colors.accent;
+      final baseColor = node.colorFor(colors);
       final alphaFactor = (!node.matchesQuery || isDimmed) ? 0.25 : 1.0;
       final nodeRadius = node.radius;
 
@@ -887,7 +915,7 @@ class _GraphCanvasPainter extends CustomPainter {
           fontSize: 12 / transform.value.getMaxScaleOnAxis().clamp(1.0, 3.5),
           fontWeight: isHovered ? FontWeight.bold : FontWeight.normal,
           color: isHovered
-              ? Colors.white
+              ? colors.text
               : colors.text.withValues(alpha: alphaFactor * labelOpacity),
         ),
       );

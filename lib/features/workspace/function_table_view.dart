@@ -691,7 +691,9 @@ class _FunctionTableViewState extends State<FunctionTableView> {
                                                   fontSize: 11.5,
                                                   fontWeight: FontWeight.w500,
                                                   color: conf == 'Verified'
-                                                      ? Colors.green.shade400
+                                                      ? OrbitColors.of(
+                                                          context,
+                                                        ).success
                                                       : colors.text,
                                                 ),
                                               ),
@@ -710,10 +712,11 @@ class _FunctionTableViewState extends State<FunctionTableView> {
                                                 color:
                                                     status.toLowerCase() ==
                                                         'confirmed'
-                                                    ? Colors.green.shade400
-                                                          .withValues(
-                                                            alpha: 0.15,
-                                                          )
+                                                    ? OrbitColors.of(
+                                                        context,
+                                                      ).success.withValues(
+                                                        alpha: 0.15,
+                                                      )
                                                     : colors.raised,
                                                 borderRadius:
                                                     BorderRadius.circular(4),
@@ -726,7 +729,9 @@ class _FunctionTableViewState extends State<FunctionTableView> {
                                                   color:
                                                       status.toLowerCase() ==
                                                           'confirmed'
-                                                      ? Colors.green.shade400
+                                                      ? OrbitColors.of(
+                                                          context,
+                                                        ).success
                                                       : colors.subtle,
                                                 ),
                                               ),

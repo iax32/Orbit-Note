@@ -1,4 +1,6 @@
+import '../../canvas/presentation.dart';
 import 'dart:math' as math;
+import 'dart:async';
 import 'dart:collection';
 import 'dart:ui' as ui;
 
@@ -9,6 +11,7 @@ import '../../canvas/geometry.dart';
 import '../../canvas/scene.dart';
 import '../../canvas/connectors.dart';
 import '../../canvas/uml.dart';
+import '../../canvas/uml_interaction.dart';
 import '../../app/orbit_theme.dart';
 import '../../canvas/groups.dart';
 import '../../domain/object_reference.dart';
@@ -119,6 +122,329 @@ class CanvasPictureCache {
   }
 }
 
+class _InkDisplayEntry {
+  _InkDisplayEntry(this.picture, this.samples, this.bounds, this.element);
+  final ui.Picture picture;
+  final int samples;
+  final Rect? bounds;
+  final CanvasElement element;
+  ui.Image? image;
+  double imageScale = 0;
+  double? failedScale;
+  int serial = 0;
+  bool alive = true;
+}
+
+class _InkRasterRequest {
+  _InkRasterRequest(
+    this.entry,
+    this.scale,
+    this.width,
+    this.height,
+    this.serial,
+  );
+  final _InkDisplayEntry entry;
+  final double scale;
+  final int width, height, serial;
+  int get pixels => width * height;
+}
+
+/// Bounded vector originals plus optional disposable previews at native pixel
+/// density. Zooming past a preview's resolution uses vectors until a sharper
+/// preview is ready. Exports and source samples never depend on these images.
+class CanvasInkCache extends ChangeNotifier {
+  CanvasInkCache({
+    this.maxEntries = 256,
+    this.maxSamples = 200000,
+    this.rasterizeSavedInk = false,
+    this.maxRasterPixels = 16 * 1024 * 1024,
+    Future<ui.Image> Function(ui.Picture, int, int)? rasterize,
+  }) : assert(maxEntries > 0),
+       assert(maxSamples > 0),
+       assert(maxRasterPixels > 0),
+       _rasterize =
+           rasterize ??
+           ((picture, width, height) => picture.toImage(width, height));
+  final int maxEntries, maxSamples, maxRasterPixels;
+  final bool rasterizeSavedInk;
+  final Future<ui.Image> Function(ui.Picture, int, int) _rasterize;
+  final _entries = <(CanvasElement, Color), _InkDisplayEntry>{};
+  final _rasters = <_InkDisplayEntry>{};
+  final _pending = <_InkDisplayEntry, _InkRasterRequest>{};
+  final _active = <_InkRasterRequest>{};
+  Set<CanvasElement> _visible = {};
+  Completer<void>? _idle;
+  int _samples = 0, _pixels = 0, _reserved = 0;
+  int _recordingCount = 0, _rasterHits = 0;
+  bool _closed = false;
+  int get entryCount => _entries.length;
+  int get retainedSamples => _samples;
+  int get recordingCount => _recordingCount;
+  int get rasterEntryCount => _rasters.length;
+  int get retainedRasterPixels => _pixels + _reserved;
+  int get rasterHits => _rasterHits;
+  Future<void> get rasterizationIdle => _idle?.future ?? Future.value();
+
+  void retainVisible(Iterable<CanvasElement> elements) {
+    if (!rasterizeSavedInk) return;
+    _visible = {
+      for (final element in elements)
+        if (element.type == 'ink') element,
+    };
+  }
+
+  Rect? _strokeBounds(CanvasElement element) {
+    if (element.points.isEmpty) return null;
+    var left = double.infinity, top = double.infinity;
+    var right = double.negativeInfinity, bottom = double.negativeInfinity;
+    for (final p in element.points) {
+      left = math.min(left, p.x);
+      top = math.min(top, p.y);
+      right = math.max(right, p.x);
+      bottom = math.max(bottom, p.y);
+    }
+    final width = element.data['isHighlighter'] == true
+        ? math.max(16.0, element.strokeWidth)
+        : element.strokeWidth;
+    // Includes brush pressure, chisel tips, pencil grain and round caps.
+    final padding = width * 2 + 2;
+    final bounds = Rect.fromLTRB(
+      element.x + left,
+      element.y + top,
+      element.x + right,
+      element.y + bottom,
+    ).inflate(padding);
+    return bounds.isFinite ? bounds : null;
+  }
+
+  void draw(
+    Canvas canvas,
+    CanvasElement element,
+    Color color,
+    void Function(Canvas) paint, {
+    double pixelScale = 1,
+  }) {
+    if (_closed) {
+      paint(canvas);
+      return;
+    }
+    final key = (element, color);
+    var entry = _entries.remove(key);
+    if (entry == null) {
+      final count = element.data['points'] is List
+          ? (element.data['points'] as List).length
+          : 0;
+      if (count > maxSamples) {
+        paint(canvas);
+        return;
+      }
+      final recorder = ui.PictureRecorder();
+      try {
+        paint(Canvas(recorder));
+        entry = _InkDisplayEntry(
+          recorder.endRecording(),
+          count,
+          rasterizeSavedInk ? _strokeBounds(element) : null,
+          element,
+        );
+      } catch (_) {
+        if (recorder.isRecording) recorder.endRecording().dispose();
+        rethrow;
+      }
+      _recordingCount++;
+      _samples += count;
+    }
+    _entries[key] = entry;
+    while (_entries.length > maxEntries || _samples > maxSamples) {
+      final oldest = _entries.remove(_entries.keys.first)!;
+      _retire(oldest);
+      _samples -= oldest.samples;
+    }
+    final image = entry.image;
+    final bounds = entry.bounds;
+    if (image != null &&
+        bounds != null &&
+        pixelScale.isFinite &&
+        pixelScale > 0 &&
+        entry.imageScale >= pixelScale) {
+      _rasters.remove(entry);
+      _rasters.add(entry);
+      canvas.drawImageRect(
+        image,
+        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+        Rect.fromLTWH(
+          bounds.left,
+          bounds.top,
+          image.width / entry.imageScale,
+          image.height / entry.imageScale,
+        ),
+        Paint()..filterQuality = FilterQuality.medium,
+      );
+      _rasterHits++;
+    } else {
+      canvas.drawPicture(entry.picture);
+    }
+    if (rasterizeSavedInk && entry.samples >= 256) {
+      _ensureRaster(entry, pixelScale);
+    }
+  }
+
+  void _ensureRaster(_InkDisplayEntry entry, double requested) {
+    final bounds = entry.bounds;
+    if (bounds == null || !requested.isFinite || requested <= 0) return;
+    // Half-octaves avoid regenerating on every tiny zoom step; always round up.
+    final scale = math
+        .pow(2, (math.log(requested) / math.ln2 * 2).ceil() / 2)
+        .toDouble();
+    if (!scale.isFinite || scale <= 0) return;
+    if (entry.image != null &&
+        entry.imageScale >= scale &&
+        entry.imageScale <= scale * 1.5) {
+      return;
+    }
+    if (entry.failedScale == scale ||
+        _pending[entry]?.scale == scale ||
+        _active.any(
+          (r) =>
+              identical(r.entry, entry) &&
+              r.serial == entry.serial &&
+              r.scale == scale,
+        )) {
+      return;
+    }
+    final pixelWidth = bounds.width * scale,
+        pixelHeight = bounds.height * scale;
+    if (!pixelWidth.isFinite ||
+        !pixelHeight.isFinite ||
+        pixelWidth > 4096 ||
+        pixelHeight > 4096) {
+      return;
+    }
+    final w = pixelWidth.ceil(), h = pixelHeight.ceil();
+    if (w < 1 || h < 1 || w > 4096 || h > 4096 || w * h > maxRasterPixels) {
+      return;
+    }
+    _pending[entry] = _InkRasterRequest(entry, scale, w, h, ++entry.serial);
+    _idle ??= Completer<void>();
+    _drain();
+  }
+
+  void _drain() {
+    while (!_closed && _active.length < 2 && _pending.isNotEmpty) {
+      final request = _pending.remove(_pending.keys.first)!;
+      if (!request.entry.alive ||
+          request.serial != request.entry.serial ||
+          !_visible.contains(request.entry.element)) {
+        continue;
+      }
+      while (_rasters.isNotEmpty &&
+          _pixels + _reserved + request.pixels > maxRasterPixels) {
+        final evictable = _rasters
+            .where((entry) => !_visible.contains(entry.element))
+            .firstOrNull;
+        if (evictable == null) break;
+        _dropRaster(evictable);
+      }
+      if (_pixels + _reserved + request.pixels > maxRasterPixels) {
+        // Never churn images that are still visible. Excess visible complexity
+        // uses vectors; a later viewport change can admit a new preview.
+        continue;
+      }
+      _active.add(request);
+      _reserved += request.pixels;
+      unawaited(_createRaster(request));
+    }
+    if (_active.isEmpty && _pending.isEmpty) {
+      _idle?.complete();
+      _idle = null;
+    }
+  }
+
+  Future<void> _createRaster(_InkRasterRequest request) async {
+    ui.Picture? picture;
+    ui.Image? image;
+    var changed = false;
+    final entry = request.entry;
+    try {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder)
+        ..scale(request.scale)
+        ..translate(-entry.bounds!.left, -entry.bounds!.top);
+      canvas.drawPicture(entry.picture);
+      picture = recorder.endRecording();
+      image = await _rasterize(picture, request.width, request.height);
+      if (image.width != request.width || image.height != request.height) {
+        throw StateError('Unexpected ink preview dimensions');
+      }
+      if (!_closed &&
+          entry.alive &&
+          request.serial == entry.serial &&
+          _visible.contains(entry.element)) {
+        _dropRaster(entry);
+        entry.image = image;
+        entry.imageScale = request.scale;
+        _pixels += request.pixels;
+        _rasters.add(entry);
+        image = null;
+        changed = true;
+      }
+    } catch (_) {
+      if (entry.alive && request.serial == entry.serial) {
+        entry.failedScale = request.scale;
+      }
+      // A preview is optional. Keep the exact vectors on native allocation or
+      // backend failure instead of losing ink or repeatedly retrying every frame.
+    } finally {
+      image?.dispose();
+      picture?.dispose();
+      _active.remove(request);
+      _reserved -= request.pixels;
+      _drain();
+      if (changed && !_closed && entry.alive) notifyListeners();
+    }
+  }
+
+  void _dropRaster(_InkDisplayEntry entry) {
+    final image = entry.image;
+    if (image != null) {
+      _pixels -= image.width * image.height;
+      image.dispose();
+      entry.image = null;
+    }
+    _rasters.remove(entry);
+  }
+
+  void _retire(_InkDisplayEntry entry) {
+    entry.alive = false;
+    entry.serial++;
+    _pending.remove(entry);
+    _dropRaster(entry);
+    entry.picture.dispose();
+  }
+
+  void clear() {
+    for (final entry in _entries.values) {
+      _retire(entry);
+    }
+    _entries.clear();
+    _pending.clear();
+    _visible.clear();
+    _samples = 0;
+    if (_active.isEmpty) {
+      _idle?.complete();
+      _idle = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_closed) return;
+    _closed = true;
+    clear();
+    super.dispose();
+  }
+}
+
 class CanvasTextCache {
   final LinkedHashMap<Object, TextPainter> _entries = LinkedHashMap();
   final LinkedHashMap<String, List<CanvasRichLine>> _richEntries =
@@ -191,6 +517,7 @@ class OrbitCanvasPainter extends CustomPainter {
     required this.selection,
     required this.objects,
     required this.colors,
+    this.semanticColors,
     this.region,
     this.lassoPoints,
     this.preview,
@@ -207,14 +534,23 @@ class OrbitCanvasPainter extends CustomPainter {
     this.searchMatchIds = const {},
     this.activeSearchMatchId,
     this.forceUmlDetails = false,
-  }) : sceneRevision = scene.revision;
+    this.revealProgress = const {},
+    this.inkCache,
+    this.devicePixelRatio = 1,
+  }) : sceneRevision = scene.revision,
+       super(repaint: inkCache);
   final CanvasTextCache textCache;
+  final CanvasInkCache? inkCache;
+  final double devicePixelRatio;
   final int sceneRevision;
   final CanvasScene scene;
   final CanvasCamera camera;
   final Set<String> selection;
   final Map<String, CanvasObjectReference> objects;
   final ColorScheme colors;
+  final OrbitColors? semanticColors;
+  Color get _success => semanticColors?.success ?? colors.tertiary;
+  Color get _warning => semanticColors?.warning ?? colors.secondary;
   final CanvasBounds? region;
   final List<CanvasPoint>? lassoPoints;
   final CanvasElement? preview;
@@ -230,21 +566,32 @@ class OrbitCanvasPainter extends CustomPainter {
   final Set<String> searchMatchIds;
   final String? activeSearchMatchId;
   final bool forceUmlDetails;
+  final Map<String, double> revealProgress;
 
   @override
   void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
     if (!transparentBackground) {
-      canvas.drawColor(colors.surface, BlendMode.src);
+      canvas.drawColor(
+        semanticColors?.canvasBackground ?? colors.surface,
+        BlendMode.src,
+      );
       _grid(canvas, size);
     }
     canvas.save();
     canvas.scale(camera.zoom);
     canvas.translate(-camera.x, -camera.y);
-    final visible = exportElementIds != null
-        ? scene.elements.where((e) => exportElementIds!.contains(e.id))
-        : scene.query(
-            camera.viewport(size.width, size.height).inflate(80 / camera.zoom),
-          );
+    final visible =
+        (exportElementIds != null
+                ? scene.elements.where((e) => exportElementIds!.contains(e.id))
+                : scene.query(
+                    camera
+                        .viewport(size.width, size.height)
+                        .inflate(80 / camera.zoom),
+                  ))
+            .toList(growable: false);
+    inkCache?.retainVisible(visible);
     for (final element in visible.where((e) => e.type == 'column')) {
       _element(canvas, element);
     }
@@ -255,18 +602,18 @@ class OrbitCanvasPainter extends CustomPainter {
     if (exportElementIds == null) {
       if (searchMatchIds.isNotEmpty) {
         final matchBorderPaint = Paint()
-          ..color = const Color(0xFFF59E0B).withValues(alpha: 0.8)
+          ..color = _warning.withValues(alpha: 0.8)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2.0 / camera.zoom;
         final matchFillPaint = Paint()
-          ..color = const Color(0xFFF59E0B).withValues(alpha: 0.14)
+          ..color = _warning.withValues(alpha: 0.14)
           ..style = PaintingStyle.fill;
         final activeMatchBorderPaint = Paint()
-          ..color = const Color(0xFFEAB308)
+          ..color = colors.primary
           ..style = PaintingStyle.stroke
           ..strokeWidth = 3.5 / camera.zoom;
         final activeMatchGlowPaint = Paint()
-          ..color = const Color(0xFFEAB308).withValues(alpha: 0.24)
+          ..color = colors.primary.withValues(alpha: 0.24)
           ..style = PaintingStyle.fill;
 
         for (final id in searchMatchIds) {
@@ -488,6 +835,7 @@ class OrbitCanvasPainter extends CustomPainter {
       }
     }
     canvas.restore();
+    canvas.restore();
   }
 
   void _drawDashedLine(
@@ -556,6 +904,15 @@ class OrbitCanvasPainter extends CustomPainter {
   void _grid(Canvas canvas, Size size) {
     if (backgroundStyle == 'blank') return;
 
+    // Theme grid ink is independent of text ink. Publication renderers keep
+    // using their explicit paper scheme when no semantic palette is supplied.
+    Color gridInk(double opacity) {
+      final ink = semanticColors?.canvasGrid;
+      return ink == null
+          ? colors.onSurface.withValues(alpha: opacity)
+          : ink.withValues(alpha: ink.a * (opacity * 4).clamp(0.0, 1.0));
+    }
+
     var step = 24 * camera.zoom;
     while (step < 15) {
       step *= 4;
@@ -564,7 +921,7 @@ class OrbitCanvasPainter extends CustomPainter {
 
     if (backgroundStyle == 'grid') {
       final linePaint = Paint()
-        ..color = colors.onSurface.withValues(alpha: .08)
+        ..color = gridInk(.08)
         ..strokeWidth = 1.0;
       for (var x = origin.x % step; x < size.width; x += step) {
         canvas.drawLine(Offset(x, 0), Offset(x, size.height), linePaint);
@@ -580,10 +937,10 @@ class OrbitCanvasPainter extends CustomPainter {
       }
       final majorStep = minorStep * 4.0;
       final minorPaint = Paint()
-        ..color = colors.onSurface.withValues(alpha: .045)
+        ..color = gridInk(.045)
         ..strokeWidth = 0.75;
       final majorPaint = Paint()
-        ..color = colors.onSurface.withValues(alpha: .15)
+        ..color = gridInk(.15)
         ..strokeWidth = 1.25;
 
       for (var x = origin.x % minorStep; x < size.width; x += minorStep) {
@@ -601,7 +958,7 @@ class OrbitCanvasPainter extends CustomPainter {
     } else if (backgroundStyle == 'cornell') {
       // Cornell Notes layout: Ruled lines + Left Cue divider + Bottom Summary divider
       final rulePaint = Paint()
-        ..color = colors.onSurface.withValues(alpha: .09)
+        ..color = gridInk(.09)
         ..strokeWidth = 1.0;
       for (var y = origin.y % step; y < size.height; y += step) {
         canvas.drawLine(Offset(0, y), Offset(size.width, y), rulePaint);
@@ -678,7 +1035,7 @@ class OrbitCanvasPainter extends CustomPainter {
       }
     } else if (backgroundStyle == 'lines' || backgroundStyle == 'ruled') {
       final linePaint = Paint()
-        ..color = colors.onSurface.withValues(alpha: .09)
+        ..color = gridInk(.09)
         ..strokeWidth = 1.0;
       for (var y = origin.y % step; y < size.height; y += step) {
         canvas.drawLine(Offset(0, y), Offset(size.width, y), linePaint);
@@ -698,7 +1055,7 @@ class OrbitCanvasPainter extends CustomPainter {
       }
     } else if (backgroundStyle == 'isometric') {
       final isoPaint = Paint()
-        ..color = colors.onSurface.withValues(alpha: .07)
+        ..color = gridInk(.07)
         ..strokeWidth = 0.8;
       final isoStepX = step * 1.5;
       final isoStepY = isoStepX * 0.57735;
@@ -723,7 +1080,7 @@ class OrbitCanvasPainter extends CustomPainter {
       }
     } else if (backgroundStyle == 'cross') {
       final crossPaint = Paint()
-        ..color = colors.onSurface.withValues(alpha: .15)
+        ..color = gridInk(.15)
         ..strokeWidth = 1.0;
       final arm = math.min(step * 0.18, 4.0 * camera.zoom).clamp(1.5, 6.0);
       for (var x = origin.x % step; x < size.width; x += step) {
@@ -740,7 +1097,7 @@ class OrbitCanvasPainter extends CustomPainter {
       final w = 1.7320508 * r;
       final vertDist = 1.5 * r;
       final hexPaint = Paint()
-        ..color = colors.onSurface.withValues(alpha: .08)
+        ..color = gridInk(.08)
         ..strokeWidth = 0.9;
 
       final startRow = ((-origin.y - 2 * r) / vertDist).floor();
@@ -872,10 +1229,10 @@ class OrbitCanvasPainter extends CustomPainter {
       final staffPeriod = staffHeight + staffGap;
 
       final staffPaint = Paint()
-        ..color = colors.onSurface.withValues(alpha: .15)
+        ..color = gridInk(.15)
         ..strokeWidth = 0.9;
       final barPaint = Paint()
-        ..color = colors.onSurface.withValues(alpha: .12)
+        ..color = gridInk(.12)
         ..strokeWidth = 1.0;
 
       final barStep = 180.0 * camera.zoom;
@@ -898,7 +1255,7 @@ class OrbitCanvasPainter extends CustomPainter {
       }
     } else if (backgroundStyle == 'ledger') {
       final rulePaint = Paint()
-        ..color = colors.onSurface.withValues(alpha: .09)
+        ..color = gridInk(.09)
         ..strokeWidth = 0.9;
       for (var y = origin.y % step; y < size.height; y += step) {
         canvas.drawLine(Offset(0, y), Offset(size.width, y), rulePaint);
@@ -942,7 +1299,7 @@ class OrbitCanvasPainter extends CustomPainter {
           final divPaint = Paint()
             ..color = (c == 0 || c == 3 || c == 4)
                 ? colors.primary.withValues(alpha: .30)
-                : colors.onSurface.withValues(alpha: .10)
+                : gridInk(.10)
             ..strokeWidth = (c == 0 || c == 3 || c == 4) ? 1.4 : 0.8;
           if (cx >= 0 && cx <= size.width) {
             canvas.drawLine(Offset(cx, 0), Offset(cx, size.height), divPaint);
@@ -972,7 +1329,7 @@ class OrbitCanvasPainter extends CustomPainter {
       }
     } else if (backgroundStyle == 'triangular') {
       final triPaint = Paint()
-        ..color = colors.onSurface.withValues(alpha: .08)
+        ..color = gridInk(.08)
         ..strokeWidth = 0.8;
       var triStep = 32.0 * camera.zoom;
       while (triStep < 16.0) {
@@ -1006,7 +1363,7 @@ class OrbitCanvasPainter extends CustomPainter {
       }
     } else {
       // 'dots' (default)
-      final paint = Paint()..color = colors.onSurface.withValues(alpha: .11);
+      final paint = Paint()..color = gridInk(.11);
       for (var x = origin.x % step; x < size.width; x += step) {
         for (var y = origin.y % step; y < size.height; y += step) {
           canvas.drawCircle(Offset(x, y), .75, paint);
@@ -1016,15 +1373,330 @@ class OrbitCanvasPainter extends CustomPainter {
   }
 
   void _element(Canvas canvas, CanvasElement element) {
+    final progress = revealProgress[element.id] ?? 1;
+    if (progress <= 0) return;
+    if (progress >= 1) {
+      _paintElement(canvas, element);
+      return;
+    }
+    if (element.type == 'ink') {
+      _paintElement(canvas, revealCanvasInk(element, progress));
+    } else {
+      final bounds = _rect(element.bounds.inflate(element.strokeWidth + 2));
+      canvas.save();
+      canvas.clipRect(
+        Rect.fromLTWH(
+          bounds.left,
+          bounds.top,
+          bounds.width * progress,
+          bounds.height,
+        ),
+      );
+      _paintElement(canvas, element);
+      canvas.restore();
+    }
+  }
+
+  static double _inkPressure(dynamic raw, double fallback) {
+    final value = raw is Map ? raw['pressure'] : null;
+    return value is num && value.isFinite
+        ? value.toDouble().clamp(0.0, 1.0)
+        : fallback;
+  }
+
+  void _paintInk(Canvas canvas, CanvasElement element, Color accent) {
+    final isHighlighter = element.data['isHighlighter'] == true;
+    final penStyle =
+        (element.data['penStyle'] is String
+            ? element.data['penStyle'] as String
+            : null) ??
+        (isHighlighter ? 'highlighter' : 'ballpoint');
+    final isFountain = penStyle == 'fountain';
+    final isMarker = penStyle == 'marker';
+    final isPencil = penStyle == 'pencil';
+    final isCalligraphy = penStyle == 'calligraphy';
+    final isBrush = penStyle == 'brush';
+    final inkWidth = isHighlighter
+        ? math.max(16.0, element.strokeWidth)
+        : element.strokeWidth;
+    final inkColor = isHighlighter
+        ? accent.withValues(alpha: 0.38)
+        : (isMarker
+              ? accent.withValues(alpha: 0.90)
+              : (isPencil ? accent.withValues(alpha: 0.72) : accent));
+    final points = element.points;
+    if (points.isEmpty) return;
+    if (points.length == 1) {
+      canvas.drawCircle(
+        Offset(element.x + points.first.x, element.y + points.first.y),
+        inkWidth / 2,
+        Paint()..color = inkColor,
+      );
+      return;
+    }
+
+    final rawPoints = element.data['points'] is List
+        ? (element.data['points'] as List).whereType<Map>().toList(
+            growable: false,
+          )
+        : null;
+    final hasPressure =
+        isFountain ||
+        isBrush ||
+        isPencil ||
+        (rawPoints != null && rawPoints.any((p) => _inkPressure(p, 1) < 0.95));
+
+    if (isCalligraphy) {
+      // Chisel nib held at a constant 45-degree angle (pi / 4).
+      const nibAngle = math.pi / 4;
+      for (var i = 0; i < points.length - 1; i++) {
+        final p1 = points[i];
+        final p2 = points[i + 1];
+        final dx = p2.x - p1.x;
+        final dy = p2.y - p1.y;
+        final strokeAngle = math.atan2(dy, dx);
+        final angleDiff = strokeAngle - nibAngle;
+        final chiselFactor = (0.24 + 0.82 * math.sin(angleDiff).abs()).clamp(
+          0.2,
+          1.0,
+        );
+        var pressureMultiplier = 1.0;
+        if (rawPoints != null && i < rawPoints.length) {
+          final raw = rawPoints[i];
+          if (raw['pressure'] is num) {
+            pressureMultiplier = 0.6 + _inkPressure(raw, 0.8) * 0.5;
+          }
+        }
+        final segWidth = math.max(
+          1.0,
+          inkWidth * chiselFactor * pressureMultiplier,
+        );
+        final segPaint = Paint()
+          ..color = inkColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = segWidth
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round;
+        canvas.drawLine(
+          Offset(element.x + p1.x, element.y + p1.y),
+          Offset(element.x + p2.x, element.y + p2.y),
+          segPaint,
+        );
+      }
+    } else if (isPencil) {
+      // Pencil: graphite texture with subtle jitter & paper tooth shading
+      for (var i = 0; i < points.length - 1; i++) {
+        final p1 = points[i];
+        final p2 = points[i + 1];
+        var pressure = 0.7;
+        if (rawPoints != null && i < rawPoints.length) {
+          final raw = rawPoints[i];
+          if (raw['pressure'] is num) {
+            pressure = _inkPressure(raw, 0.7);
+          }
+        }
+        final segWidth = math.max(
+          0.6,
+          inkWidth * (0.65 + pressure.clamp(0.1, 1.0) * 0.45),
+        );
+        final pencilAlpha = (0.48 + pressure.clamp(0.1, 1.0) * 0.42).clamp(
+          0.2,
+          0.9,
+        );
+        final pPaint = Paint()
+          ..color = accent.withValues(alpha: pencilAlpha)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = segWidth
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round;
+        canvas.drawLine(
+          Offset(element.x + p1.x, element.y + p1.y),
+          Offset(element.x + p2.x, element.y + p2.y),
+          pPaint,
+        );
+        // Subtle grain offset pass for graphite feel
+        if (segWidth > 1.2) {
+          final grainPaint = Paint()
+            ..color = accent.withValues(alpha: pencilAlpha * 0.3)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = segWidth * 0.6
+            ..strokeCap = StrokeCap.round;
+          canvas.drawLine(
+            Offset(element.x + p1.x + 0.35, element.y + p1.y + 0.35),
+            Offset(element.x + p2.x + 0.35, element.y + p2.y + 0.35),
+            grainPaint,
+          );
+        }
+      }
+    } else if (isBrush) {
+      // Brush: wide dynamic pressure range and entry/exit tapering
+      for (var i = 0; i < points.length - 1; i++) {
+        final p1 = points[i];
+        final p2 = points[i + 1];
+        var pressure1 = 0.7;
+        var pressure2 = 0.7;
+        if (rawPoints != null && rawPoints.length == points.length) {
+          if (rawPoints[i]['pressure'] is num) {
+            pressure1 = _inkPressure(rawPoints[i], 0.7);
+          }
+          if (rawPoints[i + 1]['pressure'] is num) {
+            pressure2 = _inkPressure(rawPoints[i + 1], 0.7);
+          }
+        }
+        final avgPressure = ((pressure1 + pressure2) / 2).clamp(0.1, 1.0);
+        var taper = 1.0;
+        if (i == 0) taper = 0.55;
+        if (i == points.length - 2) taper = 0.55;
+        final segWidth = math.max(
+          0.8,
+          inkWidth * (0.25 + avgPressure * avgPressure * 1.8) * taper,
+        );
+        final segPaint = Paint()
+          ..color = inkColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = segWidth
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round;
+        canvas.drawLine(
+          Offset(element.x + p1.x, element.y + p1.y),
+          Offset(element.x + p2.x, element.y + p2.y),
+          segPaint,
+        );
+      }
+    } else if (hasPressure &&
+        rawPoints != null &&
+        rawPoints.length == points.length) {
+      for (var i = 0; i < points.length - 1; i++) {
+        final p1 = points[i];
+        final p2 = points[i + 1];
+        final pressure1 = (rawPoints[i]['pressure'] is num)
+            ? _inkPressure(rawPoints[i], 0.7)
+            : 0.7;
+        final pressure2 = (rawPoints[i + 1]['pressure'] is num)
+            ? _inkPressure(rawPoints[i + 1], 0.7)
+            : 0.7;
+        final avgPressure = ((pressure1 + pressure2) / 2).clamp(0.1, 1.0);
+        final segWidth = math.max(0.8, inkWidth * (0.35 + avgPressure * 0.9));
+        final segPaint = Paint()
+          ..color = inkColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = segWidth
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round;
+        canvas.drawLine(
+          Offset(element.x + p1.x, element.y + p1.y),
+          Offset(element.x + p2.x, element.y + p2.y),
+          segPaint,
+        );
+      }
+    } else {
+      final path = Path()
+        ..moveTo(element.x + points.first.x, element.y + points.first.y);
+      if (points.length == 2) {
+        path.lineTo(element.x + points[1].x, element.y + points[1].y);
+      } else {
+        for (var i = 1; i < points.length - 1; i++) {
+          final p1 = points[i];
+          final p2 = points[i + 1];
+          final midX = element.x + (p1.x + p2.x) / 2;
+          final midY = element.y + (p1.y + p2.y) / 2;
+          path.quadraticBezierTo(
+            element.x + p1.x,
+            element.y + p1.y,
+            midX,
+            midY,
+          );
+        }
+        path.lineTo(element.x + points.last.x, element.y + points.last.y);
+      }
+      final inkStroke = Paint()
+        ..color = inkColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = inkWidth
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+      canvas.drawPath(path, inkStroke);
+    }
+  }
+
+  void _paintElement(Canvas canvas, CanvasElement element) {
     if (!element.renderable || element.id == editingId) return;
     final bounds = _rect(element.bounds);
-    final accent = Color(element.color);
+    final accent = isInteractionItem(element) && element.data['color'] is! int
+        ? colors.onSurface
+        : Color(element.color);
     final stroke = Paint()
       ..color = accent
       ..style = PaintingStyle.stroke
       ..strokeWidth = element.strokeWidth
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
+    if (isInteractionNode(element)) {
+      final glyph = interactionGlyph(element);
+      final line = Paint()
+        ..color = accent.withValues(alpha: .75)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = element.strokeWidth;
+      for (final box in glyph.boxes) {
+        if (box.fill) {
+          canvas.drawRect(_rect(box.bounds), Paint()..color = colors.surface);
+        }
+        canvas.drawRect(_rect(box.bounds), line);
+      }
+      for (final oval in glyph.ovals) {
+        if (oval.fill) {
+          canvas.drawOval(_rect(oval.bounds), Paint()..color = colors.surface);
+        }
+        canvas.drawOval(_rect(oval.bounds), line);
+      }
+      for (final shape in glyph.paths) {
+        final path = Path()..moveTo(shape.points.first.x, shape.points.first.y);
+        for (final p in shape.points.skip(1)) {
+          path.lineTo(p.x, p.y);
+        }
+        if (!shape.dashed) {
+          canvas.drawPath(path, line);
+        } else {
+          for (final metric in path.computeMetrics()) {
+            for (var d = 0.0; d < metric.length; d += 13) {
+              canvas.drawPath(
+                metric.extractPath(d, math.min(d + 8, metric.length)),
+                line,
+              );
+            }
+          }
+        }
+      }
+      if (camera.zoom > .2 || forceUmlDetails) {
+        for (final label in glyph.texts) {
+          final r = _rect(label.bounds);
+          if (r.width <= 0 || r.height <= 0) continue;
+          final text = wrapUmlText(label.text, r.width, label.size).join('\n');
+          final tp = textCache.layout(
+            text,
+            TextStyle(
+              color: colors.onSurface,
+              fontFamily: fontFamily,
+              fontSize: label.size,
+              fontWeight: label.bold ? FontWeight.w600 : FontWeight.normal,
+            ),
+            r.width,
+            80,
+          );
+          canvas.save();
+          canvas.clipRect(r);
+          tp.paint(
+            canvas,
+            Offset(
+              label.center ? r.center.dx - tp.width / 2 : r.left,
+              r.top + math.max(0, (r.height - tp.height) / 2),
+            ),
+          );
+          canvas.restore();
+        }
+      }
+      return;
+    }
     if (isUmlClass(element)) {
       final model = UmlClass(element);
       final palette = UmlPalette(
@@ -1247,223 +1919,19 @@ class OrbitCanvasPainter extends CustomPainter {
           );
         }
       case 'ink':
-        final isHighlighter = element.data['isHighlighter'] == true;
-        final penStyle =
-            element.data['penStyle'] as String? ??
-            (isHighlighter ? 'highlighter' : 'ballpoint');
-        final isFountain = penStyle == 'fountain';
-        final isMarker = penStyle == 'marker';
-        final isPencil = penStyle == 'pencil';
-        final isCalligraphy = penStyle == 'calligraphy';
-        final isBrush = penStyle == 'brush';
-        final inkWidth = isHighlighter
-            ? math.max(16.0, element.strokeWidth)
-            : element.strokeWidth;
-        final inkColor = isHighlighter
-            ? accent.withValues(alpha: 0.38)
-            : (isMarker
-                  ? accent.withValues(alpha: 0.90)
-                  : (isPencil ? accent.withValues(alpha: 0.72) : accent));
-        final points = element.points;
-        if (points.isEmpty) return;
-        if (points.length == 1) {
-          canvas.drawCircle(
-            Offset(element.x + points.first.x, element.y + points.first.y),
-            inkWidth / 2,
-            Paint()..color = inkColor,
+        final cache = inkCache;
+        // A growing preview/replay is transient; do not retain one display list
+        // for every sample. Only committed immutable scene snapshots are cached.
+        if (cache != null && identical(scene[element.id], element)) {
+          cache.draw(
+            canvas,
+            element,
+            accent,
+            (target) => _paintInk(target, element, accent),
+            pixelScale: camera.zoom * devicePixelRatio,
           );
-          return;
-        }
-
-        final rawPoints = element.data['points'] is List
-            ? element.data['points'] as List
-            : null;
-        final hasPressure =
-            isFountain ||
-            isBrush ||
-            isPencil ||
-            (rawPoints != null &&
-                rawPoints.any(
-                  (p) =>
-                      p is Map &&
-                      p['pressure'] != null &&
-                      (p['pressure'] as num) < 0.95,
-                ));
-
-        if (isCalligraphy) {
-          // Chisel nib held at a constant 45-degree angle (pi / 4).
-          const nibAngle = math.pi / 4;
-          for (var i = 0; i < points.length - 1; i++) {
-            final p1 = points[i];
-            final p2 = points[i + 1];
-            final dx = p2.x - p1.x;
-            final dy = p2.y - p1.y;
-            final strokeAngle = math.atan2(dy, dx);
-            final angleDiff = strokeAngle - nibAngle;
-            final chiselFactor = (0.24 + 0.82 * math.sin(angleDiff).abs())
-                .clamp(0.2, 1.0);
-            var pressureMultiplier = 1.0;
-            if (rawPoints != null && i < rawPoints.length) {
-              final raw = rawPoints[i];
-              if (raw is Map && raw['pressure'] is num) {
-                pressureMultiplier = 0.6 + (raw['pressure'] as num) * 0.5;
-              }
-            }
-            final segWidth = math.max(
-              1.0,
-              inkWidth * chiselFactor * pressureMultiplier,
-            );
-            final segPaint = Paint()
-              ..color = inkColor
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = segWidth
-              ..strokeCap = StrokeCap.round
-              ..strokeJoin = StrokeJoin.round;
-            canvas.drawLine(
-              Offset(element.x + p1.x, element.y + p1.y),
-              Offset(element.x + p2.x, element.y + p2.y),
-              segPaint,
-            );
-          }
-        } else if (isPencil) {
-          // Pencil: graphite texture with subtle jitter & paper tooth shading
-          for (var i = 0; i < points.length - 1; i++) {
-            final p1 = points[i];
-            final p2 = points[i + 1];
-            var pressure = 0.7;
-            if (rawPoints != null && i < rawPoints.length) {
-              final raw = rawPoints[i];
-              if (raw is Map && raw['pressure'] is num) {
-                pressure = (raw['pressure'] as num).toDouble();
-              }
-            }
-            final segWidth = math.max(
-              0.6,
-              inkWidth * (0.65 + pressure.clamp(0.1, 1.0) * 0.45),
-            );
-            final pencilAlpha = (0.48 + pressure.clamp(0.1, 1.0) * 0.42).clamp(
-              0.2,
-              0.9,
-            );
-            final pPaint = Paint()
-              ..color = accent.withValues(alpha: pencilAlpha)
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = segWidth
-              ..strokeCap = StrokeCap.round
-              ..strokeJoin = StrokeJoin.round;
-            canvas.drawLine(
-              Offset(element.x + p1.x, element.y + p1.y),
-              Offset(element.x + p2.x, element.y + p2.y),
-              pPaint,
-            );
-            // Subtle grain offset pass for graphite feel
-            if (segWidth > 1.2) {
-              final grainPaint = Paint()
-                ..color = accent.withValues(alpha: pencilAlpha * 0.3)
-                ..style = PaintingStyle.stroke
-                ..strokeWidth = segWidth * 0.6
-                ..strokeCap = StrokeCap.round;
-              canvas.drawLine(
-                Offset(element.x + p1.x + 0.35, element.y + p1.y + 0.35),
-                Offset(element.x + p2.x + 0.35, element.y + p2.y + 0.35),
-                grainPaint,
-              );
-            }
-          }
-        } else if (isBrush) {
-          // Brush: wide dynamic pressure range and entry/exit tapering
-          for (var i = 0; i < points.length - 1; i++) {
-            final p1 = points[i];
-            final p2 = points[i + 1];
-            var pressure1 = 0.7;
-            var pressure2 = 0.7;
-            if (rawPoints != null && rawPoints.length == points.length) {
-              if (rawPoints[i] is Map && rawPoints[i]['pressure'] is num) {
-                pressure1 = (rawPoints[i]['pressure'] as num).toDouble();
-              }
-              if (rawPoints[i + 1] is Map &&
-                  rawPoints[i + 1]['pressure'] is num) {
-                pressure2 = (rawPoints[i + 1]['pressure'] as num).toDouble();
-              }
-            }
-            final avgPressure = ((pressure1 + pressure2) / 2).clamp(0.1, 1.0);
-            var taper = 1.0;
-            if (i == 0) taper = 0.55;
-            if (i == points.length - 2) taper = 0.55;
-            final segWidth = math.max(
-              0.8,
-              inkWidth * (0.25 + avgPressure * avgPressure * 1.8) * taper,
-            );
-            final segPaint = Paint()
-              ..color = inkColor
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = segWidth
-              ..strokeCap = StrokeCap.round
-              ..strokeJoin = StrokeJoin.round;
-            canvas.drawLine(
-              Offset(element.x + p1.x, element.y + p1.y),
-              Offset(element.x + p2.x, element.y + p2.y),
-              segPaint,
-            );
-          }
-        } else if (hasPressure &&
-            rawPoints != null &&
-            rawPoints.length == points.length) {
-          for (var i = 0; i < points.length - 1; i++) {
-            final p1 = points[i];
-            final p2 = points[i + 1];
-            final pressure1 =
-                (rawPoints[i] is Map && rawPoints[i]['pressure'] is num)
-                ? (rawPoints[i]['pressure'] as num).toDouble()
-                : 0.7;
-            final pressure2 =
-                (rawPoints[i + 1] is Map && rawPoints[i + 1]['pressure'] is num)
-                ? (rawPoints[i + 1]['pressure'] as num).toDouble()
-                : 0.7;
-            final avgPressure = ((pressure1 + pressure2) / 2).clamp(0.1, 1.0);
-            final segWidth = math.max(
-              0.8,
-              inkWidth * (0.35 + avgPressure * 0.9),
-            );
-            final segPaint = Paint()
-              ..color = inkColor
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = segWidth
-              ..strokeCap = StrokeCap.round
-              ..strokeJoin = StrokeJoin.round;
-            canvas.drawLine(
-              Offset(element.x + p1.x, element.y + p1.y),
-              Offset(element.x + p2.x, element.y + p2.y),
-              segPaint,
-            );
-          }
         } else {
-          final path = Path()
-            ..moveTo(element.x + points.first.x, element.y + points.first.y);
-          if (points.length == 2) {
-            path.lineTo(element.x + points[1].x, element.y + points[1].y);
-          } else {
-            for (var i = 1; i < points.length - 1; i++) {
-              final p1 = points[i];
-              final p2 = points[i + 1];
-              final midX = element.x + (p1.x + p2.x) / 2;
-              final midY = element.y + (p1.y + p2.y) / 2;
-              path.quadraticBezierTo(
-                element.x + p1.x,
-                element.y + p1.y,
-                midX,
-                midY,
-              );
-            }
-            path.lineTo(element.x + points.last.x, element.y + points.last.y);
-          }
-          final inkStroke = Paint()
-            ..color = inkColor
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = inkWidth
-            ..strokeCap = StrokeCap.round
-            ..strokeJoin = StrokeJoin.round;
-          canvas.drawPath(path, inkStroke);
+          _paintInk(canvas, element, accent);
         }
       case 'connector':
       case 'arrow':
@@ -1542,7 +2010,9 @@ class OrbitCanvasPainter extends CustomPainter {
             canvas.drawPath(
               markerPath,
               Paint()
-                ..color = startMarker == ConnectorMarker.filledDiamond
+                ..color =
+                    (startMarker == ConnectorMarker.filledDiamond ||
+                        startMarker == ConnectorMarker.filledTriangle)
                     ? stroke.color
                     : colors.surface,
             );
@@ -1604,7 +2074,9 @@ class OrbitCanvasPainter extends CustomPainter {
             canvas.drawPath(
               markerPath,
               Paint()
-                ..color = endMarker == ConnectorMarker.filledDiamond
+                ..color =
+                    (endMarker == ConnectorMarker.filledDiamond ||
+                        endMarker == ConnectorMarker.filledTriangle)
                     ? stroke.color
                     : colors.surface,
             );
@@ -1671,6 +2143,7 @@ class OrbitCanvasPainter extends CustomPainter {
             element.text.trim(),
             TextStyle(
               color: stroke.color,
+              fontFamily: fontFamily,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -1908,14 +2381,14 @@ class OrbitCanvasPainter extends CustomPainter {
         Color stripColor = isUnresolved
             ? colors.error
             : (isDynamicView
-                  ? const Color(0xFF3B82F6)
+                  ? colors.primary
                   : (isDone
-                        ? const Color(0xFF10B981)
+                        ? _success
                         : (effectivePdfSource != null
                               ? (effectivePdfSource['color'] is int
                                     ? Color(effectivePdfSource['color'] as int)
-                                    : const Color(0xFFEF4444))
-                              : (isPdf ? const Color(0xFFEF4444) : accent))));
+                                    : colors.error)
+                              : (isPdf ? colors.error : accent))));
 
         String typeLabel;
         String titleText;
@@ -2084,18 +2557,17 @@ class OrbitCanvasPainter extends CustomPainter {
               18,
             ),
             textColor: isDone
-                ? const Color(0xFF047857)
+                ? _success
                 : (isPdfQuote
                       ? stripColor
-                      : (isPdf
-                            ? const Color(0xFFB91C1C)
-                            : colors.onSurfaceVariant)),
+                      : (isPdf ? colors.error : colors.onSurfaceVariant)),
             bgColor: isDone
-                ? const Color(0xFFD1FAE5)
+                ? (semanticColors?.tinted(_success) ?? colors.tertiaryContainer)
                 : (isPdfQuote
                       ? stripColor.withValues(alpha: 0.14)
                       : (isPdf
-                            ? const Color(0xFFFEE2E2)
+                            ? (semanticColors?.tinted(colors.error) ??
+                                  colors.errorContainer)
                             : colors.surfaceContainerHighest)),
           );
         } else if (presentation == 'properties') {
@@ -2425,7 +2897,7 @@ class OrbitCanvasPainter extends CustomPainter {
                   5,
                 ),
                 pct,
-                barColor: const Color(0xFF3B82F6),
+                barColor: colors.primary,
                 bgColor: colors.outlineVariant.withValues(alpha: 0.3),
               );
               double itemY = previewArea.top + 28;
@@ -2435,7 +2907,7 @@ class OrbitCanvasPainter extends CustomPainter {
                   canvas,
                   Rect.fromLTWH(previewArea.left, itemY, 14, 14),
                   task.isCompleted,
-                  const Color(0xFF3B82F6),
+                  colors.primary,
                   colors,
                 );
                 _text(
@@ -2468,7 +2940,7 @@ class OrbitCanvasPainter extends CustomPainter {
                 canvas.drawCircle(
                   Offset(previewArea.left + 4, itemY + 8),
                   3,
-                  Paint()..color = const Color(0xFF3B82F6),
+                  Paint()..color = colors.primary,
                 );
                 _text(
                   canvas,
@@ -2534,7 +3006,7 @@ class OrbitCanvasPainter extends CustomPainter {
           // Live Embedded Note Block Transclusion (CAN-02, NOTE-07)
           final transBarColor = effectivePdfSource != null
               ? stripColor
-              : const Color(0xFF8B5CF6);
+              : colors.secondary;
           // Top accent bar
           canvas.drawRRect(
             RRect.fromRectAndCorners(
@@ -3135,7 +3607,7 @@ class OrbitCanvasPainter extends CustomPainter {
   ) {
     final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(4));
     if (checked) {
-      canvas.drawRRect(rrect, Paint()..color = const Color(0xFF10B981));
+      canvas.drawRRect(rrect, Paint()..color = accentColor);
       final p1 = Offset(
         rect.left + rect.width * 0.25,
         rect.top + rect.height * 0.52,
@@ -3155,7 +3627,7 @@ class OrbitCanvasPainter extends CustomPainter {
       canvas.drawPath(
         path,
         Paint()
-          ..color = Colors.white
+          ..color = OrbitContrast.inkOn(accentColor)
           ..style = PaintingStyle.stroke
           ..strokeWidth = math.max(1.5, rect.width * 0.12)
           ..strokeCap = StrokeCap.round
@@ -3231,15 +3703,19 @@ class OrbitCanvasPainter extends CustomPainter {
   bool shouldRepaint(covariant OrbitCanvasPainter oldDelegate) =>
       !identical(scene, oldDelegate.scene) ||
       sceneRevision != oldDelegate.sceneRevision ||
+      inkCache != oldDelegate.inkCache ||
+      devicePixelRatio != oldDelegate.devicePixelRatio ||
       camera.x != oldDelegate.camera.x ||
       camera.y != oldDelegate.camera.y ||
       camera.zoom != oldDelegate.camera.zoom ||
+      !mapEquals(revealProgress, oldDelegate.revealProgress) ||
       forceUmlDetails != oldDelegate.forceUmlDetails ||
       fontFamily != oldDelegate.fontFamily ||
       !setEquals(selection, oldDelegate.selection) ||
       !mapEquals(objects, oldDelegate.objects) ||
       !mapEquals(images, oldDelegate.images) ||
       colors != oldDelegate.colors ||
+      semanticColors != oldDelegate.semanticColors ||
       region != oldDelegate.region ||
       !listEquals(lassoPoints, oldDelegate.lassoPoints) ||
       preview != oldDelegate.preview ||
@@ -3258,6 +3734,7 @@ class OrbitCanvasPainter extends CustomPainter {
 Future<Uint8List?> renderCanvasToPng({
   required CanvasScene scene,
   required ColorScheme colors,
+  OrbitColors? semanticColors,
   required String backgroundStyle,
   CanvasBounds? bounds,
   Set<String>? elementIds,
@@ -3266,6 +3743,7 @@ Future<Uint8List?> renderCanvasToPng({
   Map<String, ui.Image> images = const {},
   Map<String, CanvasObjectReference> objects = const {},
   String fontFamily = 'Segoe UI',
+  bool forceUmlDetails = false,
 }) async {
   CanvasBounds exportBounds;
   if (elementIds != null && elementIds.isNotEmpty) {
@@ -3306,6 +3784,7 @@ Future<Uint8List?> renderCanvasToPng({
 
   final textCache = CanvasTextCache();
   final painter = OrbitCanvasPainter(
+    semanticColors: semanticColors,
     scene: scene,
     camera: exportCamera,
     selection: const {},
@@ -3317,12 +3796,24 @@ Future<Uint8List?> renderCanvasToPng({
     exportElementIds: elementIds,
     transparentBackground: transparent,
     fontFamily: fontFamily,
+    forceUmlDetails: forceUmlDetails,
   );
 
-  painter.paint(canvas, Size(width, height));
-  final picture = recorder.endRecording();
-  final img = await picture.toImage(width.toInt(), height.toInt());
-  final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
-  textCache.dispose();
-  return byteData?.buffer.asUint8List();
+  ui.Picture? picture;
+  ui.Image? img;
+  try {
+    painter.paint(canvas, Size(width, height));
+    picture = recorder.endRecording();
+    img = await picture.toImage(width.toInt(), height.toInt());
+    final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+    return byteData?.buffer.asUint8List(
+      byteData.offsetInBytes,
+      byteData.lengthInBytes,
+    );
+  } finally {
+    if (recorder.isRecording) recorder.endRecording().dispose();
+    img?.dispose();
+    picture?.dispose();
+    textCache.dispose();
+  }
 }

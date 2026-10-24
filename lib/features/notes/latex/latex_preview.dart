@@ -1,3 +1,4 @@
+import '../../../app/orbit_theme.dart';
 import 'package:flutter/material.dart';
 import '../rich/note_math.dart';
 import 'latex_document.dart';
@@ -26,10 +27,8 @@ class LatexPreview extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
 
     // Academic paper background and text styling
-    final paperColor = isDark ? const Color(0xFF1E1F24) : Colors.white;
-    final paperBorder = isDark
-        ? const Color(0xFF2E313A)
-        : const Color(0xFFE2E8F0);
+    final paperColor = OrbitColors.of(context).workspace;
+    final paperBorder = OrbitColors.of(context).border;
 
     return Scrollbar(
       controller: scrollController,
@@ -102,12 +101,11 @@ class _LatexDocViewState extends State<_LatexDocView> {
     _tabNum = 0;
 
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final textStyle = TextStyle(
       fontSize: widget.fontSize,
       height: 1.65,
       fontFamily: 'serif',
-      color: isDark ? const Color(0xFFE5E7EB) : const Color(0xFF1F2937),
+      color: OrbitColors.of(context).text,
     );
 
     final widgets = <Widget>[];
@@ -156,9 +154,6 @@ class _LatexDocViewState extends State<_LatexDocView> {
   }
 
   Widget _buildHeader(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
     return Column(
       children: [
         if (widget.doc.title.isNotEmpty)
@@ -169,7 +164,7 @@ class _LatexDocViewState extends State<_LatexDocView> {
               fontSize: widget.fontSize * 1.75,
               fontWeight: FontWeight.bold,
               fontFamily: 'serif',
-              color: isDark ? Colors.white : Colors.black,
+              color: OrbitColors.of(context).text,
             ),
           ),
         if (widget.doc.author.isNotEmpty) ...[
@@ -180,7 +175,7 @@ class _LatexDocViewState extends State<_LatexDocView> {
             style: TextStyle(
               fontSize: widget.fontSize * 1.1,
               fontFamily: 'serif',
-              color: isDark ? const Color(0xFFD1D5DB) : const Color(0xFF374151),
+              color: OrbitColors.of(context).subtle,
             ),
           ),
         ],
@@ -193,7 +188,7 @@ class _LatexDocViewState extends State<_LatexDocView> {
               fontSize: widget.fontSize * 0.95,
               fontFamily: 'serif',
               fontStyle: FontStyle.italic,
-              color: isDark ? const Color(0xFF9CA3AF) : const Color(0xFF6B7280),
+              color: OrbitColors.of(context).muted,
             ),
           ),
         ],
@@ -202,7 +197,6 @@ class _LatexDocViewState extends State<_LatexDocView> {
   }
 
   Widget _buildAbstract(BuildContext context, TextStyle textStyle) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 32),
       child: Column(
@@ -213,7 +207,7 @@ class _LatexDocViewState extends State<_LatexDocView> {
               fontSize: widget.fontSize * 0.95,
               fontWeight: FontWeight.bold,
               fontFamily: 'serif',
-              color: isDark ? Colors.white : Colors.black,
+              color: OrbitColors.of(context).text,
             ),
           ),
           const SizedBox(height: 8),
@@ -232,7 +226,6 @@ class _LatexDocViewState extends State<_LatexDocView> {
     BuildContext context,
   ) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     switch (block.type) {
       case LatexBlockType.section:
@@ -248,7 +241,7 @@ class _LatexDocViewState extends State<_LatexDocView> {
               fontSize: widget.fontSize * 1.35,
               fontWeight: FontWeight.bold,
               fontFamily: 'serif',
-              color: isDark ? Colors.white : Colors.black,
+              color: OrbitColors.of(context).text,
             ),
           ),
         );
@@ -265,7 +258,7 @@ class _LatexDocViewState extends State<_LatexDocView> {
               fontSize: widget.fontSize * 1.15,
               fontWeight: FontWeight.bold,
               fontFamily: 'serif',
-              color: isDark ? const Color(0xFFF3F4F6) : const Color(0xFF111827),
+              color: OrbitColors.of(context).text,
             ),
           ),
         );
@@ -283,7 +276,7 @@ class _LatexDocViewState extends State<_LatexDocView> {
               fontSize: widget.fontSize * 1.05,
               fontWeight: FontWeight.w600,
               fontFamily: 'serif',
-              color: isDark ? const Color(0xFFE5E7EB) : const Color(0xFF1F2937),
+              color: OrbitColors.of(context).text,
             ),
           ),
         );
@@ -315,9 +308,7 @@ class _LatexDocViewState extends State<_LatexDocView> {
                     style: TextStyle(
                       fontFamily: 'serif',
                       fontSize: widget.fontSize * 0.9,
-                      color: isDark
-                          ? const Color(0xFF9CA3AF)
-                          : const Color(0xFF6B7280),
+                      color: OrbitColors.of(context).muted,
                     ),
                   ),
                 ),
@@ -350,9 +341,7 @@ class _LatexDocViewState extends State<_LatexDocView> {
                     style: TextStyle(
                       fontFamily: 'serif',
                       fontSize: widget.fontSize * 0.9,
-                      color: isDark
-                          ? const Color(0xFF9CA3AF)
-                          : const Color(0xFF6B7280),
+                      color: OrbitColors.of(context).muted,
                     ),
                   ),
                 ),
@@ -381,13 +370,9 @@ class _LatexDocViewState extends State<_LatexDocView> {
             : '$capitalizedEnv $count';
 
         final cardBorder = isThmOrLemma
-            ? const Color(0xFF8B7CF6) // Orbit Violet
-            : const Color(0xFF10B981); // Emerald
-        final cardBg = isDark
-            ? (isThmOrLemma ? const Color(0xFF1E1B2E) : const Color(0xFF142420))
-            : (isThmOrLemma
-                  ? const Color(0xFFF5F3FF)
-                  : const Color(0xFFECFDF5));
+            ? OrbitColors.of(context).accent
+            : OrbitColors.of(context).success; // Emerald
+        final cardBg = OrbitColors.of(context).tinted(cardBorder);
 
         return Container(
           decoration: BoxDecoration(
@@ -428,9 +413,7 @@ class _LatexDocViewState extends State<_LatexDocView> {
         final title = block.options.isNotEmpty
             ? 'Proof (${block.options}).'
             : 'Proof.';
-        final proofBorder = isDark
-            ? const Color(0xFF4B5563)
-            : const Color(0xFFD1D5DB);
+        final proofBorder = OrbitColors.of(context).border;
         return Container(
           decoration: BoxDecoration(
             border: Border(left: BorderSide(color: proofBorder, width: 3)),
@@ -446,9 +429,7 @@ class _LatexDocViewState extends State<_LatexDocView> {
                   fontStyle: FontStyle.italic,
                   fontWeight: FontWeight.bold,
                   fontSize: widget.fontSize,
-                  color: isDark
-                      ? const Color(0xFFE5E7EB)
-                      : const Color(0xFF374151),
+                  color: OrbitColors.of(context).subtle,
                 ),
               ),
               const SizedBox(height: 6),
@@ -462,9 +443,7 @@ class _LatexDocViewState extends State<_LatexDocView> {
                   style: TextStyle(
                     fontSize: widget.fontSize * 1.2,
                     fontWeight: FontWeight.bold,
-                    color: isDark
-                        ? const Color(0xFF9CA3AF)
-                        : const Color(0xFF4B5563),
+                    color: OrbitColors.of(context).muted,
                   ),
                 ),
               ),
@@ -522,10 +501,7 @@ class _LatexDocViewState extends State<_LatexDocView> {
         .toList();
     if (rows.isEmpty) return const SizedBox.shrink();
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final borderColor = isDark
-        ? const Color(0xFF374151)
-        : const Color(0xFFE5E7EB);
+    final borderColor = OrbitColors.of(context).border;
 
     final grid = rows
         .map((r) => r.split('&').map((c) => c.trim()).toList())
@@ -544,11 +520,7 @@ class _LatexDocViewState extends State<_LatexDocView> {
                 for (var r = 0; r < grid.length; r++)
                   TableRow(
                     decoration: BoxDecoration(
-                      color: r == 0
-                          ? (isDark
-                                ? const Color(0xFF262A35)
-                                : const Color(0xFFF3F4F6))
-                          : null,
+                      color: r == 0 ? (OrbitColors.of(context).raised) : null,
                     ),
                     children: [
                       for (final cell in grid[r])
@@ -581,9 +553,7 @@ class _LatexDocViewState extends State<_LatexDocView> {
                 fontFamily: 'serif',
                 fontStyle: FontStyle.italic,
                 fontSize: widget.fontSize * 0.9,
-                color: isDark
-                    ? const Color(0xFF9CA3AF)
-                    : const Color(0xFF6B7280),
+                color: OrbitColors.of(context).muted,
               ),
             ),
           ],
@@ -593,7 +563,6 @@ class _LatexDocViewState extends State<_LatexDocView> {
   }
 
   Widget _buildFigureBlock(LatexBlock block, BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final imagePath = block.imagePath ?? '';
 
     return Padding(
@@ -609,15 +578,9 @@ class _LatexDocViewState extends State<_LatexDocView> {
             Container(
               height: 180,
               decoration: BoxDecoration(
-                color: isDark
-                    ? const Color(0xFF23252E)
-                    : const Color(0xFFF3F4F6),
+                color: OrbitColors.of(context).panel,
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: isDark
-                      ? const Color(0xFF374151)
-                      : const Color(0xFFE5E7EB),
-                ),
+                border: Border.all(color: OrbitColors.of(context).border),
               ),
               child: Center(
                 child: Row(
@@ -644,9 +607,7 @@ class _LatexDocViewState extends State<_LatexDocView> {
                 fontFamily: 'serif',
                 fontStyle: FontStyle.italic,
                 fontSize: widget.fontSize * 0.9,
-                color: isDark
-                    ? const Color(0xFF9CA3AF)
-                    : const Color(0xFF6B7280),
+                color: OrbitColors.of(context).muted,
               ),
             ),
           ],

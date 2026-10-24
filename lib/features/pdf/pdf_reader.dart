@@ -1,3 +1,6 @@
+import 'pdf_motion_surface.dart';
+import '../../app/orbit_components.dart';
+import '../../app/orbit_theme.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -9,8 +12,6 @@ import 'package:crypto/crypto.dart';
 import '../../application/search_execution.dart';
 import 'package:pdfrx/pdfrx.dart' hide PdfAnnotation;
 
-import '../../app/orbit_theme.dart';
-import '../../app/orbit_components.dart';
 import '../../domain/research_document.dart';
 import '../../domain/object_reference.dart';
 import '../../domain/pdf_annotation.dart';
@@ -204,6 +205,17 @@ class OrbitPdfReader extends StatefulWidget {
 }
 
 class _OrbitPdfReaderState extends State<OrbitPdfReader> {
+  int _navigationMotion = 0, _annotationMotion = 0;
+  int _navigationSerial = 0;
+  int? _navigationTarget;
+  bool _magnifyingLens = false;
+  Duration get _navigationDuration => OrbitMotionScope.settings(context).reading
+      ? OrbitMotionScope.duration(
+          context,
+          const Duration(milliseconds: 240),
+          spatial: true,
+        )
+      : Duration.zero;
   PdfPageTextRange? _globalSearchRange;
   int? _globalOcrPage;
   PdfViewerController _viewer = PdfViewerController();
@@ -234,7 +246,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   bool _savingAnnotations = false;
   int _zoomPercent = 100;
   int _fitGeneration = 0;
-  final _contentWidths = <int, Future<Rect>>{};
+  final _contentWidths = PdfContentWidthCache();
   PdfPageMode _pageMode = PdfPageMode.continuous;
   int _activeColor = 0xff8b7cf6;
   String? _activeHighlightId;
@@ -337,6 +349,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   void _setActiveHighlight(String id) {
     _highlightPulseTimer?.cancel();
     _activeHighlightId = id;
+    if (mounted) setState(() => _annotationMotion++);
     if (_viewer.isReady) _viewer.invalidate();
     _highlightPulseTimer = Timer(const Duration(seconds: 4), () {
       if (mounted && _activeHighlightId == id) {
@@ -354,6 +367,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
       return;
     }
     _fitGeneration++;
+    _contentWidths.cancel();
     setState(() {
       _textOnly = false;
       _comfort = false;
@@ -430,9 +444,12 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   }
 
   void _resetViewer() {
+    _navigationSerial++;
+    _navigationTarget = null;
     _globalSearchRange = null;
     _globalOcrPage = null;
     _viewerEpoch++;
+    _contentWidths.clear();
     _fitGeneration++;
     _ready = false;
     _search?.dispose();
@@ -897,13 +914,10 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     final generation = ++_fitGeneration;
     final pageNumber = _page.clamp(1, _viewer.pageCount);
     try {
-      if (!_contentWidths.containsKey(pageNumber) &&
-          _contentWidths.length >= 32) {
-        _contentWidths.remove(_contentWidths.keys.first);
-      }
-      final area = await (_contentWidths[pageNumber] ??= measurePdfContentWidth(
+      final area = await _contentWidths.measure(
         _viewer.document.pages[pageNumber - 1],
-      ));
+      );
+      if (area == null) return; // Superseded page or disposed viewer.
       if (!mounted ||
           generation != _fitGeneration ||
           !_comfort ||
@@ -1116,6 +1130,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
       return;
     }
     _fitGeneration++;
+    _contentWidths.cancel();
     setState(() {
       _textOnly = false;
       _comfort = tool == 'content';
@@ -1143,6 +1158,21 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     }
     if (mounted && _viewer.isReady) {
       setState(() => _zoomPercent = (_viewer.currentZoom * 100).round());
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final target = _navigationTarget, request = _navigationSerial;
+    if (target != null && _navigationDuration == Duration.zero) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted &&
+            request == _navigationSerial &&
+            _navigationTarget == target) {
+          _go(target, remember: false);
+        }
+      });
     }
   }
 
@@ -1249,7 +1279,10 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
 
   void _rememberPosition() {
     if (!_ready || !_viewer.isReady) return;
-    _pendingPosition = (_viewer.pageNumber ?? _page, _viewer.currentZoom);
+    _pendingPosition = (
+      _navigationTarget ?? _viewer.pageNumber ?? _page,
+      _viewer.currentZoom,
+    );
     _pendingPositionCallback = widget.onReadingState;
   }
 
@@ -1264,6 +1297,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
 
   @override
   void dispose() {
+    _navigationSerial++;
     _sessionTimer?.cancel();
     _flushReadingState();
     _highlightPulseTimer?.cancel();
@@ -1278,6 +1312,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     _thumbnailFocus.dispose();
     _thumbnailScroll.dispose();
     _toolbarScroll.dispose();
+    _contentWidths.dispose();
     super.dispose();
   }
 
@@ -1340,7 +1375,15 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   }
 
   Widget _buildFilteredViewer(Widget child) {
-    Widget filtered = child;
+    Widget filtered = PdfMotionSurface(
+      navigation: _navigationMotion,
+      annotation: _annotationMotion,
+      page: _page,
+      pageCount: _ready && _viewer.isReady ? _viewer.pageCount : 0,
+      lens: _magnifyingLens,
+      onDirectInteraction: _interruptNavigation,
+      child: child,
+    );
     switch (_paperTone) {
       case 'sepia':
         filtered = ColorFiltered(
@@ -1348,7 +1391,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
             Color(0xFFEEDBB2),
             BlendMode.multiply,
           ),
-          child: child,
+          child: filtered,
         );
       case 'editorial':
         filtered = ColorFiltered(
@@ -1356,7 +1399,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
             Color(0xFFF3EEE3),
             BlendMode.multiply,
           ),
-          child: child,
+          child: filtered,
         );
       case 'dark':
         filtered = ColorFiltered(
@@ -1382,7 +1425,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
             1,
             0,
           ]),
-          child: child,
+          child: filtered,
         );
       case 'normal':
       default:
@@ -1398,13 +1441,58 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   void _go(int page, {bool remember = true}) {
     if (_viewer.isReady) {
       final target = page.clamp(1, _viewer.pageCount);
+      final request = ++_navigationSerial;
+      final viewer = _viewer;
+      _navigationTarget = target;
       if (remember && target != _page) _rememberPageJump();
       setState(() {
+        if (_page != target) _navigationMotion++;
         _page = target;
         _pageInput.text = '$target';
       });
-      _viewer.goToPage(pageNumber: target, duration: Duration.zero);
+      // Persist the requested destination immediately, even if the reader closes
+      // before its first animation frame. Intermediate pages are visual only.
+      _positionChanged();
+      viewer
+          .goToPage(pageNumber: target, duration: _navigationDuration)
+          .then<void>(
+            (_) {
+              if (!mounted ||
+                  request != _navigationSerial ||
+                  !identical(viewer, _viewer)) {
+                return;
+              }
+              _navigationTarget = null;
+              _positionChanged();
+              _fitComfort();
+            },
+            onError: (Object error, StackTrace stack) {
+              if (!mounted ||
+                  request != _navigationSerial ||
+                  !identical(viewer, _viewer)) {
+                return;
+              }
+              _navigationTarget = null;
+              _positionChanged();
+              _notice(
+                'Could not finish the page jump. Try the page control again.',
+              );
+            },
+          );
     }
+  }
+
+  void _interruptNavigation() {
+    if (_navigationTarget == null || !_viewer.isReady) return;
+    _navigationSerial++;
+    _navigationTarget = null;
+    _viewer.goTo(_viewer.value.clone(), duration: Duration.zero);
+    final page = _viewer.pageNumber ?? _page;
+    setState(() {
+      _page = page;
+      _pageInput.text = '$page';
+    });
+    _positionChanged();
   }
 
   double get _thumbnailExtent =>
@@ -1416,7 +1504,16 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
       0.0,
       _thumbnailScroll.position.maxScrollExtent,
     );
-    _thumbnailScroll.jumpTo(offset);
+    final duration = _navigationDuration;
+    if (duration == Duration.zero) {
+      _thumbnailScroll.jumpTo(offset);
+    } else {
+      _thumbnailScroll.animateTo(
+        offset,
+        duration: duration,
+        curve: Curves.easeOutCubic,
+      );
+    }
   }
 
   KeyEventResult _thumbnailKey(FocusNode node, KeyEvent event) {
@@ -1965,6 +2062,9 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
 
   void _paintAnnotations(Canvas canvas, Rect pageRect, PdfPage page) {
     if (!_showMarkup) return;
+    final focus =
+        OrbitMotionScope.settings(context).readingSpotlight &&
+        _activeHighlightId != null;
     for (final entry in _annotationIndex.markupForPage(page.pageNumber)) {
       final annotation = entry.annotation;
       final isActive = _activeHighlightId == annotation.object.id;
@@ -1978,6 +2078,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
         color,
         style,
         isActive,
+        focus && !isActive ? .3 : 1,
       );
     }
     for (final region
@@ -1999,8 +2100,9 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     CanvasElement region,
     Color color,
     String style,
-    bool isActive,
-  ) {
+    bool isActive, [
+    double opacity = 1,
+  ]) {
     final rect = Rect.fromLTWH(
       pageRect.left + region.x * pageRect.width,
       pageRect.top + region.y * pageRect.height,
@@ -2013,7 +2115,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
         Offset(rect.left, rect.bottom - 1),
         Offset(rect.right, rect.bottom - 1),
         Paint()
-          ..color = color.withAlpha(220)
+          ..color = color.withAlpha((220 * opacity).round())
           ..strokeWidth = 2.5
           ..strokeCap = StrokeCap.round,
       );
@@ -2022,14 +2124,14 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
         Offset(rect.left, rect.center.dy),
         Offset(rect.right, rect.center.dy),
         Paint()
-          ..color = color.withAlpha(220)
+          ..color = color.withAlpha((220 * opacity).round())
           ..strokeWidth = 2.0
           ..strokeCap = StrokeCap.round,
       );
     } else {
       canvas.drawRRect(
         RRect.fromRectAndRadius(rect, const Radius.circular(2)),
-        Paint()..color = color.withAlpha(75),
+        Paint()..color = color.withAlpha((75 * opacity).round()),
       );
     }
 
@@ -2381,6 +2483,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                                       _textOnly = false;
                                     });
                                     _fitGeneration++;
+                                    _contentWidths.cancel();
                                     _viewer.zoomDown(duration: Duration.zero);
                                   }
                                 : null,
@@ -2442,6 +2545,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                                       _textOnly = false;
                                     });
                                     _fitGeneration++;
+                                    _contentWidths.cancel();
                                     _viewer.zoomUp(duration: Duration.zero);
                                   }
                                 : null,
@@ -2494,6 +2598,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                                       _fitComfort();
                                     } else {
                                       _fitGeneration++;
+                                      _contentWidths.cancel();
                                       _viewer.goTo(
                                         _viewer.calcMatrixFitWidthForPage(
                                           pageNumber: _page,
@@ -2766,6 +2871,10 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                                   } else {
                                     _showBookmarks();
                                   }
+                                case 'lens':
+                                  setState(
+                                    () => _magnifyingLens = !_magnifyingLens,
+                                  );
                                 case 'zen':
                                   setState(() => _zenMode = !_zenMode);
                               }
@@ -2805,6 +2914,14 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                               const PopupMenuItem(
                                 value: 'memories',
                                 child: Text('Book memories & notes archive…'),
+                              ),
+                              PopupMenuItem(
+                                value: 'lens',
+                                child: Text(
+                                  _magnifyingLens
+                                      ? 'Hide magnifying lens'
+                                      : 'Magnifying lens',
+                                ),
                               ),
                               const PopupMenuItem(
                                 value: 'zen',
@@ -3132,6 +3249,10 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                                   if (mounted &&
                                       epoch == _viewerEpoch &&
                                       page != null) {
+                                    if (_navigationTarget != null &&
+                                        page != _navigationTarget) {
+                                      return;
+                                    }
                                     final changed = _page != page;
                                     if (changed) {
                                       setState(() {

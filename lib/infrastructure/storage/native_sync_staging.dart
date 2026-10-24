@@ -365,7 +365,20 @@ Future<List<WorkspaceAttachmentStageInfo>> _listAttachmentStages(
       );
       final part = await _attachmentStageFile(store, info.id, '.part');
       if (!await part.exists()) continue;
-      result.add(info);
+      final length = await part.length();
+      if (length > info.maxBytes) continue;
+      result.add(
+        WorkspaceAttachmentStageInfo(
+          id: info.id,
+          operation: info.operation,
+          target: info.target,
+          expectedHash: info.expectedHash,
+          maxBytes: info.maxBytes,
+          length: length,
+          sourceName: info.sourceName,
+          updatedAt: info.updatedAt,
+        ),
+      );
     } on Object {
       // Keep malformed recovery files for inspection without making startup
       // unusable. A subsequent discard can remove the known stage by id.

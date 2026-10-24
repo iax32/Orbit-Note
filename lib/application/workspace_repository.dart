@@ -35,9 +35,11 @@ import 'sync/sync_inventory.dart';
 import 'sync/sync_policy.dart';
 import 'sync/sync_provider.dart';
 import '../domain/sync_entry.dart';
+import '../domain/collaboration.dart';
 
 part 'sync/workspace_sync_replica.dart';
 part 'workspace_folders.dart';
+part 'shared_vault_replica.dart';
 
 /// Coordinates durable content before updating the disposable query index.
 /// UI/controllers use this boundary, never the platform store or SQLite directly.
@@ -654,7 +656,10 @@ class WorkspaceRepository {
 
   Future<UniversalObject> save(UniversalObject object) =>
       _serial(() => _save(object));
-  Future<UniversalObject> _save(UniversalObject object) async {
+  Future<UniversalObject> _save(
+    UniversalObject object, {
+    void Function()? checkCurrent,
+  }) async {
     _requireWritable();
     await _verifyManifest();
     _validate(object);
@@ -755,6 +760,7 @@ class WorkspaceRepository {
     final path = _paths[object.id] ?? _newPath(object);
     final source = _codec.encode(saved, previousSource: _sources[object.id]);
     final bytes = _bytes(source);
+    checkCurrent?.call();
     try {
       await _store.write(path, bytes, expectedHash: _hashes[object.id]);
     } on WorkspaceConflict {

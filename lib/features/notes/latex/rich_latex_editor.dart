@@ -714,7 +714,7 @@ class RichLatexEditorState extends State<RichLatexEditor> {
                 },
               ),
             ),
-            const Text(' · ', style: TextStyle(color: Colors.grey)),
+            Text(' · ', style: TextStyle(color: OrbitColors.of(context).muted)),
             SizedBox(
               width: 120,
               child: TextField(
@@ -1107,8 +1107,11 @@ class RichLatexEditorState extends State<RichLatexEditor> {
         );
 
       case LatexBlockType.pageBreak:
-        return const Center(
-          child: Text('Page break', style: TextStyle(color: Colors.grey)),
+        return Center(
+          child: Text(
+            'Page break',
+            style: TextStyle(color: OrbitColors.of(context).muted),
+          ),
         );
 
       default:

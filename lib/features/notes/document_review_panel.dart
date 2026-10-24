@@ -1,3 +1,4 @@
+import '../../app/orbit_motion_effects.dart';
 import 'package:flutter/material.dart';
 import '../../domain/document_review.dart';
 import '../../app/orbit_theme.dart';
@@ -120,100 +121,110 @@ class _DocumentReviewPanelState extends State<DocumentReviewPanel> {
               itemBuilder: (_, i) {
                 final review = shown[i],
                     location = locateReview(widget.source, shown[i]);
-                return Container(
-                  margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: colors.raised,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: colors.border),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        '${review.kind == 'comment' ? 'Comment' : 'Suggested edit'} · ${review.state}',
-                        style: Theme.of(context).textTheme.labelMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      SelectableText(
-                        review.quote,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 10),
-                      SelectableText(review.message),
-                      if (review.kind == 'suggestion') ...[
-                        const SizedBox(height: 12),
+                return OrbitEffect(
+                  key: ValueKey(review.id),
+                  trigger: (review.state, review.replacement),
+                  family: 'smart',
+                  style: 'highlight',
+                  interactive: true,
+                  child: Container(
+                    margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: colors.raised,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: colors.border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
                         Text(
-                          'Proposed wording',
+                          '${review.kind == 'comment' ? 'Comment' : 'Suggested edit'} · ${review.state}',
                           style: Theme.of(context).textTheme.labelMedium,
                         ),
+                        const SizedBox(height: 8),
                         SelectableText(
-                          review.replacement.isEmpty
-                              ? '(Delete selected passage)'
-                              : review.replacement,
+                          review.quote,
+                          style: Theme.of(context).textTheme.bodySmall,
                         ),
-                      ],
-                      if (location.warning != null && review.isOpen)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 10),
-                          child: Semantics(
-                            liveRegion: true,
-                            child: Text(
-                              location.warning!,
-                              style: TextStyle(color: colors.secondary),
-                            ),
+                        const SizedBox(height: 10),
+                        SelectableText(review.message),
+                        if (review.kind == 'suggestion') ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            'Proposed wording',
+                            style: Theme.of(context).textTheme.labelMedium,
                           ),
-                        ),
-                      Wrap(
-                        spacing: 4,
-                        children: [
-                          TextButton(
-                            onPressed: location.start == null
-                                ? null
-                                : () => widget.onJump(review),
-                            child: const Text('Go to passage'),
-                          ),
-                          if (review.isOpen && review.kind == 'suggestion')
-                            FilledButton(
-                              onPressed: location.start == null
-                                  ? null
-                                  : () => widget.onAction(review.id, 'accept'),
-                              child: const Text('Accept'),
-                            ),
-                          if (review.isOpen)
-                            TextButton(
-                              onPressed: () => widget.onAction(
-                                review.id,
-                                review.kind == 'comment'
-                                    ? 'resolved'
-                                    : 'rejected',
-                              ),
-                              child: Text(
-                                review.kind == 'comment' ? 'Resolve' : 'Reject',
-                              ),
-                            ),
-                          if (!review.isOpen && review.state != 'accepted')
-                            TextButton(
-                              onPressed: () =>
-                                  widget.onAction(review.id, 'open'),
-                              child: const Text('Reopen'),
-                            ),
-                          if (review.isOpen && location.start == null)
-                            TextButton(
-                              onPressed: () =>
-                                  widget.onAction(review.id, 'reattach'),
-                              child: const Text('Reattach to selection'),
-                            ),
-                          IconButton(
-                            tooltip: 'Remove review annotation',
-                            onPressed: () =>
-                                widget.onAction(review.id, 'remove'),
-                            icon: const Icon(Icons.delete_outline, size: 18),
+                          SelectableText(
+                            review.replacement.isEmpty
+                                ? '(Delete selected passage)'
+                                : review.replacement,
                           ),
                         ],
-                      ),
-                    ],
+                        if (location.warning != null && review.isOpen)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Semantics(
+                              liveRegion: true,
+                              child: Text(
+                                location.warning!,
+                                style: TextStyle(color: colors.secondary),
+                              ),
+                            ),
+                          ),
+                        Wrap(
+                          spacing: 4,
+                          children: [
+                            TextButton(
+                              onPressed: location.start == null
+                                  ? null
+                                  : () => widget.onJump(review),
+                              child: const Text('Go to passage'),
+                            ),
+                            if (review.isOpen && review.kind == 'suggestion')
+                              FilledButton(
+                                onPressed: location.start == null
+                                    ? null
+                                    : () =>
+                                          widget.onAction(review.id, 'accept'),
+                                child: const Text('Accept'),
+                              ),
+                            if (review.isOpen)
+                              TextButton(
+                                onPressed: () => widget.onAction(
+                                  review.id,
+                                  review.kind == 'comment'
+                                      ? 'resolved'
+                                      : 'rejected',
+                                ),
+                                child: Text(
+                                  review.kind == 'comment'
+                                      ? 'Resolve'
+                                      : 'Reject',
+                                ),
+                              ),
+                            if (!review.isOpen && review.state != 'accepted')
+                              TextButton(
+                                onPressed: () =>
+                                    widget.onAction(review.id, 'open'),
+                                child: const Text('Reopen'),
+                              ),
+                            if (review.isOpen && location.start == null)
+                              TextButton(
+                                onPressed: () =>
+                                    widget.onAction(review.id, 'reattach'),
+                                child: const Text('Reattach to selection'),
+                              ),
+                            IconButton(
+                              tooltip: 'Remove review annotation',
+                              onPressed: () =>
+                                  widget.onAction(review.id, 'remove'),
+                              icon: const Icon(Icons.delete_outline, size: 18),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 );
               },

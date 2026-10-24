@@ -1,5 +1,69 @@
 # Visual design direction
 
+## Settings hierarchy — 2026-10-23
+
+Settings uses a quiet category sidebar on wide displays and an integrated,
+scrollable compact layout at narrow widths or enlarged text. Consistent grouped
+cards separate section headings, setting labels, descriptions and values. Search
+shows matching entries across categories; it does not render every panel upfront.
+Advanced theme controls stay folded until requested. Readable semantic palette
+roles and real Material surfaces keep selected rows and interaction feedback
+visible. Controls stack before labels/values are squeezed; search submit and
+result dragging dismiss the keyboard. [Behavior and validation](../tasks/settings-workspace-2026-10-23.md).
+
+
+## Shared semantic colors and new Orbit default — 2026-10-23
+
+Orbit's default uses layered graphite surfaces, warm white text and a restrained
+violet accent. All 113 built-in palettes now share the foreground contrast
+contract: primary text at least 7:1, secondary/muted text, links, status and
+accent ink at least 4.5:1 against the eleven tested state surfaces; focus ink at
+least 3:1. These are token-level checks, not whole-app accessibility certification.
+Original palette surfaces/identity remain, with older foregrounds calibrated.
+
+New/missing accent preferences follow the theme. Explicit accent presets retain
+their choice and hue while adapting their shade for readability. Explicit role
+color overrides/custom packs remain exact and user-owned. Shared Material text,
+input/floating/focus roles, graph categories, collections/statuses, code/LaTeX,
+callouts, Canvas controls and cached previews now follow the current palette.
+Status tints and filled-control ink use actual contrast. Recovery controls use
+the selected base family with a readable fallback.
+
+Authored ink, object colors, covers, blueprint sheets/white pens, writing designs,
+PDF highlights/paper and publication colors remain independent content choices.
+External Google button branding and stable collaborator identity colors retain
+their purpose; name-label ink is contrast-aware. The other chat's exact answer
+was unavailable; this implements the documented principles rather than claiming
+to have read it. [Scope, checks and limits](../tasks/semantic-color-system-2026-10-23.md).
+
+
+## System appearance — 2026-10-22
+
+Paired families optionally follow the OS light/dark appearance, retaining their
+identity, user typography and independent document surfaces. The switch names the
+visible member; stopping automation preserves that look and manual selection wins.
+Preview/export use effective colors, including explicit accents. Unpaired custom
+themes are not recolored or assigned a guessed companion. Existing motion-off/OS
+reduced-motion handling remains; selected editor text/focus survive color changes.
+[Scope and evidence](../tasks/system-appearance-2026-10-22.md).
+
+## Coordinated light/dark palettes — 2026-10-22
+
+The 100 additional palettes use authored paper/night neutrals, restrained accents
+and independently adjusted semantic foregrounds. Eight collections span Studio,
+Ocean, Forest, Earth, Botanical, Sky, Warmth and Creative. All existing shared
+roles follow the palette. Main text, secondary/muted text, links/status/focus and
+filled-control ink are tested against actual state surfaces, including pressed,
+selected and floating. Decorative separators remain quiet. Contrast targets and
+explicit limits are documented in the [task](../tasks/appearance-palettes-2026-10-22.md).
+
+Pair switching/search/filters keep selection visible, and six-card pages bound
+rendered previews. Large text stacks cards and wraps controls without clamping.
+New palette selection preserves typography/corner preferences and can follow the
+pack accent rather than replacing it with the old global accent. The original
+13 packs, custom roles and recovery paths remain. No full-app WCAG certification
+is implied for authored content or arbitrary custom overrides.
+
 ## Custom-font reading comfort — 2026-10-03
 
 Selected note fonts now refresh existing Rich blocks immediately. Prose, Read,
@@ -14,8 +78,8 @@ automatic preference changes. Fonts are rendered as text, never scaled bitmaps.
 Native display/rasterization quality is not verified by headless layout tests.
 See [validation evidence](../tasks/font-comfort-2026-10-03.md).
 
-Sources: S10–S12. Orbit Dark is implemented. Future light/system variants remain
-planned; see implementation status for the delivered subset.
+Sources: S10–S12. Orbit Dark, curated light/dark palettes and optional system
+switching for paired families are implemented; see implementation status for limits.
 
 ## Delivered color customization — 2026-09-30
 

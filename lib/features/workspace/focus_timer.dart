@@ -221,7 +221,7 @@ class _FocusTimerDialogState extends State<FocusTimerDialog>
 
     final modeColor = ctrl.mode == FocusMode.focus
         ? colors.accent
-        : const Color(0xFF10B981); // Emerald green for breaks
+        : colors.success;
 
     return OrbitDialog(
       title: Row(
@@ -391,7 +391,7 @@ class _FocusTimerDialogState extends State<FocusTimerDialog>
                         ctrl.isRunning
                             ? Icons.pause_rounded
                             : Icons.play_arrow_rounded,
-                        color: Colors.white,
+                        color: OrbitContrast.inkOn(modeColor),
                         size: 26,
                       ),
                     ),
@@ -514,7 +514,11 @@ class _RadialRingPainter extends CustomPainter {
       );
     }
 
-    canvas.drawCircle(tipCenter, 4.5, Paint()..color = Colors.white);
+    canvas.drawCircle(
+      tipCenter,
+      4.5,
+      Paint()..color = OrbitContrast.inkOn(accentColor),
+    );
   }
 
   @override

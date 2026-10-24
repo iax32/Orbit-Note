@@ -473,10 +473,10 @@ class DocumentBreadcrumbs extends StatelessWidget {
     if (documentIcon != null && documentIcon!.isNotEmpty) {
       return Text(documentIcon!, style: const TextStyle(fontSize: 12));
     } else if (isLatex) {
-      return const Icon(
+      return Icon(
         Icons.functions_rounded,
         size: 13,
-        color: Color(0xFF8B7CF6),
+        color: theme.colorScheme.primary,
       );
     } else {
       return Icon(
@@ -599,7 +599,9 @@ class DocumentBreadcrumbs extends StatelessWidget {
                   Icon(
                     isBookmarked ? Icons.bookmark : Icons.bookmark_border,
                     size: 15,
-                    color: isBookmarked ? const Color(0xFFF59E0B) : null,
+                    color: isBookmarked
+                        ? OrbitColors.of(context).warning
+                        : null,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -621,7 +623,7 @@ class DocumentBreadcrumbs extends StatelessWidget {
                   Icon(
                     isPinned ? Icons.push_pin : Icons.push_pin_outlined,
                     size: 15,
-                    color: isPinned ? const Color(0xFF8B7CF6) : null,
+                    color: isPinned ? OrbitColors.of(context).accent : null,
                   ),
                   const SizedBox(width: 8),
                   Expanded(

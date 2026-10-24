@@ -227,15 +227,17 @@ class SnapshotBlock extends StatelessWidget {
                     vertical: 2,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.amber.withValues(alpha: 0.15),
+                    color: OrbitColors.of(
+                      context,
+                    ).warning.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
                     'Frozen · $formattedDate',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
-                      color: Colors.amber,
+                      color: OrbitColors.of(context).warning,
                     ),
                   ),
                 ),

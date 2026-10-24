@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'orbit_density.dart';
 import 'package:flutter/services.dart';
 import 'orbit_theme.dart';
+import '../domain/motion_preferences.dart';
 
 abstract final class OrbitSpace {
   static const small = 4.0, gap = 8.0, inset = 12.0;
@@ -300,7 +301,9 @@ class _OrbitContentTransitionState extends State<OrbitContentTransition>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _duration = OrbitMotionScope.duration(context, OrbitMotion.workspace);
+    _duration = OrbitMotionScope.settings(context).navigation
+        ? OrbitMotionScope.duration(context, OrbitMotion.workspace)
+        : Duration.zero;
     _animation.duration = _duration;
     // Preference changes settle an in-flight transition immediately.
     _animation.value = 1;
@@ -341,7 +344,19 @@ class _OrbitContentTransitionState extends State<OrbitContentTransition>
         return Opacity(
           opacity: .88 + .12 * progress,
           child: Transform.translate(
-            offset: Offset(0, travel ? 4 * (1 - progress) : 0),
+            offset: Offset(
+              0,
+              travel && OrbitMotionScope.settings(context).navigation
+                  ? (OrbitMotionScope.settings(context).profile == 'paper'
+                            ? 6
+                            : OrbitMotionScope.settings(context).profile ==
+                                  'experimental'
+                            ? 8
+                            : 4) *
+                        (1 - progress)
+                  : 0,
+            ),
+            transformHitTests: false,
             child: child,
           ),
         );
@@ -634,10 +649,16 @@ class OrbitMotionScope extends InheritedWidget {
     super.key,
     required this.preference,
     required this.osReduced,
+    this.options = const {},
     required super.child,
   });
   final String preference;
   final bool osReduced;
+  final Map<String, dynamic> options;
+  static MotionPreferences settings(BuildContext context) => MotionPreferences(
+    context.dependOnInheritedWidgetOfExactType<OrbitMotionScope>()?.options ??
+        const {},
+  );
   static Duration duration(
     BuildContext context,
     Duration normal, {
@@ -650,7 +671,14 @@ class OrbitMotionScope extends InheritedWidget {
         scope?.osReduced == true ||
         scope?.preference == 'reduced' ||
         (scope == null && MediaQuery.disableAnimationsOf(context));
-    return reduced ? (spatial ? Duration.zero : OrbitMotion.micro) : normal;
+    return reduced
+        ? (spatial ? Duration.zero : OrbitMotion.micro)
+        : Duration(
+            microseconds:
+                (normal.inMicroseconds /
+                        MotionPreferences(scope?.options ?? const {}).speed)
+                    .round(),
+          );
   }
 
   static bool isReduced(BuildContext context) {
@@ -669,7 +697,9 @@ class OrbitMotionScope extends InheritedWidget {
 
   @override
   bool updateShouldNotify(OrbitMotionScope oldWidget) =>
-      preference != oldWidget.preference || osReduced != oldWidget.osReduced;
+      preference != oldWidget.preference ||
+      osReduced != oldWidget.osReduced ||
+      options != oldWidget.options;
 }
 
 /// No ink splash: tone, focus outline and an anchored selection mark communicate state.

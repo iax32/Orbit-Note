@@ -1,3 +1,4 @@
+import 'support/settings_navigation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -308,6 +309,7 @@ Wiki: [[teh_note|Custom Title]]
         );
         await tester.pump();
 
+        await searchSettings(tester, 'Spelling');
         expect(
           find.byKey(const ValueKey('settings-spellcheck-switch')),
           findsOneWidget,
@@ -317,10 +319,16 @@ Wiki: [[teh_note|Custom Title]]
           findsOneWidget,
         );
 
+        await tester.ensureVisible(
+          find.byKey(const ValueKey('settings-clear-dictionary-button')),
+        );
         await tester.tap(
           find.byKey(const ValueKey('settings-clear-dictionary-button')),
         );
         await tester.pump();
+
+        await tester.tap(find.text('Clear words'));
+        await tester.pump(const Duration(milliseconds: 350));
 
         expect(controller.session.userDictionary, isEmpty);
       });

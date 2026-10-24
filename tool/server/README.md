@@ -25,7 +25,38 @@ in device secure storage. **Reconnect saved server** restores access after a
 restart. **Forget saved connection** removes that local capability; it does not
 revoke server access or delete data. The server owner can revoke invitations.
 
-Preview limit: live updates cover existing notes and Canvas boards. New objects,
-deletions and attachment changes require a new shared snapshot. Snapshot sharing
+New rooms created with the updated app support live new objects, Trash/restore,
+permanent deletions and verified resumable attachments. Note cursors/selections
+are source checked; conflicting edits need review. Legacy rooms retain their old
+snapshot behavior: create a new shared Vault/invitation to enable live replication.
+Use matching updated clients; old clients cannot silently enter live rooms.
+Snapshot sharing
 discloses the whole exported Vault, including portable history, Archive and Trash.
 Google Drive personal sync pauses while shared access is connecting or connected.
+
+## Restart and recovery
+
+Before upgrading, stop the host and back up the whole private directory. New live
+journal records require the updated server. An exact private
+`events.before-live-v2.jsonl` is retained before the first new record kind; it
+excludes later changes and is not a complete current backup. Preserve current
+journal, blobs and keys together. Do not run an older host against the live log.
+Limits include 2 MiB/document, 10,000 identities, 128 MiB room metadata/history,
+and the existing 128 MiB initial snapshot. Larger live assets can exceed the
+downloadable snapshot size; the snapshot endpoint then refuses with a clear
+error. Disk usage/journal compaction is not automatic. Provision host storage.
+
+Optional secure client reconnect runs on launch/resume. No closed-app mobile
+worker or Windows client service is installed. Physical-device and deployed TLS
+acceptance remain separate from local synthetic tests.
+
+Use the client and server from the same updated Windows build. The server now
+identifies each start so connected clients can reset their update cursors after
+a restart or restored backup. If shared content differs or disappears, clients
+retain local work and ask for review before publishing. An unchanged restart
+continues normally. Server identity/protocol changes pause automatic requests.
+
+The in-app **Set up a host for your devices** guide creates a domain-only proxy
+configuration example. **Check shared changes now** requests current state, and
+returning to the app checks active sessions without bypassing revoked access.
+No DNS, certificates, proxy or background service are installed automatically.

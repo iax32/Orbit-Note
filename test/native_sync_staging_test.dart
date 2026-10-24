@@ -207,6 +207,49 @@ void main() {
   );
 
   test(
+    'resume offset includes flushed bytes after a crash before manifest update',
+    () async {
+      final complete = Uint8List.fromList([1, 2, 3, 4]);
+      final info = WorkspaceAttachmentStageInfo(
+        id: 'crash-tail',
+        operation: 'shared-sync',
+        target: 'Attachments/crash.bin',
+        expectedHash: sha256.convert(complete).toString(),
+        maxBytes: 4,
+        length: 0,
+      );
+      Stream<List<int>> broken() async* {
+        yield [1];
+        throw const WorkspaceFailure('crash');
+      }
+
+      await expectLater(
+        store.stageAttachment(broken(), info: info),
+        throwsA(isA<WorkspaceFailure>()),
+      );
+      final part = (await store.listFiles()).singleWhere(
+        (p) => p.endsWith('crash-tail.part'),
+      );
+      await File(
+        '${root.path}/$part',
+      ).writeAsBytes([2, 3], mode: FileMode.append, flush: true);
+      await store.initialize(path: root.path);
+      expect((await store.listAttachmentStages()).single.length, 3);
+      final resumed = await store.resumeAttachmentStage(
+        info.id,
+        Stream.value([4]),
+      );
+      await resumed.commit(
+        info.target,
+        expectedHash: null,
+        checkCurrent: () {},
+      );
+      await resumed.close();
+      expect(await store.read(info.target), complete);
+    },
+  );
+
+  test(
     'reopen prunes only attachment stages older than the retention window',
     () async {
       final info = WorkspaceAttachmentStageInfo(

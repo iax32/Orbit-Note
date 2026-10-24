@@ -1,4 +1,5 @@
 import 'universal_object.dart';
+import 'dart:typed_data';
 
 part 'canvas_conflict_review.dart';
 
@@ -20,7 +21,10 @@ Map<String, dynamic> collaborationSnapshot(UniversalObject object) => {
   'formatVersion': object.formatVersion,
 };
 
-UniversalObject collaborationObject(Map<String, dynamic> value) {
+UniversalObject collaborationObject(
+  Map<String, dynamic> value, {
+  bool allowDeleted = false,
+}) {
   final object = UniversalObject.fromJson(
     Map<String, dynamic>.from(value['object'] as Map),
     body: value['body'] as String,
@@ -28,7 +32,7 @@ UniversalObject collaborationObject(Map<String, dynamic> value) {
     documentExtra: Map<String, dynamic>.from(value['documentExtra'] as Map),
     formatVersion: value['formatVersion'] as int,
   );
-  if (object.isReadOnly || object.isDeleted) {
+  if (object.isReadOnly || (object.isDeleted && !allowDeleted)) {
     throw const FormatException('Only current, active objects can be shared.');
   }
   return object;
@@ -56,6 +60,14 @@ class CollaborationConflict implements Exception {
       'Both people changed $path. Your local version is preserved; review it before retrying.';
 }
 
+/// An edit preflight must not survive a restart/restore between HTTP requests.
+class CollaborationHostChanged extends CollaborationConflict {
+  const CollaborationHostChanged() : super('a restarted host');
+  @override
+  String toString() =>
+      'The host restarted before accepting this edit. Your local version is preserved; check shared changes before reviewing.';
+}
+
 /// Conservative three-way merge. Independent edits combine; uncertain changes
 /// remain an explicit conflict rather than a clock-based overwrite.
 Map<String, dynamic> mergeCollaboration(
@@ -64,11 +76,29 @@ Map<String, dynamic> mergeCollaboration(
   Map<String, dynamic> remote,
 ) => _mergeCollaboration(base, local, remote);
 
+Map<String, dynamic> mergeSharedDocument(
+  Map<String, dynamic> base,
+  Map<String, dynamic> local,
+  Map<String, dynamic> remote,
+) {
+  final b = (base['object'] as Map)['deletedAt'];
+  final l = (local['object'] as Map)['deletedAt'];
+  final r = (remote['object'] as Map)['deletedAt'];
+  if ((l != b && !collaborationContentEqual(base, remote)) ||
+      (r != b && !collaborationContentEqual(base, local))) {
+    if (!collaborationContentEqual(local, remote)) {
+      throw const CollaborationConflict('deletion versus editing');
+    }
+  }
+  return _mergeCollaboration(base, local, remote, lifecycle: true);
+}
+
 Map<String, dynamic> _mergeCollaboration(
   Map<String, dynamic> base,
   Map<String, dynamic> local,
   Map<String, dynamic> remote, {
   _CanvasReviewChoices? review,
+  bool lifecycle = false,
 }) {
   for (final key in [
     'id',
@@ -76,7 +106,7 @@ Map<String, dynamic> _mergeCollaboration(
     'typeId',
     'createdAt',
     'schemaVersion',
-    'deletedAt',
+    if (!lifecycle) 'deletedAt',
   ]) {
     if (!collaborationEqual(
           (base['object'] as Map)[key],
@@ -95,7 +125,7 @@ Map<String, dynamic> _mergeCollaboration(
   }
   // These envelopes are retained by local saves, but the editing commands do
   // not mutate them. Refuse such changes instead of falsely acknowledging them.
-  final before = collaborationObject(base);
+  final before = collaborationObject(base, allowDeleted: lifecycle);
   void validatePlacements(UniversalObject object) {
     if (object.typeId != 'orbit.canvas') return;
     final elements = object.data['elements'];
@@ -115,7 +145,7 @@ Map<String, dynamic> _mergeCollaboration(
 
   validatePlacements(before);
   for (final value in [local, remote]) {
-    final candidate = collaborationObject(value);
+    final candidate = collaborationObject(value, allowDeleted: lifecycle);
     validatePlacements(candidate);
     if (!collaborationEqual(before.extra, candidate.extra) ||
         !collaborationEqual(before.documentExtra, candidate.documentExtra)) {
@@ -279,21 +309,93 @@ dynamic _merge(
 }
 
 String _mergeText(String base, String local, String remote, String path) {
-  final a = _splice(base, local), b = _splice(base, remote);
-  if (a.start == a.end && b.start == b.end && a.start == b.start) {
-    return base.replaceRange(a.start, a.end, b.text + a.text);
+  final mine = _textEdits(base, local), theirs = _textEdits(base, remote);
+  final merged = [...theirs];
+  for (final a in mine) {
+    var handled = false;
+    for (var i = 0; i < merged.length; i++) {
+      final b = merged[i];
+      if (a.start == b.start && a.end == b.end && a.text == b.text) {
+        handled = true;
+        break;
+      }
+      if (a.start == a.end && b.start == b.end && a.start == b.start) {
+        merged[i] = (start: a.start, end: a.end, text: b.text + a.text);
+        handled = true;
+        break;
+      }
+      final intersects =
+          (a.start < b.end && b.start < a.end) ||
+          (a.start == a.end && a.start > b.start && a.start < b.end) ||
+          (b.start == b.end && b.start > a.start && b.start < a.end);
+      if (intersects) throw CollaborationConflict(path);
+    }
+    if (!handled) merged.add(a);
   }
-  if (a.end <= b.start) {
-    return base
-        .replaceRange(b.start, b.end, b.text)
-        .replaceRange(a.start, a.end, a.text);
+  merged.sort((a, b) {
+    final start = b.start.compareTo(a.start);
+    return start != 0 ? start : b.end.compareTo(a.end);
+  });
+  var result = base;
+  for (final edit in merged) {
+    result = result.replaceRange(edit.start, edit.end, edit.text);
   }
-  if (b.end <= a.start) {
-    return base
-        .replaceRange(a.start, a.end, a.text)
-        .replaceRange(b.start, b.end, b.text);
+  return result;
+}
+
+/// Bounded scalar-aware edit decomposition. Large uncertain windows fall back
+/// to the existing conservative splice, never an unbounded quadratic diff.
+List<({int start, int end, String text})> _textEdits(
+  String before,
+  String after,
+) {
+  if (before == after) return [];
+  final outer = _splice(before, after);
+  final a = before.substring(outer.start, outer.end).runes.toList();
+  final b = outer.text.runes.toList();
+  if (a.length > 4096 || b.length > 4096 || a.length * b.length > 1000000) {
+    return [outer];
   }
-  throw CollaborationConflict(path);
+  final rows = List.generate(a.length + 1, (_) => Uint16List(b.length + 1));
+  for (var i = a.length - 1; i >= 0; i--) {
+    for (var j = b.length - 1; j >= 0; j--) {
+      rows[i][j] = a[i] == b[j]
+          ? 1 + rows[i + 1][j + 1]
+          : rows[i + 1][j] > rows[i][j + 1]
+          ? rows[i + 1][j]
+          : rows[i][j + 1];
+    }
+  }
+  final edits = <({int start, int end, String text})>[];
+  var i = 0, j = 0, offset = outer.start;
+  int? start;
+  var text = StringBuffer();
+  void flush() {
+    if (start != null) {
+      edits.add((start: start!, end: offset, text: text.toString()));
+      start = null;
+      text = StringBuffer();
+    }
+  }
+
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] == b[j]) {
+      flush();
+      offset += a[i] > 0xffff ? 2 : 1;
+      i++;
+      j++;
+    } else if (j < b.length &&
+        (i == a.length || rows[i][j + 1] >= rows[i + 1][j])) {
+      start ??= offset;
+      text.writeCharCode(b[j++]);
+    } else {
+      start ??= offset;
+      offset += a[i] > 0xffff ? 2 : 1;
+      i++;
+    }
+  }
+  flush();
+  return edits;
 }
 
 bool collaborationContentEqual(Map<String, dynamic> a, Map<String, dynamic> b) {

@@ -1,5 +1,57 @@
 # Sync architecture — implementation contract
 
+## Live shared replication — 2026-10-22
+
+[ADR-0032](../adr/0032-live-shared-vault-replication.md) extends shared protocol 1
+with per-room v2 capability negotiation, minimum-client gating, lifecycle and
+immutable verified blob commands, authenticated change waits and device-only
+common-base/uncertain-operation journals. Remote application goes through guarded
+repository/history commands. Source-hash/UTF-16 awareness never mutates knowledge.
+Legacy rooms keep their earlier behavior; creating a new shared snapshot opts in.
+New host journal kinds require the matching updated host; a verified private
+checkpoint precedes the first such record. Personal Drive remains separate and
+mutually exclusive. Optional secure reconnect on launch/resume is not an OS
+background service. See ADR limits/recovery and the task's validation evidence.
+
+## Incremental revision discovery — 2026-10-22
+
+ADR-0030's complete revision graph can now come from a complete listing plus the
+Drive changes feed. The existing account/folder/Vault-bound v1 upload journal adds
+optional `changeFeed` state (token, complete record IDs, last full audit time).
+Older journals bootstrap a full baseline; unknown fields remain. A start token is
+captured BEFORE the complete listing. Incremental pages validate cached checksums,
+routing/ownership, retained removals, graph parents and forks before one guarded
+checkpoint. The engine still receives reset snapshots, independent of its own
+cursor, so a provider checkpoint preceding a failed local apply is replayable.
+No authored migration, provider authority or conditional-publication rule changes.
+Full cloud audits run every 15 minutes, after a clock rollback, absent checkpoint
+or HTTP 410. Normal Drive page tokens do not expire; 410 fallback is defensive.
+Unchanged checks avoid journal rewrites. Page/work limits fail without checkpoint.
+
+The active controller uses five-second feed checks between normal ~30-second local
+inventories and keeps the earliest two-second local pass instead of resetting on
+every keystroke. Manual/foreground, changed-cloud and pending local work use normal
+engine reconciliation. Saved-draft/opening/account guards, retry deadlines and
+Drive/shared authority exclusion remain unchanged. No webhook receiver, mobile
+worker or live shared-object protocol is implied.
+
+2026-10-21 recovery hardening retains existing providers, durable formats and
+protocol 1. Drive keeps a coalesced follow-up request for edits/foreground checks
+made during an exclusive operation, and schedules transient retry deadlines.
+Foreground callbacks never enable sync or bypass an account/access block.
+
+The shared host exposes an optional ephemeral `epoch` in state responses.
+A mismatching epoch query returns full state regardless of a stale delta cursor;
+clients check state before publishing. Upgraded edit proposals carry the expected
+epoch, checked under the server command queue before operation replay/commit.
+A mismatch returns HTTP 409 with `code: host-restarted`, preserving local work.
+Restarted/restored differing or missing sources require review; Canvas review
+bases and open comparisons cannot silently survive uncertain host ancestry.
+Older protocol-1 clients remain accepted without this additional guard, so deploy
+the matching updated client and host. No authored migration or new sync authority
+is introduced. [Validation and limits](../tasks/device-sync-recovery-2026-10-21.md).
+
+
 2026-10-15 continuity extension: [ADR-0031](../adr/0031-device-sync-continuity.md)
 adds an account-bound secure-device schedule for explicitly selected inactive
 Vaults. DriveVaultScheduler acquires the same active-controller batch lease,

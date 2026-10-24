@@ -373,17 +373,21 @@ Write the exercise question or theorem to prove here.
                         color: colors.accent,
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.add, size: 14, color: Colors.white),
+                          Icon(
+                            Icons.add,
+                            size: 14,
+                            color: OrbitColors.of(context).onAccent,
+                          ),
                           SizedBox(width: 6),
                           Text(
                             'Add Exercise',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: Colors.white,
+                              color: OrbitColors.of(context).onAccent,
                             ),
                           ),
                         ],
@@ -1062,7 +1066,9 @@ class _FilterPill extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
-                  color: selected ? Colors.white : colors.subtle,
+                  color: selected
+                      ? OrbitContrast.inkOn(activeColor)
+                      : colors.subtle,
                 ),
               ),
             ),

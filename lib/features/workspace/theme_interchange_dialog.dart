@@ -6,6 +6,8 @@ import '../../app/orbit_theme.dart';
 import '../../app/workspace_controller.dart';
 import '../../platform/export_file.dart';
 import 'harmonized_palette_dialog.dart';
+import 'theme_palette_browser.dart';
+import 'system_appearance_setting.dart';
 
 /// Action dialog allowing users to configure and export their current customized
 /// semantic theme tokens to a standalone `.orbit-theme.json` file.
@@ -84,12 +86,16 @@ class _OrbitThemeExportContentState extends State<_OrbitThemeExportContent> {
   late final TextEditingController _nameController;
   late final TextEditingController _descController;
   bool _isExporting = false;
+  bool _initialized = false;
 
   @override
-  void initState() {
-    super.initState();
-    final basePreset = OrbitThemePack.fromId(
-      widget.controller.session.themePreset,
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_initialized) return;
+    _initialized = true;
+    final basePreset = OrbitThemePack.forPreferences(
+      widget.controller.session.preferences,
+      MediaQuery.platformBrightnessOf(context),
     );
     final isCustom = widget.controller.session.colorOverrides.isNotEmpty;
     _nameController = TextEditingController(
@@ -109,8 +115,14 @@ class _OrbitThemeExportContentState extends State<_OrbitThemeExportContent> {
   Widget build(BuildContext context) {
     final colors = OrbitColors.of(context);
     final s = widget.controller.session;
-    final basePreset = OrbitThemePack.fromId(s.themePreset);
-    final effectiveColors = basePreset.colors.withOverrides(s.colorOverrides);
+    final basePreset = OrbitThemePack.forPreferences(
+      s.preferences,
+      MediaQuery.platformBrightnessOf(context),
+    );
+    final effectiveColors = orbitThemeForPreferences(
+      s.preferences,
+      MediaQuery.platformBrightnessOf(context),
+    ).extension<OrbitColors>()!;
 
     return OrbitDialog(
       maxWidth: 520,
@@ -413,6 +425,7 @@ class _OrbitThemeImportPreviewContentState
           onPressed: () {
             widget.controller.updateSession((s) {
               s.themePreset = p.id;
+              s.followSystemAppearance = false;
               s.cornerStyle = p.cornerStyle;
               s.fontFamily = p.fontFamily;
               s.documentFontFamily = p.documentFontFamily;
@@ -609,6 +622,7 @@ class _OrbitThemeGalleryContentState extends State<_OrbitThemeGalleryContent> {
         if (s.themePreset == pack.id) {
           final fallback = OrbitThemePack.orbit;
           s.themePreset = fallback.id;
+          s.followSystemAppearance = false;
           s.cornerStyle = fallback.cornerStyle;
           s.fontFamily = fallback.fontFamily;
           s.documentFontFamily = fallback.documentFontFamily;
@@ -623,14 +637,16 @@ class _OrbitThemeGalleryContentState extends State<_OrbitThemeGalleryContent> {
   void _applyTheme(OrbitThemePack pack) {
     widget.controller.updateSession((s) {
       s.themePreset = pack.id;
-      s.cornerStyle = pack.cornerStyle;
-      s.fontFamily = pack.fontFamily;
-      s.documentFontFamily = pack.documentFontFamily;
-      s.monoFontFamily = pack.monoFontFamily;
-      s.colorOverrides = {
-        for (final entry in pack.colors.roles.entries)
-          entry.key: entry.value.toARGB32(),
-      };
+      s.followSystemAppearance = false;
+      s.accentColor = 'theme';
+      if (pack.familyId == null) {
+        s.cornerStyle = pack.cornerStyle;
+        s.fontFamily = pack.fontFamily;
+        s.documentFontFamily = pack.documentFontFamily;
+        s.monoFontFamily = pack.monoFontFamily;
+      }
+      s.colorOverrides = {...s.colorOverrides}
+        ..removeWhere((key, _) => OrbitColors.roleLabels.containsKey(key));
     });
     if (mounted) setState(() {});
   }
@@ -639,7 +655,10 @@ class _OrbitThemeGalleryContentState extends State<_OrbitThemeGalleryContent> {
   Widget build(BuildContext context) {
     final colors = OrbitColors.of(context);
     final s = widget.controller.session;
-    final activeId = s.themePreset;
+    final activeId = OrbitThemePack.forPreferences(
+      s.preferences,
+      MediaQuery.platformBrightnessOf(context),
+    ).id;
 
     final builtInIds = OrbitThemePack.builtIn.map((p) => p.id).toSet();
     final customPacks = <OrbitThemePack>[];
@@ -652,7 +671,7 @@ class _OrbitThemeGalleryContentState extends State<_OrbitThemeGalleryContent> {
       } catch (_) {}
     }
 
-    final allPacks = [...OrbitThemePack.builtIn, ...customPacks];
+    final allPacks = [...customPacks, ...OrbitThemePack.builtIn];
 
     return OrbitDialog(
       maxWidth: 620,
@@ -718,13 +737,28 @@ class _OrbitThemeGalleryContentState extends State<_OrbitThemeGalleryContent> {
             ],
           ),
           const SizedBox(height: 16),
-          for (final pack in allPacks)
-            _themeCard(
-              pack,
-              colors,
-              activeId == pack.id,
-              !builtInIds.contains(pack.id),
+          SystemAppearanceSetting(
+            controller: widget.controller,
+            onChanged: () => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          ThemePaletteBrowser(
+            packs: allPacks,
+            activeId: activeId,
+            grid: false,
+            onApply: _applyTheme,
+            categoryOf: (pack) =>
+                builtInIds.contains(pack.id) ? pack.category : 'My themes',
+            itemBuilder: (pack, width, active, apply) => SizedBox(
+              width: width,
+              child: _themeCard(
+                pack,
+                colors,
+                active,
+                !builtInIds.contains(pack.id),
+              ),
             ),
+          ),
         ],
       ),
       actions: [
@@ -829,7 +863,7 @@ class _OrbitThemeGalleryContentState extends State<_OrbitThemeGalleryContent> {
                       Icon(
                         Icons.check,
                         size: 11,
-                        color: pack.colors.background,
+                        color: OrbitContrast.inkOn(colors.accent),
                       ),
                       const SizedBox(width: 3),
                       Text(
@@ -837,7 +871,7 @@ class _OrbitThemeGalleryContentState extends State<_OrbitThemeGalleryContent> {
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
-                          color: pack.colors.background,
+                          color: OrbitContrast.inkOn(colors.accent),
                         ),
                       ),
                     ],

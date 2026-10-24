@@ -526,6 +526,8 @@ extension WorkspaceProductivity on WorkspaceController {
     final restored = {
       ...current,
       if (target?['kind'] != 'layout')
+        'followSystemAppearance': base['followSystemAppearance'] == true,
+      if (target?['kind'] != 'layout')
         for (final k in WorkspaceContext.appearanceKeys)
           if (base.containsKey(k)) k: base[k],
       for (final k in allowed)
@@ -534,6 +536,11 @@ extension WorkspaceProductivity on WorkspaceController {
         for (final k in WorkspaceContext.appearanceKeys)
           if ((target!['appearance'] as Map).containsKey(k))
             k: (target['appearance'] as Map)[k],
+      // Older saved appearances always meant a fixed palette.
+      if (target?['appearance'] is Map &&
+          (target!['appearance'] as Map).containsKey('themePreset') &&
+          !(target['appearance'] as Map).containsKey('followSystemAppearance'))
+        'followSystemAppearance': false,
       'dashboard': target?['dashboard'] ?? base['dashboard'],
       'spaces': {
         ...library,

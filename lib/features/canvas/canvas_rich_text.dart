@@ -1,3 +1,4 @@
+import '../../app/orbit_theme.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'canvas_painter.dart';
@@ -859,7 +860,7 @@ class CanvasRichText {
           canvas.drawPath(
             checkPath,
             Paint()
-              ..color = Colors.white
+              ..color = OrbitContrast.inkOn(accent)
               ..style = PaintingStyle.stroke
               ..strokeWidth = 1.8
               ..strokeCap = StrokeCap.round

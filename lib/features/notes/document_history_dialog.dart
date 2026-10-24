@@ -1,3 +1,4 @@
+import '../../app/orbit_motion_effects.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -458,6 +459,20 @@ class _DocumentHistoryDialogState extends State<DocumentHistoryDialog> {
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (_snapshots.length > 1) ...[
+                      Text(
+                        'History timeline · ${_selectedIndex + 1} of ${_snapshots.length} · preview only',
+                      ),
+                      Slider(
+                        key: const ValueKey('history-timeline'),
+                        value: _selectedIndex.toDouble(),
+                        max: (_snapshots.length - 1).toDouble(),
+                        divisions: _snapshots.length - 1,
+                        label: '${_selectedIndex + 1} of ${_snapshots.length}',
+                        onChanged: (v) =>
+                            setState(() => _selectedIndex = v.round()),
+                      ),
+                    ],
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -482,16 +497,16 @@ class _DocumentHistoryDialogState extends State<DocumentHistoryDialog> {
                             children: [
                               Text(
                                 '+${lines.where((l) => l.type == DiffType.added).length} lines',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 10.5,
-                                  color: Color(0xFF10B981),
+                                  color: OrbitColors.of(context).success,
                                 ),
                               ),
                               Text(
                                 '-${lines.where((l) => l.type == DiffType.removed).length} lines',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 10.5,
-                                  color: Color(0xFFEF4444),
+                                  color: OrbitColors.of(context).danger,
                                 ),
                               ),
                               Text(
@@ -553,9 +568,9 @@ class _DocumentHistoryDialogState extends State<DocumentHistoryDialog> {
                                   final added = line.type == DiffType.added;
                                   final removed = line.type == DiffType.removed;
                                   final ink = added
-                                      ? const Color(0xFF34D399)
+                                      ? OrbitColors.of(context).success
                                       : removed
-                                      ? const Color(0xFFF87171)
+                                      ? OrbitColors.of(context).danger
                                       : colors.text;
                                   return Container(
                                     padding: const EdgeInsets.symmetric(
@@ -601,12 +616,17 @@ class _DocumentHistoryDialogState extends State<DocumentHistoryDialog> {
                               )
                             : SingleChildScrollView(
                                 padding: const EdgeInsets.all(12),
-                                child: SelectableText(
-                                  snapshot.body,
-                                  style: const TextStyle(
-                                    fontFamily: 'monospace',
-                                    fontSize: 12,
-                                    height: 1.5,
+                                child: OrbitEffect(
+                                  trigger: snapshot,
+                                  style: 'morph',
+                                  family: 'smart',
+                                  child: SelectableText(
+                                    snapshot.body,
+                                    style: const TextStyle(
+                                      fontFamily: 'monospace',
+                                      fontSize: 12,
+                                      height: 1.5,
+                                    ),
                                   ),
                                 ),
                               ),

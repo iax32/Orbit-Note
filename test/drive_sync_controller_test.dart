@@ -458,4 +458,274 @@ void main() {
       expect(server.recordCreates, 0);
     },
   );
+  Future<void> until(bool Function() ready) async {
+    final limit = DateTime.now().add(const Duration(seconds: 12));
+    while (!ready()) {
+      if (DateTime.now().isAfter(limit)) {
+        fail('Sync did not settle: ${sync.status} ${sync.error}');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+  }
+
+  Future<void> automaticController() async {
+    sync.dispose();
+    sync = DriveSyncController(workspace, cloud, sharedActive: () => shared);
+    await sync.restore();
+  }
+
+  test(
+    'edits during an upload automatically drain the latest saved version',
+    () async {
+      final note = await repo.create(
+        typeId: 'orbit.note',
+        title: 'Queue',
+        body: 'initial',
+      );
+      workspace.mergeRepositoryObjects();
+      await sync.enable();
+      await automaticController();
+      workspace.edit(note.id, body: 'first transfer');
+      sync.changed();
+      final entered = Completer<void>(), release = Completer<void>();
+      server.beforeRecord = () async {
+        server.beforeRecord = null;
+        entered.complete();
+        await release.future;
+      };
+      final pass = sync.syncNow(force: true);
+      await entered.future;
+      for (var i = 0; i < 100; i++) {
+        workspace.edit(note.id, body: 'latest edit $i');
+        sync.changed();
+      }
+      expect(sync.localChangesPending, true);
+      release.complete();
+      await pass;
+      final records = server.recordCreates;
+      await until(
+        () =>
+            !sync.busy &&
+            !sync.localChangesPending &&
+            sync.error.isEmpty &&
+            server.recordCreates > records,
+      );
+      expect(repo.objects.single.body, 'latest edit 99');
+      expect(sync.result!.upToDate, true);
+      expect(
+        server.files.values.any(
+          (f) => utf8
+              .decode(f.bytes, allowMalformed: true)
+              .contains('latest edit 99'),
+        ),
+        true,
+      );
+      final settled = server.recordCreates;
+      await sync.syncNow();
+      expect(server.recordCreates, settled);
+    },
+  );
+
+  test(
+    'transient failures retry at their deadline without the periodic poll',
+    () async {
+      await sync.enable();
+      await automaticController();
+      server.offline = true;
+      await sync.syncNow(force: true);
+      expect(sync.retryAt, isNotNull);
+      final requests = server.requests;
+      server.offline = false;
+      await until(
+        () => server.requests > requests && !sync.busy && sync.error.isEmpty,
+      );
+      expect(sync.result!.upToDate, true);
+      expect(sync.retryAt, null);
+    },
+  );
+
+  test('pausing cancels a pending automatic retry', () async {
+    await sync.enable();
+    await automaticController();
+    server.offline = true;
+    await sync.syncNow(force: true);
+    await sync.pause();
+    final requests = server.requests;
+    server.offline = false;
+    await Future<void>.delayed(const Duration(milliseconds: 2300));
+    expect(server.requests, requests);
+    expect(sync.retryAt, null);
+    expect(sync.enabled, false);
+  });
+
+  test(
+    'foreground resumes transient failure but never bypasses access blocks or opt-in',
+    () async {
+      await sync.resumeForeground();
+      expect(server.requests, 0);
+      await sync.enable();
+      server.offline = true;
+      await sync.syncNow(force: true);
+      server.offline = false;
+      await sync.resumeForeground();
+      expect(sync.error, isEmpty);
+      expect(sync.retryAt, null);
+      server.rejectStatus = 403;
+      await sync.syncNow(force: true);
+      final requests = server.requests;
+      server.rejectStatus = null;
+      await sync.resumeForeground();
+      expect(server.requests, requests);
+      await sync.pause();
+      await sync.resumeForeground();
+      expect(server.requests, requests);
+    },
+  );
+
+  test(
+    'foreground checks requested mid-transfer are coalesced and preserved',
+    () async {
+      final note = await repo.create(
+        typeId: 'orbit.note',
+        title: 'Resume',
+        body: 'old',
+      );
+      workspace.mergeRepositoryObjects();
+      await sync.enable();
+      await automaticController();
+      workspace.edit(note.id, body: 'next');
+      sync.changed();
+      final entered = Completer<void>(), release = Completer<void>();
+      server.beforeRecord = () async {
+        server.beforeRecord = null;
+        entered.complete();
+        await release.future;
+      };
+      final pass = sync.syncNow(force: true);
+      await entered.future;
+      await sync.resumeForeground();
+      await sync.resumeForeground();
+      release.complete();
+      await pass;
+      final requests = server.requests;
+      await until(() => server.requests > requests && !sync.busy);
+      expect(sync.error, isEmpty);
+      expect(sync.result!.upToDate, true);
+    },
+  );
+  test(
+    'shared authority changes mid-transfer retain the resumed personal check',
+    () async {
+      final note = await repo.create(
+        typeId: 'orbit.note',
+        title: 'Authority',
+        body: 'before',
+      );
+      workspace.mergeRepositoryObjects();
+      await sync.enable();
+      await automaticController();
+      workspace.edit(note.id, body: 'local survives authority change');
+      sync.changed();
+      final entered = Completer<void>(), release = Completer<void>();
+      server.beforeRecord = () async {
+        server.beforeRecord = null;
+        entered.complete();
+        await release.future;
+      };
+      final pass = sync.syncNow(force: true);
+      await entered.future;
+      shared = true;
+      sync.changed();
+      shared = false;
+      sync.changed();
+      release.complete();
+      await pass;
+      final requests = server.requests;
+      await until(
+        () => server.requests > requests && !sync.busy && sync.error.isEmpty,
+      );
+      expect(sync.result!.upToDate, true);
+      expect(repo.objects.single.body, 'local survives authority change');
+    },
+  );
+  test(
+    'continuous edits do not postpone the earliest automatic upload',
+    () async {
+      final note = await repo.create(
+        typeId: 'orbit.note',
+        title: 'Continuous',
+        body: 'start',
+      );
+      workspace.mergeRepositoryObjects();
+      await sync.enable();
+      await automaticController();
+      final created = server.recordCreates;
+      var lastBody = 'start';
+      // Keep editing until publication is observed, allowing bounded native
+      // checkpoint/HTTP completion time under parallel-suite load. A debounce
+      // that resets on every keystroke still cannot publish while this runs.
+      for (
+        var i = 0;
+        i < 60 && (i < 18 || server.recordCreates <= created);
+        i++
+      ) {
+        lastBody = 'continuous $i';
+        workspace.edit(note.id, body: lastBody);
+        sync.changed();
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      }
+      expect(
+        server.recordCreates,
+        greaterThan(created),
+        reason: 'Typing must not reset the two-second deadline indefinitely.',
+      );
+      await until(() => !sync.busy && !sync.localChangesPending);
+      expect(sync.error, isEmpty);
+      expect(repo.objects.single.body, lastBody);
+    },
+  );
+
+  test(
+    'lightweight checks respect interval, manual reconciliation and account blocks',
+    () async {
+      var clock = DateTime(2026, 10, 22, 12);
+      sync.dispose();
+      sync = DriveSyncController(
+        workspace,
+        cloud,
+        sharedActive: () => shared,
+        automatic: false,
+        now: () => clock,
+      );
+      await sync.restore();
+      await repo.create(typeId: 'orbit.note', title: 'Polling', body: 'saved');
+      workspace.mergeRepositoryObjects();
+      await sync.enable();
+      // Consume the initial local publication in the remote snapshot once.
+      await sync.syncNow(remoteCheck: true);
+      final completed = sync.lastSynced;
+      final lists = server.historyLists;
+      clock = clock.add(const Duration(seconds: 5));
+      await sync.syncNow(remoteCheck: true);
+      expect(sync.lastChecked, clock);
+      expect(
+        sync.lastSynced,
+        completed,
+        reason: 'A cheap cloud check is not a new full reconciliation.',
+      );
+      expect(server.historyLists, lists);
+      clock = clock.add(const Duration(seconds: 31));
+      await sync.syncNow(remoteCheck: true);
+      expect(sync.lastSynced, clock);
+      server.rejectStatus = 403;
+      await sync.syncNow(remoteCheck: true);
+      final requests = server.requests;
+      server.rejectStatus = null;
+      clock = clock.add(const Duration(seconds: 5));
+      await sync.syncNow(remoteCheck: true);
+      expect(server.requests, requests);
+      await sync.syncNow(force: true);
+      expect(sync.error, isEmpty);
+    },
+  );
 }

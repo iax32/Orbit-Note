@@ -18,10 +18,15 @@ class OrbitNoteApp extends ConsumerWidget {
           c.session.compact,
           c.session.uiZoom,
           c.session.motion,
+          c.session.motionOptions,
           c.session.fontFamily,
           c.session.documentFontFamily,
           c.session.monoFontFamily,
+          c.session.codeFontSize,
+          c.session.showLineNumbers,
+          c.session.defaultCodeWrap,
           c.session.themePreset,
+          c.session.followSystemAppearance,
           c.session.cornerStyle,
           c.session.accentColor,
           c.session.colorOverrides,
@@ -33,19 +38,9 @@ class OrbitNoteApp extends ConsumerWidget {
     return MaterialApp(
       title: 'Orbit Note',
       debugShowCheckedModeBanner: false,
-      theme: orbitTheme(
-        preset: controller.session.themePreset,
-        compact: controller.session.compact,
-        uiZoom: controller.session.uiZoom,
-        fontFamily: controller.session.fontFamily,
-        documentFontFamily: controller.session.documentFontFamily,
-        monoFontFamily: controller.session.monoFontFamily,
-        cornerStyle: controller.session.cornerStyle,
-        accentColor: OrbitColors.accentFromPreset(
-          controller.session.accentColor,
-        ),
-        colorOverrides: controller.session.colorOverrides,
-        customPacks: controller.session.customThemes,
+      theme: orbitThemeForPreferences(
+        controller.session.preferences,
+        MediaQuery.platformBrightnessOf(context),
       ),
       themeAnimationDuration:
           controller.session.motion != 'normal' ||
@@ -61,6 +56,7 @@ class OrbitNoteApp extends ConsumerWidget {
         return OrbitMotionScope(
           preference: controller.session.motion,
           osReduced: media.disableAnimations,
+          options: controller.session.motionOptions,
           child: MediaQuery(
             data: media.copyWith(disableAnimations: reduced),
             child: AppZoom(

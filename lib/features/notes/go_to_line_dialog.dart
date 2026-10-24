@@ -230,7 +230,7 @@ class _GoToLineDialogState extends State<_GoToLineDialog> {
                     onPressed: _target != null ? _submit : null,
                     style: FilledButton.styleFrom(
                       backgroundColor: c.accent,
-                      foregroundColor: Colors.white,
+                      foregroundColor: OrbitColors.of(context).onAccent,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),

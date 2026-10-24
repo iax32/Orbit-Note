@@ -54,13 +54,16 @@ class _HarmonizedPaletteDialogContentState
   late TextEditingController _nameController;
   late TextEditingController _hexController;
   String? _hexError;
+  bool _initialized = false;
 
   @override
-  void initState() {
-    super.initState();
-    final activePack = OrbitThemePack.fromId(
-      widget.controller.session.themePreset,
-      customPacks: widget.controller.session.customThemes,
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_initialized) return;
+    _initialized = true;
+    final activePack = OrbitThemePack.forPreferences(
+      widget.controller.session.preferences,
+      MediaQuery.platformBrightnessOf(context),
     );
     _seed = activePack.colors.accent;
     _brightness = activePack.brightness;
@@ -411,9 +414,7 @@ class _HarmonizedPaletteDialogContentState
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
-                          color: pack.brightness == Brightness.dark
-                              ? pack.colors.background
-                              : Colors.white,
+                          color: pack.colors.onAccent,
                         ),
                       ),
                     ),
@@ -470,6 +471,7 @@ class _HarmonizedPaletteDialogContentState
                   final pack = _generatePack();
                   widget.controller.updateSession((s) {
                     s.themePreset = pack.id;
+                    s.followSystemAppearance = false;
                     s.cornerStyle = pack.cornerStyle;
                     s.fontFamily = pack.fontFamily;
                     s.documentFontFamily = pack.documentFontFamily;
@@ -508,6 +510,7 @@ class _HarmonizedPaletteDialogContentState
             final pack = _generatePack();
             widget.controller.updateSession((s) {
               s.themePreset = pack.id;
+              s.followSystemAppearance = false;
               s.cornerStyle = pack.cornerStyle;
               s.fontFamily = pack.fontFamily;
               s.documentFontFamily = pack.documentFontFamily;

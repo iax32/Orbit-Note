@@ -1,3 +1,4 @@
+import '../../app/orbit_theme.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../app/orbit_components.dart';
@@ -87,6 +88,7 @@ class _CanvasStarterDialogState extends State<CanvasStarterDialog> {
                           );
                           return CustomPaint(
                             painter: OrbitCanvasPainter(
+                              semanticColors: OrbitColors.of(context),
                               scene: scene,
                               camera: CanvasCamera(
                                 x:

@@ -4,6 +4,7 @@ import 'connectors.dart';
 import 'geometry.dart';
 import 'scene.dart';
 import 'uml.dart';
+import 'uml_interaction.dart';
 
 /// Exports a [CanvasScene] to a standard vector SVG document string.
 ///
@@ -130,8 +131,57 @@ void _renderElementSvg(
   String canvasBgHex,
   int? foregroundColor,
 ) {
-  final accent = _toHexColor(element.color);
+  final palette = UmlPalette(
+    int.parse('ff${canvasBgHex.substring(1)}', radix: 16),
+    foreground: foregroundColor,
+  );
+  final accent = _toHexColor(
+    isInteractionItem(element) && element.data['color'] is! int
+        ? palette.text
+        : element.color,
+  );
   final strokeW = element.strokeWidth;
+
+  if (isInteractionNode(element)) {
+    final glyph = interactionGlyph(element);
+    for (final box in glyph.boxes) {
+      final b = box.bounds;
+      buf.writeln(
+        '<rect x="${b.left}" y="${b.top}" width="${b.width}" height="${b.height}" fill="${box.fill ? canvasBgHex : 'none'}" stroke="$accent" stroke-opacity=".75" stroke-width="$strokeW" />',
+      );
+    }
+    for (final oval in glyph.ovals) {
+      final b = oval.bounds;
+      buf.writeln(
+        '<ellipse cx="${b.center.x}" cy="${b.center.y}" rx="${b.width / 2}" ry="${b.height / 2}" fill="${oval.fill ? canvasBgHex : 'none'}" stroke="$accent" stroke-opacity=".75" stroke-width="$strokeW" />',
+      );
+    }
+    for (final path in glyph.paths) {
+      buf.writeln(
+        '<polyline points="${path.points.map((p) => '${p.x},${p.y}').join(' ')}" fill="none" stroke="$accent" stroke-opacity=".75" stroke-width="$strokeW" ${path.dashed ? 'stroke-dasharray="8,5"' : ''} />',
+      );
+    }
+    var index = 0;
+    for (final label in glyph.texts) {
+      final b = label.bounds;
+      if (b.width <= 0 || b.height <= 0) continue;
+      final lines = wrapUmlText(label.text, b.width, label.size);
+      final clip =
+          'interaction-${element.id.codeUnits.map((c) => c.toRadixString(16)).join('-')}-${index++}';
+      buf.writeln(
+        '<defs><clipPath id="$clip"><rect x="${b.left}" y="${b.top}" width="${b.width}" height="${b.height}" /></clipPath></defs><g clip-path="url(#$clip)">',
+      );
+      final top =
+          b.top + math.max(0, (b.height - lines.length * label.size * 1.2) / 2);
+      for (var i = 0; i < lines.length; i++) {
+        buf.writeln(
+          '<text x="${label.center ? b.center.x : b.left}" y="${top + label.size + i * label.size * 1.2}" fill="${_toHexColor(palette.text)}" font-size="${label.size}" font-weight="${label.bold ? '600' : '400'}" text-anchor="${label.center ? 'middle' : 'start'}">${_escapeXml(lines[i])}</text>',
+        );
+      }
+      buf.writeln('</g>');
+    }
+    return;
+  }
 
   if (isUmlClass(element)) {
     final model = UmlClass(element);
@@ -610,17 +660,22 @@ void _renderElementSvg(
       if (element.text.trim().isNotEmpty) {
         final mid = endpoints.midpoint;
         final text = element.text.trim();
-        final textWidth = math.max(40.0, text.length * 8.0 + 16.0);
-        final pillH = 22.0;
+        final lines = text.split('\n');
+        final textWidth = math.max(
+          40.0,
+          lines.fold<int>(0, (n, s) => math.max(n, s.length)) * 8.0 + 16.0,
+        );
+        final pillH = 6.0 + 16 * lines.length;
         buf.writeln(
           '  <rect x="${_formatNum(mid.x - textWidth / 2)}" y="${_formatNum(mid.y - pillH / 2)}" '
           'width="${_formatNum(textWidth)}" height="${_formatNum(pillH)}" '
           'rx="5" ry="5" fill="$canvasBgHex" stroke="$accent" stroke-width="1" stroke-opacity="0.4" />',
         );
-        buf.writeln(
-          '  <text x="${_formatNum(mid.x)}" y="${_formatNum(mid.y + 4.5)}" '
-          'text-anchor="middle" font-size="11" font-weight="600" fill="$accent">${_escapeXml(text)}</text>',
-        );
+        for (var i = 0; i < lines.length; i++) {
+          buf.writeln(
+            '<text x="${_formatNum(mid.x)}" y="${_formatNum(mid.y - pillH / 2 + 15 + i * 16)}" text-anchor="middle" font-size="12" font-weight="600" fill="$accent">${_escapeXml(lines[i])}</text>',
+          );
+        }
       }
   }
 }
@@ -641,7 +696,7 @@ void _renderMarkerSvg(
         .map((p) => '${_formatNum(p.x)},${_formatNum(p.y)}')
         .join(' ');
     buf.writeln(
-      '<polygon points="$points" fill="${marker == ConnectorMarker.filledDiamond ? color : background}" stroke="$color" stroke-width="$strokeWidth" />',
+      '<polygon points="$points" fill="${marker == ConnectorMarker.filledDiamond || marker == ConnectorMarker.filledTriangle ? color : background}" stroke="$color" stroke-width="$strokeWidth" />',
     );
     return;
   }

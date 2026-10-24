@@ -1,5 +1,14 @@
 # Software development knowledge
 
+## Code editor preferences — 2026-10-23
+
+Settings → Code editor controls code font, 10–26 px text, default line-number
+visibility and wrapping for new code workspaces/IDE panes. Font/size changes
+preserve the current source, focus, selection and local pane choices. Existing
+per-pane wrap/number controls remain. This does not add a new language service
+or start project processes. [Use and validation](../tasks/settings-workspace-2026-10-23.md).
+
+
 ## Source browsing quality — 2026-10-19
 
 Read-only source browsers scope late evidence-save/copy feedback to the originating

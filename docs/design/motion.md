@@ -79,3 +79,18 @@ Validation covers all three modes, OS reduction during a transition, repeated
 navigation, focus and typing during arrival, and disclosure state/focus recovery.
 This does not claim completion of all planned MOT requirements or a large-canvas
 frame-time benchmark.
+
+## Motion studio and authored presentation — 2026-10-23
+
+The supplied animation guide is implemented as selectable alternatives and real
+workflow feedback, using Flutter's existing finite animations and the shared
+Canvas painter. Settings has a motion studio with 70 clearly labeled inspiration
+samples, three personalities, bounded speed/category controls and optional focus
+and reading aids. Notes present authored text read-only; Canvas replays stored
+placements/strokes without content/history/export mutation and supports an
+unsaved laser pointer. PDF adds controller-based navigation, perspective page
+effects, a rendered-content lens and optional page progress. Review/format/grammar
+feedback, revision scrubbing and actual graph path reveal preserve input focus.
+No per-keystroke delay, idle particle loop, new AI/handwriting backend, mandatory
+Markdown scroll progress, physical page-curl simulation or claim of full MOT
+completion. [Exact coverage and validation](../tasks/motion-studio-2026-10-23.md).

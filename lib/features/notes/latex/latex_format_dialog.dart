@@ -1,3 +1,4 @@
+import '../../../app/orbit_theme.dart';
 import 'package:flutter/material.dart';
 import 'latex_converter.dart';
 import 'latex_preview.dart';
@@ -59,7 +60,6 @@ class _FormatConversionDialogState extends State<FormatConversionDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final targetFormatName = _isToLatex ? 'LaTeX' : 'Markdown';
     final currentFormatName = _isToLatex ? 'Markdown' : 'LaTeX';
 
@@ -68,7 +68,7 @@ class _FormatConversionDialogState extends State<FormatConversionDialog> {
         children: [
           Icon(
             _isToLatex ? Icons.functions_rounded : Icons.description_outlined,
-            color: const Color(0xFF8B7CF6),
+            color: OrbitColors.of(context).accent,
             size: 22,
           ),
           const SizedBox(width: 10),
@@ -84,9 +84,7 @@ class _FormatConversionDialogState extends State<FormatConversionDialog> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: isDark
-                    ? const Color(0xFF23252E)
-                    : const Color(0xFFF3F4F6),
+                color: OrbitColors.of(context).panel,
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(color: theme.dividerColor),
               ),
@@ -137,21 +135,25 @@ class _FormatConversionDialogState extends State<FormatConversionDialog> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.amber.withValues(alpha: 0.12),
+                  color: OrbitColors.of(
+                    context,
+                  ).warning.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(
-                    color: Colors.amber.withValues(alpha: 0.4),
+                    color: OrbitColors.of(
+                      context,
+                    ).warning.withValues(alpha: 0.4),
                   ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
+                    Row(
                       children: [
                         Icon(
                           Icons.warning_amber_rounded,
                           size: 16,
-                          color: Colors.amber,
+                          color: OrbitColors.of(context).warning,
                         ),
                         SizedBox(width: 6),
                         Text(
@@ -159,7 +161,7 @@ class _FormatConversionDialogState extends State<FormatConversionDialog> {
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
-                            color: Colors.amber,
+                            color: OrbitColors.of(context).warning,
                           ),
                         ),
                       ],
@@ -201,9 +203,7 @@ class _FormatConversionDialogState extends State<FormatConversionDialog> {
                   : Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: isDark
-                            ? const Color(0xFF181A20)
-                            : const Color(0xFFFAFAFA),
+                        color: OrbitColors.of(context).workspace,
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(color: theme.dividerColor),
                       ),

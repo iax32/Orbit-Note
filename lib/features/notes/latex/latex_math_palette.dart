@@ -755,7 +755,6 @@ class _LatexMathPaletteDialogState extends State<LatexMathPaletteDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     final q = _query.toLowerCase().trim();
     final filtered = LatexMathPaletteData.items.where((item) {
@@ -880,9 +879,7 @@ class _LatexMathPaletteDialogState extends State<LatexMathPaletteDialog> {
                             },
                             child: Container(
                               decoration: BoxDecoration(
-                                color: isDark
-                                    ? const Color(0xFF262638)
-                                    : const Color(0xFFF3F4F6),
+                                color: OrbitColors.of(context).raised,
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
                                   color: theme.colorScheme.outlineVariant

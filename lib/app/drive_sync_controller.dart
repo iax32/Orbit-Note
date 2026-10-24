@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/sync/sync_engine.dart';
 import '../application/sync/drive_vault_binding.dart';
@@ -63,10 +63,14 @@ final driveSyncProvider = Provider<DriveSyncController>((ref) {
     cloud,
     sharedActive: () => shared.connected || shared.connecting,
   );
+  final lifecycle = AppLifecycleListener(
+    onResume: () => unawaited(controller.resumeForeground()),
+  );
   ref.listen(workspaceProvider, (_, _) => controller.changed());
   cloud.addListener(controller.changed);
   shared.addListener(controller.changed);
   ref.onDispose(() {
+    lifecycle.dispose();
     cloud.removeListener(controller.changed);
     shared.removeListener(controller.changed);
     controller.dispose();
@@ -86,8 +90,8 @@ class DriveSyncController extends ChangeNotifier {
   }) : _now = now ?? DateTime.now {
     if (automatic) {
       _poll = Timer.periodic(
-        const Duration(seconds: 30),
-        (_) => unawaited(syncNow()),
+        const Duration(seconds: 5),
+        (_) => unawaited(syncNow(remoteCheck: true)),
       );
       scheduleMicrotask(changed);
     }
@@ -100,6 +104,8 @@ class DriveSyncController extends ChangeNotifier {
   bool enabled = false, busy = false, loading = false, _disposed = false;
   String status = 'Automatic sync is off', error = '';
   DateTime? lastSynced, retryAt;
+  DateTime? lastChecked, _lastInventoryAt;
+  int transferredBytes = 0, transferBytes = 0;
   SyncResult? result;
   List<GoogleRemoteVault> availableVaults = [];
   Map<String, dynamic> conflicts = {};
@@ -111,7 +117,11 @@ class DriveSyncController extends ChangeNotifier {
   int _opening = -1, _nonce = 0, _failures = 0;
   Timer? _poll, _debounce;
   Object? _objects;
-  int _attachmentRevision = -1;
+  int _attachmentRevision = -1, _changeSerial = 0;
+  bool _localChangesPending = false, _refreshPending = false;
+
+  /// Includes edits made after the current transfer took its snapshot.
+  bool get localChangesPending => _localChangesPending;
   String? _activeSubject;
   bool _activeShared = false;
   bool _blocked = false, _wasReconnectRequired = false;
@@ -143,6 +153,7 @@ class DriveSyncController extends ChangeNotifier {
       _replica = null;
       _state = null;
       _debounce?.cancel();
+      _localChangesPending = _refreshPending = false;
       if (!loading && workspace.hasWorkspace && !workspace.loading) {
         unawaited(restore());
       }
@@ -162,11 +173,15 @@ class DriveSyncController extends ChangeNotifier {
         availableVaults = [];
         conflicts = {};
         result = null;
+        lastChecked = lastSynced = null;
       }
       _nonce++;
+      _debounce?.cancel();
+      retryAt = null;
       _engine = null;
       _replica = null;
       _state = null;
+      _lastInventoryAt = null;
       _activeSubject = subject;
       _blocked = false;
       _activeShared = shared;
@@ -184,13 +199,56 @@ class DriveSyncController extends ChangeNotifier {
         _attachmentRevision != workspace.attachmentRevision) {
       _objects = workspace.objects;
       _attachmentRevision = workspace.attachmentRevision;
+      _changeSerial++;
+      _localChangesPending = true;
+      if (enabled && !busy && _ready) {
+        status = 'Saved locally · changes queued for sync';
+      }
       if (automatic && _ready && !busy) _schedule();
+      _notify();
+    }
+    if (automatic &&
+        _ready &&
+        !busy &&
+        !cloud.busy &&
+        (_localChangesPending || _refreshPending || retryAt != null)) {
+      _schedule();
     }
   }
 
   void _schedule() {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(seconds: 2), () => unawaited(syncNow()));
+    if (!automatic || !_ready || _blocked) return;
+    if (busy || cloud.busy) {
+      _refreshPending = true;
+      return;
+    }
+    // Keep the earliest scheduled pass: frequent typing must not postpone sync
+    // indefinitely. Retry deadlines are never bypassed by the faster poll.
+    if (_debounce?.isActive == true) return;
+    final delay = retryAt?.difference(_now()) ?? const Duration(seconds: 2);
+    _debounce = Timer(delay.isNegative ? Duration.zero : delay, () {
+      _debounce = null;
+      unawaited(syncNow());
+    });
+  }
+
+  void _continueAutomatic() {
+    if (!busy &&
+        !loading &&
+        (retryAt != null || _localChangesPending || _refreshPending)) {
+      _schedule();
+    }
+  }
+
+  /// Foreground checks retain account/access blocks and never opt a Vault in.
+  Future<void> resumeForeground() async {
+    if (!_ready || _blocked) return;
+    retryAt = null;
+    if (busy || loading || cloud.busy) {
+      _refreshPending = true;
+      return;
+    }
+    await syncNow();
   }
 
   Future<void> restore() async {
@@ -233,6 +291,10 @@ class DriveSyncController extends ChangeNotifier {
     result = null;
     error = '';
     lastSynced = retryAt = null;
+    lastChecked = _lastInventoryAt = null;
+    transferredBytes = transferBytes = 0;
+    _localChangesPending = _refreshPending = false;
+    _debounce?.cancel();
     _engine = null;
     _state = null;
     _replica = null;
@@ -293,6 +355,7 @@ class DriveSyncController extends ChangeNotifier {
     } finally {
       busy = false;
       _notify();
+      _continueAutomatic();
     }
   }
 
@@ -371,6 +434,7 @@ class DriveSyncController extends ChangeNotifier {
     } finally {
       busy = false;
       _notify();
+      _continueAutomatic();
     }
   }
 
@@ -432,6 +496,7 @@ class DriveSyncController extends ChangeNotifier {
     } finally {
       busy = false;
       _notify();
+      _continueAutomatic();
     }
     if (_ready) await syncNow(force: true);
   }
@@ -440,6 +505,8 @@ class DriveSyncController extends ChangeNotifier {
     if (_disposed || (!enabled && _settings?['enabled'] != true)) return;
     enabled = false;
     error = '';
+    retryAt = null;
+    _refreshPending = false;
     _nonce++;
     _engine = null;
     _state = null;
@@ -481,17 +548,27 @@ class DriveSyncController extends ChangeNotifier {
         journal: replica.createDriveJournalStore(),
         stage: replica.stageTransfer,
         isCurrent: current,
+        onProgress: (sent, total) {
+          if (!current()) return;
+          transferredBytes = sent;
+          transferBytes = total;
+          _notify();
+        },
       ),
     );
   }
 
-  Future<void> syncNow({bool force = false}) async {
+  Future<void> syncNow({bool force = false, bool remoteCheck = false}) async {
     if (!_ready || busy || loading || cloud.busy) return;
     if (_blocked && !force) return;
     if (!force && retryAt != null && _now().isBefore(retryAt!)) return;
-    final nonce = _nonce;
+    final nonce = _nonce, serial = _changeSerial;
+    _debounce?.cancel();
+    _debounce = null;
+    _refreshPending = false;
     if (force) _blocked = false;
     busy = true;
+    transferredBytes = transferBytes = 0;
     error = '';
     status = 'Syncing · local editing remains available';
     _notify();
@@ -502,18 +579,43 @@ class DriveSyncController extends ChangeNotifier {
         );
       }
       _attach();
+      // Cheap feed checks between full local inventories keep large Vaults from
+      // rehashing every attachment every five seconds. External file edits still
+      // receive a full reconciliation at least every 30 seconds while available.
+      if (remoteCheck &&
+          !force &&
+          !_localChangesPending &&
+          retryAt == null &&
+          result?.upToDate == true &&
+          _lastInventoryAt != null &&
+          !_now().difference(_lastInventoryAt!).isNegative &&
+          _now().difference(_lastInventoryAt!) < const Duration(seconds: 30)) {
+        final delta = await _engine!.provider.fetchChanges(null);
+        if (!_ready || nonce != _nonce) return;
+        final previous = await _state!.load();
+        if (!_ready || nonce != _nonce) return;
+        if (delta.cursor == previous?['cursor'] && serial == _changeSerial) {
+          lastChecked = _now();
+          status = 'Up to date with Google Drive';
+          return;
+        }
+      }
       final next = await _engine!.sync();
       if (!_ready || nonce != _nonce) return;
       final state = await _state!.load();
       if (!_ready || nonce != _nonce) return;
       conflicts = Map<String, dynamic>.from(state?['conflicts'] as Map? ?? {});
       result = next;
+      lastChecked = _lastInventoryAt = _now();
       cloud.confirmAccountAccess();
       _failures = 0;
       retryAt = null;
-      if (next.upToDate) lastSynced = _now();
-      status = next.conflicts > 0 || next.missing > 0
-          ? '${next.conflicts} item(s) need review · local copies preserved'
+      _localChangesPending = serial != _changeSerial;
+      if (next.upToDate && !_localChangesPending) lastSynced = _now();
+      status = _localChangesPending
+          ? 'Saved locally · newer changes queued for sync'
+          : next.conflicts > 0 || next.missing > 0
+          ? '${next.conflicts + next.missing} item(s) need review · local copies preserved'
           : next.pending > 0
           ? '${next.pending} change(s) pending'
           : 'Up to date with Google Drive';
@@ -539,6 +641,7 @@ class DriveSyncController extends ChangeNotifier {
     } finally {
       busy = false;
       _notify();
+      _continueAutomatic();
     }
   }
 
@@ -616,6 +719,7 @@ class DriveSyncController extends ChangeNotifier {
     } finally {
       busy = false;
       _notify();
+      _continueAutomatic();
     }
   }
 
@@ -656,6 +760,7 @@ class DriveSyncController extends ChangeNotifier {
     } finally {
       busy = false;
       _notify();
+      _continueAutomatic();
     }
   }
 

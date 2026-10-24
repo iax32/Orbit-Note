@@ -34,6 +34,7 @@ class SessionState {
     String fontFamily = 'Segoe UI',
     bool compact = false,
     String motion = 'normal',
+    Map<String, dynamic> motionOptions = const {},
     this.splitAxis = 'horizontal',
     this.splitRatio = .5,
     this.focusMode = false,
@@ -53,9 +54,10 @@ class SessionState {
     List<Map<String, dynamic>> completedWorkSessions = const [],
     bool spellCheckEnabled = true,
     List<String> userDictionary = const [],
-    String accentColor = 'violet',
+    String accentColor = 'theme',
     Map<String, int> colorOverrides = const {},
     String themePreset = 'orbit',
+    bool followSystemAppearance = false,
     String cornerStyle = 'rounded',
     String documentFontFamily = 'Segoe UI',
     String monoFontFamily = 'Consolas',
@@ -72,6 +74,8 @@ class SessionState {
     double defaultAudioSpeed = 1.0,
     double editorLineHeight = 1.6,
     bool showLineNumbers = true,
+    bool defaultCodeWrap = false,
+    double codeFontSize = 14,
     List<Map<String, dynamic>> customThemes = const [],
     Map<String, int> folderColors = const {},
   }) : tabs = List.of(tabs),
@@ -90,9 +94,11 @@ class SessionState {
          documentFontFamily: documentFontFamily,
          monoFontFamily: monoFontFamily,
          themePreset: themePreset,
+         followSystemAppearance: followSystemAppearance,
          cornerStyle: cornerStyle,
          compact: compact,
          motion: motion,
+         motionOptions: motionOptions,
          spellCheckEnabled: spellCheckEnabled,
          userDictionary: userDictionary,
          accentColor: accentColor,
@@ -105,6 +111,8 @@ class SessionState {
          defaultAudioSpeed: defaultAudioSpeed,
          editorLineHeight: editorLineHeight,
          showLineNumbers: showLineNumbers,
+         defaultCodeWrap: defaultCodeWrap,
+         codeFontSize: codeFontSize,
          customThemes: customThemes,
          folderColors: folderColors,
        );
@@ -153,6 +161,9 @@ class SessionState {
   set compact(bool value) => preferences.compact = value;
   String get motion => preferences.motion;
   set motion(String value) => preferences.motion = value;
+  Map<String, dynamic> get motionOptions => preferences.motionOptions;
+  set motionOptions(Map<String, dynamic> value) =>
+      preferences.motionOptions = Map.unmodifiable(value);
   bool get spellCheckEnabled => preferences.spellCheckEnabled;
   set spellCheckEnabled(bool value) => preferences.spellCheckEnabled = value;
   List<String> get userDictionary => preferences.userDictionary;
@@ -161,6 +172,9 @@ class SessionState {
   set accentColor(String value) => preferences.accentColor = value;
   String get themePreset => preferences.themePreset;
   set themePreset(String value) => preferences.themePreset = value;
+  bool get followSystemAppearance => preferences.followSystemAppearance;
+  set followSystemAppearance(bool value) =>
+      preferences.followSystemAppearance = value;
   String get cornerStyle => preferences.cornerStyle;
   set cornerStyle(String value) => preferences.cornerStyle = value;
   String get documentFontFamily => preferences.documentFontFamily;
@@ -168,6 +182,12 @@ class SessionState {
       preferences.documentFontFamily = value;
   String get monoFontFamily => preferences.monoFontFamily;
   set monoFontFamily(String value) => preferences.monoFontFamily = value;
+  bool get defaultCodeWrap => preferences.defaultCodeWrap;
+  set defaultCodeWrap(bool value) => preferences.defaultCodeWrap = value;
+  double get codeFontSize => preferences.codeFontSize;
+  set codeFontSize(double value) => preferences.codeFontSize = value.isFinite
+      ? value.clamp(10.0, 26.0)
+      : 14.0;
   Map<String, int> get colorOverrides => preferences.colorOverrides;
   set colorOverrides(Map<String, int> value) =>
       preferences.colorOverrides = value;
@@ -322,6 +342,13 @@ class SessionState {
       motion: ['normal', 'reduced', 'off'].contains(json['motion'])
           ? json['motion'] as String
           : 'normal',
+      motionOptions: json['motionOptions'] is Map
+          ? Map<String, dynamic>.fromEntries(
+              (json['motionOptions'] as Map).entries
+                  .where((e) => e.key is String)
+                  .map((e) => MapEntry(e.key as String, e.value)),
+            )
+          : const {},
       positions: positions,
       cameras: cameras,
       noteViews: {
@@ -371,6 +398,7 @@ class SessionState {
               .toList(),
       accentColor:
           [
+            'theme',
             'violet',
             'cyan',
             'emerald',
@@ -379,10 +407,11 @@ class SessionState {
             'blue',
           ].contains(json['accentColor'])
           ? json['accentColor'] as String
-          : 'violet',
+          : 'theme',
       themePreset: json['themePreset'] is String
           ? json['themePreset'] as String
           : 'orbit',
+      followSystemAppearance: json['followSystemAppearance'] == true,
       cornerStyle: ['rounded', 'subtle'].contains(json['cornerStyle'])
           ? json['cornerStyle'] as String
           : 'rounded',
@@ -421,6 +450,7 @@ class SessionState {
             'cross',
             'hex',
             'blueprint',
+            'blueprint_classic',
             'music',
             'ledger',
             'triangular',
@@ -435,6 +465,8 @@ class SessionState {
           : 1.0,
       editorLineHeight: bounded('editorLineHeight', 1.6, 1.2, 2.4),
       showLineNumbers: json['showLineNumbers'] != false,
+      defaultCodeWrap: json['defaultCodeWrap'] == true,
+      codeFontSize: bounded('codeFontSize', 14, 10, 26),
       customThemes: (json['customThemes'] is List
           ? (json['customThemes'] as List)
                 .whereType<Map>()
@@ -474,6 +506,7 @@ class SessionState {
     'splitRatio': splitRatio,
     'focusMode': focusMode,
     'motion': motion,
+    'motionOptions': motionOptions,
     'positions': positions,
     'cameras': cameras,
     'noteViews': noteViews,
@@ -487,6 +520,7 @@ class SessionState {
     'userDictionary': userDictionary,
     'accentColor': accentColor,
     'themePreset': themePreset,
+    'followSystemAppearance': followSystemAppearance,
     'cornerStyle': cornerStyle,
     'documentFontFamily': documentFontFamily,
     'monoFontFamily': monoFontFamily,
@@ -504,6 +538,8 @@ class SessionState {
     'defaultAudioSpeed': defaultAudioSpeed,
     'editorLineHeight': editorLineHeight,
     'showLineNumbers': showLineNumbers,
+    'defaultCodeWrap': defaultCodeWrap,
+    'codeFontSize': codeFontSize,
     if (customThemes.isNotEmpty) 'customThemes': customThemes,
     if (folderColors.isNotEmpty)
       'folderColors': Map<String, int>.from(folderColors),

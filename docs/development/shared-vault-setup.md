@@ -1,9 +1,43 @@
-# Self-hosted shared Vault preview
+# Self-hosted shared Vault
 
-This preview shares an explicit whole-Vault copy. Existing active Markdown notes
-and Canvas boards support simultaneous editing, names and pointers. New objects,
-deletions and attachments are not streamed; start a new shared snapshot for those.
-Other files are included in the initial copy. Share only a Vault whose entire
+2026-10-22: Update **both host and client**. Newly created shared rooms enable
+live notes/tasks/boards/other owning objects, Trash/restore, permanent deletions,
+verified resumable assets and authenticated change notifications. Rich/Source
+notes show source-checked names/carets/selections. Independent edits combine;
+overlaps remain reviewable. Existing rooms remain legacy: create a new shared
+snapshot and invitation to enable the new workflow. Old clients cannot silently
+enter live rooms. Initial sharing still discloses the entire exported Vault.
+
+Remembered connections optionally **Reconnect when Orbit opens**, including resume.
+Disconnect suppresses that option for the current opening. Neither this switch
+nor leaving the host open installs a client background service. Mobile closed-app
+workers and physical-device acceptance remain unfinished. Two-local-client tests
+do not establish mobile/TLS/network reliability.
+
+Stop the server and preserve the **whole private data directory** before upgrading.
+The first new live journal record retains a verified `events.before-live-v2.jsonl`
+checkpoint. It is not a full current backup: preserve current journal, blobs and
+keys together. Never downgrade the active live journal to an older server. See
+[protocol/recovery/limits](../adr/0032-live-shared-vault-replication.md) and
+[actual validation](../tasks/live-shared-sync-2026-10-22.md).
+
+2026-10-21: Shared settings now include **Set up a host for your devices**,
+with default host paths, a hostname-only Caddyfile builder, HTTPS address setup
+and private invitation/import/reconnect steps. Copying a proxy configuration does
+not install/configure it. **Check shared changes now** is available when connected.
+Owner-key and connectivity failures explain recovery without printing credentials.
+
+Update both client and host for restart/restore recovery. Each host start gets an
+ephemeral protocol-1 `epoch`; mismatching cursor requests return a full state.
+Clients check it before sending edits. Different or missing documents after a
+restart/restore require explicit review, with local content preserved. An
+unchanged host snapshot resumes. Identity/protocol mismatch pauses requests;
+foreground checks retain permission blocks. [Evidence](../tasks/device-sync-recovery-2026-10-21.md).
+
+
+Sharing starts with an explicit whole-Vault copy. Legacy rooms update existing
+active notes/boards only; live rooms also transfer new objects/lifecycle/assets.
+Share only a Vault whose entire
 contents you intend to disclose, including Archive, Trash and portable history.
 
 ## Start the server
@@ -116,3 +150,8 @@ the public Internet, TLS and multiple real devices need separate checks. Automat
 two-client/server-restart and device-continuity tests are in
 `test/collaboration_test.dart` and `test/device_sync_continuity_test.dart`; see
 current task for actual results. No persistent server is started by these checks.
+
+Host-incarnation guards also travel with edit proposals: a restart between the
+state check and publication returns a typed conflict before any journal mutation.
+Canvas comparisons reject changed hosts before applying choices; existing conflict
+bases are invalidated on restart instead of reused across uncertain ancestry.

@@ -216,7 +216,7 @@ class _FolderColorDialogContentState extends State<_FolderColorDialogContent> {
                               color:
                                   _selectedColor?.toARGB32() ==
                                       entry.value.toARGB32()
-                                  ? Colors.white
+                                  ? OrbitContrast.inkOn(entry.value)
                                   : Colors.transparent,
                               width: 2.5,
                             ),
@@ -233,11 +233,11 @@ class _FolderColorDialogContentState extends State<_FolderColorDialogContent> {
                           child:
                               _selectedColor?.toARGB32() ==
                                   entry.value.toARGB32()
-                              ? const Center(
+                              ? Center(
                                   child: Icon(
                                     Icons.check,
                                     size: 16,
-                                    color: Colors.white,
+                                    color: OrbitContrast.inkOn(entry.value),
                                   ),
                                 )
                               : null,

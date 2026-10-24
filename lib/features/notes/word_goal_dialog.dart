@@ -394,7 +394,7 @@ class _WordGoalDialogState extends State<WordGoalDialog> {
                         : null,
                     style: FilledButton.styleFrom(
                       backgroundColor: colors.accent,
-                      foregroundColor: Colors.white,
+                      foregroundColor: colors.onAccent,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(
                           OrbitRadius.control,

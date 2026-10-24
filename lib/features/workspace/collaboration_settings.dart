@@ -1,3 +1,4 @@
+import 'shared_server_setup.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -182,7 +183,7 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Share a copy of this entire Vault with your self-hosted server. Existing notes and Canvas boards support live edits. Attachments are included in the initial copy; new attachments and newly created objects need a new shared snapshot. Keep invitations private.',
+                'Share this Vault with your self-hosted server. Updated hosts transfer new objects, verified attachments, Trash and permanent deletions, and send live change notifications. Notes show source-checked collaborator cursors and selections. Conflicting edits remain recoverable. Keep invitations private.',
               ),
               const SizedBox(height: 16),
               if (c.hasSavedConnection) ...[
@@ -211,8 +212,17 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
                 const Divider(height: 24),
               ],
               if (!c.connected) ...[
+                SharedServerSetup(
+                  onUseAddress: (value) {
+                    server.text = value;
+                    setState(() => serverStatus = null);
+                  },
+                ),
                 TextField(
                   controller: server,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  onChanged: (_) => setState(() => serverStatus = null),
                   decoration: const InputDecoration(
                     labelText: 'Server address',
                     helperText: 'HTTPS remotely · HTTP for localhost',
@@ -220,6 +230,7 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
                 ),
                 TextField(
                   controller: ownerKey,
+                  onChanged: (_) => setState(() => serverStatus = null),
                   obscureText: true,
                   autocorrect: false,
                   enableSuggestions: false,
@@ -238,14 +249,15 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
                   onPressed: busy || c.connecting
                       ? null
                       : () => run(() async {
-                          final address = server.text;
+                          final address = server.text,
+                              key = ownerKey.text.trim();
+                          setState(() => serverStatus = null);
                           final endpoint =
                               CollaborationController.validateEndpoint(address);
-                          final info = await c.testServer(
-                            endpoint,
-                            ownerKey.text.trim(),
-                          );
-                          if (mounted && server.text == address) {
+                          final info = await c.testServer(endpoint, key);
+                          if (mounted &&
+                              server.text == address &&
+                              ownerKey.text.trim() == key) {
                             setState(
                               () => serverStatus =
                                   'Server ready · protocol ${info['protocol']} · ${info['rooms']} shared Vault(s). No Vault uploaded.',
@@ -288,8 +300,22 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
                 ),
               ] else ...[
                 Text(c.status),
+                Text('Host: ${c.endpoint}'),
                 Text('Access: ${c.role}'),
+                if (c.lastAcknowledgedAt != null)
+                  Text(
+                    'Last acknowledged: ${c.lastAcknowledgedAt!.toLocal().toIso8601String().substring(0, 19).replaceAll('T', ' ')}',
+                  ),
+                OutlinedButton.icon(
+                  onPressed: busy || c.busy ? null : () => run(c.retryNow),
+                  icon: const Icon(Icons.sync),
+                  label: const Text('Check shared changes now'),
+                ),
                 Text('${c.pendingChanges} shared document(s) pending'),
+                if (!c.liveReplication)
+                  const Text(
+                    'Legacy shared snapshot: new objects, attachments and deletions require a new shared Vault. Create it with the updated host to enable live replication.',
+                  ),
                 if (c.retryAt != null || c.accessBlocked)
                   OutlinedButton.icon(
                     onPressed: busy || c.busy ? null : () => run(c.retryNow),
@@ -323,8 +349,22 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
                       ],
                     ),
                   ),
+                if (c.canRememberConnection)
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Reconnect when Orbit opens'),
+                    subtitle: const Text(
+                      'Remember this server securely and reconnect on launch or resume. Disconnect stops reconnecting for this opening. No closed-app mobile service is installed.',
+                    ),
+                    value: c.autoReconnectSaved,
+                    onChanged: busy || c.profileBusy
+                        ? null
+                        : (value) => run(
+                            () => c.rememberConnection(autoReconnect: value),
+                          ),
+                  ),
                 const Text(
-                  'Remembering saves only your private room connection in device secure storage. It is never written into the Vault or exported. Disconnect keeps the saved connection; Forget removes it. Reconnect is an explicit action.',
+                  'Remembering saves your private room connection in device secure storage. It is never exported with the Vault. Automatic reconnect is optional; Disconnect stops this session and Forget removes the saved connection.',
                 ),
                 if (c.role == 'owner') ...[
                   TextField(

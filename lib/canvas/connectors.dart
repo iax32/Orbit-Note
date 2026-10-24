@@ -122,6 +122,7 @@ enum ConnectorMarker {
   arrow,
   dot,
   diamond,
+  filledTriangle,
   hollowTriangle,
   hollowDiamond,
   filledDiamond;
@@ -131,6 +132,8 @@ enum ConnectorMarker {
     ConnectorMarker defaultMarker = ConnectorMarker.none,
   }) {
     switch (value?.toLowerCase()) {
+      case 'filledtriangle':
+        return ConnectorMarker.filledTriangle;
       case 'hollowtriangle':
         return ConnectorMarker.hollowTriangle;
       case 'hollowdiamond':
@@ -162,6 +165,8 @@ enum ConnectorMarker {
         return 'Diamond';
       case ConnectorMarker.hollowTriangle:
         return 'Hollow triangle';
+      case ConnectorMarker.filledTriangle:
+        return 'Filled triangle';
       case ConnectorMarker.hollowDiamond:
         return 'Hollow diamond';
       case ConnectorMarker.filledDiamond:
@@ -397,6 +402,91 @@ ConnectorEndpoints resolveConnectorEndpoints(
       connector.data['endAnchorOffset'],
     );
   }
+  // Sequence messages attach to the lifeline centre, below its participant
+  // header. Existing connector data still supplies an old-reader fallback.
+  final link = connector.data['umlLink'];
+  final sequence =
+      link is Map &&
+      const {
+        'synchronous',
+        'asynchronous',
+        'reply',
+        'create',
+        'destroy',
+      }.contains(link['kind']);
+  if (sequence && startElem != null && endElem != null) {
+    final position = finiteNumber(link['position'], .3).clamp(.12, .9);
+    startPoint = CanvasPoint(
+      startElem.bounds.center.x,
+      startElem.y + math.max(68, startElem.height * position),
+    );
+    endPoint = CanvasPoint(
+      endElem.bounds.center.x,
+      endElem.y + math.max(68, endElem.height * position),
+    );
+    if (link['kind'] == 'create') {
+      endPoint = CanvasPoint(
+        startPoint.x < endElem.bounds.center.x
+            ? endElem.bounds.left
+            : endElem.bounds.right,
+        endElem.y + 32,
+      );
+    } else if (link['kind'] == 'destroy') {
+      endPoint = CanvasPoint(
+        endElem.bounds.center.x,
+        endElem.bounds.bottom - 5,
+      );
+    }
+    if (startElem.id == endElem.id) {
+      endPoint = CanvasPoint(
+        startPoint.x,
+        math.min(startElem.bounds.bottom, startPoint.y + 40),
+      );
+      return ConnectorEndpoints(
+        start: startPoint,
+        end: endPoint,
+        controlPoints: [
+          CanvasPoint(startPoint.x + 72, startPoint.y),
+          CanvasPoint(startPoint.x + 72, endPoint.y),
+        ],
+      );
+    }
+  }
+  // Ellipse connectors touch the oval, rather than its bounding rectangle.
+  CanvasPoint ovalEdge(CanvasElement node, CanvasPoint toward) {
+    final center = node.bounds.center, delta = toward - center;
+    final rx = math.max(1.0, node.width / 2),
+        ry = math.max(1.0, node.height / 2);
+    final scale = math.sqrt(
+      delta.x * delta.x / (rx * rx) + delta.y * delta.y / (ry * ry),
+    );
+    return scale < .001
+        ? CanvasPoint(center.x + rx, center.y)
+        : center + delta * (1 / scale);
+  }
+
+  if (!sequence && routing == ConnectorRouting.straight) {
+    CanvasPoint actorAnchor(CanvasElement node) => CanvasPoint(
+      node.bounds.center.x,
+      node.y + math.min(94.0, node.height * .62) * .48,
+    );
+    if (startElem?.data['umlNode'] is Map &&
+        (startElem!.data['umlNode'] as Map)['kind'] == 'actor') {
+      startPoint = actorAnchor(startElem);
+    }
+    if (endElem?.data['umlNode'] is Map &&
+        (endElem!.data['umlNode'] as Map)['kind'] == 'actor') {
+      endPoint = actorAnchor(endElem);
+    }
+    if (startElem?.type == 'ellipse' &&
+        startAnchorSetting == ConnectorAnchor.auto) {
+      startPoint = ovalEdge(startElem!, endElem?.bounds.center ?? endPoint);
+    }
+    if (endElem?.type == 'ellipse' &&
+        endAnchorSetting == ConnectorAnchor.auto) {
+      endPoint = ovalEdge(endElem!, startElem?.bounds.center ?? startPoint);
+    }
+  }
   final controlPoints = <CanvasPoint>[];
   if (routing == ConnectorRouting.curved) {
     final dist = (endPoint - startPoint).length;
@@ -558,6 +648,7 @@ List<CanvasPoint> umlMarkerPolygon(
   CanvasPoint toward,
 ) {
   if (!{
+    ConnectorMarker.filledTriangle,
     ConnectorMarker.hollowTriangle,
     ConnectorMarker.hollowDiamond,
     ConnectorMarker.filledDiamond,
@@ -568,7 +659,8 @@ List<CanvasPoint> umlMarkerPolygon(
   final length = math.max(.001, delta.length);
   final axis = CanvasPoint(delta.x / length, delta.y / length);
   final normal = CanvasPoint(-axis.y, axis.x);
-  if (marker == ConnectorMarker.hollowTriangle) {
+  if (marker == ConnectorMarker.hollowTriangle ||
+      marker == ConnectorMarker.filledTriangle) {
     return [tip, tip + axis * 20 + normal * 10, tip + axis * 20 - normal * 10];
   }
   return [
@@ -612,6 +704,25 @@ List<({String text, CanvasBounds bounds})> connectorEndLabels(
       text: lines.join('\n'),
       bounds: CanvasBounds(x, y, width, height),
     ));
+  }
+  // Short relationships can place both multiplicities on the same patch of
+  // paper. Keep the second label on the opposite side of the edge instead.
+  if (result.length == 2 &&
+      result.first.bounds.inflate(4).intersects(result.last.bounds)) {
+    final last = result.last;
+    final direction = endpoints.tangentTarget(atStart: false) - endpoints.end;
+    final horizontal = direction.x.abs() >= direction.y.abs();
+    result[result.length - 1] = (
+      text: last.text,
+      bounds: CanvasBounds(
+        horizontal
+            ? last.bounds.left
+            : endpoints.end.x - last.bounds.width - 12,
+        horizontal ? endpoints.end.y + 6 : last.bounds.top,
+        last.bounds.width,
+        last.bounds.height,
+      ),
+    );
   }
   return result;
 }

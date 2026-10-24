@@ -51,6 +51,36 @@ class DriveSyncService {
   bool failFolderCreateOnce = false;
   int? rejectStatus;
   Future<void> Function()? beforeRecord;
+  final changes = <Map<String, dynamic>>[];
+  final _observed = <String, String>{};
+  int historyLists = 0, changeLists = 0, mediaReads = 0;
+  int changePageSize = 1000;
+  bool expireCursorOnce = false,
+      repeatChangePage = false,
+      incompleteChanges = false;
+  bool omitEmptyChanges = false;
+  int? failChangePage;
+  Future<void> Function()? afterStartToken;
+  Future<void> Function()? afterHistoryList;
+  Future<void> Function()? beforeChangePage;
+  bool interruptChunkOnce = false;
+  final uploadedOffsets = <int>[];
+  void _observe() {
+    for (final entry in files.entries) {
+      final json = entry.value.json;
+      final encoded = jsonEncode(json);
+      if (_observed[entry.key] != encoded) {
+        changes.add({'fileId': entry.key, 'removed': false, 'file': json});
+        _observed[entry.key] = encoded;
+      }
+    }
+    for (final id
+        in _observed.keys.where((id) => !files.containsKey(id)).toList()) {
+      changes.add({'fileId': id, 'removed': true});
+      _observed.remove(id);
+    }
+  }
+
   List<DriveTestFile> get revisions => files.values
       .where(
         (f) =>
@@ -66,6 +96,35 @@ class DriveSyncService {
       throw StateError('Missing account authorization');
     }
     final path = r.url.path;
+    _observe();
+    if (path == '/drive/v3/changes/startPageToken') {
+      final token = '${changes.length}';
+      await afterStartToken?.call();
+      return http.Response(jsonEncode({'startPageToken': token}), 200);
+    }
+    if (path == '/drive/v3/changes') {
+      changeLists++;
+      await beforeChangePage?.call();
+      if (expireCursorOnce) {
+        expireCursorOnce = false;
+        return http.Response('{}', 410);
+      }
+      final start = int.parse(r.url.queryParameters['pageToken']!);
+      if (failChangePage == start) return http.Response('{}', 503);
+      final end = (start + changePageSize).clamp(start, changes.length);
+      return http.Response(
+        jsonEncode({
+          if (!omitEmptyChanges || start != end)
+            'changes': changes.sublist(start, end),
+          if (!incompleteChanges)
+            if (end < changes.length || repeatChangePage)
+              'nextPageToken': repeatChangePage ? '$start' : '$end'
+            else
+              'newStartPageToken': '$end',
+        }),
+        200,
+      );
+    }
     if (path.endsWith('/generateIds')) {
       final count = int.parse(r.url.queryParameters['count'] ?? '1');
       return http.Response(
@@ -82,6 +141,7 @@ class DriveSyncService {
         "key='orbitRole' and value='([^']+)'",
       ).firstMatch(q)?.group(1);
       if (role != null) {
+        if (role == 'sync-revision') historyLists++;
         matches = matches.where(
           (f) => (f.metadata['appProperties'] as Map?)?['orbitRole'] == role,
         );
@@ -100,11 +160,10 @@ class DriveSyncService {
           (f) => (f.metadata['parents'] as List? ?? []).contains(parent),
         );
       }
+      final result = matches.map((f) => f.json).toList();
+      if (role == 'sync-revision') await afterHistoryList?.call();
       return http.Response(
-        jsonEncode({
-          'files': matches.map((f) => f.json).toList(),
-          'incompleteSearch': partialList,
-        }),
+        jsonEncode({'files': result, 'incompleteSearch': partialList}),
         200,
       );
     }
@@ -113,6 +172,7 @@ class DriveSyncService {
       if (f == null || f.metadata['trashed'] == true) {
         return http.Response('{}', 404);
       }
+      if (r.url.queryParameters['alt'] == 'media') mediaReads++;
       return r.url.queryParameters['alt'] == 'media'
           ? http.Response.bytes(f.bytes, 200)
           : http.Response(jsonEncode(f.json), 200);
@@ -188,11 +248,16 @@ class DriveSyncService {
       final start = int.parse(match[1]!),
           end = int.parse(match[2]!),
           total = int.parse(match[3]!);
+      uploadedOffsets.add(start);
       if (start != session.bytes.length ||
           end - start + 1 != r.bodyBytes.length) {
         return http.Response('{}', 400);
       }
       session.bytes = Uint8List.fromList([...session.bytes, ...r.bodyBytes]);
+      if (interruptChunkOnce && session.bytes.length < total) {
+        interruptChunkOnce = false;
+        throw http.ClientException('Interrupted after a retained chunk');
+      }
       if (session.bytes.length == total) {
         files[id] = session;
         if (loseBlobReply) {

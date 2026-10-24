@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'app_preferences.dart';
 import 'orbit_density.dart';
+
+part 'orbit_palette_catalog.dart';
 
 abstract final class OrbitRadius {
   static const small = 4.0;
@@ -102,6 +105,13 @@ abstract final class OrbitMotion {
 
 /// Utility for computing WCAG 2.1 relative luminance and contrast ratios.
 abstract final class OrbitContrast {
+  /// A filled control needs contrasting ink in either appearance, including
+  /// bright custom accents. A fixed white foreground is not always readable.
+  static Color inkOn(Color background) =>
+      ratio(Colors.black, background) >= ratio(Colors.white, background)
+      ? Colors.black
+      : Colors.white;
+
   /// Computes the contrast ratio between two colors using WCAG 2.1 relative luminance.
   /// Result ranges from 1.0 (identical) to 21.0 (black vs white).
   static double ratio(Color a, Color b) {
@@ -134,30 +144,30 @@ abstract final class OrbitContrast {
 /// Semantic tokens shared by the shell, views, and feature surfaces.
 class OrbitColors extends ThemeExtension<OrbitColors> {
   const OrbitColors({
-    this.background = const Color(0xFF0D0D12),
-    Color? workspace,
-    this.panel = const Color(0xFF13131A),
-    Color? panelSecondary,
-    this.raised = const Color(0xFF1A1922),
-    Color? floating,
-    Color? input,
-    this.hover = const Color(0xFF211F2B),
+    this.background = const Color(0xFF141418),
+    Color? workspace = const Color(0xFF19191E),
+    this.panel = const Color(0xFF1D1D23),
+    Color? panelSecondary = const Color(0xFF222229),
+    this.raised = const Color(0xFF25252D),
+    Color? floating = const Color(0xFF2B2B35),
+    Color? input = const Color(0xFF202027),
+    this.hover = const Color(0xFF303039),
     Color? pressed,
     Color? selected,
     Color? selectedMuted,
-    this.border = const Color(0xFF262430),
-    this.divider = const Color(0xFF201E28),
+    this.border = const Color(0xFF40404C),
+    this.divider = const Color(0xFF2B2B35),
     Color? focus,
-    this.accent = const Color(0xFF8B7CF6),
-    this.secondary = const Color(0xFF6F7FEA),
-    this.accentHover = const Color(0xFF9B8CF8),
-    this.text = const Color(0xFFECEAF2),
-    this.subtle = const Color(0xFFC2BECE),
-    this.muted = const Color(0xFF918C9D),
+    this.accent = const Color(0xFFB0A0FF),
+    this.secondary = const Color(0xFFA1ADEA),
+    this.accentHover = const Color(0xFFC3B6FF),
+    this.text = const Color(0xFFF2F0F7),
+    this.subtle = const Color(0xFFC9C6D3),
+    this.muted = const Color(0xFFAAA5B5),
     Color? textDisabled,
-    this.success = const Color(0xFF65C6A3),
-    this.warning = const Color(0xFFD8B56A),
-    this.danger = const Color(0xFFE57582),
+    this.success = const Color(0xFF88D6B5),
+    this.warning = const Color(0xFFE7C783),
+    this.danger = const Color(0xFFF2A4AF),
     Color? link,
     Color? linkVisited,
     Color? canvasBackground,
@@ -167,16 +177,16 @@ class OrbitColors extends ThemeExtension<OrbitColors> {
        panelSecondary = panelSecondary ?? panel,
        floating = floating ?? raised,
        input = input ?? raised,
-       pressed = pressed ?? const Color(0xFF282536),
-       selected = selected ?? const Color(0xFF242036),
-       selectedMuted = selectedMuted ?? const Color(0xFF1C1A27),
+       pressed = pressed ?? const Color(0xFF383842),
+       selected = selected ?? const Color(0xFF332F46),
+       selectedMuted = selectedMuted ?? const Color(0xFF272535),
        focus = focus ?? accentHover,
-       textDisabled = textDisabled ?? const Color(0xFF605C6E),
-       link = link ?? const Color(0xFFA78BFA),
-       linkVisited = linkVisited ?? const Color(0xFF818CF8),
+       textDisabled = textDisabled ?? const Color(0xFF777281),
+       link = link ?? const Color(0xFFB6A8FF),
+       linkVisited = linkVisited ?? const Color(0xFFAEBAFF),
        canvasBackground = canvasBackground ?? background,
        canvasGrid = canvasGrid ?? border,
-       graphEdge = graphEdge ?? const Color(0xFF3A3747);
+       graphEdge = graphEdge ?? const Color(0xFF666373);
 
   final Color background;
   final Color workspace;
@@ -213,9 +223,55 @@ class OrbitColors extends ThemeExtension<OrbitColors> {
   Color get textSecondary => subtle;
   Color get textMuted => muted;
   Color get accentSecondary => secondary;
+  Color get onAccent => OrbitContrast.inkOn(accent);
 
-  static OrbitColors of(BuildContext context) =>
-      Theme.of(context).extension<OrbitColors>() ?? const OrbitColors();
+  /// A restrained status surface that retains readable role-colored text.
+  /// Explicit unreadable custom colors remain user-owned; recovery stays separate.
+  Color tinted(Color foreground, {Color? surface, double opacity = .12}) {
+    final base = surface ?? panel;
+    var amount = opacity.clamp(0.0, 1.0);
+    for (var i = 0; i < 24; i++) {
+      final result = Color.alphaBlend(
+        foreground.withValues(alpha: amount),
+        base,
+      );
+      if (OrbitContrast.ratio(foreground, result) >= 4.5) return result;
+      amount /= 2;
+    }
+    return base;
+  }
+
+  /// Shared object/status vocabulary across navigation, collections and graphs.
+  Color objectType(String type) => switch (type) {
+    'orbit.task' => warning,
+    'orbit.canvas' => secondary,
+    'orbit.event' => success,
+    'orbit.file' => subtle,
+    _ => accent,
+  };
+
+  Color status(String value) => switch (value.toLowerCase()) {
+    'done' || 'closed' || 'confirmed' || 'passed' || 'verified' => success,
+    'in-progress' || 'testing' || 'investigating' || 'learning' => accent,
+    'review' || 'verify' || 'uncertain' => warning,
+    'blocked' || 'rejected' || 'failed' || 'disproved' => danger,
+    _ => subtle,
+  };
+
+  Color priority(String value) => switch (value.toLowerCase()) {
+    'urgent' || 'blocker' || 'critical' => danger,
+    'high' || 'major' => warning,
+    'medium' || 'minor' => accent,
+    _ => subtle,
+  };
+
+  static OrbitColors of(BuildContext context) {
+    final theme = Theme.of(context);
+    return theme.extension<OrbitColors>() ??
+        (theme.brightness == Brightness.light
+            ? OrbitThemePack.fromId('paper').colors
+            : const OrbitColors());
+  }
 
   static const Map<String, Color> accentPresets = {
     'violet': Color(0xFF8B7CF6),
@@ -227,7 +283,7 @@ class OrbitColors extends ThemeExtension<OrbitColors> {
   };
 
   static Color accentFromPreset(String? name) =>
-      accentPresets[name] ?? const Color(0xFF8B7CF6);
+      accentPresets[name] ?? const OrbitColors().accent;
 
   static const roleLabels = <String, String>{
     'background': 'Workspace background',
@@ -706,6 +762,8 @@ class OrbitThemePack {
     this.documentFontFamily = 'Segoe UI',
     this.monoFontFamily = 'Consolas',
     this.cornerStyle = 'rounded',
+    this.familyId,
+    this.category = 'Originals',
   });
 
   final String id;
@@ -718,6 +776,37 @@ class OrbitThemePack {
   final String monoFontFamily;
   final String cornerStyle;
 
+  /// Catalog metadata; authored theme files continue to use the existing format.
+  final String? familyId;
+  final String category;
+
+  OrbitThemePack? get companion {
+    if (familyId == null) return null;
+    for (final pack in builtIn) {
+      if (pack.familyId == familyId && pack.brightness != brightness) {
+        return pack;
+      }
+    }
+    return null;
+  }
+
+  /// Resolve appearance without rewriting the saved family or user styling.
+  /// Original/custom themes without a catalog pair retain their authored look.
+  static OrbitThemePack forPreferences(
+    AppPreferences preferences,
+    Brightness platformBrightness,
+  ) {
+    final selected = fromId(
+      preferences.themePreset,
+      customPacks: preferences.customThemes,
+    );
+    if (!preferences.followSystemAppearance ||
+        selected.brightness == platformBrightness) {
+      return selected;
+    }
+    return selected.companion ?? selected;
+  }
+
   /// Default Orbit Graphite + Violet theme pack
   static const orbit = OrbitThemePack(
     id: 'orbit',
@@ -725,37 +814,7 @@ class OrbitThemePack {
     description:
         'A quiet observatory for your thoughts with graphite surfaces and violet highlights.',
     brightness: Brightness.dark,
-    colors: OrbitColors(
-      background: Color(0xFF0D0D12),
-      workspace: Color(0xFF111117),
-      panel: Color(0xFF13131A),
-      panelSecondary: Color(0xFF161620),
-      raised: Color(0xFF1A1922),
-      floating: Color(0xFF211F2D),
-      input: Color(0xFF181721),
-      hover: Color(0xFF211F2B),
-      pressed: Color(0xFF282536),
-      selected: Color(0xFF242036),
-      selectedMuted: Color(0xFF1C1A27),
-      border: Color(0xFF262430),
-      divider: Color(0xFF201E28),
-      focus: Color(0xFF9B8CF8),
-      accent: Color(0xFF8B7CF6),
-      secondary: Color(0xFF6F7FEA),
-      accentHover: Color(0xFF9B8CF8),
-      text: Color(0xFFECEAF2),
-      subtle: Color(0xFFC2BECE),
-      muted: Color(0xFF918C9D),
-      textDisabled: Color(0xFF605C6E),
-      success: Color(0xFF65C6A3),
-      warning: Color(0xFFD8B56A),
-      danger: Color(0xFFE57582),
-      link: Color(0xFFA78BFA),
-      linkVisited: Color(0xFF818CF8),
-      canvasBackground: Color(0xFF0D0D12),
-      canvasGrid: Color(0xFF262430),
-      graphEdge: Color(0xFF3A3747),
-    ),
+    colors: OrbitColors(),
   );
 
   /// Deep space near-black theme pack with cyan and indigo accents
@@ -922,78 +981,132 @@ class OrbitThemePack {
   /// Curated first-party palette families. The generated packs intentionally
   /// use the same semantic token contract as custom themes, so every surface
   /// (notes, canvas, graph, PDF, and shell) changes together.
-  static final List<OrbitThemePack> builtIn = [
-    orbit,
-    observatory,
-    paper,
-    midnight,
-    aurora,
-    OrbitThemePack.fromSeed(
-      const Color(0xFFD08A3A),
-      id: 'obsidian-ember',
-      name: 'Obsidian Ember',
-      description:
-          'Slate surfaces, warm amber focus, and the tactile contrast of a handcrafted vault.',
-      documentFontFamily: 'Georgia',
-    ),
-    OrbitThemePack.fromSeed(
-      const Color(0xFF88C0D0),
-      id: 'nord-mist',
-      name: 'Nord Mist',
-      description:
-          'Cool blue-grey workspace with icy links and a quiet northern palette.',
-    ),
-    OrbitThemePack.fromSeed(
-      const Color(0xFFBD93F9),
-      id: 'dracula-velvet',
-      name: 'Dracula Velvet',
-      description:
-          'Deep plum graphite with expressive violet focus and readable warm text.',
-      monoFontFamily: 'Consolas',
-    ),
-    OrbitThemePack.fromSeed(
-      const Color(0xFFCBA6F7),
-      id: 'catppuccin-mocha',
-      name: 'Catppuccin Mocha',
-      description:
-          'Soft mocha surfaces and pastel accents tuned for long evening sessions.',
-    ),
-    OrbitThemePack.fromSeed(
-      const Color(0xFFEBBCBA),
-      id: 'rose-pine',
-      name: 'Rosé Pine',
-      description:
-          'Muted pine, rose, and lavender tones for a calm, literary workspace.',
-      documentFontFamily: 'Georgia',
-    ),
-    OrbitThemePack.fromSeed(
-      const Color(0xFFB58900),
-      id: 'solarized-paper',
-      name: 'Solarized Paper',
-      description:
-          'A warm light reading mode with carefully balanced amber and blue accents.',
-      brightness: Brightness.light,
-      documentFontFamily: 'Georgia',
-      cornerStyle: 'subtle',
-    ),
-    OrbitThemePack.fromSeed(
-      const Color(0xFFD79921),
-      id: 'gruvbox-night',
-      name: 'Gruvbox Night',
-      description:
-          'Earthy low-light contrast with orange focus and familiar notebook warmth.',
-      cornerStyle: 'subtle',
-    ),
-    OrbitThemePack.fromSeed(
-      const Color(0xFFA8DADC),
-      id: 'coastal-light',
-      name: 'Coastal Light',
-      description:
-          'Bright sea-glass surfaces with generous contrast for daytime planning.',
-      brightness: Brightness.light,
-      cornerStyle: 'subtle',
-    ),
-  ];
+  static final List<OrbitThemePack> builtIn = List.unmodifiable(
+    [
+      orbit,
+      observatory,
+      paper,
+      midnight,
+      aurora,
+      OrbitThemePack.fromSeed(
+        const Color(0xFFD08A3A),
+        id: 'obsidian-ember',
+        name: 'Obsidian Ember',
+        description:
+            'Slate surfaces, warm amber focus, and the tactile contrast of a handcrafted vault.',
+        documentFontFamily: 'Georgia',
+      ),
+      OrbitThemePack.fromSeed(
+        const Color(0xFF88C0D0),
+        id: 'nord-mist',
+        name: 'Nord Mist',
+        description:
+            'Cool blue-grey workspace with icy links and a quiet northern palette.',
+      ),
+      OrbitThemePack.fromSeed(
+        const Color(0xFFBD93F9),
+        id: 'dracula-velvet',
+        name: 'Dracula Velvet',
+        description:
+            'Deep plum graphite with expressive violet focus and readable warm text.',
+        monoFontFamily: 'Consolas',
+      ),
+      OrbitThemePack.fromSeed(
+        const Color(0xFFCBA6F7),
+        id: 'catppuccin-mocha',
+        name: 'Catppuccin Mocha',
+        description:
+            'Soft mocha surfaces and pastel accents tuned for long evening sessions.',
+      ),
+      OrbitThemePack.fromSeed(
+        const Color(0xFFEBBCBA),
+        id: 'rose-pine',
+        name: 'Rosé Pine',
+        description:
+            'Muted pine, rose, and lavender tones for a calm, literary workspace.',
+        documentFontFamily: 'Georgia',
+      ),
+      OrbitThemePack.fromSeed(
+        const Color(0xFFB58900),
+        id: 'solarized-paper',
+        name: 'Solarized Paper',
+        description:
+            'A warm light reading mode with carefully balanced amber and blue accents.',
+        brightness: Brightness.light,
+        documentFontFamily: 'Georgia',
+        cornerStyle: 'subtle',
+      ),
+      OrbitThemePack.fromSeed(
+        const Color(0xFFD79921),
+        id: 'gruvbox-night',
+        name: 'Gruvbox Night',
+        description:
+            'Earthy low-light contrast with orange focus and familiar notebook warmth.',
+        cornerStyle: 'subtle',
+      ),
+      OrbitThemePack.fromSeed(
+        const Color(0xFFA8DADC),
+        id: 'coastal-light',
+        name: 'Coastal Light',
+        description:
+            'Bright sea-glass surfaces with generous contrast for daytime planning.',
+        brightness: Brightness.light,
+        cornerStyle: 'subtle',
+      ),
+      ..._additionalOrbitPalettes,
+    ].map(_readableBuiltIn),
+  );
+
+  /// Older built-ins retain their surfaces and identity while their semantic
+  /// foregrounds meet the same contract as the coordinated catalog. Authored
+  /// custom-theme colors and explicit overrides never pass through this step.
+  static OrbitThemePack _readableBuiltIn(OrbitThemePack pack) {
+    final c = pack.colors;
+    final surfaces = [
+      c.background,
+      c.workspace,
+      c.panel,
+      c.panelSecondary,
+      c.raised,
+      c.floating,
+      c.input,
+      c.hover,
+      c.pressed,
+      c.selected,
+      c.selectedMuted,
+    ];
+    final toward = pack.brightness == Brightness.light
+        ? Colors.black
+        : Colors.white;
+    Color ink(Color value, {double minimum = 4.5}) =>
+        _paletteInk(value, surfaces, toward, minimum: minimum);
+    return OrbitThemePack(
+      id: pack.id,
+      name: pack.name,
+      description: pack.description,
+      brightness: pack.brightness,
+      familyId: pack.familyId,
+      category: pack.category,
+      fontFamily: pack.fontFamily,
+      documentFontFamily: pack.documentFontFamily,
+      monoFontFamily: pack.monoFontFamily,
+      cornerStyle: pack.cornerStyle,
+      colors: c.copyWith(
+        text: ink(c.text, minimum: 7),
+        subtle: ink(c.subtle),
+        muted: ink(c.muted),
+        accent: ink(c.accent),
+        secondary: ink(c.secondary),
+        accentHover: ink(c.accentHover),
+        link: ink(c.link),
+        linkVisited: ink(c.linkVisited),
+        success: ink(c.success),
+        warning: ink(c.warning),
+        danger: ink(c.danger),
+        focus: ink(c.focus, minimum: 3),
+      ),
+    );
+  }
 
   static OrbitThemePack fromId(
     String? id, {
@@ -1065,6 +1178,8 @@ class OrbitThemePack {
           (json['cornerStyle'] == 'subtle' || json['cornerStyle'] == 'rounded')
           ? json['cornerStyle'] as String
           : basePreset.cornerStyle,
+      familyId: basePreset.familyId,
+      category: basePreset.category,
     );
   }
 
@@ -1130,6 +1245,37 @@ class OrbitThemePack {
   }
 }
 
+/// Device-local defaults for real code controls; local pane toggles can override.
+class OrbitCodePreferences extends ThemeExtension<OrbitCodePreferences> {
+  const OrbitCodePreferences({
+    this.fontFamily = 'monospace',
+    this.fontSize = 14,
+    this.lineNumbers = true,
+    this.wrap = false,
+  });
+  final String fontFamily;
+  final double fontSize;
+  final bool lineNumbers, wrap;
+  static OrbitCodePreferences of(BuildContext context) =>
+      Theme.of(context).extension<OrbitCodePreferences>() ??
+      const OrbitCodePreferences();
+  @override
+  OrbitCodePreferences copyWith({
+    String? fontFamily,
+    double? fontSize,
+    bool? lineNumbers,
+    bool? wrap,
+  }) => OrbitCodePreferences(
+    fontFamily: fontFamily ?? this.fontFamily,
+    fontSize: fontSize ?? this.fontSize,
+    lineNumbers: lineNumbers ?? this.lineNumbers,
+    wrap: wrap ?? this.wrap,
+  );
+  @override
+  OrbitCodePreferences lerp(covariant OrbitCodePreferences? other, double t) =>
+      other == null || t < .5 ? this : other;
+}
+
 /// UI roles inherit the user's font family. Document typography stays in editors.
 abstract final class OrbitTypography {
   static TextStyle workspaceTitle(BuildContext context) => Theme.of(
@@ -1186,6 +1332,50 @@ abstract final class OrbitTypography {
       body(context).copyWith(fontFamily: 'Consolas');
 }
 
+/// Color editing/recovery follows the selected family but ignores potentially
+/// unreadable overrides. Unreadable imported base themes get a readable fallback.
+ThemeData orbitRecoveryThemeForPreferences(
+  AppPreferences preferences,
+  Brightness platformBrightness,
+) {
+  final pack = OrbitThemePack.forPreferences(preferences, platformBrightness);
+  final colors = pack.colors;
+  final readable =
+      OrbitContrast.ratio(colors.text, colors.panel) >= 4.5 &&
+      OrbitContrast.ratio(colors.subtle, colors.panel) >= 4.5 &&
+      OrbitContrast.ratio(colors.accent, colors.panel) >= 4.5;
+  return orbitTheme(
+    preset: readable
+        ? pack.id
+        : (pack.brightness == Brightness.light ? 'paper' : 'orbit'),
+    fontFamily: preferences.fontFamily,
+    customPacks: preferences.customThemes,
+  );
+}
+
+/// Shared by the app, live preview and export so system appearance and explicit
+/// user accents/overrides resolve identically everywhere.
+ThemeData orbitThemeForPreferences(
+  AppPreferences preferences,
+  Brightness platformBrightness,
+) => orbitTheme(
+  preset: OrbitThemePack.forPreferences(preferences, platformBrightness).id,
+  compact: preferences.compact,
+  uiZoom: preferences.uiZoom,
+  fontFamily: preferences.fontFamily,
+  documentFontFamily: preferences.documentFontFamily,
+  monoFontFamily: preferences.monoFontFamily,
+  codeFontSize: preferences.codeFontSize,
+  showLineNumbers: preferences.showLineNumbers,
+  defaultCodeWrap: preferences.defaultCodeWrap,
+  cornerStyle: preferences.cornerStyle,
+  accentColor: preferences.accentColor == 'theme'
+      ? null
+      : OrbitColors.accentFromPreset(preferences.accentColor),
+  colorOverrides: preferences.colorOverrides,
+  customPacks: preferences.customThemes,
+);
+
 /// Creates a cohesive ThemeData given theme pack, typography, density, and overrides.
 ThemeData orbitTheme({
   String preset = 'orbit',
@@ -1194,6 +1384,9 @@ ThemeData orbitTheme({
   String fontFamily = 'Segoe UI',
   String? documentFontFamily,
   String? monoFontFamily,
+  double codeFontSize = 14,
+  bool showLineNumbers = true,
+  bool defaultCodeWrap = false,
   String cornerStyle = 'rounded',
   Color? accentColor,
   Map<String, int> colorOverrides = const {},
@@ -1210,7 +1403,29 @@ ThemeData orbitTheme({
 
   var colors = pack.colors;
   if (accentColor != null) {
-    colors = colors.copyWith(accent: accentColor);
+    final surfaces = [
+      colors.background,
+      colors.workspace,
+      colors.panel,
+      colors.panelSecondary,
+      colors.raised,
+      colors.floating,
+      colors.input,
+      colors.hover,
+      colors.pressed,
+      colors.selected,
+      colors.selectedMuted,
+    ];
+    final toward = isLight ? Colors.black : Colors.white;
+    final accent = _paletteInk(accentColor, surfaces, toward);
+    colors = colors.copyWith(
+      accent: accent,
+      accentHover: _paletteInk(
+        _paletteMix(accent, toward, .12),
+        surfaces,
+        toward,
+      ),
+    );
   }
   colors = colors.withOverrides(colorOverrides);
 
@@ -1218,15 +1433,13 @@ ThemeData orbitTheme({
       ? ColorScheme(
           brightness: Brightness.light,
           primary: colors.accent,
-          onPrimary: colors.accent.computeLuminance() > .4
-              ? Colors.black
-              : Colors.white,
+          onPrimary: OrbitContrast.inkOn(colors.accent),
           primaryContainer: colors.selected,
           onPrimaryContainer: colors.accentHover,
           secondary: colors.secondary,
-          onSecondary: colors.secondary.computeLuminance() > .4
-              ? Colors.black
-              : Colors.white,
+          onSecondary: OrbitContrast.inkOn(colors.secondary),
+          tertiary: colors.success,
+          onTertiary: OrbitContrast.inkOn(colors.success),
           secondaryContainer: colors.hover,
           onSecondaryContainer: colors.text,
           surface: colors.panel,
@@ -1243,25 +1456,20 @@ ThemeData orbitTheme({
           outline: colors.border,
           outlineVariant: colors.divider,
           error: colors.danger,
-          onError: Colors.white,
-          errorContainer: Color.alphaBlend(
-            colors.danger.withValues(alpha: .15),
-            colors.panel,
-          ),
+          onError: OrbitContrast.inkOn(colors.danger),
+          errorContainer: colors.tinted(colors.danger),
           onErrorContainer: colors.danger,
         )
       : ColorScheme(
           brightness: Brightness.dark,
           primary: colors.accent,
-          onPrimary: colors.accent.computeLuminance() > .179
-              ? Colors.black
-              : Colors.white,
+          onPrimary: OrbitContrast.inkOn(colors.accent),
           primaryContainer: colors.hover,
           onPrimaryContainer: colors.accentHover,
           secondary: colors.secondary,
-          onSecondary: colors.secondary.computeLuminance() > .179
-              ? Colors.black
-              : Colors.white,
+          onSecondary: OrbitContrast.inkOn(colors.secondary),
+          tertiary: colors.success,
+          onTertiary: OrbitContrast.inkOn(colors.success),
           secondaryContainer: colors.hover,
           onSecondaryContainer: colors.text,
           surface: colors.panel,
@@ -1278,14 +1486,9 @@ ThemeData orbitTheme({
           outline: colors.border,
           outlineVariant: colors.divider,
           error: colors.danger,
-          onError: colors.danger.computeLuminance() > .179
-              ? Colors.black
-              : Colors.white,
-          errorContainer: Color.alphaBlend(
-            colors.danger.withValues(alpha: .2),
-            colors.panel,
-          ),
-          onErrorContainer: colors.text,
+          onError: OrbitContrast.inkOn(colors.danger),
+          errorContainer: colors.tinted(colors.danger),
+          onErrorContainer: colors.danger,
         );
 
   final controlShape = RoundedRectangleBorder(
@@ -1301,7 +1504,7 @@ ThemeData orbitTheme({
       return Colors.transparent;
     }
     if (states.contains(WidgetState.focused)) {
-      return colors.accent.withValues(alpha: .20);
+      return colors.focus.withValues(alpha: .20);
     }
     if (states.contains(WidgetState.pressed)) {
       return colors.text.withValues(alpha: .10);
@@ -1313,7 +1516,7 @@ ThemeData orbitTheme({
   });
 
   BorderSide controlBorder(Set<WidgetState> states) => BorderSide(
-    color: states.contains(WidgetState.focused) ? colors.accent : colors.border,
+    color: states.contains(WidgetState.focused) ? colors.focus : colors.border,
   );
 
   OutlineInputBorder inputBorder(Color color) => OutlineInputBorder(
@@ -1333,6 +1536,8 @@ ThemeData orbitTheme({
     brightness: pack.brightness,
     colorScheme: scheme,
     scaffoldBackgroundColor: colors.background,
+    canvasColor: colors.panel,
+    cardColor: colors.raised,
     fontFamily: fontFamily,
     textTheme: TextTheme(
       headlineLarge: TextStyle(
@@ -1379,8 +1584,18 @@ ThemeData orbitTheme({
         fontWeight: controlWeight,
         letterSpacing: .1,
       ),
-    ),
-    extensions: [colors, density, corners],
+    ).apply(bodyColor: colors.text, displayColor: colors.text),
+    extensions: [
+      colors,
+      density,
+      corners,
+      OrbitCodePreferences(
+        fontFamily: monoFontFamily ?? pack.monoFontFamily,
+        fontSize: codeFontSize.isFinite ? codeFontSize.clamp(10.0, 26.0) : 14.0,
+        lineNumbers: showLineNumbers,
+        wrap: defaultCodeWrap,
+      ),
+    ],
     visualDensity: compact ? VisualDensity.compact : VisualDensity.standard,
     dividerColor: colors.border,
     dividerTheme: DividerThemeData(
@@ -1390,7 +1605,7 @@ ThemeData orbitTheme({
     ),
     splashFactory: NoSplash.splashFactory,
     hoverColor: colors.hover,
-    focusColor: colors.accent.withValues(alpha: .18),
+    focusColor: colors.focus.withValues(alpha: .18),
     disabledColor: colors.muted,
     iconTheme: IconThemeData(color: colors.subtle, size: density.icon),
     appBarTheme: AppBarThemeData(
@@ -1470,7 +1685,7 @@ ThemeData orbitTheme({
       waitDuration: const Duration(milliseconds: 450),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: colors.raised,
+        color: colors.floating,
         border: Border.all(color: colors.border),
         borderRadius: BorderRadius.circular(corners.control),
       ),
@@ -1478,10 +1693,10 @@ ThemeData orbitTheme({
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: colors.raised,
+      fillColor: colors.input,
       border: inputBorder(colors.border),
       enabledBorder: inputBorder(colors.border),
-      focusedBorder: inputBorder(colors.accent),
+      focusedBorder: inputBorder(colors.focus),
       errorBorder: inputBorder(colors.danger),
       focusedErrorBorder: inputBorder(colors.danger),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -1637,7 +1852,7 @@ ThemeData orbitTheme({
       ),
     ),
     dialogTheme: DialogThemeData(
-      backgroundColor: colors.panel,
+      backgroundColor: colors.floating,
       surfaceTintColor: Colors.transparent,
       elevation: 16,
       shadowColor: Colors.black.withValues(alpha: .4),
@@ -1655,7 +1870,7 @@ ThemeData orbitTheme({
         borderRadius: BorderRadius.circular(corners.menu),
         side: BorderSide(color: colors.border),
       ),
-      color: colors.raised,
+      color: colors.floating,
       surfaceTintColor: Colors.transparent,
       elevation: 8,
       labelTextStyle: WidgetStateProperty.resolveWith(
@@ -1670,7 +1885,7 @@ ThemeData orbitTheme({
     ),
     menuTheme: MenuThemeData(
       style: MenuStyle(
-        backgroundColor: WidgetStatePropertyAll(colors.raised),
+        backgroundColor: WidgetStatePropertyAll(colors.floating),
         surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
         shape: WidgetStatePropertyAll(controlShape),
         side: WidgetStatePropertyAll(BorderSide(color: colors.border)),

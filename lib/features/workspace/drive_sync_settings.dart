@@ -270,7 +270,7 @@ class _DriveSyncSettingsState extends ConsumerState<DriveSyncSettings> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Keep this Vault connected to your own Google Drive while Orbit is open. Offline work stays on this device until it can be synchronized.',
+              'Saved edits queue automatically. While Orbit is open, this Vault checks Drive for changes every 5 seconds; network delays and conflicts can take longer. Offline work retries when connectivity returns.',
             ),
             const SizedBox(height: 8),
             Semantics(
@@ -284,6 +284,10 @@ class _DriveSyncSettingsState extends ConsumerState<DriveSyncSettings> {
                 padding: EdgeInsets.symmetric(vertical: 8),
                 child: LinearProgressIndicator(),
               ),
+            if (c.busy && c.transferBytes > 0)
+              Text(
+                'Uploading file: ${(100 * c.transferredBytes / c.transferBytes).round()}% · ${c.transferredBytes} / ${c.transferBytes} bytes',
+              ),
             if (c.error.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
@@ -292,6 +296,18 @@ class _DriveSyncSettingsState extends ConsumerState<DriveSyncSettings> {
             if (c.lastSynced != null)
               Text(
                 'Last completed: ${c.lastSynced!.toLocal().toIso8601String().substring(0, 19).replaceAll('T', ' ')}',
+              ),
+            if (c.lastChecked != null)
+              Text(
+                'Last cloud check: ${c.lastChecked!.toLocal().toIso8601String().substring(11, 19)}',
+              ),
+            if (c.enabled && c.localChangesPending)
+              const Text(
+                'Newer local edits are queued for the next sync pass.',
+              ),
+            if (c.enabled && c.retryAt != null)
+              Text(
+                'Next retry: ${c.retryAt!.toLocal().toIso8601String().substring(11, 19)} · Sync now retries immediately.',
               ),
             if (c.result != null)
               Text(

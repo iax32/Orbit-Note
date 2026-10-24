@@ -1,3 +1,499 @@
+# Validated — Native Canvas raster profiling, 2026-10-24
+
+Native Windows profiling reproduced expensive raster replay of saved pressure
+segments despite the prior debug CPU-recording speedup. Committed ink now uses
+bounded disposable previews at native zoom/DPI, with immediate vector fallback
+when more pixels are needed, safe async disposal and stable admission when the
+visible set exceeds its budget. Original samples/undo/storage/export remain.
+
+Measured 100,000-sample workload: warmed pan raster p95 **247.550 → 3.102 ms**;
+scripted drawing **244.232 → 5.185 ms**. These are engine timings on the tested
+Ryzen 5600X / RTX 3060 host, not general FPS or physical pen latency. Preview
+warmup and cold/distant PDF page loads still have spikes.
+
+**14 new regressions. Final full suite: 3,030 passed, two existing skips**
+(13:42). Focused batch 65 passed; Drive controller batch 24 passed. Analyzer clean
+(8.2 sec); format/strict clean across 756 files including profiler tools. Extra
+native-DPI RGBA/spatial comparison passed and generated images were reviewed.
+An initial load-sensitive Drive timing assertion was stabilized without changing
+production sync; the failed run, isolated pass and bounded repair are documented.
+
+Direct Windows app + matching server built (123.4 sec Windows compile). All 902
+final frozen inputs, seven runtime files, 13 fonts and the registered Google
+client verified; new renderer markers are in the updated AOT snapshot. Standard
+JS web passed (113.1 sec), with existing SDK Wasm/Cupertino font warnings. No ZIP,
+publication or main-app/server launch. The isolated profile window closed itself.
+Run `build/windows/x64/runner/Release/orbit_note.exe` with its sibling files.
+
+The owner confirmed no physical pen is available. Physical stylus delivery/palm
+rejection/input-to-photon and private large real-document acceptance remain
+untested; reports use synthetic input/documents and no personal Vault/account.
+[Measurements, checks and boundaries](device-profile-2026-10-24.md).
+
+Suggested next task: reduce measured cold-preview warmup and first/distant PDF
+page-transition spikes. Physical pen acceptance is a separate pending check.
+
+## Previous task
+
+# Validated — Native PDF and pen performance, 2026-10-24
+
+Owner authorized the large-document audit. Existing Canvas/PDF engines now use
+bounded saved-ink vector caching, frame-coalesced active previews, finite pressure
+fallbacks, reliable pen capture/release/recognition and dense-page annotation
+lookups. Comfort fitting retains one native job and the latest destination,
+cancels obsolete work and retries failed measurements without stale cache entries.
+Original PDF bytes, editable ink samples, object identity and storage remain.
+
+**12 new regressions. Full run: 3,016 passed, two existing skips** (11:27).
+Focused batch: **77 passed** (20 sec), including real PDFium on 300 pages,
+24,000 annotation regions in the reader, 100,000 saved ink samples and pixel
+comparisons for all seven pen styles through edits/undo/zoom. Analysis clean
+(9.1 sec); format/strict clean across 752 files. Saved-ink display-list recording
+was about 5.12× faster in the focused debug fixture; this is not a frame-rate
+or physical pen-latency claim.
+
+Direct Windows app + matching server built (76.6 sec Windows compile). All 898
+frozen inputs unchanged; seven runtime files, 13 fonts, registered Google client
+and new performance types in AOT verified. Standard JS web passed (73.8 sec),
+with existing Google SDK Wasm/Cupertino font warnings. No archive regenerated.
+Run `build/windows/x64/runner/Release/orbit_note.exe` with its sibling files.
+
+These are synthetic headless workloads. Physical pen latency, real-device palm
+rejection, profile/release frame timing and large real-document acceptance remain
+unmeasured. No private Vault/cloud operation, app/server launch or shutdown.
+[Scope, measurements and final validation](pen-pdf-performance-2026-10-24.md).
+
+Suggested next task: physical stylus/profile-mode input and frame-latency
+acceptance with representative large real documents. Stop before another feature.
+
+## Previous task
+
+# Validated — Motion update final integration checks, 2026-10-23
+
+Motion profiles, actual text presentation, Canvas replay/laser, PDF navigation/
+lens/optional progress, selection/format/grammar feedback, graph paths and revision
+scrubbing use the existing engines. The studio now shows previews first and folds
+advanced controls; desktop presentation is wider. **The 70-item inspiration guide
+contains concept-only entries; this is not completion of all 70 workflows.**
+
+**28 new regressions.** Full run: **3,003 passed, two existing skips** (12:09).
+After the localized two-dialog cleanup and one added UI test, **59 focused/real-font
+checks passed** (9 sec); no later full run is claimed. Native PDF/motion batch:
+**94 passed** (21 sec). Final analysis clean (7.5 sec); format/strict clean across
+751 files. Real-font actual-widget previews visually reviewed.
+
+Current direct Windows app + matching host built (92.1 sec Windows compile),
+897 frozen inputs unchanged, seven runtime files/13 fonts and Google client
+verified. Standard JS web passed (111.1 sec), with existing SDK Wasm/Cupertino
+warnings. No Android/device/manual acceptance, app/host launch, private account/
+Vault operation, publication or shutdown. Earlier packaging artifacts remain;
+no archive was regenerated for this final build. Existing work is preserved.
+[Use, exact guide coverage, validation and boundaries](motion-studio-2026-10-23.md).
+
+Run `build/windows/x64/runner/Release/orbit_note.exe` with sibling runtime files.
+Next suggested task: native PDF/pen performance and interaction acceptance on
+large real documents; stop before another feature.
+
+## Earlier validation
+
+# Validated — Motion studio and connected interaction feedback, 2026-10-23
+
+Owner supplied the animation inspiration chat and requested implementation.
+This update extends MOT-01–06 in the existing Flutter renderer. Scope includes
+persisted motion profiles, a searchable 70-concept preview catalog, actual note
+text presentation, focus/selection/formatting/grammar feedback, authored Canvas
+replay and temporary laser, PDF navigation/lens/optional progress, graph path
+reveal and read-only revision scrubbing. No new animation package or AI backend.
+The catalog is inspiration coverage, **not evidence of 70 completed workflows**.
+Delivered: searchable Motion Studio within the 43-entry settings index, fluid/
+paper/experimental personalities, 0.5–2x timing, text replay alternatives with
+Unicode grapheme cluster safety, authored Canvas board/stroke replay and ephemeral
+laser pointer, PDF navigation glide with magnification lens and reader tone controls,
+graph edge reveal, and read-only revision scrubbing.
+
+Validation: 94 focused tests passed covering motion studio, settings, UML interaction,
+and PDF navigation regressions. Corrected edge cases: PDF paper tones observe reader
+controls, motion previews halt on OS reduced motion, and Canvas preview images
+persist throughout dialog closing animations. Fixed unbraced flow control in PDF reader.
+Formatting clean: 751 files formatted with 0 changes. Root analyzer clean in 13.6s.
+Windows release compiled in 95.1s (`build/windows/x64/runner/Release/orbit_note.exe`).
+Distribution package assembled: `release-assets/OrbitNote-Windows-x64.zip` (34.5 MB,
+SHA-256: `e64cb0890b6b23bbfbe020c4ac4b93588f06d81add5b0f20e6dc7c68f1535795`),
+with checksum recorded in `release-assets/SHA256SUMS-Windows.txt`.
+[Scope, coverage and validation](motion-studio-2026-10-23.md).
+
+Suggested next task: native PDF/pen performance and interaction acceptance for
+these effects with large real documents; do not build another feature ahead.
+
+## Previous task
+
+# Validated — Use-case and sequence diagrams, 2026-10-23
+
+Owner selected both diagram types from UE2.pdf. Shared Canvas adds actors,
+use cases/extension points, boundaries/constraints, association/include/extend/
+generalization, lifelines/activations/destruction, messages/self calls and the
+twelve combined-fragment operators. Precise live Markdown references, vector
+previews, selectable details and publication snapshots reuse existing boundaries.
+Two generic starters; ordinary placement selection/history/transfer remains.
+No new engine, account or schema migration. **16 new regressions**. Complete
+rerun: **2,975 passed, two existing skips** (11:44); final **94 focused passed**
+(14 sec) after a localized zero/subpixel frame guard. Analysis clean (8.7 sec),
+743 formatted files. Windows app + matching host built (86.4 sec); 889 frozen
+inputs unchanged, seven runtime files/13 fonts and registered Google client
+verified. Strict formatting clean; standard JS web build passed (97.5 sec), with
+the existing SDK Wasm/Cupertino-font warnings. No native/manual acceptance or
+Android build is claimed. No app/host launch, private Vault/account work,
+publication or shutdown. Existing work remains.
+[Scope, use, evidence and limits](uml-interaction-diagrams-2026-10-23.md).
+
+## Previous task
+
+# Validated — Searchable settings workspace, 2026-10-23
+
+Owner-requested LAY-01/06/08/10 subset: nine categories and **43 searchable entries**,
+grouped cards, desktop navigation, compact/enlarged-text layout, keyboard search
+and clear, per-category scroll recovery and progressive advanced controls.
+Additional working controls cover code font/size/numbers/wrapping, corners,
+explorer/splits/sorting/attachment/calendar visibility, all **15** Canvas papers,
+dictionary management and expanded timer/line-spacing/autosave choices.
+Seven local sections have confirmed reset and guarded Undo. Account connections,
+knowledge, unknown roles and unrelated edits remain. Advanced appearance recovery
+stays readable even with all custom roles black. False optimization success is
+removed, reload reports its outcome, and local counts avoid scanning note bodies.
+
+Two bounded flat-session defaults (defaultCodeWrap/codeFontSize) preserve old JSON
+and unknown data; existing stored code typography/numbers now reach real editors.
+Font changes retain source/focus/selection and existing panes keep local choices.
+**14 new regressions**; initial focused **103 passed** (18 sec), recovery batch
+**16 passed** (4 sec). Complete rerun: **2,959 passed, 2 existing skips** (10:50,
+concurrency 2), followed by **108 focused/real-font checks** (21 sec) after final
+localized recovery-entry hardening. No additional complete run is claimed after
+that final localized change. Initial full-run failure was an older test assuming
+always-expanded controls; it now uses search/content navigation. Format/strict
+check clean across **740 files**; final analysis clean (**7.2 sec**). Real-font
+actual desktop dark and compact light UI reviewed; 250% text with keyboard insets
+passes at 320×640 and 568×320. [Use, evidence and limits](settings-workspace-2026-10-23.md).
+
+Configured Windows app + matching host and standard JS web builds passed
+(**75.0/72.9 sec**). **886** frozen inputs unchanged, seven runtime/host files,
+**13** font hashes and registered Google client verified. Existing web SDK
+Wasm/Cupertino warnings remain; native/mobile visual and screen-reader acceptance
+are unverified. No APK rebuild, desktop control, app/host launch, private
+account/Vault work, publication, ZIP or shutdown.
+
+Run `build/windows/x64/runner/Release/orbit_note.exe` with sibling runtime files.
+Preview: `build/previews/orbit-settings-appearance.png` (also Code/compact samples).
+Next suggested task: user-defined settings profiles using existing Spaces, with
+preview and recoverable apply; stop before that feature.
+
+## Previous task
+
+# Validated — Shared semantic colors and Orbit defaults, 2026-10-23
+
+Owner-requested LAY-01/06/09/10 continuation: refreshed Orbit Graphite defaults,
+all **113** built-ins calibrated against actual state surfaces, new/missing
+accent preferences follow theme, explicit presets retain their choice with
+readable shades. Shared Material text/input/floating/focus controls, statuses,
+collections, graphs, code/LaTeX/callouts and Canvas previews/grid/minimap follow
+semantic roles. Same-mode color changes refresh caches while source, selection,
+IME, authored scene/ink/paper colors and durable Markdown remain intact.
+Custom-role overrides, unknown data, old preferences and Spaces remain.
+Recovery follows the effective base family with a readable fallback. The other
+chat's exact answer was unavailable; no claim that its hidden rules were read.
+
+**9 new regressions; 94 focused passed** (19 sec). Complete suite:
+**2,946 passed, 2 existing skips** (13:44, concurrency 2). Format/strict check clean
+across **737 files**, analysis clean (10.3 sec), targeted diff whitespace check
+clean. Real-font/icon actual-component default/light/dark renders visually
+reviewed. [Behavior, validation and limits](semantic-color-system-2026-10-23.md).
+
+Configured Windows app + matching host and standard JS web builds passed
+(**84.6/83.2 sec**). **883** frozen inputs unchanged, seven runtime/host files,
+**13** packaged font hashes and registered Google client verified. Existing web
+SDK Wasm/Cupertino warnings remain. Native/mobile visual acceptance is unverified;
+no APK rebuild, desktop control, app/host launch, private account/Vault work,
+publication or shutdown.
+
+Run `build/windows/x64/runner/Release/orbit_note.exe` with sibling runtime files.
+Preview: `build/previews/orbit-semantic-colors.png`.
+Next suggested task: native focus/hover/selected/disabled and high-contrast audit;
+stop before implementing it.
+
+## Previous task
+
+# Validated — System appearance for paired palettes, 2026-10-22
+
+Owner accepted the preceding next task: opt-in OS light/dark switching for the
+50 paired palette families. Preserve manual defaults, explicit user styling,
+unknown session data and old Spaces. Resolve appearance without saving on OS
+changes; manual palette selection disables following and turning following off
+keeps the visible member. Keep settings, gallery, preview and export consistent.
+No new dependencies, arbitrary custom-theme pairing or time-based scheduling.
+**11 new regressions; 64 focused passed** (6 sec). Full rerun: **2,937 passed,
+2 existing skips** (11:54, concurrency 2). Format/strict checks clean across
+**736 files**, analysis clean (8.1 sec). Actual app retains editor controller,
+focus, selection, identity and durable bytes across simulated OS changes.
+Space close/reopen, old descriptors, manual/import/generator exits and matching
+preview/export pass. Real-font/icon headless renders visually reviewed; 360 px
+with 200% text passes. Two older settings tests now scroll before offscreen
+lookup/tap. An initial Drive deadline check failed under load, then passed
+unchanged in isolation and the complete reduced-concurrency rerun.
+
+Configured Windows app + matching host and standard JS web builds passed
+(**75.9/74.1 sec**). **882** frozen inputs unchanged, seven runtime/host files,
+**13** packaged font hashes and registered Google client verified. Existing web
+SDK Wasm/Cupertino warnings remain. No APK rebuilt; native/mobile visual acceptance
+remains unverified. No desktop control, app/host launch, private Vault/account work,
+publication or shutdown.
+[Use, validation and limitations](system-appearance-2026-10-22.md).
+
+Run `build/windows/x64/runner/Release/orbit_note.exe` with sibling runtime files.
+Next suggested task: explicit preferred light/dark pairing for original/custom
+themes; stop before that expansion.
+
+## Previous task
+
+# Validated — One hundred coordinated appearance palettes, 2026-10-22
+
+Owner-requested LAY-01/06/09/10 subset: 50 named families × light/dark = **100 new
+complete semantic palettes**, retaining 13 originals (113 built-ins). Eight
+collections, search, mode/collection filters, six-card pages, Show active and
+paired switching keep the destination visible. Actual app accents can **Follow
+theme**, and that choice survives reload. New families preserve typography and
+corners. Manual overrides retain a notice, explicit reset and guarded Undo;
+unknown roles/custom themes/old IDs and portable JSON remain. Filled-control and
+check/badge ink uses actual contrast. No authored migration or new dependency.
+
+The **UI Color Rules Explained** question was readable, but its answer remained
+only a content reference. Exact rules were unavailable; do not claim to have
+read them. Primary Apple and W3C guidance informed surfaces/accents/contrast.
+[References, use, scope and limits](appearance-palettes-2026-10-22.md).
+
+**11 new regressions; 42 focused passed** (5 sec), including 13,500 contrast
+comparisons across all 100 additions, exact JSON/session round-trips, actual app
+accent resolution, old/custom compatibility, paging/filtering/pair controls,
+reset/Undo/unknown roles and 200% text at 360 px. Full suite: **2,926 passed,
+2 existing skips** (5:49). Format/strict formatting clean across **734 files**;
+analysis clean (8.5 sec). Real-font/icon headless samples rendered and visually
+reviewed. Preview: `build/previews/orbit-palette-preview.png`.
+
+Configured Windows app + matching host and standard JS web builds passed
+(**81.1/79.2 sec**). **880** frozen inputs unchanged; seven runtime/host files,
+**13** packaged font hashes, new palette payload markers and registered Google
+client verified. Existing web SDK Wasm/Cupertino warnings remain. Android SDK
+remains unavailable; no APK rebuilt. No app/host launch, desktop control, private
+Vault/account work, publication or shutdown. All prior dirty work preserved.
+
+Run `build/windows/x64/runner/Release/orbit_note.exe` with sibling runtime files.
+Next suggested task: optional system-driven light/dark switching for paired
+palettes; stop before that expansion.
+
+## Previous task
+
+# Validated — Live shared replication; mobile background/device acceptance pending, 2026-10-22
+
+Owner-approved SYNC-03/04/05/06/07/09/10/12/16 subset now includes negotiated live
+room creation, all owning-object/lifecycle/tombstone replication, verified resumable
+assets before owners, authenticated event waits and bounded local wakeups. Shared
+bases/uncertain edits/creations survive restart in device-only guarded journals.
+Independent text changes merge; overlapping replacements require review. Rich/
+Source note carets/selections use source hashes and safe UTF-16 ranges. Canvas
+pointer changes wake promptly. Optional secure reconnect runs on launch/resume;
+explicit Disconnect suppresses it. Unchanged checkpoints avoid writes; failed/
+oversized checkpoints block publication with recovery feedback. Local history,
+draft/opening/CAS guards, unknown data and Drive/shared exclusion remain.
+
+Legacy rooms retain existing-document behavior. New live rooms require matching
+updated clients/host. The host preserves a verified private journal checkpoint
+before new record kinds; preserve the whole stopped host directory for recovery.
+No authored migration. [Protocol/limits](../adr/0032-live-shared-vault-replication.md).
+
+**24 new regressions; focused 76 passed** (4 sec). Full suite **2,915 passed,
+2 existing skips** (5:28). Format/strict checks clean across **731 files**;
+analysis clean (6.7 sec). Configured Windows app + standalone host and standard
+JS web builds passed (**75.9/74.2 sec**). **877** frozen inputs unchanged;
+seven runtime/host files, **13** packaged font hashes and registered Google client
+verified. Packaged host also passed isolated loopback health/auth/capability smoke
+testing and was stopped. Existing web SDK Wasm/Cupertino warnings remain.
+
+**Still unfinished:** closed-app Windows/mobile workers, arbitrary-overlap CRDT,
+physical Windows-to-Android and deployed TLS/mobile runtime acceptance. Owner has
+no second device available. Android check blocked before compilation: SDK missing;
+no APK rebuilt. No desktop control/app launch, private Vault/account transfers,
+persistent host installation, publication or shutdown. Prior dirty work preserved.
+
+Run `build/windows/x64/runner/Release/orbit_note.exe` with sibling runtime files.
+[Full evidence and operation](live-shared-sync-2026-10-22.md).
+Next suggested task: constrained mobile background jobs and physical-device
+acceptance once SDK/device access exists; stop before that platform expansion.
+
+## Previous task
+
+# Validated — Incremental personal Drive sync, 2026-10-22
+
+Audited actual Drive/auth/replica/controller/shared-host code against the owner's
+OneNote-level goal. **Parity remains incomplete**: personal eventual file sync is
+separate from existing-document shared editing; closed-app/mobile background,
+shared continuous new objects/deletions/attachments and text caret/CRDT behavior
+are not completed or verified. Public OAuth and physical-device acceptance remain.
+
+Personal native sync now uses paginated Drive change feeds with durable complete
+revision membership/cursors, safe baseline race replay, immutable metadata/graph
+validation and 15-minute cloud audits. Missing/rejected checkpoints and backwards
+clocks rebuild safely. Failed pages/graphs/access do not advance checkpoints.
+Reset snapshots preserve local-apply crash replay. Unchanged checks avoid history
+listings/media reads/journal rewrites. No authored format, provider authority,
+Google scope, package or backend changes.
+
+Active Vaults check remotely every five seconds, preserving normal ~30-second local
+integrity checks without rehashing attachments every poll. Saved edits keep their
+earliest two-second scheduled pass during continuous typing. Settings shows
+upload bytes and separate last-cloud-check/full-sync times. Retry deadlines,
+account/draft/opening guards, explicit pause and Drive/shared exclusion remain.
+Inactive Vaults retain their selected 1/5/15-minute schedule. Timing is not a
+network/OS delivery guarantee. Retained history still has a 10,000-revision cap,
+16 MiB checkpoints and no automatic compaction.
+
+**20 new regressions; 104 focused passed** (46 sec), including 1,000-revision,
+pagination/interruption, concurrent-client, source-loss/tamper, account-switch,
+old-journal/restart, draft, tombstone, middle-upload resume and continuous-edit
+cases. Full suite: **2,891 passed, 2 existing skips** (5:08). Format/strict format
+clean across **725 files**; analysis clean (6.2 sec). Configured Windows app/host
+and JS web builds passed (**77.3/76.9 sec**). Existing Wasm/Cupertino-font warnings
+remain. Android debug check blocked before compilation: **Android SDK missing**.
+
+**772** frozen inputs unchanged; seven runtime/AOT/host files, **13** authored
+font hashes and registered Google client in AOT verified. Prior uncommitted work
+preserved. No desktop control, app/host launch, private account/Vault access,
+cloud upload, publication or shutdown. No APK rebuilt.
+
+Run `build/windows/x64/runner/Release/orbit_note.exe` with its sibling runtime files.
+[Full source audit, API findings, evidence and limits](cross-device-sync-2026-10-22.md).
+Next suggested task: complete live shared-Vault new/deleted-object and attachment
+replication with push events and device acceptance; stop before that expansion.
+
+## Previous task
+
+# Validated — Connected publishing snapshots, 2026-10-22
+
+PDF/HTML/Word now include Canvas/selected-diagram previews rendered by Orbit's
+spatial engine, searchable UML/text inventories, task details, saved collection
+memberships, safe linked images and source identities/revisions. Objects/paths/
+query clock are captured at dialog opening; styles reuse the same snapshot.
+Missing, ambiguous, deleted, foreign-Vault and unsupported/precise sources retain
+labelled references and warnings. Limits are explicit. Original knowledge is
+unchanged. Short connector multiplicities no longer overlap; Canvas/SVG/PNG share
+the corrected geometry. Painter resources are released after raster export.
+
+13 new regressions; focused **65 passed**; full **2,871 passed, 2 existing skips**
+(4:36). Format/strict check: **724 files**, clean; analysis clean. Native resource/
+image/text checks and Poppler/native visual review cover blueprint/UML snapshots
+and task/collection reports. Configured Windows app/standalone host and standard
+JS web builds passed (69.2/64.4 sec). **785** frozen inputs unchanged after builds;
+seven runtime files and **33** font hashes verified. Existing SDK Wasm/Cupertino
+web warnings remain. All prior uncommitted work retained. No desktop control,
+private Vault/account, app/host launch, publication or APK rebuild.
+
+Run `build/windows/x64/runner/Release/orbit_note.exe` with its sibling runtime files.
+Note/LaTeX object cards are metadata-only; use linked sections for full content.
+Nested media/boards stay static labelled cards. [Evidence and limits](connected-publishing-2026-10-22.md).
+Next suggested task: tiled multi-page Canvas printing; stop before implementing.
+
+Owner explicitly requested shutdown after this update. Validation/build evidence
+is saved; follow with normal shutdown only, no forced app closure. A short-delay
+hidden helper may invoke `shutdown /s /t 0`; unsaved applications may block it.
+See `.local/connected-publishing-shutdown-plan.json` for dispatch state if present.
+
+## Previous task
+
+# Validated — Complete visible PDF content, 2026-10-22
+
+Markdown PDF export now paginates formatted prose/lists, long headings, contents,
+code and endnotes; preserves nested list order; uses labelled records for too-wide
+or tall table cells; fits figures without cropping and lets captions continue.
+Natural equation surfaces replace the fixed viewport, retain full bounds and use
+TeX fallback at allocation limits. Static SVG diagrams now normalize offline;
+active/external/unsupported SVG content retains a labelled fallback. Serif symbols
+can use bundled Lato. Running text/footer spacing, first-page destinations,
+matching-title duplication and the release-mode 500-page cap are repaired.
+Original Markdown/attachments and saved settings remain unchanged.
+
+10 new regressions; focused **42 passed**; full **2,858 passed, 2 existing skips**
+(4:37). Format/strict check clean across **721 files**; analysis clean. Native
+content/bounds/pixel checks and **14 Poppler-rendered pages** reviewed with actual
+bundled math fonts. Configured Windows app/standalone host and standard JS web
+builds passed (70.6/66.3 sec). **782** frozen inputs unchanged; seven runtime files
+and **33** authored/KaTeX font hashes verified. Existing SDK Wasm/Cupertino-font web
+warnings remain. No app launch, desktop control, personal Vault/account, live web
+image request, publication or APK rebuild. Prior unrelated sync work retained.
+
+Run `build/windows/x64/runner/Release/orbit_note.exe` with its sibling runtime files.
+Web images still require **Load web images**; unavailable resources, unsupported
+glyphs, complex SVG and live workspace widgets retain explicit fidelity warnings.
+[Evidence and limits](pdf-visible-content-2026-10-22.md).
+Next suggested task: resolved Canvas/live-object previews in publishing; stop
+before implementing it.
+
+## Previous task
+
+# Validated — Markdown PDF images, 2026-10-22
+
+Fixed valid images becoming PDF placeholders: decoder buffers/descriptors now
+outlive frame decoding. Canonical Vault attachment references resolve at any note
+depth, including encoded names, without a clipboard resolver; changed Vault
+openings invalidate pending reads. Original note/attachment bytes are unchanged.
+
+Publishing adds image counts, Retry missing images, explicit Load web images and
+cancellation. Anonymous HTTPS downloads are bounded by redirects/size/deadline;
+style changes reuse loaded images. Network/corrupt/unsupported/authenticated sources
+retain visible labelled fallbacks. No automatic web-image request occurs.
+
+11 new regressions; focused **32 passed**; full **2,848 passed, 2 existing skips**.
+Format/strict check clean across **719 files**; analysis clean. Actual PDF images
+verified with native pixel checks and visual PDFium/Poppler rendering. Configured
+Windows app/standalone host and standard JS web builds passed. 781 frozen inputs,
+seven runtime files, fresh AOT/host payloads and 13 authored font hashes verified.
+Existing Google SDK Wasm/Cupertino-font web warnings remain.
+
+Run `build/windows/x64/runner/Release/orbit_note.exe` with its sibling runtime files.
+Web images: Export as PDF → Document style → Images → Load web images.
+HTTP-only, unsupported or login-protected/expired/browser-blocked images may need
+local import. No personal Vaults/accounts, live image sites, desktop control or app
+launch. Prior uncommitted sync work is retained; no publication or APK rebuild.
+[Evidence and limits](markdown-pdf-images-2026-10-22.md).
+Next suggested task: SVG image normalization for publishing; stop before implementing it.
+
+## Previous task
+
+# Validated — Device sync and self-hosted recovery, 2026-10-21
+
+Drive retains mid-transfer edits and coalesced foreground checks, schedules real
+retry deadlines and exposes queued/retry states. Pause, account and shared-session
+authority guards remain in force. Shared sessions read state before publishing;
+optional host-incarnation checks protect stale cursors, uncertain acknowledgements,
+restored/reused versions, open Canvas comparisons and the check-to-publication
+restart race. Local content/history remain recoverable; unknown ancestry requires
+review. Shared settings add a host/HTTPS/invitation guide and actionable diagnostics.
+
+22 new regressions; final focused **83 passed**; final full **2,837 passed,
+2 existing skips**. Format/strict check clean across **716 files**; analysis clean.
+Configured Windows app + standalone host and standard JS web builds passed.
+778 frozen source/test/build inputs unchanged; seven runtime files and 13 font
+hashes verified. Standalone host help exits successfully without starting a host.
+Existing Google SDK Wasm and missing Cupertino-font web warnings remain.
+
+Run `build/windows/x64/runner/Release/orbit_note.exe` with its sibling runtime files.
+Use the matching `collaboration` host folder for the new restart guards. No desktop
+control, personal Vault access, real Google actions or persistent service launch.
+No publishing or Android build was requested in this update. Android OAuth/public
+rollout, physical two-device/TLS acceptance and continuous shared new-object,
+deletion/attachment streaming remain outstanding.
+[Evidence and limits](device-sync-recovery-2026-10-21.md).
+Next suggested task: durable shared new-object/attachment synchronization with
+explicit deletion and recoverable operation replay; stop before implementing it.
+
+## Previous task
+
 # Published — GitHub Windows/Android 1.0.2 preview, 2026-10-21
 
 Source pushed without force at `10c5cef8778e8f468edfadb966804455079f1e9b`;

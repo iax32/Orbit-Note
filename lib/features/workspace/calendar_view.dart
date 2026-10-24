@@ -494,7 +494,7 @@ class _CalendarViewState extends State<CalendarView> {
         color: isTask ? colors.raised : colors.accent.withAlpha(18),
         border: Border(
           left: BorderSide(
-            color: isTask ? Colors.orange.shade400 : colors.accent,
+            color: isTask ? OrbitColors.of(context).warning : colors.accent,
             width: 2,
           ),
         ),
@@ -630,7 +630,7 @@ class _CalendarViewState extends State<CalendarView> {
                                   ? FontWeight.bold
                                   : FontWeight.normal,
                               color: isToday
-                                  ? Colors.white
+                                  ? OrbitColors.of(context).onAccent
                                   : (isCurrentMonth
                                         ? colors.text
                                         : colors.subtle.withAlpha(120)),
@@ -668,7 +668,7 @@ class _CalendarViewState extends State<CalendarView> {
                               width: 6,
                               height: 6,
                               decoration: BoxDecoration(
-                                color: Colors.orange.shade400,
+                                color: OrbitColors.of(context).warning,
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -970,7 +970,7 @@ class _CalendarViewState extends State<CalendarView> {
                           vertical: 1,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.orange.withAlpha(25),
+                          color: OrbitColors.of(context).warning.withAlpha(25),
                           borderRadius: BorderRadius.circular(3),
                         ),
                         child: Text(
@@ -978,7 +978,7 @@ class _CalendarViewState extends State<CalendarView> {
                           style: TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.w600,
-                            color: Colors.orange.shade700,
+                            color: OrbitColors.of(context).warning,
                           ),
                         ),
                       ),
@@ -1334,7 +1334,9 @@ Future<void> showEventDialog(
                           });
                         }
                       },
-                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                style: TextButton.styleFrom(
+                  foregroundColor: OrbitColors.of(context).danger,
+                ),
                 child: const Text('Delete'),
               ),
             TextButton(

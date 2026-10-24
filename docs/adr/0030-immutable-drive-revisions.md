@@ -42,3 +42,12 @@ and [uploads](https://developers.google.com/workspace/drive/api/guides/manage-up
 Provider simulations/native two-replica tests prove our protocol behavior, not
 Google account rollout or real two-device acceptance. Current task records actual
 checks and remaining limits.
+
+## Discovery optimization — 2026-10-22
+
+The complete graph may also be reconstructed from a fully listed baseline plus
+validated Drive change-feed pages. The optional device-journal checkpoint binds
+complete membership and cursor; reset snapshots preserve independent engine crash
+replay. Full audits and immutable/missing-parent guards remain. See
+[implementation contract](../architecture/sync.md). This changes discovery cost,
+not storage authority, publication or conflict semantics.

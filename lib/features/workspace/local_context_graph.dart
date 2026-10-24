@@ -319,10 +319,12 @@ class _LocalContextGraphState extends State<LocalContextGraph> {
                 decoration: BoxDecoration(
                   color: colors.panel.withValues(alpha: 0.95),
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: _hoveredNode!.color),
+                  border: Border.all(color: _hoveredNode!.colorFor(colors)),
                   boxShadow: [
                     BoxShadow(
-                      color: _hoveredNode!.color.withValues(alpha: 0.25),
+                      color: _hoveredNode!
+                          .colorFor(colors)
+                          .withValues(alpha: 0.25),
                       blurRadius: 6,
                     ),
                   ],
@@ -336,7 +338,7 @@ class _LocalContextGraphState extends State<LocalContextGraph> {
                       width: 6,
                       height: 6,
                       decoration: BoxDecoration(
-                        color: _hoveredNode!.color,
+                        color: _hoveredNode!.colorFor(colors),
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -470,7 +472,7 @@ class _LocalContextPainter extends CustomPainter {
           hovered != null && activeConnectedIds.contains(node.id);
       final isDimmed = hovered != null && !isConnected;
 
-      final baseColor = node.color;
+      final baseColor = node.colorFor(colors);
       final alpha = isDimmed ? 0.35 : 1.0;
       final radius = isFocal ? node.radius + 3.0 : node.radius;
 

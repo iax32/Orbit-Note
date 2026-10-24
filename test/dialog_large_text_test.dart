@@ -1,3 +1,4 @@
+import 'support/settings_navigation.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -296,10 +297,20 @@ void main() {
         ),
       );
       expect(tester.takeException(), isNull);
+      await searchSettings(tester, 'default document format');
       final dropdown = find.byKey(
         const ValueKey('settings-default-format-dropdown'),
       );
-      await tester.scrollUntilVisible(dropdown, 200);
+      await tester.scrollUntilVisible(
+        dropdown,
+        200,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const ValueKey('settings-content')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
       await Scrollable.ensureVisible(tester.element(dropdown), alignment: .5);
       await tester.pump(const Duration(milliseconds: 100));
       expect(tester.takeException(), isNull);
@@ -309,6 +320,7 @@ void main() {
       await tester.tap(find.text('LaTeX Document').last);
       await tester.pump(const Duration(milliseconds: 350));
       expect(controller.session.defaultDocumentFormat, 'latex');
+      await searchSettings(tester, 'Workspace data');
       await tester.scrollUntilVisible(
         find.text('Import backup'),
         400,

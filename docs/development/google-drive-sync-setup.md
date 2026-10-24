@@ -7,8 +7,11 @@
 2. Choose **Enable automatic sync** and review the exact account/Vault and scope.
    This includes authored objects, Archive/Trash content, attachments and explicit
    deletions. It excludes caches, device settings/history and empty folders.
-3. Local work debounces for two seconds; remote checks run about every 30 seconds
-   while Orbit remains open. **Sync now** bypasses retry delay. No Windows service
+3. Saved local work queues within about two seconds without being postponed by
+   continued typing. Active-Vault remote checks run about every five seconds while
+   Orbit remains open; local integrity reconciliation runs about every 30 seconds
+   and full cloud audits every 15 minutes. Network/draft/conflict delays can extend
+   delivery. Last cloud check and completed full sync are shown separately. **Sync now** bypasses retry delay. No Windows service
    continues after closing. Temporary network failures back off; permission/token,
    quota/configuration failures require attention before automatic requests resume.
 4. **Pause sync** keeps both local files and immutable Drive revisions. Resume

@@ -1168,12 +1168,7 @@ class _CollectionKanbanViewState extends State<CollectionKanbanView> {
   Widget _buildKanbanCard(UniversalObject o, OrbitColors colors) {
     final c = widget.controller, origin = _view;
     final generation = c.workspaceGeneration, epoch = _epoch;
-    final typeColor = switch (o.typeId) {
-      'orbit.task' => Colors.green,
-      'orbit.canvas' => Colors.purple,
-      'orbit.file' => Colors.orange,
-      _ => colors.accent,
-    };
+    final typeColor = colors.objectType(o.typeId);
 
     final typeIcon = switch (o.typeId) {
       'orbit.task' => Icons.checklist_outlined,
@@ -1364,11 +1359,6 @@ class _CollectionKanbanViewState extends State<CollectionKanbanView> {
   }
 
   Color _priorityColor(String priority) {
-    return switch (priority.toLowerCase()) {
-      'urgent' => Colors.red,
-      'high' => Colors.orange,
-      'medium' => Colors.blue,
-      _ => Colors.grey,
-    };
+    return OrbitColors.of(context).priority(priority);
   }
 }

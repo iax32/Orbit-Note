@@ -290,7 +290,7 @@ class _OrbitAudioPlayerCardState extends State<OrbitAudioPlayerCard>
                       _isPlaying
                           ? Icons.pause_rounded
                           : Icons.play_arrow_rounded,
-                      color: Colors.white,
+                      color: OrbitColors.of(context).onAccent,
                       size: 20,
                     ),
                   ),

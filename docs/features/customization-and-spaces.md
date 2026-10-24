@@ -1,5 +1,65 @@
 # Customization, layouts, themes and Spaces
 
+## Searchable settings workspace — 2026-10-23
+
+LAY-01/06/08/10 subset: Settings has nine categories with 43 searchable entries,
+grouped surfaces, desktop navigation and a compact category selector. Multiword
+search spans categories, with result groups, empty states, keyboard search/clear
+and scroll recovery. Advanced appearance controls expand on demand. Seven local
+preference sections support confirmed reset and guarded Undo; account connections,
+knowledge and unknown data remain outside those resets.
+
+Additional controls expose corner style, explorer width, split direction/ratio,
+note ordering, attachment/calendar visibility, code font/size/line numbers/wrapping
+and custom dictionary editing. All 15 existing Canvas papers are selectable,
+including classic blueprint; timer/line-spacing/autosave choices are expanded and
+saved custom values remain visible. Code defaults affect real source controls;
+local pane choices stay independent. Files/recovery keeps real actions and removes
+the former no-op optimization claim. [Use and evidence](../tasks/settings-workspace-2026-10-23.md).
+
+
+## Consistent defaults and semantic propagation — 2026-10-23
+
+Orbit Graphite's default surfaces/text/accent are refreshed. New or missing accent
+preferences use **Follow theme**; existing explicit presets stay selected, with
+readable rendered shades. All 113 built-ins receive the same contrast calibration.
+Custom theme/role data, unknown fields and authored content colors are preserved.
+Inputs, floating menus/dialogs, focus borders, statuses, graphs, code/LaTeX,
+callouts and interactive Canvas previews share the active semantic roles.
+Same-brightness switching invalidates code/Canvas/minimap color caches without
+changing source, selection or stored scene colors. Recovery color controls follow
+the selected base family and remain readable when custom overrides are broken.
+[Behavior, validation and limits](../tasks/semantic-color-system-2026-10-23.md).
+
+
+## System appearance — 2026-10-22
+
+LAY-01/04/06/09/10 continuation: opt-in **Follow system appearance** in Settings
+and Theme Gallery switches within the selected matched family, including launch.
+Turning it off keeps the visible mode; manually applying/importing/generating a
+palette returns to fixed appearance. Original/custom unpaired themes keep their
+authored look. Typography, explicit accents and overrides remain. Saved Spaces
+remember the preference; legacy fixed appearances stay fixed. Preview, active
+palette status and export resolve the same current member. OS changes cause no
+settings writes or editor reload. [Use, validation and limits](../tasks/system-appearance-2026-10-22.md).
+
+## Coordinated palette catalog — 2026-10-22
+
+LAY-01/06/09/10 subset adds 50 authored color families with independently tuned
+light/dark variants: 100 new packs alongside the 13 originals. Settings and the
+full Gallery share search, appearance/collection filters, six-card pagination,
+active-theme recovery and a paired-mode switch that reveals its destination.
+New families preserve typography/corners. Semantic foregrounds and filled controls
+are contrast-checked; paper/night foundations vary by family rather than using
+a single background with different accents. Existing theme-file formats remain.
+
+Palette selection can follow the pack's actual accent; a separate explicit accent
+choice still works. Custom color overrides are preserved with a visible notice
+and a guarded Undo reset. Unknown override roles remain. Knowledge content and
+independent writing-surface/ink choices do not change. This catalog expansion was
+followed by the opt-in system appearance continuation above.
+[Scope, references and validation](../tasks/appearance-palettes-2026-10-22.md).
+
 Status: planned M5+; advanced keymaps/multi-window/plugins later.
 Sources: S03, S06 in the [source map](../product/conversation-extraction.md).
 Architecture: [layout model](../architecture/ui-layout.md).

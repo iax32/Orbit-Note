@@ -55,23 +55,16 @@ class PdfAnnotation {
     return 'highlight';
   }
 
-  CanvasBounds? boundsForPage(int pageNumber) {
-    final pageRegions = regions
-        .where((r) => r.data['page'] == pageNumber)
-        .toList();
-    if (pageRegions.isEmpty) return null;
-    var b = CanvasBounds(
-      pageRegions.first.x,
-      pageRegions.first.y,
-      pageRegions.first.width,
-      pageRegions.first.height,
-    );
-    for (var i = 1; i < pageRegions.length; i++) {
-      final r = pageRegions[i];
-      b = b.union(CanvasBounds(r.x, r.y, r.width, r.height));
+  late final Map<int, CanvasBounds> _pageBounds = () {
+    final result = <int, CanvasBounds>{};
+    for (final region in regions) {
+      final page = region.data['page'] as int;
+      result[page] = result[page]?.union(region.bounds) ?? region.bounds;
     }
-    return b;
-  }
+    return Map<int, CanvasBounds>.unmodifiable(result);
+  }();
+
+  CanvasBounds? boundsForPage(int pageNumber) => _pageBounds[pageNumber];
 
   String summaryMarkdown(String pdfTitle) {
     final quote = source['quote'] is String ? source['quote'] as String : '';
@@ -158,6 +151,9 @@ class PdfAnnotationIndex {
   final _decoded = <String, PdfAnnotation>{};
   final _markup = <int, List<PdfMarkupRegion>>{};
   final _comments = <int, List<PdfAnnotation>>{};
+  // Build only for dense pages actually clicked, retaining at most 16 pages.
+  // Each region appears in intersected vertical bands in original paint order.
+  final _hitBands = <int, List<List<PdfMarkupRegion>>>{};
   List<PdfMarkupRegion> markupForPage(int page) => _markup[page] ?? const [];
   List<PdfAnnotation> commentsForPage(int page) => _comments[page] ?? const [];
   bool matches(List<PdfAnnotation> annotations, String id, String? version) =>
@@ -168,7 +164,29 @@ class PdfAnnotationIndex {
         annotations.length,
       ).every((i) => identical(annotations[i].object, _sources[i].object));
   PdfAnnotation? hitTest(int page, double x, double y) {
-    for (final entry in markupForPage(page).reversed) {
+    if (!x.isFinite || !y.isFinite || x < 0 || x > 1 || y < 0 || y > 1) {
+      return null;
+    }
+    var candidates = markupForPage(page);
+    if (candidates.length > 128) {
+      var bands = _hitBands.remove(page);
+      if (bands == null) {
+        bands = List.generate(32, (_) => <PdfMarkupRegion>[]);
+        for (final entry in candidates) {
+          final start = (entry.region.y * 32).floor().clamp(0, 31);
+          final end = ((entry.region.y + entry.region.height) * 32)
+              .floor()
+              .clamp(0, 31);
+          for (var i = start; i <= end; i++) {
+            bands[i].add(entry);
+          }
+        }
+      }
+      _hitBands[page] = bands;
+      if (_hitBands.length > 16) _hitBands.remove(_hitBands.keys.first);
+      candidates = bands[(y * 32).floor().clamp(0, 31)];
+    }
+    for (final entry in candidates.reversed) {
       final r = entry.region;
       if (x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height) {
         return entry.annotation;

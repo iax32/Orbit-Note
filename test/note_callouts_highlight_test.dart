@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:orbit_note/domain/wiki_links.dart';
+import 'package:orbit_note/app/orbit_theme.dart';
 import 'package:orbit_note/features/notes/note_editor.dart';
 import 'package:orbit_note/features/notes/note_format_toolbar.dart';
 import 'package:orbit_note/features/notes/rich/callout_block.dart';
@@ -261,25 +262,24 @@ void main() {
 
         // Verify containers for the colored side-bars exist
         final containers = tester.widgetList<Container>(find.byType(Container));
+        final palette = OrbitColors.of(tester.element(find.byType(NoteEditor)));
         final hasPurpleBar = containers.any(
-          (c) =>
-              c.constraints?.maxWidth == 4 &&
-              (c.color == const Color(0xFFA855F7)),
+          (c) => c.constraints?.maxWidth == 4 && (c.color == palette.accent),
         );
         final hasBlueBar = containers.any(
-          (c) =>
-              c.constraints?.maxWidth == 4 &&
-              (c.color == const Color(0xFF0284C7)),
+          (c) => c.constraints?.maxWidth == 4 && (c.color == palette.accent),
         );
         expect(
           hasPurpleBar,
           isTrue,
-          reason: 'IMPORTANT callout should have purple 4px side bar',
+          reason:
+              'IMPORTANT callout should use the palette accent on its 4px side bar',
         );
         expect(
           hasBlueBar,
           isTrue,
-          reason: 'NOTE callout should have vivid blue 4px side bar',
+          reason:
+              'NOTE callout should use the palette accent on its 4px side bar',
         );
       },
     );

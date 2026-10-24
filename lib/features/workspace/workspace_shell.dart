@@ -1668,6 +1668,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     ref.watch(workspaceProvider);
     ref.watch(driveSyncStartupProvider);
     ref.watch(driveScheduleStartupProvider);
+    ref.watch(collaborationStartupProvider);
     final colors = OrbitColors.of(context);
     if (c.loading) {
       return Scaffold(
@@ -3382,7 +3383,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                     break;
                 }
               },
-              itemBuilder: (_) => const [
+              itemBuilder: (_) => [
                 PopupMenuItem(
                   value: 'new_note',
                   child: Row(
@@ -3414,7 +3415,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                       Icon(
                         Icons.functions_rounded,
                         size: 18,
-                        color: Color(0xFF8B7CF6),
+                        color: OrbitColors.of(context).accent,
                       ),
                       SizedBox(width: 8),
                       Flexible(child: Text('New LaTeX Document')),
@@ -3441,7 +3442,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                       Icon(
                         Icons.picture_as_pdf_outlined,
                         size: 18,
-                        color: Colors.redAccent,
+                        color: OrbitColors.of(context).danger,
                       ),
                       SizedBox(width: 8),
                       Flexible(child: Text('Open PDF…')),
@@ -3456,7 +3457,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                       Icon(
                         Icons.image_outlined,
                         size: 18,
-                        color: Colors.purpleAccent,
+                        color: OrbitColors.of(context).secondary,
                       ),
                       SizedBox(width: 8),
                       Flexible(child: Text('Open Image…')),
@@ -3483,7 +3484,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                       Icon(
                         Icons.file_upload_outlined,
                         size: 18,
-                        color: Colors.tealAccent,
+                        color: OrbitColors.of(context).success,
                       ),
                       SizedBox(width: 8),
                       Flexible(child: Text('Import File…')),
@@ -3637,16 +3638,19 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
               Icon(
                 isBookmarked ? Icons.bookmark : Icons.bookmark_border,
                 size: 16,
-                color: isBookmarked ? const Color(0xFFF59E0B) : null,
+                color: isBookmarked ? OrbitColors.of(context).warning : null,
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(isBookmarked ? 'Remove Bookmark' : 'Bookmark Tab'),
               ),
               const SizedBox(width: 12),
-              const Text(
+              Text(
                 'Ctrl+Shift+D',
-                style: TextStyle(fontSize: 11, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: OrbitColors.of(context).muted,
+                ),
               ),
             ],
           ),
@@ -3665,7 +3669,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
           ),
         ),
         const PopupMenuDivider(),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'close',
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3674,7 +3678,10 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
               SizedBox(width: 16),
               Text(
                 'Ctrl+W',
-                style: TextStyle(fontSize: 11, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: OrbitColors.of(context).muted,
+                ),
               ),
             ],
           ),
@@ -3766,14 +3773,17 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         PopupMenuItem(
           enabled: canReopen,
           value: 'reopen',
-          child: const Row(
+          child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('Reopen Closed Tab'),
               SizedBox(width: 16),
               Text(
                 'Ctrl+Shift+T',
-                style: TextStyle(fontSize: 11, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: OrbitColors.of(context).muted,
+                ),
               ),
             ],
           ),
@@ -3891,7 +3901,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                     : Icons.bookmark_border,
                 size: 16,
                 color: c.session.bookmarkedTabs.isNotEmpty
-                    ? const Color(0xFFF59E0B)
+                    ? OrbitColors.of(context).warning
                     : colors.subtle,
               ),
               constraints: const BoxConstraints(minWidth: 180, maxWidth: 280),
@@ -3929,10 +3939,10 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.bookmark,
                             size: 14,
-                            color: Color(0xFFF59E0B),
+                            color: OrbitColors.of(context).warning,
                           ),
                           const SizedBox(width: 8),
                           Flexible(
@@ -4139,6 +4149,10 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
           onClosePane: pane == 'secondary' ? _closeSecondaryPane : null,
           title: object.title,
           body: object.body,
+          remotePresence: collaboration.presenceChanges,
+          onTextSelection: (text, selection) =>
+              collaboration.textSelection(object.id, text, selection),
+          onPresenceLeave: () => collaboration.clearCursor(object.id),
           onTitleChanged: (v) => c.edit(object.id, title: v),
           onBodyChanged: (v) => c.edit(object.id, body: v),
           linkTargets: c.linkTargets,

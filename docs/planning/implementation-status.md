@@ -1,4 +1,108 @@
+## Native Canvas raster profiling — 2026-10-24
+
+A Windows profile harness reproduced expensive raster replay of saved pressure
+segments despite the earlier CPU recording speedup. The actual editor now uses
+bounded disposable previews at native zoom/DPI with sharper-vector fallback,
+safe async lifetime and stable admission when the visible set exceeds budget.
+Original ink/undo/storage/export paths remain authoritative. Physical stylus
+acceptance is still pending; the owner has no device available.
+[Measured scenarios, validation and remaining limits](../tasks/device-profile-2026-10-24.md).
+
+## Large-document PDF and pen audit — 2026-10-24
+
+INK-03/10/11 and FILE-04/05/11/12/13 now retain bounded saved-ink vectors,
+coalesce previews, protect pen/palm/cancel/recognition ownership and supersede
+obsolete native content fitting. Dense PDF highlight lookup preserves paint
+order. Synthetic native/100,000-sample fixtures and seven-style pixel equality
+are covered; physical pen latency and release-frame acceptance remain unmeasured.
+[Actual measurements and final checks](../tasks/pen-pdf-performance-2026-10-24.md).
+
+## Motion studio and authored presentation — 2026-10-23
+
+Selectable motion profiles and an explicit inspiration catalog connect actual
+note text, Canvas stroke/placement replay, temporary pointing, PDF navigation,
+annotation feedback/lens, format/grammar/review feedback, graph paths and revision
+scrubbing. Same engines, immediate input, local device preferences, no AI/model
+simulation or constant decoration. This is a MOT subset; catalog entries are not
+completed feature claims. [Coverage, validation and remaining work](../tasks/motion-studio-2026-10-23.md).
+
+## Use-case and sequence diagrams — 2026-10-23
+
+Canvas has editable use-case/sequence glyphs, relationship validation/direction
+guidance, generic starters and live Markdown previews/publication snapshots.
+Ordinary placement identity, history, transfer and unknown data remain. Frames
+and execution bars require manual positioning/grouping; no UML execution or
+automatic class inference is claimed.
+[Use, validation and boundaries](../tasks/uml-interaction-diagrams-2026-10-23.md).
+
+## Searchable settings workspace — 2026-10-23
+
+Nine categories and 43 searchable entries replace the single long Settings list.
+Additional controls cover code, workspace layout/explorer, paper choices,
+dictionary and display; code defaults now reach actual editors. Seven preference
+sections have confirmed reset and guarded Undo. Existing session/unknown data,
+account settings and knowledge remain compatible. Local counts avoid scanning
+all note bodies; the false cache-optimization success action is removed.
+[Validation and boundaries](../tasks/settings-workspace-2026-10-23.md).
+
+## Shared semantic colors and Orbit defaults — 2026-10-23
+
+The default graphite palette is refreshed and new/missing accent preferences
+follow the theme. All 113 built-ins share the contrast contract; older surfaces
+and IDs remain. Preset shades adapt while keeping the explicit choice; custom
+role values stay exact. Shared controls/text, collections/statuses, graph nodes,
+code/LaTeX/callouts and Canvas previews now use semantic colors and refresh during
+live changes. Authored colors, independent paper/writing styles and knowledge
+bytes remain. Recovery follows the selected base family with a readable fallback.
+[Validation and boundaries](../tasks/semantic-color-system-2026-10-23.md).
+
+## System appearance — 2026-10-22
+
+Opt-in OS light/dark switching resolves the selected paired family at launch and
+while running. Manual choice disables following; turning it off keeps the visible
+mode. Unpaired original/custom themes retain their look. Explicit styling, old
+sessions, unknown data and saved Spaces remain compatible. Active palette status,
+preview and export agree. No OS-driven writes or editor replacement.
+[Validation and boundaries](../tasks/system-appearance-2026-10-22.md).
+
+## Coordinated appearance palettes — 2026-10-22
+
+LAY-01/06/09/10 subset: 100 additional complete palettes (50 light/dark pairs),
+eight collections, searchable mode/collection-filtered bounded browsing and
+paired-mode switching. Actual app accents can follow the selected pack. Contrast-
+checked foregrounds/controls, exact JSON color round-trips, retained custom roles
+and guarded reset/Undo preserve readability and recovery. Existing 13 packs and
+custom theme formats remain. Optional system switching was delivered in the
+continuation above. [References, validation and limits](../tasks/appearance-palettes-2026-10-22.md).
+
+## Live shared replication — 2026-10-22
+
+SYNC-03/04/05/06/07/09/10/12/16 expansion: negotiated v2 rooms continuously share
+new owning objects, lifecycle/tombstones and verified resumable assets through
+repository/history boundaries. Authenticated change waits, durable device bases/
+uncertain operations, source-checked Rich/Source carets, independent multi-edit
+merges and opt-in secure launch/resume reconnect are implemented. Legacy rooms
+retain older behavior; updated clients/host are required for live rooms/journals.
+See [protocol](../adr/0032-live-shared-vault-replication.md) and
+[validation/remaining requirements](../tasks/live-shared-sync-2026-10-22.md).
+Closed-app/mobile workers, arbitrary-overlap CRDT, physical Windows-to-Android and
+deployed HTTPS/mobile runtime acceptance remain unfinished. No OneNote parity claim.
+
 ## Math explanation paste — 2026-10-21
+
+## Cross-device sync latency and audit — 2026-10-22
+
+Personal native Drive replication adds paginated change-feed checkpoints, complete
+cached graph snapshots, 15-minute cloud audits and five-second active-Vault checks.
+Two-second local scheduling cannot starve under continuous editing. Cheap unchanged
+checks avoid attachment inventories and journal writes; normal ~30-second local
+reconciliation remains. Existing account/draft/retry/conflict/tombstone/streamed
+upload boundaries remain. Detailed evidence: [sync audit](../tasks/cross-device-sync-2026-10-22.md).
+
+This earlier entry records personal eventual file synchronization while running.
+Shared continuous objects/assets and source-checked carets are now added above;
+CRDT, closed-app/mobile workers and real physical-device acceptance remain incomplete. No OneNote-level
+or public Google rollout claim. Later dated entries are historical snapshots.
 
 Owner-requested EDT-04/12 subset: normal Rich clipboard paste converts balanced
 TeX delimiters and browser KaTeX/MathML/MathJax source annotations into editable

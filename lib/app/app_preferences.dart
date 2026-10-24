@@ -9,12 +9,14 @@ class AppPreferences {
     this.documentFontFamily = 'Segoe UI',
     this.monoFontFamily = 'Consolas',
     this.themePreset = 'orbit',
+    this.followSystemAppearance = false,
     this.cornerStyle = 'rounded',
     this.compact = false,
     this.motion = 'normal',
+    this.motionOptions = const {},
     this.spellCheckEnabled = true,
     this.userDictionary = const [],
-    this.accentColor = 'violet',
+    this.accentColor = 'theme',
     this.colorOverrides = const {},
     this.defaultNoteMode = 'rich',
     this.defaultDocumentFormat = 'markdown',
@@ -24,6 +26,8 @@ class AppPreferences {
     this.defaultAudioSpeed = 1.0,
     this.editorLineHeight = 1.6,
     this.showLineNumbers = true,
+    this.defaultCodeWrap = false,
+    this.codeFontSize = 14,
     this.customThemes = const [],
     this.folderColors = const {},
   });
@@ -34,9 +38,11 @@ class AppPreferences {
   String documentFontFamily;
   String monoFontFamily;
   String themePreset;
+  bool followSystemAppearance;
   String cornerStyle;
   bool compact;
   String motion;
+  Map<String, dynamic> motionOptions;
   bool spellCheckEnabled;
   List<String> userDictionary;
   String accentColor;
@@ -49,6 +55,8 @@ class AppPreferences {
   double defaultAudioSpeed;
   double editorLineHeight;
   bool showLineNumbers;
+  bool defaultCodeWrap;
+  double codeFontSize;
   List<Map<String, dynamic>> customThemes;
   Map<String, int> folderColors;
 }

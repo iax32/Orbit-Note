@@ -282,7 +282,9 @@ class _ReadingRoomAmbienceSheetState extends State<ReadingRoomAmbienceSheet> {
                                   ),
                                   style: FilledButton.styleFrom(
                                     backgroundColor: _currentRoom.accentTone,
-                                    foregroundColor: Colors.white,
+                                    foregroundColor: OrbitContrast.inkOn(
+                                      _currentRoom.accentTone,
+                                    ),
                                   ),
                                   icon: const Icon(
                                     Icons.play_arrow_rounded,

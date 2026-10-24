@@ -1,4 +1,63 @@
-# Optional sync and future collaboration
+# Optional sync and collaboration
+
+## Live shared delivery — 2026-10-22
+
+New rooms created with the updated app/host negotiate live owning-object creation,
+Trash/restore, permanent tombstones and verified resumable attachments. Authenticated
+change waits wake clients, with bounded local scheduling and a heartbeat fallback.
+Acknowledged bases and uncertain edit/create operations survive client restart in
+device-only guarded journals. Independent text edits merge; overlaps require review.
+Rich/Source note selections and named carets are checked against source hashes;
+stale positions show navigation/status rather than inaccurate highlights. Canvas
+pointer changes wake promptly. Optional secure reconnect runs on launch/resume.
+
+Existing rooms retain legacy behavior until a new shared snapshot is created.
+Live rooms refuse unaware clients. Deploy the matching host/client and preserve
+the whole private server directory before upgrade; new journal kinds require the
+updated server. Authored storage and universal IDs are unchanged. See
+[ADR-0032](../adr/0032-live-shared-vault-replication.md) and
+[validation/limits](../tasks/live-shared-sync-2026-10-22.md).
+
+No closed-app/mobile worker or arbitrary-overlap CRDT is provided. Physical
+Windows-to-Android, deployed HTTPS and mobile runtime acceptance remain outstanding.
+Personal Drive and shared editing remain mutually exclusive per Vault. The dated
+sections below record earlier delivery boundaries, not the current live scope.
+
+## Current delivery — 2026-10-22
+
+Personal native Drive sync now uses validated incremental change tracking and
+five-second active-Vault checks, retaining durable outbox, immutable branches,
+resumable uploads, explicit conflict review and tombstones. Continuous typing no
+longer delays an already scheduled local sync. Full local/cloud audits remain;
+Settings distinguishes last cloud check from completed full synchronization.
+See [cloud delivery status](cloud-sync.md) for scope, limits and validation.
+
+At the earlier Drive-only milestone, shared sessions were a separate existing-document/Canvas preview over 500-ms
+HTTP polling, with named pointers, placement selections, known-base merges and
+roles. This task does not add shared new-object/deletion/attachment streaming,
+character-level CRDT/carets, OS background execution, public OAuth verification
+or physical-device acceptance. Personal Drive and shared editing remain mutually
+exclusive for a Vault. OneNote-level parity is **not verified or claimed**.
+
+## Host restart and foreground recovery — 2026-10-21
+
+Shared sessions read server state before publishing local proposals. Protocol 1
+has an optional ephemeral server `epoch`; a changed epoch returns full state even
+when the old delta cursor is ahead of a restored journal. Different or absent
+shared documents require review, retaining local work and recovery history.
+Unchanged documents resume. Uncertain acknowledgements are not blindly replayed
+across a host incarnation change. Reused/rolled-back document versions also stop
+for review. Server identity/protocol changes pause automatic requests.
+
+Foreground checks retain access blocks; a check requested during a poll is
+coalesced. The current server role is applied before sending edits. Shared
+settings add explicit checking, host/access/acknowledgement details and a host →
+HTTPS → invitation guide with validated proxy snippets. Update the standalone
+server alongside the client for epoch/cursor recovery. Old protocol-1 fields and
+authored storage remain compatible. Live shared new-object/attachment/deletion
+streaming and physical two-device/TLS acceptance remain outstanding.
+[Evidence and limits](../tasks/device-sync-recovery-2026-10-21.md).
+
 
 ## Shared Canvas placement review — 2026-10-20
 
@@ -177,3 +236,8 @@ Prepare stable IDs and durable local behavior incrementally; add no auth/outbox
 framework in M0. M6 requires a protocol ADR and multi-replica tests before UI promises.
 Real-time collaborative editing, encryption/key sharing and role policy need
 separate decisions and testable slices.
+
+Host-incarnation guards also travel with edit proposals: a restart between the
+state check and publication returns a typed conflict before any journal mutation.
+Canvas comparisons reject changed hosts before applying choices; existing conflict
+bases are invalidated on restart instead of reused across uncertain ancestry.

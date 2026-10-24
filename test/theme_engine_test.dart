@@ -42,7 +42,7 @@ void main() {
 
         final orbit = OrbitThemePack.fromId('orbit');
         expect(orbit.brightness, Brightness.dark);
-        expect(orbit.colors.accent, const Color(0xFF8B7CF6));
+        expect(orbit.colors.accent, const Color(0xFFB0A0FF));
 
         final paper = OrbitThemePack.fromId('paper');
         expect(paper.brightness, Brightness.light);
@@ -57,7 +57,11 @@ void main() {
         expect(observatory.colors.accent, const Color(0xFF06B6D4));
 
         final aurora = OrbitThemePack.fromId('aurora');
-        expect(aurora.colors.accent, const Color(0xFF10B981));
+        expect(aurora.colors.accent.g, greaterThan(aurora.colors.accent.r));
+        expect(
+          OrbitContrast.ratio(aurora.colors.accent, aurora.colors.pressed),
+          greaterThanOrEqualTo(4.5),
+        );
 
         final obsidian = OrbitThemePack.fromId('obsidian-ember');
         expect(obsidian.brightness, Brightness.dark);
@@ -170,7 +174,7 @@ void main() {
       final darkTheme = orbitTheme(preset: 'orbit');
       expect(darkTheme.brightness, Brightness.dark);
       expect(darkTheme.colorScheme.brightness, Brightness.dark);
-      expect(darkTheme.scaffoldBackgroundColor, const Color(0xFF0D0D12));
+      expect(darkTheme.scaffoldBackgroundColor, const Color(0xFF141418));
     });
 
     test('SessionState preserves themePreset and cornerStyle', () {

@@ -345,7 +345,9 @@ class _MilestoneViewState extends State<MilestoneView> {
                       minHeight: 6,
                       backgroundColor: colors.raised,
                       valueColor: AlwaysStoppedAnimation(
-                        percent == 100 ? Colors.teal : colors.accent,
+                        percent == 100
+                            ? OrbitColors.of(context).success
+                            : colors.accent,
                       ),
                     ),
                   ),
@@ -370,7 +372,7 @@ class _MilestoneViewState extends State<MilestoneView> {
                               style: TextStyle(
                                 fontSize: 12,
                                 color: entry.value.done == entry.value.total
-                                    ? Colors.teal
+                                    ? OrbitColors.of(context).success
                                     : colors.subtle,
                               ),
                             ),

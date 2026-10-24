@@ -1,5 +1,39 @@
 # Canonical feature backlog
 
+2026-10-23 owner-approved CAN-04/05/07/14/15/16, EDT-08/PORT-05 continuation:
+Use-case and sequence notation from the supplied exercise, both explicitly
+selected by the owner. Existing class diagrams/live references are extended;
+automatic inference, trace execution and external UML formats are not implied.
+[Task and evidence](../tasks/uml-interaction-diagrams-2026-10-23.md).
+
+2026-10-23 owner-approved LAY-01/06/08/10 continuation: searchable, categorized
+Settings with additional working preferences, responsive groups and recoverable
+section defaults. Existing editor/source/Canvas/layout controls are connected;
+no new cloud permission or unrelated roadmap feature is implied.
+[Task and validation](../tasks/settings-workspace-2026-10-23.md).
+
+
+2026-10-23 owner-requested LAY-01/06/09/10 continuation: app-wide semantic
+color propagation, refreshed Orbit defaults, all-built-in contrast calibration,
+readable preset accent shades and live cache invalidation. Explicit user/content
+colors and recovery remain. [Task/evidence](../tasks/semantic-color-system-2026-10-23.md).
+
+
+2026-10-22 accepted continuation: LAY-01/04/06/09/10 optional system appearance
+for matched families, with stable manual fallback, Spaces, preview/export and no
+OS-triggered writes. [Task/evidence](../tasks/system-appearance-2026-10-22.md).
+
+2026-10-22 owner-approved LAY-01/06/09/10 subset: 100 coordinated light/dark
+palettes, bounded searchable browsing and actual accent-following. Preserve old
+themes, custom roles and recovery. [Task/evidence](../tasks/appearance-palettes-2026-10-22.md).
+
+2026-10-22 owner-approved sync expansion: SYNC-03/04/05/06/07/09/10/12/16 now
+includes negotiated live object/lifecycle/asset sharing, durable shared recovery,
+source-checked note awareness and optional secure reconnect. See
+[delivery and unresolved platform work](../tasks/live-shared-sync-2026-10-22.md).
+Requirement rows still describe the full target: mobile workers, arbitrary-overlap
+CRDT and physical-device acceptance are not marked complete by this subset.
+
 2026-10-21 owner-approved task: implement the complete personal Life proposal,
 [LIFE-01–12](../features/life-workspace.md), extending existing CTX/TASK/EVT/EDT/CAN
 contracts. These are P1 capabilities authorized now; this does not enlarge the
@@ -432,3 +466,7 @@ remaining requirement planned. Do not interpret a row as a giant implementation 
 | [TASK-10](../features/tasks-calendar-and-planning.md) | P1 | After M6 authorization | PRE-09, PRE-10 |
 | [TASK-11](../features/tasks-calendar-and-planning.md) | V1 | M2–M5 | PRE-03, PRE-07 |
 | [TASK-12](../features/tasks-calendar-and-planning.md) | P1 | M5+ | PRE-07 |
+
+Motion implementation evidence (2026-10-23): [motion studio and authored replay](../tasks/motion-studio-2026-10-23.md)
+advances MOT-01–06 without closing all requirements. The 70-item inspiration
+catalog includes explicit concept previews; it is not a completed-feature count.

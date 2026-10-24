@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show mapEquals;
+import 'theme_palette_browser.dart';
 import 'package:flutter/material.dart';
 import '../../app/orbit_theme.dart';
 import '../../app/workspace_controller.dart';
@@ -7,6 +9,20 @@ import 'theme_interchange_dialog.dart';
 /// Live interactive preview card displaying typography, colors, button styles, and corner radius.
 class LiveThemePreviewCard extends StatelessWidget {
   const LiveThemePreviewCard({super.key, required this.controller});
+  final WorkspaceController controller;
+
+  @override
+  Widget build(BuildContext context) => Theme(
+    data: orbitThemeForPreferences(
+      controller.session.preferences,
+      MediaQuery.platformBrightnessOf(context),
+    ),
+    child: _LiveThemePreviewContent(controller: controller),
+  );
+}
+
+class _LiveThemePreviewContent extends StatelessWidget {
+  const _LiveThemePreviewContent({required this.controller});
   final WorkspaceController controller;
 
   @override
@@ -74,7 +90,7 @@ class LiveThemePreviewCard extends StatelessWidget {
                 const SizedBox(width: 14),
                 Expanded(
                   child: Text(
-                    'Orbit Observatory · ${s.themePreset.toUpperCase()}',
+                    'Orbit Observatory · ${OrbitThemePack.forPreferences(s.preferences, MediaQuery.platformBrightnessOf(context)).name}',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
@@ -168,9 +184,7 @@ class LiveThemePreviewCard extends StatelessWidget {
                       label: const Text('Primary Action'),
                       style: FilledButton.styleFrom(
                         backgroundColor: colors.accent,
-                        foregroundColor: colors.accent.computeLuminance() > 0.35
-                            ? Colors.black
-                            : Colors.white,
+                        foregroundColor: OrbitContrast.inkOn(colors.accent),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(corners.control),
                         ),
@@ -218,171 +232,229 @@ class LiveThemePreviewCard extends StatelessWidget {
   }
 }
 
-/// Selector for first-party theme packs.
+/// Selector for first-party theme packs, with a bounded shared browser.
 class ThemePresetSelector extends StatelessWidget {
   const ThemePresetSelector({super.key, required this.controller});
   final WorkspaceController controller;
 
+  void _apply(OrbitThemePack pack) => controller.updateSession((s) {
+    s.themePreset = pack.id;
+    s.followSystemAppearance = false;
+    s.accentColor = 'theme';
+    // Preserve explicit custom colors; the notice below offers a separate reset.
+    if (pack.familyId == null) {
+      s.fontFamily = pack.fontFamily;
+      s.documentFontFamily = pack.documentFontFamily;
+      s.monoFontFamily = pack.monoFontFamily;
+      s.cornerStyle = pack.cornerStyle;
+    }
+  });
+
   @override
   Widget build(BuildContext context) {
-    final colors = OrbitColors.of(context);
-    final activeId = controller.session.themePreset;
-
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
+    final overrides = controller.session.colorOverrides;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final pack in OrbitThemePack.builtIn)
-          InkWell(
-            key: ValueKey('theme-preset-${pack.id}'),
-            borderRadius: BorderRadius.circular(OrbitRadius.card),
-            onTap: () => controller.updateSession((s) {
-              s.themePreset = pack.id;
-              s.fontFamily = pack.fontFamily;
-              s.documentFontFamily = pack.documentFontFamily;
-              s.monoFontFamily = pack.monoFontFamily;
-              s.cornerStyle = pack.cornerStyle;
-            }),
-            child: AnimatedContainer(
-              duration: OrbitMotion.control,
-              width: 172,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: pack.colors.panel,
-                borderRadius: BorderRadius.circular(OrbitRadius.card),
-                border: Border.all(
-                  color: activeId == pack.id ? colors.accent : colors.border,
-                  width: activeId == pack.id ? 2 : 1,
-                ),
-                boxShadow: activeId == pack.id
-                    ? [
-                        BoxShadow(
-                          color: colors.accent.withValues(alpha: 0.25),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ]
-                    : null,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: SizedBox(
-                      height: 34,
-                      child: Stack(
-                        children: [
-                          ColoredBox(color: pack.colors.background),
-                          Positioned(
-                            left: 0,
-                            top: 0,
-                            bottom: 0,
-                            width: 26,
-                            child: ColoredBox(color: pack.colors.panel),
-                          ),
-                          Positioned(
-                            left: 34,
-                            right: 0,
-                            top: 0,
-                            height: 7,
-                            child: ColoredBox(color: pack.colors.raised),
-                          ),
-                          Positioned(
-                            left: 40,
-                            right: 34,
-                            top: 16,
-                            height: 3,
-                            child: ColoredBox(color: pack.colors.accent),
-                          ),
-                          Positioned(
-                            left: 40,
-                            right: 58,
-                            top: 25,
-                            height: 3,
-                            child: ColoredBox(color: pack.colors.subtle),
-                          ),
-                        ],
-                      ),
+        if (overrides.keys.any(OrbitColors.roleLabels.containsKey)) ...[
+          Text(
+            '${overrides.length} custom color overrides remain active. Use palette colors for the complete look.',
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: const ValueKey('theme-use-palette-colors'),
+              onPressed: () {
+                final previous = Map<String, int>.from(
+                  controller.session.colorOverrides,
+                );
+                final next = {...previous}
+                  ..removeWhere(
+                    (key, _) => OrbitColors.roleLabels.containsKey(key),
+                  );
+                controller.updateSession((s) => s.colorOverrides = next);
+                ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                  SnackBar(
+                    content: const Text('Using the palette colors'),
+                    action: SnackBarAction(
+                      label: 'Undo',
+                      onPressed: () {
+                        if (mapEquals(
+                          controller.session.colorOverrides,
+                          next,
+                        )) {
+                          controller.updateSession(
+                            (s) => s.colorOverrides = previous,
+                          );
+                        }
+                      },
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Container(
-                        width: 16,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          color: pack.colors.accent,
-                          shape: BoxShape.circle,
-                        ),
-                        child: activeId == pack.id
-                            ? const Icon(
-                                Icons.check,
-                                size: 10,
-                                color: Colors.white,
-                              )
-                            : null,
+                );
+              },
+              child: const Text('Use palette colors'),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        ThemePaletteBrowser(
+          packs: OrbitThemePack.builtIn,
+          activeId: OrbitThemePack.forPreferences(
+            controller.session.preferences,
+            MediaQuery.platformBrightnessOf(context),
+          ).id,
+          onApply: _apply,
+          itemBuilder: (pack, width, selected, apply) => SizedBox(
+            width: width,
+            child: Semantics(
+              button: true,
+              selected: selected,
+              label:
+                  '${pack.name}, ${pack.brightness.name}, ${pack.description}',
+              child: Tooltip(
+                message: pack.description,
+                child: InkWell(
+                  key: ValueKey('theme-preset-${pack.id}'),
+                  borderRadius: BorderRadius.circular(OrbitRadius.card),
+                  onTap: apply,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: pack.colors.panel,
+                      borderRadius: BorderRadius.circular(OrbitRadius.card),
+                      border: Border.all(
+                        color: selected
+                            ? pack.colors.focus
+                            : pack.colors.border,
+                        width: selected ? 2 : 1,
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          pack.name,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(5),
+                          child: SizedBox(
+                            height: 42,
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 26,
+                                  color: pack.colors.panelSecondary,
+                                ),
+                                Expanded(
+                                  child: ColoredBox(
+                                    color: pack.colors.workspace,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(8),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          FractionallySizedBox(
+                                            widthFactor: .6,
+                                            child: Container(
+                                              height: 4,
+                                              color: pack.colors.accent,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          FractionallySizedBox(
+                                            widthFactor: .85,
+                                            child: Container(
+                                              height: 3,
+                                              color: pack.colors.subtle,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 5),
+                                          FractionallySizedBox(
+                                            widthFactor: .5,
+                                            child: Container(
+                                              height: 3,
+                                              color: pack.colors.muted,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Container(
+                              width: 18,
+                              height: 18,
+                              decoration: BoxDecoration(
+                                color: pack.colors.accent,
+                                shape: BoxShape.circle,
+                              ),
+                              child: selected
+                                  ? Icon(
+                                      Icons.check,
+                                      size: 12,
+                                      color: OrbitContrast.inkOn(
+                                        pack.colors.accent,
+                                      ),
+                                    )
+                                  : null,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                pack.name,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: pack.colors.text,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          '${pack.category} · ${pack.brightness == Brightness.light ? 'Light' : 'Dark'}',
                           style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: activeId == pack.id
-                                ? FontWeight.bold
-                                : FontWeight.w600,
-                            color: pack.colors.text,
+                            fontSize: 11,
+                            color: pack.colors.subtle,
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    pack.description,
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      color: pack.colors.subtle,
-                      height: 1.3,
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 4,
+                          runSpacing: 4,
+                          children: [
+                            for (final color in [
+                              pack.colors.background,
+                              pack.colors.raised,
+                              pack.colors.accent,
+                              pack.colors.secondary,
+                              pack.colors.text,
+                            ])
+                              Container(
+                                width: 14,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  // Swatch row
-                  Row(
-                    children: [
-                      _miniSwatch(pack.colors.background),
-                      const SizedBox(width: 4),
-                      _miniSwatch(pack.colors.panel),
-                      const SizedBox(width: 4),
-                      _miniSwatch(pack.colors.raised),
-                      const SizedBox(width: 4),
-                      _miniSwatch(pack.colors.accent),
-                      const SizedBox(width: 4),
-                      _miniSwatch(pack.colors.secondary),
-                    ],
-                  ),
-                ],
+                ),
               ),
             ),
           ),
-      ],
-    );
-  }
-
-  Widget _miniSwatch(Color c) {
-    return Container(
-      width: 14,
-      height: 14,
-      decoration: BoxDecoration(
-        color: c,
-        borderRadius: BorderRadius.circular(3),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.15),
-          width: 0.5,
         ),
-      ),
+      ],
     );
   }
 }
@@ -436,10 +508,14 @@ class ThemeColorSettings extends StatelessWidget {
     final colors = OrbitColors.of(context);
     final overrides = controller.session.colorOverrides;
     // Recovery controls stay readable even with an unreadable custom palette.
+    final recovery = orbitRecoveryThemeForPreferences(
+      controller.session.preferences,
+      MediaQuery.platformBrightnessOf(context),
+    );
     return Theme(
-      data: orbitDarkTheme(fontFamily: controller.session.fontFamily),
+      data: recovery,
       child: Material(
-        color: const OrbitColors().panel,
+        color: recovery.extension<OrbitColors>()!.panel,
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -470,7 +546,7 @@ class ThemeColorSettings extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: colors.roles[role.key],
                           borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: const Color(0xffb6b2c2)),
+                          border: Border.all(color: recovery.dividerColor),
                         ),
                       ),
                       label: Text(
@@ -480,9 +556,7 @@ class ThemeColorSettings extends StatelessWidget {
                         final result = await showDialog<_ColorChoice>(
                           context: context,
                           builder: (_) => Theme(
-                            data: orbitDarkTheme(
-                              fontFamily: controller.session.fontFamily,
-                            ),
+                            data: recovery,
                             child: _ColorEditor(
                               label: role.value,
                               initial: colors.roles[role.key]!,

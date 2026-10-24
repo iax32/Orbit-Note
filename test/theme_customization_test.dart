@@ -1,3 +1,4 @@
+import 'support/settings_navigation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -85,8 +86,18 @@ void main() {
       ),
     );
     await tester.pump();
+    await searchSettings(tester, 'Advanced theme colors');
     final expand = find.byKey(const ValueKey('settings-custom-colors'));
-    await tester.ensureVisible(expand);
+    await tester.scrollUntilVisible(
+      expand,
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const ValueKey('settings-content')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     await tester.tap(find.text('Customize interface colors'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));

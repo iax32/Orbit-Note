@@ -41,14 +41,18 @@ class _InboxReviewContentState extends State<_InboxReviewContent> {
             Text('Inbox Review'),
           ],
         ),
-        content: const SizedBox(
+        content: SizedBox(
           width: 440,
           height: 120,
           child: Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.done_all, size: 36, color: Colors.green),
+                Icon(
+                  Icons.done_all,
+                  size: 36,
+                  color: OrbitColors.of(context).success,
+                ),
                 SizedBox(height: 12),
                 Text('Inbox is clear! No unprocessed captures.'),
               ],
@@ -236,10 +240,10 @@ class _InboxReviewContentState extends State<_InboxReviewContent> {
                 ),
                 IconButton(
                   tooltip: 'Delete capture',
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.delete_outline,
                     size: 18,
-                    color: Colors.redAccent,
+                    color: OrbitColors.of(context).danger,
                   ),
                   onPressed: () async {
                     await c.processInboxItem(current.id, delete: true);

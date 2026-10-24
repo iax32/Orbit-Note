@@ -6,6 +6,7 @@ import 'code_block.dart';
 import 'code_editing.dart';
 import 'document_history.dart';
 import 'code_surface.dart';
+import '../../../app/orbit_theme.dart';
 
 /// A draft editor. Apply returns one change through the owning note's history.
 class CodeWorkspace extends StatefulWidget {
@@ -76,6 +77,18 @@ class _CodeWorkspaceState extends State<CodeWorkspace> {
     _committed = editor.value;
     editor.addListener(editorChanged);
     query.addListener(refresh);
+  }
+
+  bool defaultsLoaded = false;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!defaultsLoaded) {
+      final p = OrbitCodePreferences.of(context);
+      wrap = p.wrap;
+      numbers = p.lineNumbers;
+      defaultsLoaded = true;
+    }
   }
 
   void refresh() {

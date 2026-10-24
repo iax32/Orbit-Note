@@ -72,3 +72,25 @@ Partial save/disk-full retains recoverable local work under the storage contract
 Start with pen/highlighter, stroke erase, vector save/reload and page presets.
 Add lasso/layers and annotation adapters, then evaluate segment erasing and
 recognition independently. No OCR/AI service is required to draw or read ink.
+
+## Dense ink and pointer reliability — 2026-10-24
+
+INK-03/10/11: saved ink uses bounded vector display-list reuse, retaining original
+samples at every zoom. Active previews coalesce to display frames. First stylus
+contact, release endpoints, palm contacts, temporary inverted erasing, recognition
+completion and cancellation preserve gesture ownership and single-action undo.
+Invalid imported pressure receives a finite paint fallback without rewriting
+source data. Active-stroke rendering remains proportional to sample count;
+physical latency and palm rejection require real-device validation.
+[Workloads, checks and limits](../tasks/pen-pdf-performance-2026-10-24.md).
+
+### Native raster follow-up — 2026-10-24
+
+Native profiling exposed raster replay costs that debug display-list recording
+did not measure. Complex committed strokes can now use bounded, disposable
+previews at camera zoom × device pixel density, while retaining exact original
+vectors. A zoom requiring more pixels immediately uses vectors until a sharper
+preview is ready. Active strokes and existing exports retain vector rendering.
+Preview allocations, failure, late completion and visible-cache saturation are
+bounded; excess visible complexity uses vectors without regeneration loops.
+[Profile measurements and physical-device limits](../tasks/device-profile-2026-10-24.md).

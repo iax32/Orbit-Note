@@ -305,7 +305,7 @@ class AnalysisDashboardView extends StatelessWidget {
                     label: 'Findings',
                     value: '${findings.length}',
                     subtitle: '$confirmedFindings verified',
-                    color: Colors.green.shade400,
+                    color: OrbitColors.of(context).success,
                     colors: colors,
                   ),
                 ),
@@ -317,7 +317,7 @@ class AnalysisDashboardView extends StatelessWidget {
                     value: '${hypotheses.length}',
                     subtitle:
                         '${hypothesesByStatus['Open']! + hypothesesByStatus['Testing']!} in progress',
-                    color: Colors.purple.shade300,
+                    color: OrbitColors.of(context).secondary,
                     colors: colors,
                     onTap: () => onSelectViewType?.call('board'),
                   ),
@@ -329,7 +329,7 @@ class AnalysisDashboardView extends StatelessWidget {
                     label: 'Indicators / IOCs',
                     value: '${iocs.length}',
                     subtitle: 'Extracted tokens',
-                    color: Colors.amber.shade400,
+                    color: OrbitColors.of(context).warning,
                     colors: colors,
                     onTap: () => onSelectViewType?.call('iocs'),
                   ),
@@ -345,7 +345,7 @@ class AnalysisDashboardView extends StatelessWidget {
                         : '${blockedTasks.length} blocked!',
                     color: blockedTasks.isEmpty
                         ? colors.accent
-                        : Colors.red.shade400,
+                        : OrbitColors.of(context).danger,
                     colors: colors,
                     onTap: () => onSelectViewType?.call('tasks'),
                   ),
@@ -491,35 +491,35 @@ class AnalysisDashboardView extends StatelessWidget {
                       _HypothesisStatusPill(
                         label: 'Open',
                         count: hypothesesByStatus['Open']!,
-                        color: Colors.blue.shade400,
+                        color: OrbitColors.of(context).accent,
                         colors: colors,
                       ),
                       const SizedBox(width: 8),
                       _HypothesisStatusPill(
                         label: 'Testing',
                         count: hypothesesByStatus['Testing']!,
-                        color: Colors.amber.shade400,
+                        color: OrbitColors.of(context).warning,
                         colors: colors,
                       ),
                       const SizedBox(width: 8),
                       _HypothesisStatusPill(
                         label: 'Supported',
                         count: hypothesesByStatus['Supported']!,
-                        color: Colors.teal.shade400,
+                        color: OrbitColors.of(context).success,
                         colors: colors,
                       ),
                       const SizedBox(width: 8),
                       _HypothesisStatusPill(
                         label: 'Confirmed',
                         count: hypothesesByStatus['Confirmed']!,
-                        color: Colors.green.shade400,
+                        color: OrbitColors.of(context).success,
                         colors: colors,
                       ),
                       const SizedBox(width: 8),
                       _HypothesisStatusPill(
                         label: 'Rejected',
                         count: hypothesesByStatus['Rejected']!,
-                        color: Colors.red.shade400,
+                        color: OrbitColors.of(context).danger,
                         colors: colors,
                       ),
                     ],
@@ -534,10 +534,12 @@ class AnalysisDashboardView extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.red.shade900.withValues(alpha: 0.15),
+                  color: OrbitColors.of(context).danger.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(OrbitRadius.card),
                   border: Border.all(
-                    color: Colors.red.shade400.withValues(alpha: 0.5),
+                    color: OrbitColors.of(
+                      context,
+                    ).danger.withValues(alpha: 0.5),
                   ),
                 ),
                 child: Column(
@@ -548,7 +550,7 @@ class AnalysisDashboardView extends StatelessWidget {
                         Icon(
                           Icons.warning_amber_rounded,
                           size: 18,
-                          color: Colors.red.shade400,
+                          color: OrbitColors.of(context).danger,
                         ),
                         const SizedBox(width: 8),
                         Text(
@@ -556,7 +558,7 @@ class AnalysisDashboardView extends StatelessWidget {
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 13,
-                            color: Colors.red.shade300,
+                            color: OrbitColors.of(context).danger,
                           ),
                         ),
                       ],
@@ -571,10 +573,10 @@ class AnalysisDashboardView extends StatelessWidget {
                               onTap: () => controller.openObject(t.id),
                               child: Row(
                                 children: [
-                                  const Icon(
+                                  Icon(
                                     Icons.block,
                                     size: 14,
-                                    color: Colors.redAccent,
+                                    color: OrbitColors.of(context).danger,
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
@@ -589,7 +591,7 @@ class AnalysisDashboardView extends StatelessWidget {
                                     'Blocked by prerequisite task',
                                     style: TextStyle(
                                       fontSize: 11,
-                                      color: Colors.red.shade300,
+                                      color: OrbitColors.of(context).danger,
                                     ),
                                   ),
                                 ],
@@ -642,7 +644,7 @@ class AnalysisDashboardView extends StatelessWidget {
                                     (f.properties['status'] as String?)
                                             ?.toLowerCase() ==
                                         'confirmed'
-                                    ? Colors.green.shade400
+                                    ? OrbitColors.of(context).success
                                     : colors.subtle,
                               ),
                             ),
@@ -726,7 +728,7 @@ class AnalysisDashboardView extends StatelessWidget {
                                 controller: controller,
                                 colors: colors,
                                 badge: 'Size: ${st.properties['size'] ?? "?"}',
-                                badgeColor: Colors.blue.shade400,
+                                badgeColor: OrbitColors.of(context).accent,
                               ),
                             ),
                     ],

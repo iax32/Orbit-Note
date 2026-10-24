@@ -1,3 +1,4 @@
+import '../../app/orbit_motion_effects.dart';
 import 'package:flutter/material.dart';
 import 'note_find_index.dart';
 
@@ -144,43 +145,49 @@ class _MatchPreview extends StatelessWidget {
     final left = text.substring(boundary(start - 100, end: false), start);
     final right = text.substring(end, boundary(end + 100, end: true));
     final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text('Before', style: theme.textTheme.labelMedium),
-        SelectableText.rich(
-          TextSpan(
-            children: [
-              TextSpan(text: left),
-              TextSpan(
-                text: text.substring(start, end),
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  backgroundColor: theme.colorScheme.errorContainer,
+    return OrbitEffect(
+      trigger: (match.from, match.to, replacement),
+      family: 'smart',
+      style: 'morph',
+      onMount: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Before', style: theme.textTheme.labelMedium),
+          SelectableText.rich(
+            TextSpan(
+              children: [
+                TextSpan(text: left),
+                TextSpan(
+                  text: text.substring(start, end),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    backgroundColor: theme.colorScheme.errorContainer,
+                  ),
                 ),
-              ),
-              TextSpan(text: right),
-            ],
+                TextSpan(text: right),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        Text('After', style: theme.textTheme.labelMedium),
-        SelectableText.rich(
-          TextSpan(
-            children: [
-              TextSpan(text: left),
-              TextSpan(
-                text: replacement.isEmpty ? '(delete match)' : replacement,
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  backgroundColor: theme.colorScheme.primaryContainer,
+          const SizedBox(height: 8),
+          Text('After', style: theme.textTheme.labelMedium),
+          SelectableText.rich(
+            TextSpan(
+              children: [
+                TextSpan(text: left),
+                TextSpan(
+                  text: replacement.isEmpty ? '(delete match)' : replacement,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    backgroundColor: theme.colorScheme.primaryContainer,
+                  ),
                 ),
-              ),
-              TextSpan(text: right),
-            ],
+                TextSpan(text: right),
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

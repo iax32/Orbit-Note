@@ -1,9 +1,49 @@
 # UI and layout system
 
+## Settings navigation and code defaults — 2026-10-23
+
+The existing SettingsView API is retained through its original export, with its
+implementation extracted to settings_view.dart. Category/search/scroll state is
+transient. Actual preferences use the existing controller updateSession/device
+settings path. No new settings database or package is introduced. Resets change
+only the selected section's fields, capture current values at confirmation, and
+reject Undo after a touched value or owning Vault/session changes.
+
+The flat session adds defaultCodeWrap (false) and bounded codeFontSize (14,
+10–26 px), preserving unknown/old fields. Existing monoFontFamily/showLineNumbers
+now reach code controls through OrbitCodePreferences. Font/size can update live
+without replacing text controllers; new panes inherit wrap/number defaults and
+local pane choices remain. Classic blueprint is accepted by the existing paper
+choice validator. [Evidence and limits](../tasks/settings-workspace-2026-10-23.md).
+
+
+## Semantic color propagation — 2026-10-23
+
+OrbitColors is the shared UI palette; Material defaults receive explicit text,
+input, floating and focus tokens. Common object/status/priority helpers keep
+navigation, collections and graphs consistent. Every built-in is calibrated
+against actual state surfaces; explicit role overrides retain their authored
+values. New preferences follow the theme accent; preset accent shades adapt
+without rewriting the saved choice. Recovery resolves the current base palette
+separately from overrides. Code token caches retain parsing but refresh color
+spans on palette changes; Canvas/minimap repaint/cache keys include semantic
+colors. Interactive grid ink uses canvasGrid, while publication rendering and
+explicit drawing/object colors retain their independent semantics. No storage
+schema or authority change. [Evidence and limits](../tasks/semantic-color-system-2026-10-23.md).
+
+
 Status: accepted product direction; basic two-pane persistence now exists. The
 [implementation status](../planning/implementation-status.md) separates it from advanced docking.
 
 ## Default experience
+
+Device-local appearance can follow OS brightness within a matched palette family.
+The effective member is derived at render time; OS changes do not rewrite the
+saved palette or trigger persistence/editor replacement. Manual selection disables
+following; disabling following pins the visible member. Remembered Space appearance
+includes the preference, with old fixed descriptors defaulting to manual. Preview,
+gallery and theme export share app resolution. Unpaired themes retain their authored
+colors. [Behavior and validation](../tasks/system-appearance-2026-10-22.md).
 
 Desktop grows toward an activity rail, contextual left sidebar, center tabs/panes,
 optional right inspector, and a modest status area. Calm defaults prioritize capture,
@@ -64,6 +104,13 @@ unchanged. [Resume Context](../features/home-and-work-sessions.md) needs version
 view descriptors and personal state separation before arbitrary restoration.
 
 ## Enlarged text and dialog layout
+
+The shared palette browser (2026-10-22) builds at most six cards per page in both
+Settings and Theme Gallery. Search and mode/collection filters do not change the
+active preference until applying a palette. Show active resets filters/page;
+paired switching reveals the destination's collection/mode/page. Controls wrap,
+cards stack at enlarged text, and the existing settings/dialog owns scrolling.
+No nested full-gallery scroll surface or fixed-height text cards are introduced.
 
 Shared Orbit dialogs scroll their headings with content and retain a separate
 action footer. Settings controls move below labels when text size or available

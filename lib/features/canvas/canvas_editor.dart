@@ -1,3 +1,5 @@
+import 'canvas_presentation_dialog.dart';
+import '../../app/orbit_laser_surface.dart';
 import '../notes/media_clipboard.dart';
 import '../math/math_lab_dialog.dart';
 import '../../canvas/math_plot_elements.dart';
@@ -39,6 +41,8 @@ import '../../canvas/reference_capture.dart';
 import 'canvas_search_overlay.dart';
 import 'reference_details_dialog.dart';
 import '../../canvas/uml.dart';
+import '../../canvas/uml_interaction.dart';
+import 'uml_interaction_dialog.dart';
 import '../../canvas/diagram_reference.dart';
 import 'uml_dialog.dart';
 import 'research_diagram_dialog.dart';
@@ -199,6 +203,7 @@ class CanvasEditor extends StatefulWidget {
 }
 
 class _CanvasEditorState extends State<CanvasEditor> {
+  bool _laserMode = false;
   final _captureSurface = GlobalKey();
   Future<void> _editReferenceDetails() async {
     if (_readOnly || _selection.length != 1) return;
@@ -298,9 +303,12 @@ class _CanvasEditorState extends State<CanvasEditor> {
   CanvasBounds? _region;
   List<CanvasPoint>? _lassoPoints;
   CanvasElement? _preview;
+  bool _inkPreviewDirty = false;
   final List<Map<String, dynamic>> _ink = [];
   String? _editingId;
   int? _pointer;
+  PointerDeviceKind? _pointerKind;
+  _Tool? _stylusToolBeforeOverride;
   bool _panning = false;
   bool _resizing = false;
   bool? _endpointStart;
@@ -355,6 +363,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
   Duration _strokeStart = Duration.zero;
   CanvasImageCache? _images;
   final CanvasTextCache _textCache = CanvasTextCache();
+  final CanvasInkCache _inkCache = CanvasInkCache(rasterizeSavedInk: true);
   final CanvasPictureCache _minimapCache = CanvasPictureCache();
   String? _hoveredCardId;
   Timer? _cardHoverTimer;
@@ -445,9 +454,12 @@ class _CanvasEditorState extends State<CanvasEditor> {
         children: [
           SimpleDialogOption(
             onPressed: () => Navigator.pop(ctx, 'tasks'),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.check_box_outlined, color: Color(0xFF3B82F6)),
+                Icon(
+                  Icons.check_box_outlined,
+                  color: OrbitColors.of(context).accent,
+                ),
                 SizedBox(width: 12),
                 Text('Open Tasks View'),
               ],
@@ -455,9 +467,12 @@ class _CanvasEditorState extends State<CanvasEditor> {
           ),
           SimpleDialogOption(
             onPressed: () => Navigator.pop(ctx, 'notes'),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.article_outlined, color: Color(0xFF8B5CF6)),
+                Icon(
+                  Icons.article_outlined,
+                  color: OrbitColors.of(context).secondary,
+                ),
                 SizedBox(width: 12),
                 Text('Recent Notes View'),
               ],
@@ -465,9 +480,9 @@ class _CanvasEditorState extends State<CanvasEditor> {
           ),
           SimpleDialogOption(
             onPressed: () => Navigator.pop(ctx, 'files'),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.attach_file, color: Color(0xFFF59E0B)),
+                Icon(Icons.attach_file, color: OrbitColors.of(context).warning),
                 SizedBox(width: 12),
                 Text('Attachments & Files View'),
               ],
@@ -606,6 +621,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.canvasId != widget.canvasId ||
         oldWidget.readOnly != widget.readOnly) {
+      _laserMode = false;
       _interactionEpoch++;
       _clipboardPasteRequest++;
     }
@@ -644,6 +660,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
       }
     }
     if (oldWidget.canvasId != widget.canvasId) {
+      _inkCache.clear();
       _history = CanvasHistory(CanvasScene.fromJson(widget.data));
       _camera = CanvasCamera.fromJson(widget.camera);
       _backgroundStyle = widget.data['backgroundStyle'] as String? ?? 'dots';
@@ -683,6 +700,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _titleFocus.dispose();
     _images?.dispose();
     _textCache.dispose();
+    _inkCache.dispose();
     _minimapCache.dispose();
     _focus.dispose();
     _text.dispose();
@@ -784,6 +802,14 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   void _down(PointerDownEvent event) {
+    if (_laserMode) return;
+    // A palm may generate multiple touch contacts while a pen is captured.
+    // They must not promote to a pinch and roll back the pen transaction.
+    if (event.kind == PointerDeviceKind.touch &&
+        (_pointerKind == PointerDeviceKind.stylus ||
+            _pointerKind == PointerDeviceKind.invertedStylus)) {
+      return;
+    }
     if (event.kind == PointerDeviceKind.touch) {
       _touchPointers[event.pointer] = event.localPosition;
       if (_touchPointers.length >= 2) {
@@ -792,7 +818,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
         _startCamera = _camera;
         _touchPointers.addAll(touches);
         _inMultiTouch = true;
-        if (_preview != null && _preview!.type == 'ink') {
+        if (_ink.isNotEmpty) {
           _preview = null;
           _ink.clear();
         }
@@ -816,6 +842,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
       return;
     }
     _pointer = event.pointer;
+    _pointerKind = event.kind;
     _gestureSelection = {..._selection};
     _start = _world(event.localPosition);
     _lastScreen = _point(event.localPosition);
@@ -823,10 +850,13 @@ class _CanvasEditorState extends State<CanvasEditor> {
     if (event.kind == PointerDeviceKind.invertedStylus ||
         (event.kind == PointerDeviceKind.stylus &&
             event.buttons == kSecondaryMouseButton)) {
+      _stylusToolBeforeOverride = _tool;
       _tool = _Tool.eraser;
     } else if (event.kind == PointerDeviceKind.stylus &&
         _tool == _Tool.select) {
-      _setTool(_Tool.pen);
+      // This is already the new pointer transaction. _setTool cancels capture,
+      // so using it here would silently drop the first pen stroke.
+      _tool = _Tool.pen;
     }
     _panning =
         _readOnly ||
@@ -986,6 +1016,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   void _move(PointerMoveEvent event) {
+    if (_laserMode) return;
     if (event.kind == PointerDeviceKind.touch &&
         _touchPointers.containsKey(event.pointer)) {
       _touchPointers[event.pointer] = event.localPosition;
@@ -1250,7 +1281,12 @@ class _CanvasEditorState extends State<CanvasEditor> {
     setState(() {});
   }
 
-  void _sample(Offset offset, double pressure, Duration time) {
+  void _sample(
+    Offset offset,
+    double pressure,
+    Duration time, {
+    bool force = false,
+  }) {
     final point = _world(offset);
     final isStraight = _shift || _rulerMode;
     if (isStraight) {
@@ -1273,7 +1309,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
         });
       }
     } else {
-      if (_ink.isNotEmpty) {
+      if (_ink.isNotEmpty && !force) {
         final last = _ink.last;
         if ((CanvasPoint(last['x'] as double, last['y'] as double) - point)
                 .length <
@@ -1288,6 +1324,13 @@ class _CanvasEditorState extends State<CanvasEditor> {
         'timeMs': (time - _strokeStart).inMilliseconds,
       });
     }
+    _inkPreviewDirty = true;
+  }
+
+  CanvasElement? get _framePreview {
+    if (!_inkPreviewDirty) return _preview;
+    _inkPreviewDirty = false;
+    if (_ink.isEmpty) return _preview;
     final isHighlighter = _tool == _Tool.highlighter;
     final strokeWidth = isHighlighter ? 22.0 : _penStrokeWidth;
     final penStyle = isHighlighter ? 'highlighter' : _penStyle;
@@ -1304,6 +1347,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
       'penStyle': penStyle,
       'isHighlighter': isHighlighter,
     });
+    return _preview;
   }
 
   void _erase(CanvasPoint point) {
@@ -1325,12 +1369,14 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   void _up(PointerUpEvent event) {
+    if (_laserMode) return;
     if (event.kind == PointerDeviceKind.touch) {
       _touchPointers.remove(event.pointer);
       if (_inMultiTouch) {
         if (_touchPointers.length < 2) {
           _inMultiTouch = false;
           _pointer = null;
+          _pointerKind = null;
           _start = null;
           _lastScreen = null;
           _panning = false;
@@ -1401,13 +1447,29 @@ class _CanvasEditorState extends State<CanvasEditor> {
       }
     } else if ((_tool == _Tool.pen || _tool == _Tool.highlighter) &&
         _ink.isNotEmpty) {
+      // Pointer-up may contain the only final position. Release pressure is
+      // commonly zero, so retain the last measured pressure for this endpoint.
+      final last = _ink.last;
+      if (last['x'] != point.x || last['y'] != point.y) {
+        _sample(
+          event.localPosition,
+          (last['pressure'] as num).toDouble(),
+          event.timeStamp,
+          force: true,
+        );
+      }
       final isHighlighter = _tool == _Tool.highlighter;
       final strokeWidth = isHighlighter ? 22.0 : _penStrokeWidth;
       final penStyle = isHighlighter ? 'highlighter' : _penStyle;
-      final minX = _ink.map((p) => p['x'] as double).reduce(math.min);
-      final minY = _ink.map((p) => p['y'] as double).reduce(math.min);
-      final maxX = _ink.map((p) => p['x'] as double).reduce(math.max);
-      final maxY = _ink.map((p) => p['y'] as double).reduce(math.max);
+      var minX = double.infinity, minY = double.infinity;
+      var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+      for (final sample in _ink) {
+        final x = sample['x'] as double, y = sample['y'] as double;
+        minX = math.min(minX, x);
+        minY = math.min(minY, y);
+        maxX = math.max(maxX, x);
+        maxY = math.max(maxY, y);
+      }
       final rawInkElement = CanvasElement({
         'id': _id(),
         'type': 'ink',
@@ -1500,10 +1562,14 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 _lastAutoRecognizedTime = null;
                 _lastAutoRecognizedStroke = null;
               }
+              _clearGesture();
+              _commit();
               return;
             }
           }
         } else {
+          _clearGesture();
+          _commit();
           return;
         }
       }
@@ -1694,14 +1760,20 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   void _clearGesture() {
+    if (_stylusToolBeforeOverride != null) {
+      _tool = _stylusToolBeforeOverride!;
+      _stylusToolBeforeOverride = null;
+    }
     _gestureSelection = null;
     _endpointStart = null;
     _pointer = null;
+    _pointerKind = null;
     _start = null;
     _lastScreen = null;
     _region = null;
     _lassoPoints = null;
     _preview = null;
+    _inkPreviewDirty = false;
     _ink.clear();
     _original.clear();
     _panning = false;
@@ -2259,9 +2331,13 @@ class _CanvasEditorState extends State<CanvasEditor> {
     final saved = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.sync_alt, size: 20, color: Color(0xFF8B5CF6)),
+            Icon(
+              Icons.sync_alt,
+              size: 20,
+              color: OrbitColors.of(context).secondary,
+            ),
             SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -2360,6 +2436,13 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   void _edit(CanvasElement element) {
+    if (isInteractionItem(element)) {
+      _editInteraction(
+        element: element,
+        sequence: umlLinkKind(element)?.sequence == true,
+      );
+      return;
+    }
     if (isUmlClass(element) || element.data['umlRelationship'] is String) {
       _editUml(element: element);
       return;
@@ -2677,6 +2760,13 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   KeyEventResult _key(FocusNode node, KeyEvent event) {
+    if (_laserMode) {
+      if (event is KeyDownEvent &&
+          event.logicalKey == LogicalKeyboardKey.escape) {
+        setState(() => _laserMode = false);
+      }
+      return KeyEventResult.handled;
+    }
     if (_titleFocus.hasFocus) {
       return KeyEventResult.ignored;
     }
@@ -3989,6 +4079,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
 
                             if (format == 'png') {
                               final bytes = await renderCanvasToPng(
+                                semanticColors: OrbitColors.of(context),
                                 scene: _scene,
                                 colors: colors,
                                 backgroundStyle: _backgroundStyle,
@@ -4129,6 +4220,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
             const PopupMenuItem(
               value: 'connect_uml',
               child: Text('Connect UML classes…'),
+            ),
+            const PopupMenuItem(
+              value: 'interaction_tools',
+              child: Text('Use-case & sequence diagrams…'),
             ),
             const PopupMenuItem(
               value: 'add_text',
@@ -4295,6 +4390,8 @@ class _CanvasEditorState extends State<CanvasEditor> {
           _editUml(at: worldPos);
         case 'connect_uml':
           _editUml(relationship: true);
+        case 'interaction_tools':
+          _showInteractionTools(at: worldPos);
         case 'add_text':
           _addText(at: worldPos);
         case 'add_sticky':
@@ -4705,7 +4802,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
             ),
         const PopupMenuItem(value: 'copy', child: Text('Copy placements')),
         if (_selection.isNotEmpty && !_readOnly)
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'duplicate',
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -4714,7 +4811,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 SizedBox(width: 16),
                 Text(
                   'Ctrl+D',
-                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: OrbitColors.of(context).muted,
+                  ),
                 ),
               ],
             ),
@@ -5209,8 +5309,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
         .whereType<CanvasElement>()
         .toList();
     if (selectedElements.isEmpty) return;
-    if (selectedElements.any(isUmlClass) &&
-        selectedElements.every((e) => isUmlClass(e) || isConnectorElement(e))) {
+    if (selectedElements.any((e) => isUmlClass(e) || isInteractionNode(e)) &&
+        selectedElements.every(
+          (e) => isUmlClass(e) || isInteractionNode(e) || isConnectorElement(e),
+        )) {
       _exportUmlDiagram();
       return;
     }
@@ -5715,7 +5817,13 @@ class _CanvasEditorState extends State<CanvasEditor> {
                                 _up(event);
                                 _sendPresence(event.localPosition);
                               },
-                              onPointerCancel: (_) => _cancelGesture(),
+                              onPointerCancel: (event) {
+                                _touchPointers.remove(event.pointer);
+                                if (event.pointer == _pointer ||
+                                    _inMultiTouch) {
+                                  _cancelGesture();
+                                }
+                              },
                               onPointerPanZoomStart: (_) {
                                 _finishText();
                               },
@@ -5763,84 +5871,98 @@ class _CanvasEditorState extends State<CanvasEditor> {
                                       });
                                 }
                               },
-                              child: GestureDetector(
-                                onDoubleTap: () {},
-                                onDoubleTapDown: (details) {
-                                  final hit = _scene.hit(
-                                    _world(details.localPosition),
-                                    tolerance: 6 / _camera.zoom,
-                                    includeLocked: true,
-                                  );
-                                  if (hit != null) _edit(hit);
-                                },
-                                child: CustomPaint(
-                                  key: _captureSurface,
-                                  painter: OrbitCanvasPainter(
-                                    textCache: _textCache,
-                                    images: _images?.images ?? const {},
-                                    scene: _scene,
-                                    camera: _camera,
-                                    selection: Set.of(_selection),
-                                    objects: _objects,
-                                    colors: Theme.of(context).colorScheme,
-                                    region: _region,
-                                    lassoPoints: _lassoPoints,
-                                    preview: _preview,
-                                    editingId: _editingId,
-                                    guides: _activeGuides,
-                                    backgroundStyle: _backgroundStyle,
-                                    hoveredAnchorElementId:
-                                        _hoveredAnchorElementId,
-                                    connectingStartElementId:
-                                        _connectingStartId,
-                                    fontFamily: widget.fontFamily,
-                                    searchMatchIds: _searchResults
-                                        .map((r) => r.elementId)
-                                        .toSet(),
-                                    activeSearchMatchId:
-                                        _searchResults.isNotEmpty &&
-                                            _activeSearchIndex >= 0 &&
-                                            _activeSearchIndex <
-                                                _searchResults.length
-                                        ? _searchResults[_activeSearchIndex]
-                                              .elementId
-                                        : null,
-                                  ),
-                                  child: Stack(
-                                    children: [
-                                      const SizedBox.expand(),
-                                      Positioned.fill(
-                                        child: widget.remotePresence == null
-                                            ? CanvasPresenceOverlay(
-                                                scene: _scene,
-                                                camera: _camera,
-                                                peers: widget.remoteCursors,
-                                              )
-                                            : ValueListenableBuilder<
-                                                List<Map<String, dynamic>>
-                                              >(
-                                                valueListenable:
-                                                    widget.remotePresence!,
-                                                builder: (_, peers, _) =>
-                                                    CanvasPresenceOverlay(
-                                                      scene: _scene,
-                                                      camera: _camera,
-                                                      peers: peers
-                                                          .where(
-                                                            (p) =>
-                                                                p['objectId'] ==
-                                                                    widget
-                                                                        .canvasId &&
-                                                                p['space'] ==
-                                                                    'canvas',
-                                                          )
-                                                          .toList(),
-                                                    ),
-                                              ),
+                              child: Stack(
+                                children: [
+                                  GestureDetector(
+                                    onDoubleTap: () {},
+                                    onDoubleTapDown: (details) {
+                                      final hit = _scene.hit(
+                                        _world(details.localPosition),
+                                        tolerance: 6 / _camera.zoom,
+                                        includeLocked: true,
+                                      );
+                                      if (hit != null) _edit(hit);
+                                    },
+                                    child: CustomPaint(
+                                      key: _captureSurface,
+                                      painter: OrbitCanvasPainter(
+                                        semanticColors: OrbitColors.of(context),
+                                        textCache: _textCache,
+                                        images: _images?.images ?? const {},
+                                        scene: _scene,
+                                        camera: _camera,
+                                        selection: Set.of(_selection),
+                                        objects: _objects,
+                                        colors: Theme.of(context).colorScheme,
+                                        region: _region,
+                                        lassoPoints: _lassoPoints,
+                                        preview: _framePreview,
+                                        inkCache: _inkCache,
+                                        devicePixelRatio:
+                                            MediaQuery.devicePixelRatioOf(
+                                              context,
+                                            ),
+                                        editingId: _editingId,
+                                        guides: _activeGuides,
+                                        backgroundStyle: _backgroundStyle,
+                                        hoveredAnchorElementId:
+                                            _hoveredAnchorElementId,
+                                        connectingStartElementId:
+                                            _connectingStartId,
+                                        fontFamily: widget.fontFamily,
+                                        searchMatchIds: _searchResults
+                                            .map((r) => r.elementId)
+                                            .toSet(),
+                                        activeSearchMatchId:
+                                            _searchResults.isNotEmpty &&
+                                                _activeSearchIndex >= 0 &&
+                                                _activeSearchIndex <
+                                                    _searchResults.length
+                                            ? _searchResults[_activeSearchIndex]
+                                                  .elementId
+                                            : null,
                                       ),
-                                    ],
+                                      child: Stack(
+                                        children: [
+                                          const SizedBox.expand(),
+                                          Positioned.fill(
+                                            child: widget.remotePresence == null
+                                                ? CanvasPresenceOverlay(
+                                                    scene: _scene,
+                                                    camera: _camera,
+                                                    peers: widget.remoteCursors,
+                                                  )
+                                                : ValueListenableBuilder<
+                                                    List<Map<String, dynamic>>
+                                                  >(
+                                                    valueListenable:
+                                                        widget.remotePresence!,
+                                                    builder: (_, peers, _) =>
+                                                        CanvasPresenceOverlay(
+                                                          scene: _scene,
+                                                          camera: _camera,
+                                                          peers: peers
+                                                              .where(
+                                                                (p) =>
+                                                                    p['objectId'] ==
+                                                                        widget
+                                                                            .canvasId &&
+                                                                    p['space'] ==
+                                                                        'canvas',
+                                                              )
+                                                              .toList(),
+                                                        ),
+                                                  ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  if (_laserMode)
+                                    const Positioned.fill(
+                                      child: OrbitLaserSurface(),
+                                    ),
+                                ],
                               ),
                             ),
                           ),
@@ -6603,6 +6725,9 @@ class _CanvasEditorState extends State<CanvasEditor> {
                                       onPanEnd: (_) => _cameraChanged(),
                                       child: CustomPaint(
                                         painter: CanvasMinimapPainter(
+                                          semanticColors: OrbitColors.of(
+                                            context,
+                                          ),
                                           pictureCache: _minimapCache,
                                           scene: _scene,
                                           camera: _camera,
@@ -8280,6 +8405,248 @@ class _CanvasEditorState extends State<CanvasEditor> {
 
   bool _presentationMode = false;
 
+  List<PopupMenuEntry<String>> _interactionItems() => [
+    const PopupMenuItem(enabled: false, child: Text('USE-CASE DIAGRAM')),
+    for (final kind in [
+      UmlNodeKind.actor,
+      UmlNodeKind.useCase,
+      UmlNodeKind.system,
+      UmlNodeKind.note,
+    ])
+      PopupMenuItem(
+        value: kind.name,
+        child: Text('New ${kind.label.toLowerCase()}…'),
+      ),
+    const PopupMenuItem(
+      value: 'useLink',
+      child: Text('Connect use-case items…'),
+    ),
+    const PopupMenuItem(
+      value: 'useStarter',
+      child: Text('Insert use-case starter'),
+    ),
+    const PopupMenuDivider(),
+    const PopupMenuItem(enabled: false, child: Text('SEQUENCE DIAGRAM')),
+    for (final kind in [
+      UmlNodeKind.lifeline,
+      UmlNodeKind.activation,
+      UmlNodeKind.fragment,
+    ])
+      PopupMenuItem(
+        value: kind.name,
+        child: Text('New ${kind.label.toLowerCase()}…'),
+      ),
+    const PopupMenuItem(
+      value: 'sequenceLink',
+      child: Text('Connect sequence message…'),
+    ),
+    const PopupMenuItem(
+      value: 'sequenceStarter',
+      child: Text('Insert sequence starter'),
+    ),
+    if (_selection.length == 1 &&
+        _scene[_selection.single] != null &&
+        isInteractionItem(_scene[_selection.single]!)) ...[
+      const PopupMenuDivider(),
+      const PopupMenuItem(
+        value: 'editInteraction',
+        child: Text('Edit selected diagram item…'),
+      ),
+    ],
+  ];
+
+  Future<void> _showInteractionTools({CanvasPoint? at}) async {
+    if (_readOnly) return;
+    final scene = _scene, revision = _scene.revision, epoch = _interactionEpoch;
+    final action = await showDialog<String>(
+      context: context,
+      builder: (dialog) => OrbitDialog(
+        title: const Text('Use-case & sequence diagrams'),
+        content: SizedBox(
+          width: 440,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final item in _interactionItems())
+                  if (item is PopupMenuItem<String>)
+                    ListTile(
+                      title: item.child,
+                      enabled: item.enabled,
+                      onTap: item.enabled
+                          ? () => Navigator.pop(dialog, item.value)
+                          : null,
+                    )
+                  else
+                    const Divider(),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialog),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted ||
+        action == null ||
+        _readOnly ||
+        !identical(scene, _scene) ||
+        revision != _scene.revision ||
+        epoch != _interactionEpoch) {
+      return;
+    }
+    _interactionAction(action, at: at);
+  }
+
+  void _interactionAction(String action, {CanvasPoint? at}) {
+    if (_readOnly) return;
+    switch (action) {
+      case 'useLink':
+        _editInteraction(at: at, link: true);
+      case 'sequenceLink':
+        _editInteraction(at: at, link: true, sequence: true);
+      case 'editInteraction':
+        final e = _selection.length == 1 ? _scene[_selection.single] : null;
+        if (e != null && isInteractionItem(e)) {
+          _editInteraction(
+            element: e,
+            sequence: umlLinkKind(e)?.sequence == true,
+          );
+        }
+      case 'useStarter':
+        _insertInteractionStarter(false);
+      case 'sequenceStarter':
+        _insertInteractionStarter(true);
+      default:
+        final kind = UmlNodeKind.values
+            .where((v) => v.name == action)
+            .firstOrNull;
+        if (kind != null) _editInteraction(kind: kind, at: at);
+    }
+  }
+
+  Future<void> _editInteraction({
+    CanvasElement? element,
+    UmlNodeKind? kind,
+    bool link = false,
+    bool sequence = false,
+    CanvasPoint? at,
+  }) async {
+    if (_readOnly || element?.locked == true) return;
+    _finishText();
+    final scene = _scene,
+        revision = _scene.revision,
+        owner = widget.canvasId,
+        epoch = _interactionEpoch;
+    final nodes = scene.elementsInOrder
+        .where(
+          (e) =>
+              !e.hidden &&
+              isInteractionNode(e) &&
+              (!sequence || umlNodeKind(e) == UmlNodeKind.lifeline),
+        )
+        .toList();
+    if (link && nodes.isEmpty) {
+      _notice(
+        sequence
+            ? 'Add a lifeline before connecting messages.'
+            : 'Add actors and use cases before connecting them.',
+      );
+      return;
+    }
+    final selected = nodes.where((e) => _selection.contains(e.id)).toList();
+    final original =
+        element ??
+        (link
+            ? CanvasElement({
+                'id': _id(),
+                'type': 'connector',
+                'strokeWidth': 1.5,
+                'startId': (selected.firstOrNull ?? nodes.first).id,
+                'endId': selected.length > 1 ? selected[1].id : null,
+              })
+            : newInteractionNode(
+                _id(),
+                kind!,
+                at ??
+                    _camera.toWorld(
+                      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+                    ),
+              ));
+    final patch = await showInteractionEditor(
+      context,
+      original,
+      nodes,
+      sequence: sequence,
+      creating: element == null,
+    );
+    if (!mounted || patch == null) return;
+    if (_readOnly ||
+        owner != widget.canvasId ||
+        epoch != _interactionEpoch ||
+        !identical(scene, _scene) ||
+        scene.revision != revision ||
+        element != null && !identical(element, scene[element.id])) {
+      _notice(
+        'The Canvas changed. Reopen the diagram editor to keep the latest changes.',
+      );
+      return;
+    }
+    var result = original.copy(patch);
+    if (isConnectorElement(result)) {
+      final points = resolveConnectorEndpoints(result, scene);
+      result = result.copy(connectorEndpointData(points.start, points.end));
+    }
+    _history.put(result);
+    if (umlLinkKind(result) == UmlLinkKind.destroy) {
+      final target = _scene[result.endId!];
+      if (target != null && !target.locked) {
+        _history.put(
+          target.copy({
+            'umlNode': {...umlNodeDetails(target), 'destroyed': true},
+          }),
+        );
+      }
+    }
+    if ([
+          UmlNodeKind.system,
+          UmlNodeKind.fragment,
+        ].contains(umlNodeKind(result)) &&
+        element == null) {
+      _scene.sendToBack(result.id);
+    }
+    _selection
+      ..clear()
+      ..add(result.id);
+    _commit();
+    _focus.requestFocus();
+  }
+
+  void _insertInteractionStarter(bool sequence) {
+    if (_readOnly) return;
+    _finishText();
+    final at = _camera.toWorld(
+      CanvasPoint(_viewport.width / 2, _viewport.height / 2),
+    );
+    final elements = sequence
+        ? sequenceStarter(_id, at)
+        : useCaseStarter(_id, at);
+    for (final e in elements) {
+      _history.put(e);
+    }
+    _selection
+      ..clear()
+      ..addAll(elements.map((e) => e.id));
+    _commit();
+    _fit(selectionOnly: true);
+    _focus.requestFocus();
+  }
+
   Future<void> _editUml({
     CanvasElement? element,
     bool relationship = false,
@@ -8999,6 +9366,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
                     child: Text('New UML class…'),
                   ),
                   const PopupMenuItem(
+                    value: 'interaction_tools',
+                    child: Text('Use-case & sequence diagrams…'),
+                  ),
+                  const PopupMenuItem(
                     value: 'relationship',
                     child: Text('Connect UML classes…'),
                   ),
@@ -9034,6 +9405,8 @@ class _CanvasEditorState extends State<CanvasEditor> {
                   switch (action) {
                     case 'class':
                       _editUml();
+                    case 'interaction_tools':
+                      _showInteractionTools();
                     case 'relationship':
                       _editUml(relationship: true);
                     case 'edit':
@@ -10049,6 +10422,52 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 onPressed: _showElementList,
                 icon: const Icon(Icons.layers_outlined, size: 20),
               ),
+              PopupMenuButton<String>(
+                tooltip: 'Canvas motion & presentation',
+                icon: Icon(
+                  _laserMode ? Icons.gesture : Icons.slow_motion_video,
+                  size: 21,
+                ),
+                itemBuilder: (_) => [
+                  const PopupMenuItem(
+                    value: 'replay',
+                    child: Text('Replay board or selection…'),
+                  ),
+                  PopupMenuItem(
+                    value: 'laser',
+                    child: Text(
+                      _laserMode
+                          ? 'Exit laser pointer'
+                          : 'Temporary laser pointer',
+                    ),
+                  ),
+                ],
+                onSelected: (action) {
+                  _cancelGesture();
+                  _finishText();
+                  if (action == 'laser') {
+                    setState(() => _laserMode = !_laserMode);
+                  } else {
+                    setState(() => _laserMode = false);
+                    showCanvasPresentation(
+                      context,
+                      scene: _scene,
+                      objects: _objects,
+                      images: _images?.images ?? const {},
+                      selection: _selection,
+                      fontFamily: widget.fontFamily,
+                      background: _backgroundStyle,
+                    );
+                  }
+                },
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'Use-case and sequence diagrams',
+                enabled: !_readOnly,
+                icon: const Icon(Icons.account_tree_outlined, size: 21),
+                itemBuilder: (_) => _interactionItems(),
+                onSelected: _interactionAction,
+              ),
               IconButton(
                 tooltip: 'Canvas template library',
                 onPressed: _readOnly ? null : _showStarterLibrary,
@@ -10059,7 +10478,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                   tooltip: 'Layer order',
                   enabled: _selection.isNotEmpty && !_readOnly,
                   icon: const Icon(Icons.flip_to_front_outlined, size: 20),
-                  itemBuilder: (_) => const [
+                  itemBuilder: (_) => [
                     PopupMenuItem(
                       value: 'front',
                       child: Row(
@@ -10069,7 +10488,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
                           SizedBox(width: 12),
                           Text(
                             'Shift+]',
-                            style: TextStyle(fontSize: 11, color: Colors.grey),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: OrbitColors.of(context).muted,
+                            ),
                           ),
                         ],
                       ),
@@ -10083,7 +10505,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
                           SizedBox(width: 12),
                           Text(
                             ']',
-                            style: TextStyle(fontSize: 11, color: Colors.grey),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: OrbitColors.of(context).muted,
+                            ),
                           ),
                         ],
                       ),
@@ -10097,7 +10522,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
                           SizedBox(width: 12),
                           Text(
                             '[',
-                            style: TextStyle(fontSize: 11, color: Colors.grey),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: OrbitColors.of(context).muted,
+                            ),
                           ),
                         ],
                       ),
@@ -10111,7 +10539,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
                           SizedBox(width: 12),
                           Text(
                             'Shift+[',
-                            style: TextStyle(fontSize: 11, color: Colors.grey),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: OrbitColors.of(context).muted,
+                            ),
                           ),
                         ],
                       ),
@@ -10183,6 +10614,7 @@ class CanvasMinimapPainter extends CustomPainter {
     required this.camera,
     required this.viewportSize,
     required this.colors,
+    this.semanticColors,
     this.searchMatchIds = const {},
     this.activeSearchMatchId,
     this.pictureCache,
@@ -10194,6 +10626,9 @@ class CanvasMinimapPainter extends CustomPainter {
   final CanvasCamera camera;
   final Size viewportSize;
   final ColorScheme colors;
+  final OrbitColors? semanticColors;
+  Color get _warning => semanticColors?.warning ?? colors.secondary;
+  Color get _success => semanticColors?.success ?? colors.tertiary;
   final Set<String> searchMatchIds;
   final String? activeSearchMatchId;
 
@@ -10288,23 +10723,21 @@ class CanvasMinimapPainter extends CustomPainter {
             element.type == 'card' &&
             element.data['presentation'] == 'transclusion';
         if (isTransclusion) {
-          elColor = const Color(
-            0xFF8B5CF6,
-          ); // Vivid violet for live transclusions
+          elColor = colors.secondary;
         } else if (element.type == 'card') {
-          elColor = const Color(0xFF3B82F6); // Blue for standard cards
+          elColor = colors.primary; // Blue for standard cards
         } else if (element.type == 'ink' || element.type == 'stroke') {
-          elColor = const Color(0xFFA855F7); // Purple for ink
+          elColor = colors.secondary; // Purple for ink
         } else if (element.type == 'frame' || element.type == 'section') {
-          elColor = const Color(0xFFF59E0B); // Amber for frames
+          elColor = _warning; // Amber for frames
           style = PaintingStyle.stroke;
           strokeWidth = 1.0;
         } else if (element.type == 'rectangle' ||
             element.type == 'ellipse' ||
             element.type == 'diamond') {
-          elColor = const Color(0xFF10B981); // Emerald for shapes
+          elColor = _success; // Emerald for shapes
         } else if (element.type == 'audio') {
-          elColor = const Color(0xFF06B6D4); // Cyan for audio
+          elColor = colors.secondary; // Cyan for audio
         } else {
           elColor = Color(element.color);
         }
@@ -10335,10 +10768,10 @@ class CanvasMinimapPainter extends CustomPainter {
       if (searchMatchIds.isNotEmpty) {
         final radarDotPaint = Paint()
           ..color =
-              const Color(0xFFF59E0B) // Amber radar ping
+              _warning // Amber radar ping
           ..style = PaintingStyle.fill;
         final radarGlowPaint = Paint()
-          ..color = const Color(0xFFF59E0B).withValues(alpha: 0.35)
+          ..color = _warning.withValues(alpha: 0.35)
           ..style = PaintingStyle.fill;
 
         for (final element in scene.elements) {
@@ -10361,7 +10794,7 @@ class CanvasMinimapPainter extends CustomPainter {
           // Active targeting ring
           if (isActive) {
             final targetPaint = Paint()
-              ..color = const Color(0xFFF59E0B)
+              ..color = _warning
               ..style = PaintingStyle.stroke
               ..strokeWidth = 1.4;
             canvas.drawCircle(pingCenter, 7.5, targetPaint);
@@ -10382,6 +10815,7 @@ class CanvasMinimapPainter extends CustomPainter {
         offsetX,
         offsetY,
         colors,
+        semanticColors,
         (searchMatchIds.toList()..sort())
             .map((id) => '${id.length}:$id')
             .join(),
@@ -10450,6 +10884,7 @@ class CanvasMinimapPainter extends CustomPainter {
       camera.zoom != oldDelegate.camera.zoom ||
       viewportSize != oldDelegate.viewportSize ||
       colors != oldDelegate.colors ||
+      semanticColors != oldDelegate.semanticColors ||
       !setEquals(searchMatchIds, oldDelegate.searchMatchIds) ||
       activeSearchMatchId != oldDelegate.activeSearchMatchId;
 }
@@ -10660,15 +11095,15 @@ class CanvasCardPreviewTooltip extends StatelessWidget {
                                                       .description_outlined)))),
                     size: 16,
                     color: isDone
-                        ? const Color(0xFF10B981)
+                        ? OrbitColors.of(context).success
                         : (isPdfQuote
                               ? (pdfSource['color'] is int
                                     ? Color(pdfSource['color'] as int)
-                                    : const Color(0xFFEF4444))
+                                    : OrbitColors.of(context).danger)
                               : (isPdf
-                                    ? const Color(0xFFEF4444)
+                                    ? OrbitColors.of(context).danger
                                     : (isDynamicView
-                                          ? const Color(0xFF3B82F6)
+                                          ? OrbitColors.of(context).accent
                                           : colors.primary))),
                   ),
                   const SizedBox(width: 6),
@@ -10700,9 +11135,9 @@ class CanvasCardPreviewTooltip extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.8,
                         color: isDone
-                            ? const Color(0xFF10B981)
+                            ? OrbitColors.of(context).success
                             : (isPdf
-                                  ? const Color(0xFFEF4444)
+                                  ? OrbitColors.of(context).danger
                                   : colors.onSurfaceVariant),
                       ),
                     ),
@@ -10913,7 +11348,7 @@ class CanvasCardPreviewTooltip extends StatelessWidget {
                                     fontSize: 12,
                                     fontWeight: FontWeight.w500,
                                     color: isDone
-                                        ? const Color(0xFF10B981)
+                                        ? OrbitColors.of(context).success
                                         : colors.onSurface,
                                   ),
                                 ),
@@ -11100,10 +11535,12 @@ class CanvasCardPreviewTooltip extends StatelessWidget {
                                         ),
                                         Text(
                                           '${(pct * 100).toInt()}%',
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontSize: 11,
                                             fontWeight: FontWeight.bold,
-                                            color: Color(0xFF3B82F6),
+                                            color: OrbitColors.of(
+                                              context,
+                                            ).accent,
                                           ),
                                         ),
                                       ],
@@ -11116,10 +11553,9 @@ class CanvasCardPreviewTooltip extends StatelessWidget {
                                         minHeight: 6,
                                         backgroundColor: colors.outlineVariant
                                             .withValues(alpha: 0.3),
-                                        valueColor:
-                                            const AlwaysStoppedAnimation(
-                                              Color(0xFF3B82F6),
-                                            ),
+                                        valueColor: AlwaysStoppedAnimation(
+                                          OrbitColors.of(context).accent,
+                                        ),
                                       ),
                                     ),
                                     const SizedBox(height: 6),
@@ -11140,7 +11576,9 @@ class CanvasCardPreviewTooltip extends StatelessWidget {
                                                           .radio_button_unchecked,
                                                 size: 14,
                                                 color: task.isCompleted
-                                                    ? const Color(0xFF10B981)
+                                                    ? OrbitColors.of(
+                                                        context,
+                                                      ).success
                                                     : colors.onSurfaceVariant,
                                               ),
                                               const SizedBox(width: 6),
@@ -11326,7 +11764,7 @@ class CanvasCardPreviewTooltip extends StatelessWidget {
                                 size: 14,
                                 color: isDone
                                     ? colors.onSurfaceVariant
-                                    : const Color(0xFF10B981),
+                                    : OrbitColors.of(context).success,
                               ),
                               label: Text(
                                 isDone ? 'Mark open' : 'Mark done',
@@ -11334,7 +11772,7 @@ class CanvasCardPreviewTooltip extends StatelessWidget {
                                   fontSize: 11,
                                   color: isDone
                                       ? colors.onSurfaceVariant
-                                      : const Color(0xFF10B981),
+                                      : OrbitColors.of(context).success,
                                 ),
                               ),
                             ),

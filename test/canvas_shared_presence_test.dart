@@ -13,6 +13,8 @@ import 'support/memory_store.dart';
 class SharedTransport extends http.BaseClient {
   final inner = http.Client();
   bool loseNextEdit = false;
+  bool loseNextCreation = false, loseNextChunk = false;
+  final chunkOffsets = <int>[];
   final presence = <Map>[];
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
@@ -20,6 +22,19 @@ class SharedTransport extends http.BaseClient {
       presence.add(jsonDecode(request.body) as Map);
     }
     final response = await inner.send(request);
+    if (request.method == 'PUT' && request.url.path.endsWith('/blob')) {
+      chunkOffsets.add(int.parse(request.url.queryParameters['offset']!));
+      if (loseNextChunk) {
+        loseNextChunk = false;
+        await response.stream.drain<void>();
+        throw http.ClientException('Synthetic interrupted chunk');
+      }
+    }
+    if (loseNextCreation && request.url.path.endsWith('/put')) {
+      loseNextCreation = false;
+      await response.stream.drain<void>();
+      throw http.ClientException('Synthetic lost creation acknowledgement');
+    }
     if (loseNextEdit && request.url.path.endsWith('/edit')) {
       loseNextEdit = false;
       await response.stream.drain<void>();

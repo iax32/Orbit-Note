@@ -497,7 +497,7 @@ class _IocTableViewState extends State<IocTableView> {
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w500,
                                   color: conf == 'Verified'
-                                      ? Colors.green.shade400
+                                      ? OrbitColors.of(context).success
                                       : colors.text,
                                 ),
                               ),

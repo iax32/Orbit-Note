@@ -1,6 +1,7 @@
 import 'geometry.dart';
 import 'scene.dart';
 import 'uml.dart';
+import 'uml_interaction.dart';
 import '../domain/object_reference.dart';
 import '../domain/document_anchors.dart';
 
@@ -225,6 +226,8 @@ CanvasSearchResult? _evaluateElementMatch({
   // 1. Check direct element text/url/label fields
   final directText = isUmlClass(element)
       ? UmlClass(element).searchableText
+      : isInteractionNode(element)
+      ? interactionSearchText(element)
       : [
           element.text,
           for (final key in [

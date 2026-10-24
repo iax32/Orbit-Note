@@ -1,3 +1,4 @@
+import '../../app/orbit_theme.dart';
 import 'package:flutter/material.dart';
 import '../../canvas/geometry.dart';
 import '../../canvas/scene.dart';
@@ -106,11 +107,7 @@ class CanvasPresenceOverlay extends StatelessWidget {
                       maxLines: 1,
                       style: TextStyle(
                         fontSize: 11,
-                        color:
-                            ThemeData.estimateBrightnessForColor(color) ==
-                                Brightness.dark
-                            ? Colors.white
-                            : Colors.black,
+                        color: OrbitContrast.inkOn(color),
                       ),
                     ),
                   ),

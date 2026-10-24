@@ -529,7 +529,7 @@ class GameDashboardView extends StatelessWidget {
                       value: '$completedTasks / $totalTasks',
                       sub: '$taskProgressPercent% complete',
                       icon: Icons.check_circle_outline,
-                      color: Colors.teal,
+                      color: OrbitColors.of(context).success,
                       progress: totalTasks > 0
                           ? completedTasks / totalTasks
                           : 0,
@@ -543,7 +543,7 @@ class GameDashboardView extends StatelessWidget {
                           ? '${((completedPoints * 100) ~/ totalPoints)}% delivered'
                           : 'No points planned',
                       icon: Icons.speed,
-                      color: Colors.blueAccent,
+                      color: OrbitColors.of(context).accent,
                       progress: totalPoints > 0
                           ? completedPoints / totalPoints
                           : 0,
@@ -558,8 +558,8 @@ class GameDashboardView extends StatelessWidget {
                           : 'Require attention',
                       icon: Icons.lock_outline,
                       color: blockedTasks.isEmpty
-                          ? Colors.grey
-                          : Colors.amber.shade700,
+                          ? OrbitColors.of(context).muted
+                          : OrbitColors.of(context).warning,
                       width: cardWidth > 200 ? cardWidth : double.infinity,
                       colors: colors,
                     ),
@@ -573,10 +573,10 @@ class GameDashboardView extends StatelessWidget {
                                 : 'No critical bugs'),
                       icon: Icons.bug_report,
                       color: blockerBugs.isNotEmpty || criticalBugs.isNotEmpty
-                          ? Colors.redAccent
+                          ? OrbitColors.of(context).danger
                           : (openBugs.isEmpty
-                                ? Colors.teal
-                                : Colors.orangeAccent),
+                                ? OrbitColors.of(context).success
+                                : OrbitColors.of(context).warning),
                       width: cardWidth > 200 ? cardWidth : double.infinity,
                       colors: colors,
                     ),
@@ -674,7 +674,7 @@ class GameDashboardView extends StatelessWidget {
                                 Icon(
                                   Icons.lock_outline,
                                   size: 16,
-                                  color: Colors.amber.shade700,
+                                  color: OrbitColors.of(context).warning,
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
@@ -710,7 +710,9 @@ class GameDashboardView extends StatelessWidget {
                                         Icon(
                                           Icons.lock,
                                           size: 12,
-                                          color: Colors.amber.shade700,
+                                          color: OrbitColors.of(
+                                            context,
+                                          ).warning,
                                         ),
                                         const SizedBox(width: 6),
                                         Expanded(
@@ -757,7 +759,7 @@ class GameDashboardView extends StatelessWidget {
                                 Icon(
                                   Icons.bug_report_outlined,
                                   size: 16,
-                                  color: Colors.redAccent,
+                                  color: OrbitColors.of(context).danger,
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
@@ -777,22 +779,22 @@ class GameDashboardView extends StatelessWidget {
                                 _severityBadge(
                                   'Blocker',
                                   blockerBugs.length,
-                                  Colors.red.shade900,
+                                  OrbitColors.of(context).danger,
                                 ),
                                 _severityBadge(
                                   'Critical',
                                   criticalBugs.length,
-                                  Colors.red.shade600,
+                                  OrbitColors.of(context).danger,
                                 ),
                                 _severityBadge(
                                   'Major',
                                   majorBugs.length,
-                                  Colors.orange.shade800,
+                                  OrbitColors.of(context).warning,
                                 ),
                                 _severityBadge(
                                   'Minor',
                                   minorBugs.length,
-                                  Colors.blue.shade600,
+                                  OrbitColors.of(context).accent,
                                 ),
                               ],
                             ),

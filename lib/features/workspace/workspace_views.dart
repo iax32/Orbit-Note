@@ -1,3 +1,4 @@
+export 'settings_view.dart';
 import 'life_workspace.dart';
 import '../../domain/course_progress.dart';
 import 'dart:async';
@@ -16,15 +17,10 @@ import '../../domain/object_discovery.dart';
 export 'search_view.dart';
 import '../../domain/universal_object.dart';
 import 'calendar_view.dart';
-import 'google_drive_settings.dart';
 import 'inbox_review_dialog.dart';
-import 'focus_timer.dart';
-import 'theme_color_settings.dart';
-import 'theme_interchange_dialog.dart';
 import 'heatmap_view.dart';
 import 'productivity_hub.dart';
 import 'task_planning_panel.dart';
-import '../notes/note_typography.dart';
 
 IconData objectIcon(String type) => switch (type) {
   'orbit.canvas' => Icons.dashboard_outlined,
@@ -1365,7 +1361,9 @@ status: open
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.amber.shade900.withValues(alpha: .2),
+                        color: OrbitColors.of(
+                          context,
+                        ).warning.withValues(alpha: .2),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Row(
@@ -1374,14 +1372,14 @@ status: open
                           Icon(
                             Icons.lock_outline,
                             size: 11,
-                            color: Colors.amber.shade400,
+                            color: OrbitColors.of(context).warning,
                           ),
                           const SizedBox(width: 3),
                           Text(
                             '$gBlocked Blocked',
                             style: TextStyle(
                               fontSize: 10.5,
-                              color: Colors.amber.shade300,
+                              color: OrbitColors.of(context).warning,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -1397,7 +1395,9 @@ status: open
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.red.shade900.withValues(alpha: .2),
+                        color: OrbitColors.of(
+                          context,
+                        ).danger.withValues(alpha: .2),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Row(
@@ -1406,14 +1406,14 @@ status: open
                           Icon(
                             Icons.bug_report,
                             size: 11,
-                            color: Colors.red.shade400,
+                            color: OrbitColors.of(context).danger,
                           ),
                           const SizedBox(width: 3),
                           Text(
                             '$gBugs Bugs',
                             style: TextStyle(
                               fontSize: 10.5,
-                              color: Colors.red.shade300,
+                              color: OrbitColors.of(context).danger,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -2940,13 +2940,15 @@ class _TaskRowState extends State<TaskRow> {
                         ),
                         decoration: BoxDecoration(
                           color: switch (priority) {
-                            'urgent' => Colors.redAccent.withValues(alpha: .15),
-                            'high' => Colors.orangeAccent.withValues(
-                              alpha: .15,
-                            ),
-                            'medium' => Colors.blueAccent.withValues(
-                              alpha: .15,
-                            ),
+                            'urgent' => OrbitColors.of(
+                              context,
+                            ).danger.withValues(alpha: .15),
+                            'high' => OrbitColors.of(
+                              context,
+                            ).warning.withValues(alpha: .15),
+                            'medium' => OrbitColors.of(
+                              context,
+                            ).accent.withValues(alpha: .15),
                             _ => colors.raised,
                           },
                           borderRadius: BorderRadius.circular(4),
@@ -2958,9 +2960,9 @@ class _TaskRowState extends State<TaskRow> {
                             fontWeight: FontWeight.w600,
                             letterSpacing: .5,
                             color: switch (priority) {
-                              'urgent' => Colors.redAccent,
-                              'high' => Colors.orangeAccent,
-                              'medium' => Colors.blueAccent,
+                              'urgent' => OrbitColors.of(context).danger,
+                              'high' => OrbitColors.of(context).warning,
+                              'medium' => OrbitColors.of(context).accent,
                               _ => colors.subtle,
                             },
                           ),
@@ -3026,7 +3028,9 @@ class _TaskRowState extends State<TaskRow> {
                         ),
                         decoration: BoxDecoration(
                           color: isOverdue
-                              ? Colors.redAccent.withValues(alpha: .12)
+                              ? OrbitColors.of(
+                                  context,
+                                ).danger.withValues(alpha: .12)
                               : colors.raised,
                           borderRadius: BorderRadius.circular(4),
                         ),
@@ -3039,7 +3043,7 @@ class _TaskRowState extends State<TaskRow> {
                                   : Icons.calendar_today_outlined,
                               size: 11,
                               color: isOverdue
-                                  ? Colors.redAccent
+                                  ? OrbitColors.of(context).danger
                                   : colors.subtle,
                             ),
                             const SizedBox(width: 4),
@@ -3048,7 +3052,7 @@ class _TaskRowState extends State<TaskRow> {
                               style: TextStyle(
                                 fontSize: 12,
                                 color: isOverdue
-                                    ? Colors.redAccent
+                                    ? OrbitColors.of(context).danger
                                     : colors.subtle,
                                 fontWeight: isOverdue
                                     ? FontWeight.w500
@@ -4669,11 +4673,11 @@ class _TasksViewState extends State<TasksView> {
                         severity?.toUpperCase() ?? 'BUG',
                         icon: Icons.bug_report,
                         color: switch (severity) {
-                          'blocker' => Colors.red.shade900,
-                          'critical' => Colors.red.shade600,
-                          'major' => Colors.orange.shade800,
-                          'minor' => Colors.blue.shade600,
-                          _ => Colors.red.shade400,
+                          'blocker' => OrbitColors.of(context).danger,
+                          'critical' => OrbitColors.of(context).danger,
+                          'major' => OrbitColors.of(context).warning,
+                          'minor' => OrbitColors.of(context).accent,
+                          _ => OrbitColors.of(context).danger,
                         },
                         colors: colors,
                       ),
@@ -4705,7 +4709,7 @@ class _TasksViewState extends State<TasksView> {
                       _badge(
                         'Blocked',
                         icon: Icons.lock_outline,
-                        color: Colors.amber.shade700,
+                        color: OrbitColors.of(context).warning,
                         colors: colors,
                       ),
                     if (subtasks != null)
@@ -4727,7 +4731,7 @@ class _TasksViewState extends State<TasksView> {
                       _badge(
                         priority.toUpperCase(),
                         color: priority == 'urgent' || priority == 'high'
-                            ? Colors.red.shade400
+                            ? OrbitColors.of(context).danger
                             : colors.subtle,
                         colors: colors,
                       ),
@@ -5420,1094 +5424,6 @@ class _EventDetailState extends State<EventDetail> {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _WorkspaceThemeSummary extends StatelessWidget {
-  const _WorkspaceThemeSummary({required this.controller});
-  final WorkspaceController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final pack = OrbitThemePack.fromId(
-      controller.session.themePreset,
-      customPacks: controller.session.customThemes,
-    );
-    final colors = OrbitColors.of(context);
-    return OrbitCard(
-      padding: const EdgeInsets.all(16),
-      onTap: () => showOrbitThemeGalleryDialog(context, controller),
-      child: Row(
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: pack.colors.background,
-              borderRadius: BorderRadius.circular(OrbitRadius.control),
-              border: Border.all(color: colors.border),
-            ),
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Container(
-                      width: 14,
-                      decoration: BoxDecoration(
-                        color: pack.colors.panel,
-                        borderRadius: BorderRadius.horizontal(
-                          left: Radius.circular(OrbitRadius.control),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: 22,
-                  right: 8,
-                  top: 16,
-                  child: Container(height: 4, color: pack.colors.accent),
-                ),
-                Positioned(
-                  left: 22,
-                  right: 16,
-                  top: 28,
-                  child: Container(height: 3, color: pack.colors.subtle),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Workspace theme',
-                  style: TextStyle(
-                    color: colors.subtle,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  pack.name,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  'Typography, surfaces, accents, and corners move together.',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, color: colors.subtle),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Icon(Icons.open_in_new, size: 17, color: colors.muted),
-        ],
-      ),
-    );
-  }
-}
-
-/// A setting's control gets its own row before either label or value is squeezed.
-class _SettingsControlTile extends StatelessWidget {
-  const _SettingsControlTile({
-    required this.title,
-    required this.trailing,
-    this.subtitle,
-    this.contentPadding = EdgeInsets.zero,
-  });
-  final Widget title, trailing;
-  final Widget? subtitle;
-  final EdgeInsetsGeometry contentPadding;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: contentPadding.add(const EdgeInsets.symmetric(vertical: 8)),
-    child: LayoutBuilder(
-      builder: (context, constraints) {
-        final labels = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            title,
-            if (subtitle != null) ...[
-              const SizedBox(height: 4),
-              DefaultTextStyle(
-                style: Theme.of(context).textTheme.bodySmall!,
-                child: subtitle!,
-              ),
-            ],
-          ],
-        );
-        if (constraints.maxWidth < 700 ||
-            MediaQuery.textScalerOf(context).scale(14) > 21) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [labels, const SizedBox(height: 8), trailing],
-          );
-        }
-        return Row(
-          children: [
-            Expanded(child: labels),
-            const SizedBox(width: 20),
-            SizedBox(width: 260, child: trailing),
-          ],
-        );
-      },
-    ),
-  );
-}
-
-class SettingsView extends StatelessWidget {
-  const SettingsView({
-    super.key,
-    required this.controller,
-    required this.onExport,
-    required this.onImport,
-    required this.onOpenWorkspace,
-  });
-  final WorkspaceController controller;
-  final VoidCallback onExport, onImport, onOpenWorkspace;
-  @override
-  Widget build(BuildContext context) {
-    final c = controller, s = c.session;
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 960),
-        child: ListView(
-          padding: const EdgeInsets.all(28),
-          children: [
-            Text('Settings', style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 16),
-            ProductivityToolbar(controller: controller),
-            const SizedBox(height: 8),
-            Text(
-              'Appearance, editing, layout, and workspace preferences.',
-              style: TextStyle(color: OrbitColors.of(context).subtle),
-            ),
-            const SizedBox(height: 28),
-            Text('Appearance', style: OrbitTypography.section(context)),
-            const SizedBox(height: 8),
-            Text('Accent palette', style: OrbitTypography.metadata(context)),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final entry in const [
-                  ('violet', 'Observatory Violet', Color(0xFF8B7CF6)),
-                  ('cyan', 'Nebula Cyan', Color(0xFF06B6D4)),
-                  ('emerald', 'Emerald Aurora', Color(0xFF10B981)),
-                  ('amber', 'Solar Flare Amber', Color(0xFFF59E0B)),
-                  ('rose', 'Crimson Nova Rose', Color(0xFFF43F5E)),
-                  ('blue', 'Cobalt Deep Blue', Color(0xFF3B82F6)),
-                ])
-                  Tooltip(
-                    message: entry.$2,
-                    child: InkWell(
-                      key: ValueKey('settings-accent-${entry.$1}'),
-                      borderRadius: BorderRadius.circular(20),
-                      onTap: () => c.updateSession((s) {
-                        s.accentColor = entry.$1;
-                        s.colorOverrides = {...s.colorOverrides}
-                          ..remove('accent')
-                          ..remove('accentHover');
-                      }),
-                      child: AnimatedContainer(
-                        duration: OrbitMotionScope.duration(
-                          context,
-                          OrbitMotion.micro,
-                        ),
-                        curve: OrbitMotion.ease,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: s.accentColor == entry.$1
-                              ? entry.$3.withValues(alpha: 0.18)
-                              : OrbitColors.of(context).panel,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: s.accentColor == entry.$1
-                                ? entry.$3
-                                : OrbitColors.of(context).border,
-                            width: s.accentColor == entry.$1 ? 1.5 : 1.0,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 14,
-                              height: 14,
-                              decoration: BoxDecoration(
-                                color: entry.$3,
-                                shape: BoxShape.circle,
-                                boxShadow: s.accentColor == entry.$1
-                                    ? [
-                                        BoxShadow(
-                                          color: entry.$3.withValues(
-                                            alpha: 0.5,
-                                          ),
-                                          blurRadius: 6,
-                                        ),
-                                      ]
-                                    : null,
-                              ),
-                              child: s.accentColor == entry.$1
-                                  ? const Icon(
-                                      Icons.check,
-                                      size: 10,
-                                      color: Colors.white,
-                                    )
-                                  : null,
-                            ),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                entry.$2.split(' ').first,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: s.accentColor == entry.$1
-                                      ? FontWeight.w600
-                                      : FontWeight.normal,
-                                  color: s.accentColor == entry.$1
-                                      ? OrbitColors.of(context).text
-                                      : OrbitColors.of(context).subtle,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            ThemeColorSettings(controller: c),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Compact density'),
-              value: s.compact,
-              onChanged: (v) => c.updateSession((s) => s.compact = v),
-            ),
-            const SizedBox(height: 22),
-            Text('Editor', style: OrbitTypography.section(context)),
-            _SettingsControlTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Text size'),
-              trailing: Text('${s.fontSize.round()} px'),
-            ),
-            Slider(
-              value: s.fontSize,
-              min: 12,
-              max: 26,
-              divisions: 14,
-              label: '${s.fontSize.round()}',
-              onChanged: (v) => c.updateSession((s) => s.fontSize = v),
-            ),
-            _SettingsControlTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Editor and reading width'),
-              trailing: Text('${s.contentWidth.round()} px'),
-            ),
-            Slider(
-              value: s.contentWidth,
-              min: 520,
-              max: 2000,
-              divisions: 37,
-              onChanged: (v) => c.updateSession((s) => s.contentWidth = v),
-            ),
-            _SettingsControlTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('App zoom'),
-              subtitle: const Text(
-                'Whole interface: Ctrl + / minus; Ctrl 0 to reset',
-              ),
-              trailing: DropdownButton<double>(
-                isExpanded: true,
-                itemHeight: null,
-                key: const ValueKey('settings-app-zoom'),
-                value: s.uiZoom,
-                items:
-                    ([
-                          ...{
-                            .75,
-                            .9,
-                            1.0,
-                            1.1,
-                            1.25,
-                            1.5,
-                            1.75,
-                            2.0,
-                            s.uiZoom,
-                          },
-                        ]..sort())
-                        .map(
-                          (v) => DropdownMenuItem(
-                            value: v,
-                            child: Text('${(v * 100).round()}%'),
-                          ),
-                        )
-                        .toList(),
-                onChanged: (v) {
-                  if (v != null) c.updateSession((s) => s.uiZoom = v);
-                },
-              ),
-            ),
-            _SettingsControlTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Font family'),
-              subtitle: Text(
-                s.fontFamily == 'Times New Roman'
-                    ? 'Times New Roman (Academic Serif)'
-                    : (s.fontFamily == 'Georgia'
-                          ? 'Georgia (Editorial Serif)'
-                          : (s.fontFamily == 'Consolas'
-                                ? 'Consolas (Code Monospace)'
-                                : 'Segoe UI (Clean Sans)')),
-              ),
-              trailing: DropdownButton<String>(
-                isExpanded: true,
-                itemHeight: null,
-                key: const ValueKey('settings-font-family-dropdown'),
-                value:
-                    [
-                      'Segoe UI',
-                      'Times New Roman',
-                      'Georgia',
-                      'Consolas',
-                    ].contains(s.fontFamily)
-                    ? s.fontFamily
-                    : 'Segoe UI',
-                underline: const SizedBox.shrink(),
-                items: const [
-                  DropdownMenuItem(
-                    value: 'Segoe UI',
-                    child: Text('Segoe UI (Default Sans)'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Times New Roman',
-                    child: Text(
-                      'Times New Roman (Serif)',
-                      style: TextStyle(fontFamily: 'Times New Roman'),
-                    ),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Georgia',
-                    child: Text(
-                      'Georgia (Serif)',
-                      style: TextStyle(fontFamily: 'Georgia'),
-                    ),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Consolas',
-                    child: Text(
-                      'Consolas (Code)',
-                      style: TextStyle(fontFamily: 'monospace'),
-                    ),
-                  ),
-                ],
-                onChanged: (v) {
-                  if (v != null) {
-                    c.updateSession((s) => s.fontFamily = v);
-                  }
-                },
-              ),
-            ),
-
-            Container(
-              margin: const EdgeInsets.only(top: 8, bottom: 16),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: OrbitColors.of(context).background,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: OrbitColors.of(context).border),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Reading preview',
-                    style: OrbitTypography.metadata(context),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'A quiet place for clear ideas.\nThe quick brown fox jumps over the lazy dog.',
-                    key: const ValueKey('settings-reading-font-preview'),
-                    style: NoteTypography(
-                      fontFamily: s.fontFamily,
-                      fontSize: s.fontSize,
-                      lineHeight: s.editorLineHeight,
-                    ).body(color: OrbitColors.of(context).text),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'For serif reading, try 18–20 px with comfortable line spacing.',
-                    style: OrbitTypography.metadata(context),
-                  ),
-                ],
-              ),
-            ),
-            SwitchListTile(
-              key: const ValueKey('settings-spellcheck-switch'),
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Spell and grammar check'),
-              subtitle: const Text(
-                'Offline dictionary and grammar analysis with right-click suggestions',
-              ),
-              value: s.spellCheckEnabled,
-              onChanged: (v) => c.updateSession((s) => s.spellCheckEnabled = v),
-            ),
-            if (s.userDictionary.isNotEmpty)
-              _SettingsControlTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(
-                  'Custom dictionary (${s.userDictionary.length} words)',
-                ),
-                subtitle: Text(s.userDictionary.join(', ')),
-                trailing: TextButton.icon(
-                  key: const ValueKey('settings-clear-dictionary-button'),
-                  onPressed: () =>
-                      c.updateSession((s) => s.userDictionary = []),
-                  icon: const Icon(Icons.delete_sweep, size: 18),
-                  label: const Text('Clear'),
-                ),
-              ),
-            _SettingsControlTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Default editor view mode'),
-              subtitle: const Text(
-                'Initial mode when opening a note without saved state',
-              ),
-              trailing: DropdownButton<String>(
-                isExpanded: true,
-                itemHeight: null,
-                key: const ValueKey('settings-default-mode-dropdown'),
-                value: s.defaultNoteMode,
-                underline: const SizedBox.shrink(),
-                items: const [
-                  DropdownMenuItem(value: 'rich', child: Text('Rich Visual')),
-                  DropdownMenuItem(value: 'write', child: Text('Raw Markdown')),
-                  DropdownMenuItem(value: 'split', child: Text('Split View')),
-                  DropdownMenuItem(value: 'read', child: Text('Reading View')),
-                ],
-                onChanged: (v) {
-                  if (v != null) {
-                    c.updateSession((s) => s.defaultNoteMode = v);
-                  }
-                },
-              ),
-            ),
-            _SettingsControlTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Default document format'),
-              subtitle: const Text(
-                'Standard document syntax for newly created notes',
-              ),
-              trailing: DropdownButton<String>(
-                isExpanded: true,
-                itemHeight: null,
-                key: const ValueKey('settings-default-format-dropdown'),
-                value: s.defaultDocumentFormat,
-                underline: const SizedBox.shrink(),
-                items: const [
-                  DropdownMenuItem(
-                    value: 'markdown',
-                    child: Text('Markdown (GFM)'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'latex',
-                    child: Text('LaTeX Document'),
-                  ),
-                ],
-                onChanged: (v) {
-                  if (v != null) {
-                    c.updateSession((s) => s.defaultDocumentFormat = v);
-                  }
-                },
-              ),
-            ),
-            SwitchListTile(
-              key: const ValueKey('settings-bionic-reading-switch'),
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Enable Bionic Reading by default'),
-              subtitle: const Text(
-                'Highlights initial fixation letters in preview for faster saccadic comprehension',
-              ),
-              value: s.bionicReadingDefault,
-              onChanged: (v) =>
-                  c.updateSession((s) => s.bionicReadingDefault = v),
-            ),
-            _SettingsControlTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Line spacing'),
-              subtitle: const Text(
-                'Vertical line height in note editor and formatted reading views',
-              ),
-              trailing: DropdownButton<double>(
-                isExpanded: true,
-                itemHeight: null,
-                key: const ValueKey('settings-line-spacing-dropdown'),
-                value: [1.4, 1.6, 1.8].contains(s.editorLineHeight)
-                    ? s.editorLineHeight
-                    : 1.6,
-                underline: const SizedBox.shrink(),
-                items: const [
-                  DropdownMenuItem(value: 1.4, child: Text('1.4 (Compact)')),
-                  DropdownMenuItem(value: 1.6, child: Text('1.6 (Standard)')),
-                  DropdownMenuItem(value: 1.8, child: Text('1.8 (Relaxed)')),
-                ],
-                onChanged: (v) {
-                  if (v != null) {
-                    c.updateSession((s) => s.editorLineHeight = v);
-                  }
-                },
-              ),
-            ),
-            const SizedBox(height: 22),
-            Text('Layout and motion', style: OrbitTypography.section(context)),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Show explorer'),
-              value: s.sidebarVisible,
-              onChanged: (v) => c.updateSession((s) => s.sidebarVisible = v),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Show context inspector'),
-              value: s.inspectorVisible,
-              onChanged: (v) => c.updateSession((s) => s.inspectorVisible = v),
-            ),
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OrbitModeControl<String>(
-                values: const {
-                  'normal': 'Normal',
-                  'reduced': 'Reduced',
-                  'off': 'Off',
-                },
-                value: s.motion,
-                onChanged: (mode) => c.updateSession((s) => s.motion = mode),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Respects the system’s reduced-motion preference.',
-              style: TextStyle(
-                color: OrbitColors.of(context).subtle,
-                fontSize: 12,
-              ),
-            ),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: c.resetLayout,
-                icon: const Icon(Icons.restart_alt),
-                label: const Text('Reset layout'),
-              ),
-            ),
-            const SizedBox(height: 22),
-            Text(
-              'Storage and Auto-Save',
-              style: OrbitTypography.section(context),
-            ),
-            _SettingsControlTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Auto-save debounce interval'),
-              subtitle: const Text(
-                'Delay after typing before flushing drafts to disk',
-              ),
-              trailing: DropdownButton<int>(
-                isExpanded: true,
-                itemHeight: null,
-                key: const ValueKey('settings-autosave-interval-dropdown'),
-                value: [500, 1000, 2500].contains(s.autoSaveInterval)
-                    ? s.autoSaveInterval
-                    : 1000,
-                underline: const SizedBox.shrink(),
-                items: const [
-                  DropdownMenuItem(value: 500, child: Text('500ms (Fast)')),
-                  DropdownMenuItem(
-                    value: 1000,
-                    child: Text('1000ms (Balanced)'),
-                  ),
-                  DropdownMenuItem(
-                    value: 2500,
-                    child: Text('2500ms (Relaxed)'),
-                  ),
-                ],
-                onChanged: (v) {
-                  if (v != null) c.updateSession((s) => s.autoSaveInterval = v);
-                },
-              ),
-            ),
-            SwitchListTile(
-              key: const ValueKey('settings-auto-snapshot-switch'),
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Auto-snapshot on document close'),
-              subtitle: const Text(
-                'Automatically records a historical recovery checkpoint when closing a note',
-              ),
-              value: s.autoSnapshotOnClose,
-              onChanged: (v) =>
-                  c.updateSession((s) => s.autoSnapshotOnClose = v),
-            ),
-            SwitchListTile(
-              key: const ValueKey('settings-reverse-engineering-switch'),
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Reverse-engineering research tools'),
-              subtitle: const Text(
-                'Show experimental research project and record templates. Existing notes and maps stay accessible when disabled.',
-              ),
-              value: s.reverseEngineeringEnabled,
-              onChanged: (v) =>
-                  c.updateSession((s) => s.reverseEngineeringEnabled = v),
-            ),
-            const SizedBox(height: 22),
-            Text(
-              'Focus & Deep Work Timer',
-              style: OrbitTypography.section(context),
-            ),
-            _SettingsControlTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Focus session duration'),
-              subtitle: const Text('Standard Pomodoro work block length'),
-              trailing: DropdownButton<int>(
-                isExpanded: true,
-                itemHeight: null,
-                key: const ValueKey('settings-focus-duration-dropdown'),
-                value: [15, 20, 25, 30, 45, 60].contains(s.focusMinutes)
-                    ? s.focusMinutes
-                    : 25,
-                underline: const SizedBox.shrink(),
-                items: const [
-                  DropdownMenuItem(value: 15, child: Text('15 min')),
-                  DropdownMenuItem(value: 20, child: Text('20 min')),
-                  DropdownMenuItem(value: 25, child: Text('25 min (Standard)')),
-                  DropdownMenuItem(value: 30, child: Text('30 min')),
-                  DropdownMenuItem(
-                    value: 45,
-                    child: Text('45 min (Deep Work)'),
-                  ),
-                  DropdownMenuItem(value: 60, child: Text('60 min (Extended)')),
-                ],
-                onChanged: (v) {
-                  if (v != null) {
-                    c.updateSession((s) => s.focusMinutes = v);
-                    globalFocusTimer.configureDurations(focus: v);
-                  }
-                },
-              ),
-            ),
-            _SettingsControlTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Short break duration'),
-              subtitle: const Text(
-                'Rest period between standard focus sessions',
-              ),
-              trailing: DropdownButton<int>(
-                isExpanded: true,
-                itemHeight: null,
-                key: const ValueKey('settings-short-break-dropdown'),
-                value: [3, 5, 10].contains(s.shortBreakMinutes)
-                    ? s.shortBreakMinutes
-                    : 5,
-                underline: const SizedBox.shrink(),
-                items: const [
-                  DropdownMenuItem(value: 3, child: Text('3 min (Quick)')),
-                  DropdownMenuItem(value: 5, child: Text('5 min (Standard)')),
-                  DropdownMenuItem(value: 10, child: Text('10 min (Longer)')),
-                ],
-                onChanged: (v) {
-                  if (v != null) {
-                    c.updateSession((s) => s.shortBreakMinutes = v);
-                    globalFocusTimer.configureDurations(shortBreak: v);
-                  }
-                },
-              ),
-            ),
-            _SettingsControlTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Long break duration'),
-              subtitle: const Text(
-                'Extended rest after completing a 4-session cycle',
-              ),
-              trailing: DropdownButton<int>(
-                isExpanded: true,
-                itemHeight: null,
-                key: const ValueKey('settings-long-break-dropdown'),
-                value: [15, 20, 30].contains(s.longBreakMinutes)
-                    ? s.longBreakMinutes
-                    : 15,
-                underline: const SizedBox.shrink(),
-                items: const [
-                  DropdownMenuItem(value: 15, child: Text('15 min (Standard)')),
-                  DropdownMenuItem(value: 20, child: Text('20 min')),
-                  DropdownMenuItem(value: 30, child: Text('30 min (Relaxed)')),
-                ],
-                onChanged: (v) {
-                  if (v != null) {
-                    c.updateSession((s) => s.longBreakMinutes = v);
-                    globalFocusTimer.configureDurations(longBreak: v);
-                  }
-                },
-              ),
-            ),
-            const SizedBox(height: 22),
-            Text(
-              'Canvas and Spatial Boards',
-              style: OrbitTypography.section(context),
-            ),
-            _SettingsControlTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Default paper grid'),
-              subtitle: const Text(
-                'Background paper texture and alignment grid for new canvases',
-              ),
-              trailing: DropdownButton<String>(
-                isExpanded: true,
-                itemHeight: null,
-                key: const ValueKey('settings-canvas-grid-dropdown'),
-                value:
-                    [
-                      'dots',
-                      'grid',
-                      'graph',
-                      'cross',
-                      'hex',
-                      'blueprint',
-                      'lines',
-                      'ruled',
-                      'isometric',
-                      'blank',
-                    ].contains(s.defaultCanvasGrid)
-                    ? s.defaultCanvasGrid
-                    : 'dots',
-                underline: const SizedBox.shrink(),
-                items: const [
-                  DropdownMenuItem(value: 'dots', child: Text('Standard dots')),
-                  DropdownMenuItem(value: 'grid', child: Text('Standard grid')),
-                  DropdownMenuItem(
-                    value: 'graph',
-                    child: Text('Engineering graph'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'cross',
-                    child: Text('Cross / Reticle (+)'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'hex',
-                    child: Text('Hexagonal honeycomb'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'blueprint',
-                    child: Text('Architectural blueprint'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'lines',
-                    child: Text('Ruled notebook lines'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'ruled',
-                    child: Text('Student ruled margin'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'isometric',
-                    child: Text('Isometric 3D grid'),
-                  ),
-                  DropdownMenuItem(value: 'blank', child: Text('Blank paper')),
-                ],
-                onChanged: (v) {
-                  if (v != null) {
-                    c.updateSession((s) => s.defaultCanvasGrid = v);
-                  }
-                },
-              ),
-            ),
-            SwitchListTile(
-              key: const ValueKey('settings-canvas-snap-switch'),
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Snap to grid by default'),
-              subtitle: const Text(
-                'Automatically aligns newly placed spatial cards and shapes to grid nodes',
-              ),
-              value: s.canvasSnapToGrid,
-              onChanged: (v) => c.updateSession((s) => s.canvasSnapToGrid = v),
-            ),
-            const SizedBox(height: 22),
-            Text(
-              'Audio & Voice Memos',
-              style: OrbitTypography.section(context),
-            ),
-            _SettingsControlTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Default playback speed'),
-              subtitle: const Text(
-                'Standard playback rate when listening to voice memos and audio notes',
-              ),
-              trailing: DropdownButton<double>(
-                isExpanded: true,
-                itemHeight: null,
-                key: const ValueKey('settings-audio-speed-dropdown'),
-                value: [1.0, 1.25, 1.5, 2.0].contains(s.defaultAudioSpeed)
-                    ? s.defaultAudioSpeed
-                    : 1.0,
-                underline: const SizedBox.shrink(),
-                items: const [
-                  DropdownMenuItem(value: 1.0, child: Text('1.0× (Normal)')),
-                  DropdownMenuItem(value: 1.25, child: Text('1.25× (Brisk)')),
-                  DropdownMenuItem(
-                    value: 1.5,
-                    child: Text('1.5× (Accelerated)'),
-                  ),
-                  DropdownMenuItem(value: 2.0, child: Text('2.0× (Double)')),
-                ],
-                onChanged: (v) {
-                  if (v != null) {
-                    c.updateSession((s) => s.defaultAudioSpeed = v);
-                  }
-                },
-              ),
-            ),
-            () {
-              final notes = c.activeObjects
-                  .where((o) => !o.isDeleted && o.typeId == 'orbit.note')
-                  .toList();
-              final canvases = c.activeObjects
-                  .where((o) => !o.isDeleted && o.typeId == 'orbit.canvas')
-                  .toList();
-              final tasks = c.activeObjects
-                  .where((o) => !o.isDeleted && o.typeId == 'orbit.task')
-                  .toList();
-              var totalWords = 0;
-              var totalSnapshots = 0;
-              for (final n in notes) {
-                final text = n.body.trim();
-                if (text.isNotEmpty) {
-                  totalWords += text.split(RegExp(r'\s+')).length;
-                }
-                final revisions = n.properties['revisions'];
-                if (revisions is List) {
-                  totalSnapshots += revisions.length;
-                }
-              }
-
-              return OrbitHoverLiftCard(
-                key: const ValueKey('settings-vault-analytics-card'),
-                margin: const EdgeInsets.only(top: 24, bottom: 12),
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      spacing: 16,
-                      runSpacing: 16,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.insights_rounded,
-                          size: 20,
-                          color: OrbitColors.of(context).accent,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Observatory Vault Analytics',
-                          style: OrbitTypography.section(context),
-                        ),
-
-                        const OrbitPulseBadge(
-                          key: ValueKey('settings-vault-live-badge'),
-                          label: 'TELEMETRY LIVE',
-                          active: true,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Live telemetry of indexed knowledge objects and document revisions',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: OrbitColors.of(context).subtle,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Wrap(
-                      spacing: 16,
-                      runSpacing: 16,
-                      children: [
-                        _buildMetricCol(
-                          context,
-                          'Notes',
-                          notes.length,
-                          Icons.description_outlined,
-                        ),
-                        _buildMetricCol(
-                          context,
-                          'Canvases',
-                          canvases.length,
-                          Icons.gesture_rounded,
-                        ),
-                        _buildMetricCol(
-                          context,
-                          'Tasks',
-                          tasks.length,
-                          Icons.check_circle_outline_rounded,
-                        ),
-                        _buildMetricCol(
-                          context,
-                          'Snapshots',
-                          totalSnapshots,
-                          Icons.history_rounded,
-                        ),
-                        _buildMetricCol(
-                          context,
-                          'Total Words',
-                          totalWords,
-                          Icons.text_fields_rounded,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            }(),
-            const SizedBox(height: 16),
-            GoogleDriveSettings(workspace: controller),
-            const SizedBox(height: 24),
-            Text('Workspace data', style: OrbitTypography.section(context)),
-            const SizedBox(height: 12),
-            SelectableText(
-              c.hasWorkspace ? c.repository.location : 'Personal Vault',
-              style: TextStyle(
-                fontSize: 12,
-                color: OrbitColors.of(context).subtle,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 12,
-              runSpacing: 10,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: onExport,
-                  icon: const Icon(Icons.file_download_outlined, size: 18),
-                  label: const Text('Export workspace'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: onImport,
-                  icon: const Icon(Icons.file_upload_outlined, size: 18),
-                  label: const Text('Import backup'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: onOpenWorkspace,
-                  icon: const Icon(Icons.folder_open, size: 18),
-                  label: const Text('Manage Vaults'),
-                ),
-                TextButton.icon(
-                  onPressed: c.refresh,
-                  icon: const Icon(Icons.refresh, size: 18),
-                  label: const Text('Reload from files'),
-                ),
-                OutlinedButton.icon(
-                  key: const ValueKey('settings-optimize-vault-button'),
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Row(
-                          children: [
-                            Icon(
-                              Icons.check_circle_outline,
-                              color: OrbitColors.of(context).accent,
-                              size: 16,
-                            ),
-                            const SizedBox(width: 8),
-                            const Expanded(
-                              child: Text(
-                                'Vault integrity verified. Local indexes and snapshot caches pruned.',
-                              ),
-                            ),
-                          ],
-                        ),
-                        duration: const Duration(seconds: 3),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.cleaning_services_outlined, size: 18),
-                  label: const Text('Optimize Vault Cache'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Text(
-              'Notes use Markdown; tasks and canvases use documented JSON.\nNo account, cloud connection or AI provider is required.',
-              style: TextStyle(
-                fontSize: 12,
-                height: 1.6,
-                color: OrbitColors.of(context).subtle,
-              ),
-            ),
-            const SizedBox(height: 24),
-            _WorkspaceThemeSummary(controller: c),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMetricCol(
-    BuildContext context,
-    String label,
-    int count,
-    IconData icon,
-  ) {
-    final colors = OrbitColors.of(context);
-    return SizedBox(
-      width: 150,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 14, color: colors.subtle),
-              const SizedBox(width: 4),
-              Flexible(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: colors.subtle,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          OrbitAnimatedCounter(
-            value: count,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: colors.text,
-              letterSpacing: -0.5,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

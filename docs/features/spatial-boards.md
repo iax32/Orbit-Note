@@ -1,5 +1,20 @@
 # Spatial boards
 
+## Use-case and sequence diagrams — 2026-10-23
+
+The shared Canvas now offers actors, named use cases/extension points, system
+boundaries and UML notes; association with participation multiplicities,
+include/extend, actor/use-case generalization and note links. Sequence tools add
+lifelines, manually positioned activation bars, destruction, synchronous/open/
+return/create/destroy messages, self calls and operand frames for alt/opt/loop/
+par/critical/strict/seq/break/assert/neg/ignore/consider. Direction guidance and
+endpoint validation are part of the form. Double-click editing, starters,
+undo/redo and ordinary placement transfer remain. Boundary interiors do not
+intercept content selection. Precise live Markdown diagrams and shared publication
+snapshots retain the new notation. These are visual tools, not semantic execution
+or automatic layout; activations/frames use explicit grouping and arrangement.
+[Use, storage, checks and boundaries](../tasks/uml-interaction-diagrams-2026-10-23.md).
+
 ## Everyday Canvas starters — 2026-10-20
 
 The **Canvas template library** toolbar button and **Add from template library…**

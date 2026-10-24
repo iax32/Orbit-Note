@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
+import '../../../app/orbit_theme.dart';
 
 /// Markdown inline syntax for ==highlighted text==.
 class HighlightInlineSyntax extends md.InlineSyntax {
@@ -35,11 +36,9 @@ class HighlightElementBuilder extends MarkdownElementBuilder {
     TextStyle? preferredStyle,
     TextStyle? parentStyle,
   ) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark
-        ? const Color(0xFFEAB308).withValues(alpha: 0.35)
-        : const Color(0xFFFEF08A);
-    final fg = isDark ? const Color(0xFFFDE047) : const Color(0xFF713F12);
+    final colors = OrbitColors.of(context);
+    final bg = colors.tinted(colors.warning, surface: colors.workspace);
+    final fg = colors.warning;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),

@@ -8,6 +8,7 @@ import 'writing_structure.dart';
 import 'document_review.dart';
 import 'publication_layout.dart';
 import 'technical_article.dart';
+import 'publication_objects.dart';
 import 'package:yaml/yaml.dart';
 
 /// An immutable presentation snapshot. Never serializes back to owning Markdown.
@@ -88,6 +89,7 @@ class PublicationDocument {
     this.warnings,
     this.style,
     this.article,
+    this.objectSnapshots,
   );
   final String title, source;
   final List<md.Node> nodes;
@@ -96,12 +98,15 @@ class PublicationDocument {
   final List<String> warnings;
   final PublicationStyle style;
   final ArticleMetadata? article;
+  final PublicationObjectSnapshots objectSnapshots;
   static PublicationDocument parse(
     String title,
     String source,
     PublicationStyle style, {
     List<UniversalObject> objects = const [],
     String ownerId = '',
+    Map<String, String> objectPaths = const {},
+    DateTime? snapshotTime,
     Map<String, Map<String, dynamic>>? layouts,
   }) {
     style.validate();
@@ -122,11 +127,6 @@ class PublicationDocument {
     if (source.contains('<!-- orbit:columns v=1 -->')) {
       warnings.add(
         'Columns use a stacked print layout. Their Markdown content is retained.',
-      );
-    }
-    if (source.contains('<!-- orbit:object v=1 -->')) {
-      warnings.add(
-        'Linked objects export as source links; drawing previews, live task controls and collection membership remain in the workspace.',
       );
     }
     if (source.contains('<!-- orbit:media ')) {
@@ -195,6 +195,20 @@ class PublicationDocument {
           'Expanded linked sections exceed the publishing size limit.',
         );
       }
+    }
+    final objectSnapshots = PublicationObjectSnapshots(
+      source,
+      objects,
+      ownerId: ownerId,
+      paths: objectPaths,
+      now: snapshotTime ?? DateTime.now(),
+    );
+    source = objectSnapshots.expanded;
+    warnings.addAll(objectSnapshots.warnings);
+    if (objectSnapshots.objectCount > 0) {
+      warnings.add(
+        'Linked objects are static snapshots captured when publishing opens. Reopen publishing to refresh; original objects and references are unchanged.',
+      );
     }
     final citations = DocumentCitations(source);
     warnings.addAll(citations.warnings);
@@ -314,6 +328,7 @@ class PublicationDocument {
       List.unmodifiable(warnings),
       style,
       article,
+      objectSnapshots,
     );
   }
 }

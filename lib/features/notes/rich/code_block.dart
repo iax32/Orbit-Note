@@ -22,7 +22,8 @@ class CodeController extends TextEditingController {
   String? _cachedLanguage;
   String? _cachedText;
   List<TextSpan>? _spans;
-  Brightness? _brightness;
+  List<hl.Node>? _nodes;
+  OrbitColors? _palette;
   @override
   TextSpan buildTextSpan({
     required BuildContext context,
@@ -36,38 +37,14 @@ class CodeController extends TextEditingController {
         withComposing: withComposing,
       );
     }
-    final brightness = Theme.of(context).brightness;
-    if (_cachedText != text ||
-        _brightness != brightness ||
-        _cachedLanguage != language) {
+    final palette = OrbitColors.of(context);
+    if (_cachedText != text || _cachedLanguage != language) {
       _cachedLanguage = language;
-      _brightness = brightness;
       _cachedText = text;
-      final colors = brightness == Brightness.light
-          ? {
-              'keyword': const Color(0xff6833a8),
-              'string': const Color(0xff276b39),
-              'comment': const Color(0xff666976),
-              'number': const Color(0xff8b520c),
-              'built_in': const Color(0xff245e9b),
-              'title': const Color(0xff245e9b),
-            }
-          : {
-              'keyword': Color(0xffb69aff),
-              'string': Color(0xffa5d6a7),
-              'comment': Color(0xff8d91a8),
-              'number': Color(0xffffcc80),
-              'built_in': Color(0xff90caf9),
-              'title': Color(0xff90caf9),
-            };
-      TextSpan span(hl.Node node) => TextSpan(
-        text: node.value,
-        style: TextStyle(color: colors[node.className]),
-        children: node.children?.map(span).toList(),
-      );
+      _palette = null;
       try {
-        _spans = text.length > 50000 || language.isEmpty
-            ? [TextSpan(text: text)]
+        _nodes = text.length > 50000 || language.isEmpty
+            ? null
             : hl.highlight
                   .parse(
                     text,
@@ -79,12 +56,27 @@ class CodeController extends TextEditingController {
                       _ => language,
                     },
                   )
-                  .nodes
-                  ?.map(span)
-                  .toList();
+                  .nodes;
       } catch (_) {
-        _spans = [TextSpan(text: text)];
+        _nodes = null;
       }
+    }
+    if (_palette != palette) {
+      _palette = palette;
+      final colors = {
+        'keyword': palette.secondary,
+        'string': palette.success,
+        'comment': palette.muted,
+        'number': palette.warning,
+        'built_in': palette.accent,
+        'title': palette.accent,
+      };
+      TextSpan span(hl.Node node) => TextSpan(
+        text: node.value,
+        style: TextStyle(color: colors[node.className]),
+        children: node.children?.map(span).toList(),
+      );
+      _spans = _nodes?.map(span).toList() ?? [TextSpan(text: text)];
     }
     return TextSpan(style: style, children: _spans);
   }
@@ -456,9 +448,13 @@ class NoteCodeBlockState extends State<NoteCodeBlock> {
                             focusNode: focus,
                             readOnly: widget.onChanged == null,
                             maxLines: null,
-                            style: const TextStyle(
-                              fontFamily: 'monospace',
-                              fontSize: 14,
+                            style: TextStyle(
+                              fontFamily: OrbitCodePreferences.of(
+                                context,
+                              ).fontFamily,
+                              fontSize: OrbitCodePreferences.of(
+                                context,
+                              ).fontSize,
                               height: 1.6,
                             ),
                             decoration: const InputDecoration(

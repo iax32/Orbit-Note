@@ -1,4 +1,6 @@
+import '../../../app/orbit_motion_effects.dart';
 import '../media_clipboard.dart';
+import '../shared_text_presence.dart';
 import 'dart:async';
 import '../../../domain/linked_section.dart';
 import '../../../domain/document_review.dart';
@@ -115,8 +117,10 @@ class RichMarkdownEditor extends StatefulWidget {
     this.embedded = false,
     this.userDictionary = const [],
     this.onAddToUserDictionary,
+    this.remoteSelections = const [],
   });
   final String body;
+  final List<Map<String, dynamic>> remoteSelections;
   final ValueChanged<String> onChanged, onOpenLink;
   final VoidCallback onUndo, onRedo;
   final List<NoteLinkTarget> linkTargets;
@@ -156,6 +160,7 @@ class RichMarkdownEditor extends StatefulWidget {
 
 class RichMarkdownEditorState extends State<RichMarkdownEditor>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  bool get hasEditingFocus => _editorFocusNode.hasFocus;
   final _columnKeys =
       <(MarkdownBlock, int), GlobalKey<RichMarkdownEditorState>>{};
   (MarkdownBlock, int, TextSelection)? _columnSelection;
@@ -499,6 +504,27 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
     final offset = end ? range.end : range.start;
     clearCrossDocumentSelection();
     _focusOffset(offset);
+  }
+
+  Rect? _remoteCaret(MarkdownBlock block, int offset) {
+    if (!_textEndpoint(block)) return null;
+    final start =
+        _positions.offsetOf(_positions.indexOf(block)) + block.prefix.length;
+    if (offset < start || offset > start + block.content.length) return null;
+    final owner = anchors[block]?.currentContext?.findRenderObject(),
+        editable = _editableFor(block);
+    if (owner is! RenderBox || editable == null || !editable.hasSize) {
+      return null;
+    }
+    final projection = InlineProjection(
+      block.content,
+      referenceDefinitions: document.referenceDefinitions,
+    );
+    return editable
+        .getLocalRectForCaret(
+          TextPosition(offset: projection.visibleOffset(offset - start)),
+        )
+        .shift(owner.globalToLocal(editable.localToGlobal(Offset.zero)));
   }
 
   Future<void> pasteDocumentSelection({bool plain = false}) async {
@@ -2543,6 +2569,17 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
 
     final result = await showMenu<String>(
       context: context,
+      popUpAnimationStyle: AnimationStyle(
+        duration: OrbitMotionScope.settings(context).editing
+            ? OrbitMotionScope.duration(
+                context,
+                OrbitMotion.panel,
+                spatial: true,
+              )
+            : Duration.zero,
+        reverseDuration: Duration.zero,
+        curve: Curves.easeOutCubic,
+      ),
       position: RelativeRect.fromLTRB(
         point.dx,
         point.dy + 35,
@@ -4636,51 +4673,87 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
             crossSelection != null &&
             crossSelection.start < blockEnd &&
             crossSelection.end > blockStart;
-        final selectedContent = Stack(
-          children: [
-            Positioned.fill(
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  key: ValueKey(
-                    isSelected
-                        ? 'selected-block-${_positions.indexOf(block)}'
-                        : isCrossSelected
-                        ? 'cross-selected-block-${_positions.indexOf(block)}'
-                        : 'unselected-block-${_positions.indexOf(block)}',
-                  ),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? Theme.of(
-                            context,
-                          ).colorScheme.primary.withValues(alpha: .12)
-                        : null,
-                    borderRadius: BorderRadius.circular(6),
-                    border: isSelected
-                        ? Border.all(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.primary.withValues(alpha: .35),
-                          )
-                        : null,
-                  ),
-                ),
-              ),
-            ),
-            blockContent,
-            if (isCrossSelected)
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: CustomPaint(
-                    painter: _RangeSelectionPainter(
-                      () => _selectionBoxes(block, crossSelection),
-                      Theme.of(
-                        context,
-                      ).colorScheme.primary.withValues(alpha: .22),
+        final selectedContent = OrbitEffect(
+          trigger: (isSelected, isCrossSelected),
+          family: 'editing',
+          interactive: true,
+          style: 'wave',
+          child: AnimatedOpacity(
+            duration: OrbitMotionScope.duration(context, OrbitMotion.micro),
+            opacity:
+                OrbitMotionScope.settings(context).focusTyping &&
+                    active != _positions.indexOf(block) &&
+                    !isSelected &&
+                    !isCrossSelected &&
+                    crossSelection == null
+                ? .65
+                : 1,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      key: ValueKey(
+                        isSelected
+                            ? 'selected-block-${_positions.indexOf(block)}'
+                            : isCrossSelected
+                            ? 'cross-selected-block-${_positions.indexOf(block)}'
+                            : 'unselected-block-${_positions.indexOf(block)}',
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: .12)
+                            : null,
+                        borderRadius: BorderRadius.circular(6),
+                        border: isSelected
+                            ? Border.all(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.primary.withValues(alpha: .35),
+                              )
+                            : null,
+                      ),
                     ),
                   ),
                 ),
-              ),
-          ],
+                blockContent,
+                if (_textEndpoint(block) && widget.remoteSelections.isNotEmpty)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: SharedTextPresencePainter(
+                          peers: widget.remoteSelections.where((p) {
+                            final a = p['textBase'] as int,
+                                b = p['textExtent'] as int;
+                            return (a < b ? a : b) <= blockEnd &&
+                                (a > b ? a : b) >= blockStart;
+                          }).toList(),
+                          boxes: (selection) =>
+                              _selectionBoxes(block, selection),
+                          caret: (offset) => _remoteCaret(block, offset),
+                          sourceCurrent: () => _positions.source == widget.body,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (isCrossSelected)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: _RangeSelectionPainter(
+                          () => _selectionBoxes(block, crossSelection),
+                          Theme.of(
+                            context,
+                          ).colorScheme.primary.withValues(alpha: .22),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         );
         // Prose clicks enter text editing. Handles must
         // retain the range they operate on or drag.
@@ -5050,8 +5123,8 @@ class _StyledController extends TextEditingController {
                     decoration: TextDecoration.underline,
                     decorationStyle: TextDecorationStyle.wavy,
                     decorationColor: currentIssue.type == IssueType.spelling
-                        ? const Color(0xFFEF4444)
-                        : const Color(0xFF3B82F6),
+                        ? OrbitColors.of(context).danger
+                        : OrbitColors.of(context).accent,
                   ),
           ),
         );
@@ -5071,7 +5144,7 @@ class _StyledController extends TextEditingController {
           issueCursor.at(end) == currentIssue) {
         end++;
       }
-      final isDark = Theme.of(context).brightness == Brightness.dark;
+      final palette = OrbitColors.of(context);
       final isCode = marks.contains('code');
       final effectiveIssue = isCode ? null : currentIssue;
 
@@ -5104,18 +5177,16 @@ class _StyledController extends TextEditingController {
                 : null,
             decorationColor: effectiveIssue != null
                 ? (effectiveIssue.type == IssueType.spelling
-                      ? const Color(0xFFEF4444)
-                      : const Color(0xFF3B82F6))
+                      ? OrbitColors.of(context).danger
+                      : OrbitColors.of(context).accent)
                 : null,
             color: marks.contains('footnote') || marks.contains('link')
                 ? Theme.of(context).colorScheme.primary
                 : marks.contains('highlight')
-                ? (isDark ? const Color(0xFFFDE047) : const Color(0xFF713F12))
+                ? palette.warning
                 : null,
             backgroundColor: marks.contains('highlight')
-                ? (isDark
-                      ? const Color(0xFFEAB308).withValues(alpha: 0.35)
-                      : const Color(0xFFFEF08A))
+                ? palette.tinted(palette.warning, surface: palette.workspace)
                 : null,
           ),
         ),
@@ -5422,6 +5493,7 @@ class _RichTextBlock extends StatefulWidget {
 }
 
 class _RichTextBlockState extends State<_RichTextBlock> {
+  int _fixMotion = 0;
   Map<NoteFormatAction, String> get formatStates {
     final p = controller.projection, sel = controller.selection;
     if (!sel.isValid) return const {};
@@ -5675,6 +5747,7 @@ class _RichTextBlockState extends State<_RichTextBlock> {
       referenceDefinitions: widget.referenceDefinitions,
     );
     widget.onChanged(source);
+    if (mounted) setState(() => _fixMotion++);
     controller.refreshStyle();
   }
 
@@ -6592,48 +6665,54 @@ class _RichTextBlockState extends State<_RichTextBlock> {
   }
 
   @override
-  Widget build(BuildContext context) => MouseRegion(
-    cursor: _hoveredLink != null
-        ? SystemMouseCursors.click
-        : SystemMouseCursors.text,
-    onHover: _onHover,
-    onExit: _onExit,
-    child: Listener(
-      onPointerDown: _onPointerDown,
-      child: Actions(
-        actions: {
-          CopySelectionTextIntent: CallbackAction<CopySelectionTextIntent>(
-            onInvoke: (intent) {
-              _transferSelection(cut: intent.collapseSelection);
-              return null;
-            },
-          ),
-          PasteTextIntent: CallbackAction<PasteTextIntent>(
-            onInvoke: (_) {
-              _paste(plain: HardwareKeyboard.instance.isShiftPressed);
-              return null;
-            },
-          ),
-        },
-        child: _SelectionRevealGate(
-          suppressReveal: () => widget.hasDocumentSelection?.call() == true,
-          child: TextField(
-            controller: controller,
-            focusNode: focus,
-            maxLines: null,
-            textAlign: widget.textAlign,
-            style: widget.style,
-            contextMenuBuilder: _buildContextMenu,
-            decoration: InputDecoration(
-              hintText: widget.hintText,
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-              filled: false,
-              isDense: true,
-              contentPadding: EdgeInsets.zero,
+  Widget build(BuildContext context) => OrbitEffect(
+    trigger: _fixMotion,
+    family: 'smart',
+    style: 'highlight',
+    interactive: true,
+    child: MouseRegion(
+      cursor: _hoveredLink != null
+          ? SystemMouseCursors.click
+          : SystemMouseCursors.text,
+      onHover: _onHover,
+      onExit: _onExit,
+      child: Listener(
+        onPointerDown: _onPointerDown,
+        child: Actions(
+          actions: {
+            CopySelectionTextIntent: CallbackAction<CopySelectionTextIntent>(
+              onInvoke: (intent) {
+                _transferSelection(cut: intent.collapseSelection);
+                return null;
+              },
             ),
-            onChanged: _changed,
+            PasteTextIntent: CallbackAction<PasteTextIntent>(
+              onInvoke: (_) {
+                _paste(plain: HardwareKeyboard.instance.isShiftPressed);
+                return null;
+              },
+            ),
+          },
+          child: _SelectionRevealGate(
+            suppressReveal: () => widget.hasDocumentSelection?.call() == true,
+            child: TextField(
+              controller: controller,
+              focusNode: focus,
+              maxLines: null,
+              textAlign: widget.textAlign,
+              style: widget.style,
+              contextMenuBuilder: _buildContextMenu,
+              decoration: InputDecoration(
+                hintText: widget.hintText,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                filled: false,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+              onChanged: _changed,
+            ),
           ),
         ),
       ),

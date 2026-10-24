@@ -1,5 +1,15 @@
 # Attachments, media and research
 
+## Large PDF navigation and annotation lookup — 2026-10-24
+
+FILE-04/05/11/12/13: comfort fitting keeps one cancellable native measurement and
+the latest requested page, deduplicates work and retries failures; completed
+measurements use a 32-page LRU scoped to document identity. Replacement/remount
+retires pending work. Dense highlight hit testing uses bounded, lazy page bands
+with unchanged paint-order selection; comment bounds decode once per immutable
+snapshot. Original bytes and annotation storage are unchanged.
+[Synthetic native workloads, validation and hardware limits](../tasks/pen-pdf-performance-2026-10-24.md).
+
 ## Source/model preview and external-open quality — 2026-10-19
 
 Code previews offer Retry for failed/missing reads and apply known 1 MiB metadata
