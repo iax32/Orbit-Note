@@ -13,8 +13,20 @@ clean across 754 files. Two mistakes in newly added test setup (a canonical obje
 path assertion and reusing a replica after reopen) were corrected before the
 passing batch; production opening guards were preserved.
 
-Windows build/publication pending app closure. The full suite and GitHub CI
-will not be rerun for this focused update, as requested. No personal Vault was
+Windows release built (131.5 seconds) with registered Google desktop configuration
+and matching standalone server. Built from an isolated source snapshot while the
+old app ran; 471 source/asset inputs matched published commit `aaad875` under Git
+newline rules. Initial isolated setup needed existing plugin junctions/dependency
+metadata; no Windows settings were changed. After owner closure, every copied
+runtime file was hash-checked into the normal `build/windows/x64/runner/Release`
+folder. No app or server was launched.
+
+[Windows PDF Sync Fix release](https://github.com/iax32/Orbit-Note/releases/tag/preview-pdf-sync-2026-10-24)
+published with setup EXE, SHA-256 and package/source manifest. Setup hash and source
+commit verified; all three assets published. Unsigned preview; Android unchanged.
+Source `aaad875` pushed to main with `[skip ci]`; non-version preview tag avoids
+the GitHub release build workflow. The full suite and GitHub CI were not rerun,
+as requested. No personal Vault was
 modified or uploaded by the tests. See [supported behavior](../features/cloud-sync.md).
 Real-account and physical second-device testing were not repeated.
 
