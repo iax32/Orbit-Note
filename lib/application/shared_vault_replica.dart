@@ -198,7 +198,7 @@ extension SharedVaultReplica on WorkspaceRepository {
     _requireOpen();
     final result = <String, Map<String, dynamic>>{};
     for (final path in (await _store.listFiles()).where(
-      (p) => p.startsWith('Attachments/'),
+      (p) => syncPathRole(p) == SyncPathRole.attachment,
     )) {
       var size = 0;
       final hash = await sha256

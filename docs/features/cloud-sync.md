@@ -1,5 +1,28 @@
 # Cloud sync — delivery status
 
+## Loose documents and media — 2026-10-24
+
+PDFs and common document/media formats can sync from the Vault root or nested
+folders, including outside `Attachments/`. Extensions are case-insensitive.
+The explicit policy covers PDF, text/Markdown, RTF, CSV/TSV, Office/OpenDocument,
+EPUB, common images/audio/video, and GLB/GLTF/OBJ/MTL/STL/FBX/Blend assets.
+Files retain their exact paths and bytes as streamed, checksum-verified blobs;
+this does not import them as Orbit objects or invent new object IDs. Personal
+Drive uses the existing conflict/recovery engine for subsequent changes.
+
+Shared snapshot creation and live attachment enumeration use the same policy.
+Shared attachments retain immutable-path behavior: differing bytes at an existing
+shared path require review rather than overwriting another device. Upgrade both
+clients and the host for loose-file support; older clients reject unfamiliar paths.
+Ordinary external file absence still does not imply a deletion.
+
+Internal/device/cache/recovery exclusions, portable-path/collision checks,
+transfer limits and draft guards remain. Unknown formats and loose hidden/config
+files still block complete-sync claims; they are not silently omitted or uploaded.
+Arbitrary JSON, credentials and executable/script projects are not automatically
+added by this document/media policy. Existing explicit `Attachments/` imports retain
+their original rules. No account permission expansion or storage migration.
+
 ## Incremental personal sync — 2026-10-22
 
 Active native Vaults check the Drive changes feed every **5 seconds** while Orbit

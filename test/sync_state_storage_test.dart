@@ -148,11 +148,32 @@ void main() {
       }
       expect(syncPathRole('.orbit/tombstones/id.json'), SyncPathRole.tombstone);
       expect(syncPathRole('Notes/Archived/a.md'), SyncPathRole.object);
+      expect(syncPathRole('Objects/future.object.json'), SyncPathRole.object);
       expect(
         syncPathRole('Attachments/hash/file.pdf'),
         SyncPathRole.attachment,
       );
-      expect(syncPathRole('Future/unknown.json'), SyncPathRole.unsupported);
+      for (final path in [
+        'seWS26_ue1_angabe.pdf',
+        'Courses/Week 1/SLIDES.PDF',
+        'Notes/Lecture/image.PNG',
+        'References/report.docx',
+        'References/data.csv',
+        'Models/chair.glb',
+        'readme.md',
+      ]) {
+        expect(syncPathRole(path), SyncPathRole.attachment, reason: path);
+      }
+      for (final path in [
+        'Future/unknown.json',
+        '.git/notes.pdf',
+        '.Orbit/device/secret.pdf',
+        '.env',
+        'config/client_secret.json',
+        'Future/future.object.json',
+      ]) {
+        expect(syncPathRole(path), SyncPathRole.unsupported, reason: path);
+      }
     },
   );
 

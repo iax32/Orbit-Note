@@ -1,3 +1,28 @@
+# Validated — loose PDF and document synchronization, 2026-10-24
+
+Fixes the reported `seWS26_ue1_angabe.pdf` unsupported-file failure. An explicit
+case-insensitive document/media policy inventories loose files as verified blobs
+without moving them or importing objects. The same policy now enumerates shared
+snapshot/live assets outside `Attachments/`. Internal/unknown-file exclusions,
+portable paths, immutable shared attachment paths and conflict guards remain.
+
+Validation: **80 focused tests passed** (56 seconds), covering native replica,
+Drive adapter, shared host/live assets, inventory, path policy, conflicts and
+interrupted transfers. Analyzer clean (29.8 seconds); format and strict format
+clean across 754 files. Two mistakes in newly added test setup (a canonical object
+path assertion and reusing a replica after reopen) were corrected before the
+passing batch; production opening guards were preserved.
+
+Windows build/publication pending app closure. The full suite and GitHub CI
+will not be rerun for this focused update, as requested. No personal Vault was
+modified or uploaded by the tests. See [supported behavior](../features/cloud-sync.md).
+Real-account and physical second-device testing were not repeated.
+
+Suggested next task: a user-facing preflight list explaining unsupported files
+before starting a bulk Vault upload.
+
+## Previous task
+
 # Published — Windows preview, 2026-10-24
 
 Owner requested the current source and Windows release on GitHub with long tests

@@ -468,7 +468,7 @@ class CollaborationServer {
         await _serial(() async {
           final attachments = <String, dynamic>{};
           for (final entry in bundle.files.entries.where(
-            (e) => e.key.startsWith('Attachments/'),
+            (e) => syncPathRole(e.key) == SyncPathRole.attachment,
           )) {
             final hash = sha256.convert(entry.value).toString();
             final file = _blobFile(room, hash);

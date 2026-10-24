@@ -62,6 +62,45 @@ void main() {
     return note.id;
   }
 
+  test(
+    'Drive transfers loose root PDF and nested mixed-case media without importing objects',
+    () async {
+      final files = {
+        'seWS26_ue1_angabe.pdf': [37, 80, 68, 70, 0, 255, 128],
+        'Courses/Week 1/diagram.PNG': [0, 255, 1, 128],
+        'Models/chair.GLB': [103, 108, 84, 70, 0],
+        'References/empty.txt': <int>[],
+      };
+      for (final entry in files.entries) {
+        final file = File('${a.location}/${entry.key}');
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes(entry.value);
+      }
+      await engine(ra, pa).sync();
+      await engine(rb, pb).sync();
+      for (final entry in files.entries) {
+        expect(
+          await File('${b.location}/${entry.key}').readAsBytes(),
+          entry.value,
+        );
+      }
+      expect((await b.syncInventory()).ready, isTrue);
+      expect(b.objects, isEmpty);
+      await File(
+        '${a.location}/seWS26_ue1_angabe.pdf',
+      ).writeAsBytes([37, 80, 68, 70, 2]);
+      await engine(ra, pa).sync();
+      await engine(rb, pb).sync();
+      expect(await File('${b.location}/seWS26_ue1_angabe.pdf').readAsBytes(), [
+        37,
+        80,
+        68,
+        70,
+        2,
+      ]);
+    },
+  );
+
   setUp(() async {
     current = true;
     drafts = false;

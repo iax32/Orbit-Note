@@ -143,6 +143,52 @@ void main() {
   );
 
   test(
+    'loose PDFs and media transfer exactly, update safely and survive reopen',
+    () async {
+      final paths = [
+        'seWS26_ue1_angabe.pdf',
+        'Courses/Week 1/SLIDES.PDF',
+        'Notes/Week 1/diagram.png',
+        'References/report.docx',
+        'Models/chair.glb',
+      ];
+      final payload = Uint8List.fromList(
+        List.generate(1024 * 1024 + 17, (i) => i % 251),
+      );
+      for (final path in paths) {
+        final file = File('${a.location}/$path');
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes(payload);
+      }
+      expect((await a.syncInventory()).issues, isEmpty);
+      await syncA();
+      await syncB();
+      for (final path in paths) {
+        expect(await File('${b.location}/$path').readAsBytes(), payload);
+        expect(
+          (await entry(replicaB, 'blob:$path')).hash,
+          sha256.convert(payload).toString(),
+        );
+      }
+      final updated = Uint8List.fromList([0, 255, 128, 10]);
+      await File('${a.location}/${paths.first}').writeAsBytes(updated);
+      await syncA();
+      await syncB();
+      await b.initialize(path: b.location);
+      expect(await File('${b.location}/${paths.first}').readAsBytes(), updated);
+      expect((await b.syncInventory()).ready, isTrue);
+      expect(b.objects, isEmpty); // No invented IDs or implicit imports.
+      replicaB = WorkspaceSyncReplica(b, canApply: () => !drafts);
+      await File('${a.location}/${paths.first}').writeAsBytes([1, 2]);
+      await File('${b.location}/${paths.first}').writeAsBytes([3, 4]);
+      await syncA();
+      final result = await engine(replicaB, storeB).sync();
+      expect(result.conflicts, 1);
+      expect(await File('${b.location}/${paths.first}').readAsBytes(), [3, 4]);
+    },
+  );
+
+  test(
     'streamed attachment precedes its owning file and survives reopen',
     () async {
       final payload = Uint8List.fromList(

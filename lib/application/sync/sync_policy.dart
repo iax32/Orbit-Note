@@ -30,8 +30,67 @@ SyncPathRole syncPathRole(String path) {
       (path.startsWith('Drawings/') && path.endsWith('.drawing.json'))) {
     return SyncPathRole.object;
   }
+  // Loose user documents are opaque blobs, not Orbit objects. Keep their exact
+  // relative paths; never infer object identities or decode them as UTF-8.
+  // Hidden/configuration files and unknown formats still need explicit policy.
+  final parts = path.split('/');
+  final name = parts.last.toLowerCase();
+  final dot = name.lastIndexOf('.');
+  if (!parts.any((part) => part.startsWith('.')) &&
+      dot > 0 &&
+      _looseFileExtensions.contains(name.substring(dot + 1))) {
+    return SyncPathRole.attachment;
+  }
   return SyncPathRole.unsupported;
 }
+
+const _looseFileExtensions = {
+  'pdf',
+  'txt',
+  'md',
+  'markdown',
+  'rtf',
+  'csv',
+  'tsv',
+  'doc',
+  'docx',
+  'odt',
+  'xls',
+  'xlsx',
+  'ods',
+  'ppt',
+  'pptx',
+  'odp',
+  'epub',
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'bmp',
+  'tif',
+  'tiff',
+  'svg',
+  'avif',
+  'heic',
+  'mp3',
+  'wav',
+  'ogg',
+  'flac',
+  'm4a',
+  'aac',
+  'mp4',
+  'webm',
+  'mov',
+  'mkv',
+  'glb',
+  'gltf',
+  'obj',
+  'mtl',
+  'stl',
+  'fbx',
+  'blend',
+};
 
 void validateSyncEntries(Map<String, SyncEntry> entries) {
   final paths = <String>{};

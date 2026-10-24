@@ -41,6 +41,30 @@ void main() {
     await f.close();
   });
   test(
+    'shared rooms capture loose PDFs initially and publish newly added media',
+    () async {
+      final pdf = Uint8List.fromList([37, 80, 68, 70, 0, 255]);
+      f.firstStore.files['lecture.PDF'] = pdf;
+      final created = await f.first.createRoom(
+        f.endpoint,
+        'synthetic-owner',
+        'Alice',
+      );
+      final room = created['room'] as String,
+          token = created['token'] as String;
+      final initial = await f.first.inspectRoom(f.endpoint, room, token);
+      expect(initial['attachments']['lecture.PDF']['size'], pdf.length);
+      final gallery = Uint8List.fromList([0, 128, 255]);
+      f.firstStore.files['Courses/Week 1/diagram.PNG'] = gallery;
+      // Existing connected room must also enumerate files outside Attachments/.
+      await f.first.pump();
+      await f.second.pump();
+      expect(f.secondStore.files['lecture.PDF'], pdf);
+      expect(f.secondStore.files['Courses/Week 1/diagram.PNG'], gallery);
+    },
+  );
+
+  test(
     'failed outbox persistence blocks publication and explains local recovery',
     () async {
       final note = await f.firstRepo.create(
