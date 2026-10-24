@@ -29,8 +29,15 @@ inputs unchanged and new controls/grouping markers in release AOT. An initial
 ASCII-only marker check falsely rejected a Unicode menu label; UTF-8/UTF-16
 verification passed, with no stale-build defect. Run the usual
 `build/windows/x64/runner/Release/orbit_note.exe` with its sibling files.
-No app/server launch, GitHub workflow/publication or Android rebuild. Personal
-Vaults untouched. Source changes remain in the current worktree.
+No app/server launch or Android rebuild. Personal Vaults untouched.
+
+Owner subsequently requested quick GitHub publication without tests. Source
+`7a50547` pushed to main with `[skip ci]`. The existing Windows build was packaged
+without rebuilding the app or rerunning tests. Published unsigned setup EXE,
+checksum and matching source manifest in the
+[Organized Explorer release](https://github.com/iax32/Orbit-Note/releases/tag/preview-explorer-2026-10-24).
+All three assets, installer checksum and source commit verified. A non-version
+preview tag avoids the GitHub release build workflow.
 [Behavior and boundaries](../features/attachments-and-research.md).
 
 Suggested next task: direct external file drops onto individual folder rows.
