@@ -11,6 +11,7 @@ import '../../app/orbit_components.dart';
 import '../../app/orbit_theme.dart';
 import '../../platform/open_attachment.dart';
 import '../../domain/object_sort.dart';
+import '../../domain/explorer_group.dart';
 import 'orbit_explorer_row.dart';
 import 'research_record_dialog.dart';
 import 'folder_color_dialog.dart';
@@ -40,10 +41,18 @@ class NoteFolderExplorer extends StatefulWidget {
     required this.controller,
     required this.notes,
     this.filtering = false,
+    this.visibleObjects,
+    this.onImportFiles,
+    this.groupLooseItems = false,
   });
   final WorkspaceController controller;
   final List<UniversalObject> notes;
   final bool filtering;
+
+  /// Shell-filtered objects, including all types. Null preserves Notes mode.
+  final List<UniversalObject>? visibleObjects;
+  final Future<void> Function(String folder, bool pdfOnly)? onImportFiles;
+  final bool groupLooseItems;
 
   @override
   State<NoteFolderExplorer> createState() => _NoteFolderExplorerState();
@@ -464,7 +473,16 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
             .toList(),
       );
     }
-    if (action == 'new_note') {
+    if (action == 'import_pdf' || action == 'import_files') {
+      await widget.onImportFiles?.call(folder, action == 'import_pdf');
+      if (_owns(owner)) {
+        widget.controller.updateSession(
+          (s) => s.collapsedFolders = s.collapsedFolders
+              .where((f) => f != folder && !folder.startsWith('$f/'))
+              .toList(),
+        );
+      }
+    } else if (action == 'new_note') {
       await widget.controller.create(
         'orbit.note',
         properties: {'folder': folder},
@@ -1104,17 +1122,20 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
 
     bool objectInFolder(UniversalObject o, String folder) {
       if (o.isDeleted) return false;
-      if (o.typeId == 'orbit.file' && !widget.controller.showAttachments) {
+      if (widget.visibleObjects == null &&
+          o.typeId == 'orbit.file' &&
+          !widget.controller.showAttachments) {
         return false;
       }
       return repo.objectFolder(o.id) == folder;
     }
 
-    final allItems = widget.controller.activeObjects
+    final allItems = (widget.visibleObjects ?? widget.controller.activeObjects)
         .where(
           (o) =>
               !o.isDeleted &&
-              (o.typeId == 'orbit.note' ||
+              (widget.visibleObjects != null ||
+                  o.typeId == 'orbit.note' ||
                   o.typeId == 'orbit.canvas' ||
                   o.typeId == 'orbit.view' ||
                   o.typeId == 'orbit.file'),
@@ -1159,6 +1180,19 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         ..sort(),
     ];
 
+    List<UniversalObject> folderItems(String folder) {
+      final items = allItems.where((o) => objectInFolder(o, folder)).toList();
+      sortObjects(items, widget.controller.session.noteSort);
+      if (widget.groupLooseItems && folder == 'Notes') {
+        final grouped = <UniversalObject>[];
+        for (final group in ExplorerGroup.values) {
+          grouped.addAll(items.where((o) => explorerGroup(o) == group));
+        }
+        return grouped;
+      }
+      return items;
+    }
+
     void collect(String folder) {
       if (isFolderArchived(folder)) return;
       visibleEntries.add((isFolder: true, id: folder, folderPath: folder));
@@ -1178,10 +1212,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
             ..sort()) {
         collect(child);
       }
-      final folderObjects = allItems
-          .where((o) => objectInFolder(o, folder))
-          .toList();
-      sortObjects(folderObjects, widget.controller.session.noteSort);
+      final folderObjects = folderItems(folder);
       for (final note in folderObjects) {
         visibleEntries.add((isFolder: false, id: note.id, folderPath: folder));
         visibleNoteIds.add(note.id);
@@ -1303,6 +1334,19 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                         folder.toLowerCase().contains('internals') ||
                         folder.toLowerCase().contains('security');
                     return [
+                      if (widget.onImportFiles != null) ...[
+                        PopupMenuItem(
+                          enabled: !repo.readOnly,
+                          value: 'import_pdf',
+                          child: const Text('Import PDFs here…'),
+                        ),
+                        PopupMenuItem(
+                          enabled: !repo.readOnly,
+                          value: 'import_files',
+                          child: const Text('Import files here…'),
+                        ),
+                        const PopupMenuDivider(),
+                      ],
                       PopupMenuItem(
                         enabled: !repo.readOnly,
                         value: 'new_note',
@@ -1595,11 +1639,27 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
             ..sort()) {
         visit(child, depth + 1);
       }
-      final folderObjects = allItems
-          .where((o) => objectInFolder(o, folder))
-          .toList();
-      sortObjects(folderObjects, widget.controller.session.noteSort);
+      final folderObjects = folderItems(folder);
+      ExplorerGroup? lastGroup;
       for (final note in folderObjects) {
+        if (widget.groupLooseItems && folder == 'Notes') {
+          final group = explorerGroup(note);
+          if (group != lastGroup) {
+            lastGroup = group;
+            rows.add(
+              Padding(
+                key: ValueKey('loose-group:${group.name}'),
+                padding: EdgeInsets.fromLTRB((depth + 1) * 12.0 + 8, 14, 8, 4),
+                child: Text(
+                  '${group.label} · ${folderObjects.where((o) => explorerGroup(o) == group).length}',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: OrbitColors.of(context).subtle,
+                  ),
+                ),
+              ),
+            );
+          }
+        }
         final isMulti = _selectedNoteIds.contains(note.id);
         final hasBatch = _selectedNoteIds.length > 1 && isMulti;
         final mime = (note.properties['mimeType'] as String? ?? '')

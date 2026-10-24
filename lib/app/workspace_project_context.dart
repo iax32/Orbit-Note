@@ -497,22 +497,31 @@ extension ConnectedProjects on WorkspaceController {
 
   Future<UniversalObject> importProjectAttachment(
     String name,
-    Uint8List bytes,
-  ) async {
+    Uint8List bytes, {
+    String? folder,
+  }) async {
     final workspace = repository.workspaceId, generation = workspaceGeneration;
-    final props = projectCreationProperties(const {});
-    final object = await repository.importAttachment(name: name, bytes: bytes);
+    final props = projectCreationProperties({'folder': ?folder});
+    final object = await repository.importAttachment(
+      name: name,
+      bytes: bytes,
+      folder: folder,
+    );
     if (repository.workspaceId != workspace ||
         workspaceGeneration != generation) {
       throw StateError('Vault changed during capture.');
     }
+    if (folder != null) props['folder'] = object.properties['folder'];
     try {
       final hasOwner = [
         'project',
         'course',
         'context',
       ].any(object.properties.containsKey);
-      final saved = props.isEmpty || hasOwner
+      final needsEnrichment = props.entries.any(
+        (entry) => object.properties[entry.key] != entry.value,
+      );
+      final saved = !needsEnrichment || hasOwner
           ? object
           : await repository.save(
               object.copyWith(properties: {...object.properties, ...props}),

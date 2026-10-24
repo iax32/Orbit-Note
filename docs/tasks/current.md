@@ -1,3 +1,42 @@
+# Validated — unified folder/file Explorer, 2026-10-24
+
+Owner requested right-click PDF/file imports into subfolders and organized loose
+items without flattening filed items. Scope: FILE-01, ORG-05, NAV-02. Folder menus
+now select multiple PDFs or arbitrary attachments. Destination metadata is saved
+with initial ownership; deduplication is folder-aware and never relocates an
+existing object. Native folder existence is rechecked before writing bytes.
+
+The shell now uses the same hierarchy for All items and type filters. Loose
+objects get type groups, while subfolders retain their contents and chosen sort.
+Shell-filtered objects are passed to the tree, fixing its previous bypass of
+search/tag/Space filtering. Legacy standalone Notes explorers keep their existing
+attachment visibility setting; the shell uses it in the Notes filter while
+All items/explicit file filters show matching files. No durable format migration
+or new dependency.
+
+Validation: **79 focused regressions passed** (17 seconds), covering native
+folder import/reopen, missing/unsafe destinations, sidebar/menu/picker flow,
+folder operations, selection, drops and project/reference capture. Five final UI
+regressions passed after retaining the Notes attachment toggle and explicit PDF
+filter behavior. Analyzer clean (7.8 seconds); format/strict clean across 758
+files. Initial harness errors (file-row key, provider rebuild and real file IO
+under Flutter's simulated clock) were corrected before passing runs. Initial
+analyzer style notices were fixed. Full suite was not rerun for this focused task.
+
+Final Windows release and matching server built (75.6 seconds Windows compile)
+with the existing registered Google configuration. Verified 471 source/asset
+inputs unchanged and new controls/grouping markers in release AOT. An initial
+ASCII-only marker check falsely rejected a Unicode menu label; UTF-8/UTF-16
+verification passed, with no stale-build defect. Run the usual
+`build/windows/x64/runner/Release/orbit_note.exe` with its sibling files.
+No app/server launch, GitHub workflow/publication or Android rebuild. Personal
+Vaults untouched. Source changes remain in the current worktree.
+[Behavior and boundaries](../features/attachments-and-research.md).
+
+Suggested next task: direct external file drops onto individual folder rows.
+
+## Previous task
+
 # Validated — loose PDF and document synchronization, 2026-10-24
 
 Fixes the reported `seWS26_ue1_angabe.pdf` unsupported-file failure. An explicit

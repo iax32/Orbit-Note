@@ -1,5 +1,29 @@
 # Attachments, media and research
 
+## Folder imports and unified Explorer — 2026-10-24
+
+FILE-01 / ORG-05 / NAV-02: desktop folder menus offer **Import PDFs here…** and
+**Import files here…**, with multiple selection and the existing 100 MiB per-file
+import bound. A failed file does not discard successful imports. The chosen logical folder is
+stored in the first durable file-object save; original bytes remain under the
+existing content-addressed `Attachments/` storage. Repeating an import in that
+folder reuses its identity. Importing identical bytes into a different folder
+creates a separate owned file record sharing those bytes, without moving the
+existing record. Missing/unsafe destinations fail before writing attachment bytes;
+retired Vault selections cannot import into a different opening.
+
+All-items and type-filtered Explorer views use the same folder hierarchy. Items
+assigned to subfolders stay there. Unfiled objects at the Notes root are grouped
+into Notes, Canvases, PDFs, Images, Code, 3D assets, Audio, Video, Files, Tasks,
+Events and Views as applicable. Grouping is display-only; original filenames/MIME
+identify files even after title changes, and the selected sort applies within
+each group. The existing attachment visibility preference applies to the Notes
+filter ("Show attachments in Notes"); All items and explicit file-type filters
+always include their matching files. Search, tags and Space filters feed the tree instead of reintroducing
+unmatched objects. Existing moves, references, folder archive/collapse and
+keyboard/multi-selection continue through the same object commands. No migration,
+new dependency or automatic adoption of arbitrary loose filesystem files.
+
 ## Large PDF navigation and annotation lookup — 2026-10-24
 
 FILE-04/05/11/12/13: comfort fitting keeps one cancellable native measurement and

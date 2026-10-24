@@ -1012,6 +1012,7 @@ class WorkspaceRepository {
   Future<UniversalObject> importAttachment({
     required String name,
     required Uint8List bytes,
+    String? folder,
   }) {
     if (bytes.length > 100 * 1024 * 1024) {
       return Future.error(
@@ -1030,11 +1031,21 @@ class WorkspaceRepository {
         );
       }
       _requireWritable();
+      final targetFolder = folder == null ? null : _folder(folder);
+      if (targetFolder != null) {
+        final currentFolders = _store is WorkspaceFolderStore
+            ? await (_store as WorkspaceFolderStore).listFolders()
+            : folders;
+        if (!currentFolders.contains(targetFolder)) {
+          throw const WorkspaceFailure('The import folder no longer exists.');
+        }
+      }
       final checksum = sha256.convert(snapshot).toString();
       final matches = objects.where(
         (o) =>
             o.typeId == 'orbit.file' &&
             o.properties['checksum'] == checksum &&
+            (targetFolder == null || objectFolder(o.id) == targetFolder) &&
             !o.isDeleted,
       );
       if (matches.isNotEmpty) return matches.first;
@@ -1062,6 +1073,7 @@ class WorkspaceRepository {
           revision: 0,
           properties: {
             'contentRef': path,
+            'folder': ?targetFolder,
             'originalName': name,
             'mimeType': _mime(safeName),
             'byteLength': snapshot.length,

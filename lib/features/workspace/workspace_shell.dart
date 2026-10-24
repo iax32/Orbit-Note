@@ -641,12 +641,17 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     Uint8List bytes, {
     int? captureGeneration,
     String? captureWorkspace,
+    String? folder,
   }) async {
     final generation = captureGeneration ?? c.workspaceGeneration;
     final workspace = captureWorkspace ?? c.repository.workspaceId;
     if (!_captureStillCurrent(generation, workspace)) return null;
     try {
-      final attachment = await c.importProjectAttachment(name, bytes);
+      final attachment = await c.importProjectAttachment(
+        name,
+        bytes,
+        folder: folder,
+      );
       if (!_captureStillCurrent(generation, workspace)) return null;
       // Preserve any active note drafts while adding the newly owned attachment.
       if (c.find(attachment.id) == null) c.objects = [...c.objects, attachment];
@@ -924,6 +929,56 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         message('Could not import file: $e');
       }
       return null;
+    }
+  }
+
+  Future<void> importFilesToFolder(String folder, bool pdfOnly) async {
+    final generation = c.workspaceGeneration,
+        workspace = c.repository.workspaceId;
+    try {
+      final files = await openFiles(
+        acceptedTypeGroups: pdfOnly
+            ? [
+                const XTypeGroup(label: 'PDF documents', extensions: ['pdf']),
+              ]
+            : const [],
+      );
+      if (!_captureStillCurrent(generation, workspace) || files.isEmpty) return;
+      UniversalObject? first;
+      var imported = 0;
+      for (final file in files) {
+        if (!_captureStillCurrent(generation, workspace)) return;
+        try {
+          final bytes = await readIncomingFile(file);
+          final object = await importBytes(
+            file.name,
+            bytes,
+            folder: folder,
+            captureGeneration: generation,
+            captureWorkspace: workspace,
+          );
+          if (object != null) {
+            first ??= object;
+            imported++;
+          }
+        } catch (e) {
+          if (_captureStillCurrent(generation, workspace)) {
+            message('Could not import ${file.name}: $e');
+          }
+        }
+      }
+      if (!_captureStillCurrent(generation, workspace)) return;
+      if (first != null) {
+        setState(() => explorerTypeFilter = 'all');
+        c.openObject(first.id);
+        message(
+          'Imported $imported of ${files.length} files into ${p.posix.basename(folder)}',
+        );
+      }
+    } catch (e) {
+      if (_captureStillCurrent(generation, workspace)) {
+        message('Could not import files: $e');
+      }
     }
   }
 
@@ -2265,7 +2320,14 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     } else {
       switch (explorerTypeFilter) {
         case 'notes':
-          objects = c.ofType('orbit.note');
+          objects = c.activeObjects
+              .where(
+                (o) =>
+                    !o.isDeleted &&
+                    (o.typeId == 'orbit.note' ||
+                        c.showAttachments && o.typeId == 'orbit.file'),
+              )
+              .toList();
         case 'canvases':
           objects = c.ofType('orbit.canvas');
         case 'pdfs':
@@ -2568,7 +2630,8 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                       ),
                     ),
                     const SizedBox(width: 4),
-                    if (destination == OrbitDestination.notes)
+                    if (destination == OrbitDestination.notes &&
+                        explorerTypeFilter == 'notes')
                       IconButton(
                         tooltip: c.showAttachments
                             ? 'Hide files & PDFs'
@@ -2921,14 +2984,14 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                 ),
               Expanded(
                 child:
-                    (destination == OrbitDestination.notes ||
-                            explorerTypeFilter == 'notes') &&
-                        type == 'orbit.note' &&
-                        destination != OrbitDestination.trash &&
+                    destination != OrbitDestination.trash &&
                         c.repository.supportsFolders
                     ? NoteFolderExplorer(
                         controller: c,
                         notes: objects,
+                        visibleObjects: objects,
+                        groupLooseItems: true,
+                        onImportFiles: importFilesToFolder,
                         filtering: explorerFilter.isNotEmpty,
                       )
                     : objects.isEmpty

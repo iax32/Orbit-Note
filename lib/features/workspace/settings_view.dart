@@ -1690,11 +1690,11 @@ class _SettingsViewState extends State<SettingsView> {
         "attachments",
         _Category.layout,
         "Explorer",
-        "Show attachments in explorer",
+        "Show attachments in Notes",
         "files images pdf media",
         (context) => toggle(
           'show-attachments',
-          'Show attachments in explorer',
+          'Show attachments in Notes',
           'Include attachment files beside your notes.',
           s.showAttachments,
           (v) => changeSession((s) => s.showAttachments = v),
