@@ -285,6 +285,8 @@ Map<String, dynamic> editInteractionLink(
     UmlLinkKind.create => label.trim().isEmpty ? '«create»' : label.trim(),
     _ => label.trim(),
   };
+  final retainGeometry =
+      e.startId == from && e.endId == to && umlLinkKind(e) == kind;
   return {
     'umlLink': {
       ...(e.data['umlLink'] is Map ? e.data['umlLink'] as Map : const {}),
@@ -299,11 +301,15 @@ Map<String, dynamic> editInteractionLink(
     'startMarker': 'none',
     'endMarker': kind.marker,
     'strokeStyle': kind.dashed ? 'dashed' : 'solid',
-    'routing': kind.sequence && from == to ? 'orthogonal' : 'straight',
-    'startAnchor': 'auto',
-    'endAnchor': 'auto',
-    'startAnchorOffset': .5,
-    'endAnchorOffset': .5,
+    'routing': retainGeometry
+        ? e.routing
+        : kind.sequence && from == to
+        ? 'orthogonal'
+        : 'straight',
+    'startAnchor': retainGeometry ? e.startAnchor : 'auto',
+    'endAnchor': retainGeometry ? e.endAnchor : 'auto',
+    'startAnchorOffset': retainGeometry ? e.data['startAnchorOffset'] : .5,
+    'endAnchorOffset': retainGeometry ? e.data['endAnchorOffset'] : .5,
     'startMultiplicity': fromMultiplicity.trim(),
     'endMultiplicity': toMultiplicity.trim(),
   };
@@ -312,6 +318,8 @@ Map<String, dynamic> editInteractionLink(
 /// Lightweight shared vector layout for native Canvas, note previews and SVG.
 /// No font rasterization or separate diagram engine is introduced.
 class UmlGlyph {
+  final solidOvals = <CanvasBounds>[];
+  final solidBoxes = <CanvasBounds>[];
   final boxes = <({CanvasBounds bounds, bool fill})>[];
   final ovals = <({CanvasBounds bounds, bool fill})>[];
   final paths = <({List<CanvasPoint> points, bool dashed})>[];

@@ -50,6 +50,36 @@ class _DriveScheduleSettingsState extends ConsumerState<DriveScheduleSettings> {
           if (c.busy || c.loading) const LinearProgressIndicator(),
           if (c.lastCheck != null)
             Text('Last check: ${c.lastCheck!.toLocal()}'),
+          if (c.backgroundSupported) ...[
+            const SizedBox(height: 12),
+            const Text(
+              'Background sync',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const Text(
+              'Optional checks while Orbit is closed, for the Vaults selected below. Requires an existing Google sign-in. Runs approximately every 15 minutes when connected; your OS can delay or stop jobs. Windows requires you to stay signed in to Windows. Android force-stop prevents jobs until Orbit is reopened. Open or shared Vaults are skipped; conflicts need review in Orbit.',
+            ),
+            const SizedBox(height: 8),
+            if (c.backgroundStatus != null)
+              Semantics(liveRegion: true, child: Text(c.backgroundStatus!)),
+            OutlinedButton.icon(
+              icon: Icon(
+                c.backgroundEnabled ? Icons.pause : Icons.cloud_sync_outlined,
+              ),
+              onPressed:
+                  c.loading ||
+                      c.busy ||
+                      c.configurationBlocked ||
+                      (!c.backgroundEnabled && (!c.enabled || c.vaults.isEmpty))
+                  ? null
+                  : () => c.setBackgroundEnabled(!c.backgroundEnabled),
+              label: Text(
+                c.backgroundEnabled
+                    ? 'Disable background checks'
+                    : 'Enable background checks for selected Vaults',
+              ),
+            ),
+          ],
           if (c.enabled && c.nextCheck != null)
             Text('Next check: ${c.nextCheck!.toLocal()}'),
           if (c.vaults.isNotEmpty)

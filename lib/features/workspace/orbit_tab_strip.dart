@@ -365,6 +365,14 @@ class _TabListState extends State<_TabList> {
             },
             child: const Text('Reopen closed tab'),
           ),
+        if (c.closedTabGroups.isNotEmpty)
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              c.reopenClosedTabGroup();
+            },
+            child: const Text('Reopen closed tab group'),
+          ),
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('Done'),

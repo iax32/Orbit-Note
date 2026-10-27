@@ -53,12 +53,15 @@ class _UmlDialogState extends State<_UmlDialog> {
   late var relationship = UmlRelationship.parse(
     widget.element.data['umlRelationship'],
   );
+  late var navigation = UmlNavigation.of(widget.element);
   late String? from = widget.classes.any((e) => e.id == widget.element.startId)
       ? widget.element.startId
       : widget.classes.firstOrNull?.id;
   late String? to = widget.classes.any((e) => e.id == widget.element.endId)
       ? widget.element.endId
-      : widget.classes.where((e) => e.id != from).firstOrNull?.id;
+      : (widget.classes.where((e) => e.id != from).firstOrNull ??
+                widget.classes.firstOrNull)
+            ?.id;
   late String startAnchor = widget.element.startAnchor;
   late String endAnchor = widget.element.endAnchor;
   double offset(String key) {
@@ -174,8 +177,13 @@ class _UmlDialogState extends State<_UmlDialog> {
             .max(widget.element.width, updated.naturalWidth.clamp(280, 800))
             .toDouble();
       } else {
-        if (from == null || to == null || from == to) {
-          throw const FormatException('Choose two different classes.');
+        if (from == null || to == null) {
+          throw const FormatException('Choose both classes.');
+        }
+        if (from == to && relationship != UmlRelationship.association) {
+          throw const FormatException(
+            'Self-links are supported for associations.',
+          );
         }
         if ([
           startMultiplicity.text,
@@ -190,6 +198,16 @@ class _UmlDialogState extends State<_UmlDialog> {
         }
         patch = {
           ...relationship.style,
+          if (relationship.name == widget.element.data['umlRelationship'])
+            for (final key in [
+              'routing',
+              'strokeStyle',
+              'startMarker',
+              'endMarker',
+            ])
+              if (widget.element.data.containsKey(key))
+                key: widget.element.data[key],
+          if (relationship == UmlRelationship.association) ...navigation.style,
           'startId': from,
           'endId': to,
           'startAnchor': startAnchor,
@@ -269,6 +287,22 @@ class _UmlDialogState extends State<_UmlDialog> {
                 onChanged: (v) => setState(() => relationship = v!),
               ),
               const SizedBox(height: 12),
+              if (relationship == UmlRelationship.association) ...[
+                DropdownButtonFormField<UmlNavigation>(
+                  isExpanded: true,
+                  initialValue: navigation,
+                  decoration: const InputDecoration(labelText: 'Navigability'),
+                  items: [
+                    for (final n in UmlNavigation.values)
+                      DropdownMenuItem(value: n, child: Text(n.label)),
+                  ],
+                  onChanged: (v) => setState(() => navigation = v!),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Choose the same class at both ends for a self-association. No multiplicity is inferred.',
+                ),
+              ],
               Text(switch (relationship) {
                 UmlRelationship.generalization || UmlRelationship.realization =>
                   'Triangle points to the parent class / interface (To).',

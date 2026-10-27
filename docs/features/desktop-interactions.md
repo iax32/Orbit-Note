@@ -1,5 +1,12 @@
 # Desktop interaction quality
 
+## Everyday workflow polish — 2026-10-27
+
+[Delivered behavior](everyday-workflows.md) covers guarded paste/move/removal Undo,
+PDF copy choices, precise navigation, persistent search return, connection tracing,
+per-board tools, rename context and truthful save/sync controls. Existing draft,
+IME, cross-pane and recovery protections remain in force.
+
 ## Canvas transfer and gesture reliability — 2026-10-18
 
 Canvas cut, paste, image loads, reference pickers, context-menu actions and
@@ -171,3 +178,34 @@ Reuse of a canonical attachment preserves explicit project/course/context owners
 Creative reference capture also retains its original capture-board provenance and
 folder where present. Sharing a source across boards references that object; it
 does not implicitly move the original source between projects.
+
+## Rich clipboard content stress audit — 2026-10-26
+
+Browser HTML links and image destinations preserve spaces, parentheses and literal
+entities when converted to Markdown. Multiline table cells retain a single pipe
+table using in-cell breaks; literal HTML-looking text and code pipes survive.
+Block quotes retain paragraph, code and math boundaries. Protected rich fragments
+restore in one token pass rather than scanning the full payload once per fragment.
+Large note-to-Canvas prose accumulates in a buffer, preserving complete content.
+PDF quote conversion normalizes CR, CRLF and LF before quoting every line and
+retains the source/page backlink.
+
+Structural edits invalidate the originating Rich field's cached widget, including
+an empty paragraph retained as the trailing editing target. Repeated cut, undo,
+redo and paste must reset that field to the actual source instead of appending
+to stale controller text. These edits retain the existing document history.
+
+Acceptance uses synthetic native PDFium extraction plus Flutter keyboard routing,
+large connected Canvas moves/cuts/pastes, and isolated native Windows Unicode and
+CF_HTML round trips. The native clipboard probe uses its own noninteractive
+window station; it does not access the user's desktop clipboard. Actual external
+Firefox/Acrobat/browser UI transfers and physical-device acceptance remain separate.
+This does not promise arbitrary HTML import fidelity or cross-Vault media copying.
+2026-10-26 settings continuation: tab/history changes preserve explicit collapsed
+folder choices. Rename remaps collapse paths; deletion cleans them. Appearance,
+editor defaults and folder preferences save as portable Vault records through
+existing Drive or live shared sync. Device paths/secrets, tabs, zoom and layout
+remain local. Shared participants receive the same Vault preferences. Concurrent
+different fields merge; same-field ties resolve deterministically; pending local
+changes and interrupted saves remain recoverable. See
+[ADR 0035](../adr/0035-portable-vault-preferences.md) for scope and limits.

@@ -8,3 +8,5 @@ analyzer:
     - LOCAL~1/**
     - .pub-cache/**
     - PUB-CA~1/**
+    # Vendored upstream packages retain their own style; app regressions exercise patches.
+    - third_party/**

@@ -5,7 +5,10 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 
 /// A detached render tree: no desktop automation, overlay, or note mutation.
-Future<Uint8List> renderPublicationMath(String tex) async {
+Future<Uint8List> renderPublicationMath(
+  String tex, {
+  Color color = Colors.black,
+}) async {
   if (tex.length > 4000) {
     throw const FormatException('Equation preview is too large.');
   }
@@ -35,10 +38,10 @@ Future<Uint8List> renderPublicationMath(String tex) async {
     child: Directionality(
       textDirection: TextDirection.ltr,
       child: DefaultTextStyle(
-        style: const TextStyle(fontSize: 22, color: Colors.black),
+        style: TextStyle(fontSize: 22, color: color),
         child: Math.tex(
           tex,
-          textStyle: const TextStyle(fontSize: 22, color: Colors.black),
+          textStyle: TextStyle(fontSize: 22, color: color),
           onErrorFallback: (error) {
             parseError = error.toString();
             return const SizedBox();

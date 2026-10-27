@@ -1,5 +1,24 @@
 # Optional sync and collaboration
 
+## Background personal Drive checks and retention — 2026-10-25
+
+Drive scheduled-Vault settings offer explicit background enrollment on Windows
+and Android. Existing selected/enabled account-bound Vaults use the same engine,
+native locks and recovery journal. Paused Vaults remain paused. No consent UI,
+cloud binding creation or automatic conflict resolution runs in a worker.
+Windows uses the logged-in user's Task Scheduler; Android uses a separate
+JobScheduler process with silent grants. OS checks request a 15-minute cadence
+and can be delayed/stopped; this is not closed-app real-time or shared coediting.
+
+An explicit cleanup preview can expire old superseded cloud payloads, keeping
+at least 20 versions, recent objects, current heads, revision metadata and local
+history. A durable plan/cloud receipt precede deletion. Cleanup upgrades the
+cloud folder to protocol 3; older clients must update. No automatic cleanup.
+Metadata compaction/10,000-record limit remain; physical Android and real silent
+Google background acceptance are unverified. Earlier dated delivery sections
+describe their earlier boundaries. [Implementation/evidence](../tasks/background-drive-2026-10-25.md),
+[ADR-0033](../adr/0033-background-drive-and-payload-retention.md).
+
 ## Live shared delivery — 2026-10-22
 
 New rooms created with the updated app/host negotiate live owning-object creation,

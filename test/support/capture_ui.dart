@@ -32,11 +32,12 @@ Future<void> captureUi(
   WidgetTester tester,
   String name, {
   double pixelRatio = 1,
+  Finder? target,
 }) async {
   if (!const bool.fromEnvironment('ORBIT_CAPTURE_UI')) return;
   await tester.pumpAndSettle();
   final boundary = tester.renderObject<RenderRepaintBoundary>(
-    find.byType(RepaintBoundary).first,
+    target ?? find.byType(RepaintBoundary).first,
   );
   await tester.runAsync(() async {
     final image = await boundary.toImage(pixelRatio: pixelRatio);

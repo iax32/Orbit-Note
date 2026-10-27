@@ -1,5 +1,9 @@
 import '../../domain/life_workspace.dart';
+import '../../domain/attachment_identity.dart';
+import '../../app/orbit_operation.dart';
 import 'life_workspace.dart';
+import 'finance_workspace.dart';
+import 'research_dossier_workspace.dart';
 import 'orbit_tab_strip.dart';
 import '../../app/drive_vault_scheduler.dart';
 import '../../platform/vault_discovery.dart';
@@ -40,6 +44,7 @@ import '../../app/drive_sync_controller.dart';
 import '../../app/collaboration_controller.dart';
 import 'collaboration_settings.dart';
 import '../../domain/universal_object.dart';
+import '../../domain/note_statistics.dart';
 import '../../domain/attachment_safety.dart';
 import '../../domain/object_sort.dart';
 import '../../domain/object_discovery.dart';
@@ -642,15 +647,60 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     int? captureGeneration,
     String? captureWorkspace,
     String? folder,
+    bool? reuseExisting,
   }) async {
     final generation = captureGeneration ?? c.workspaceGeneration;
     final workspace = captureWorkspace ?? c.repository.workspaceId;
     if (!_captureStillCurrent(generation, workspace)) return null;
     try {
+      if (reuseExisting == null) {
+        final checksum = await compute(attachmentChecksum, bytes);
+        if (!mounted || !_captureStillCurrent(generation, workspace)) {
+          return null;
+        }
+        final matches = c.objects.where(
+          (o) =>
+              !o.isDeleted &&
+              o.typeId == 'orbit.file' &&
+              o.properties['checksum'] == checksum &&
+              (folder == null || c.repository.objectFolder(o.id) == folder),
+        );
+        if (matches.isNotEmpty) {
+          final existing = matches.first;
+          final choice = await showDialog<String>(
+            context: context,
+            builder: (context) => OrbitDialog(
+              title: const Text('This attachment already exists'),
+              content: Text(
+                'Identical content: ${existing.title}\nFolder: ${c.repository.objectFolder(existing.id)}\n\nReuse keeps its identity and references. An independent copy has its own title and history.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, 'copy'),
+                  child: const Text('Import independent copy'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, 'reuse'),
+                  child: const Text('Reuse existing'),
+                ),
+              ],
+            ),
+          );
+          if (choice == null || !_captureStillCurrent(generation, workspace)) {
+            return null;
+          }
+          reuseExisting = choice == 'reuse';
+        }
+      }
       final attachment = await c.importProjectAttachment(
         name,
         bytes,
         folder: folder,
+        reuseExisting: reuseExisting ?? true,
       );
       if (!_captureStillCurrent(generation, workspace)) return null;
       // Preserve any active note drafts while adding the newly owned attachment.
@@ -943,34 +993,109 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
               ]
             : const [],
       );
-      if (!_captureStillCurrent(generation, workspace) || files.isEmpty) return;
+      if (!mounted ||
+          !_captureStillCurrent(generation, workspace) ||
+          files.isEmpty) {
+        return;
+      }
+      var reuse = true;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, update) => OrbitDialog(
+            title: Text('Import ${files.length} files'),
+            content: SizedBox(
+              width: 440,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 360),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Destination: $folder'),
+                      const SizedBox(height: 12),
+                      for (final file in files.take(100)) Text(file.name),
+                      if (files.length > 100)
+                        Text('And ${files.length - 100} more files'),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text(
+                          'Reuse identical attachments in this folder',
+                        ),
+                        subtitle: const Text(
+                          'Turn off for independent copies with their own identity.',
+                        ),
+                        value: reuse,
+                        onChanged: (v) => update(() => reuse = v ?? true),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Import files'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (!mounted ||
+          confirmed != true ||
+          !_captureStillCurrent(generation, workspace)) {
+        return;
+      }
       UniversalObject? first;
       var imported = 0;
-      for (final file in files) {
-        if (!_captureStillCurrent(generation, workspace)) return;
-        try {
-          final bytes = await readIncomingFile(file);
-          final object = await importBytes(
-            file.name,
-            bytes,
-            folder: folder,
-            captureGeneration: generation,
-            captureWorkspace: workspace,
-          );
-          if (object != null) {
-            first ??= object;
-            imported++;
+      await runOrbitOperation<void>(context, 'Importing files', (
+        progress,
+      ) async {
+        for (var index = 0; index < files.length; index++) {
+          final file = files[index];
+          if (!_captureStillCurrent(generation, workspace) ||
+              progress.canceled) {
+            return;
           }
-        } catch (e) {
-          if (_captureStillCurrent(generation, workspace)) {
-            message('Could not import ${file.name}: $e');
+          progress.report(
+            '${index + 1} / ${files.length} · ${file.name}',
+            progress: index / files.length,
+          );
+          try {
+            final bytes = await readIncomingFile(file);
+            if (progress.canceled ||
+                !_captureStillCurrent(generation, workspace)) {
+              return;
+            }
+            final object = await importBytes(
+              file.name,
+              bytes,
+              folder: folder,
+              reuseExisting: reuse,
+              captureGeneration: generation,
+              captureWorkspace: workspace,
+            );
+            if (object != null) {
+              first ??= object;
+              imported++;
+            }
+          } catch (e) {
+            if (_captureStillCurrent(generation, workspace)) {
+              message('Could not import ${file.name}: $e');
+            }
           }
         }
-      }
+      });
       if (!_captureStillCurrent(generation, workspace)) return;
       if (first != null) {
         setState(() => explorerTypeFilter = 'all');
-        c.openObject(first.id);
+        c.openObject(first!.id);
         message(
           'Imported $imported of ${files.length} files into ${p.posix.basename(folder)}',
         );
@@ -1008,6 +1133,12 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     final local = refPath.startsWith('Attachments/');
     final rawLength = file?.properties['byteLength'];
     return ReadAttachmentImage(
+      aspectRatio:
+          file?.properties['imageWidth'] is num &&
+              file?.properties['imageHeight'] is num
+          ? (file!.properties['imageWidth'] as num) /
+                (file.properties['imageHeight'] as num)
+          : null,
       label: refPath,
       showReplacementStatus: true,
       title: file?.title ?? p.posix.basename(refPath),
@@ -1303,6 +1434,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   }
 
   void openLinkedObject(String target) {
+    c.rememberNavigationLocation();
     final reference = ObjectReference.parse(target);
     c.requestLocation(reference);
     final object = c.find(reference.id);
@@ -1872,6 +2004,13 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
           child: LayoutBuilder(
             builder: (context, constraints) {
               final wide = constraints.maxWidth >= 800;
+              final active = c.find(c.session.activeId);
+              final canvasFocus =
+                  c.session.focusMode &&
+                  (c.session.destination == OrbitDestination.canvas ||
+                      c.session.destination == OrbitDestination.notes) &&
+                  active?.typeId == 'orbit.canvas' &&
+                  active?.isDeleted == false;
               final sidebar =
                   wide &&
                   c.session.sidebarVisible &&
@@ -1881,129 +2020,139 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                   c.session.inspectorVisible &&
                   !c.session.focusMode &&
                   constraints.maxWidth >= 1220;
-              return Scaffold(
-                key: scaffoldKey,
-                backgroundColor: colors.background,
-                drawer: Drawer(
-                  backgroundColor: colors.panel,
-                  child: SafeArea(child: explorer()),
-                ),
-                body: SafeArea(
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: Row(
-                          children: [
-                            if (wide) activityRail(),
-                            if (sidebar) ...[
-                              SizedBox(
-                                width: c.session.sidebarWidth,
-                                child: explorer(),
-                              ),
-                              MouseRegion(
-                                cursor: SystemMouseCursors.resizeColumn,
-                                child: GestureDetector(
-                                  onHorizontalDragUpdate: (e) =>
-                                      c.updateSession(
-                                        (s) => s.sidebarWidth =
-                                            (s.sidebarWidth + e.delta.dx).clamp(
-                                              180,
-                                              380,
-                                            ),
-                                      ),
-                                  child: Container(
-                                    width: 4,
-                                    color: colors.panel,
+              return PopScope(
+                canPop: !canvasFocus,
+                onPopInvokedWithResult: (didPop, _) {
+                  if (!didPop && canvasFocus) {
+                    c.updateSession((s) => s.focusMode = false);
+                  }
+                },
+                child: Scaffold(
+                  key: scaffoldKey,
+                  drawerEnableOpenDragGesture: !canvasFocus,
+                  backgroundColor: colors.background,
+                  drawer: Drawer(
+                    backgroundColor: colors.panel,
+                    child: SafeArea(child: explorer()),
+                  ),
+                  body: SafeArea(
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: Row(
+                            children: [
+                              if (wide && !canvasFocus) activityRail(),
+                              if (sidebar) ...[
+                                SizedBox(
+                                  width: c.session.sidebarWidth,
+                                  child: explorer(),
+                                ),
+                                MouseRegion(
+                                  cursor: SystemMouseCursors.resizeColumn,
+                                  child: GestureDetector(
+                                    onHorizontalDragUpdate: (e) =>
+                                        c.updateSession(
+                                          (s) => s.sidebarWidth =
+                                              (s.sidebarWidth + e.delta.dx)
+                                                  .clamp(180, 380),
+                                        ),
+                                    child: Container(
+                                      width: 4,
+                                      color: colors.panel,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
-                            Expanded(
-                              child: Column(
-                                children: [
-                                  header(wide: wide, sidebar: sidebar),
-                                  if (!c.session.focusMode)
-                                    ProjectContextBar(controller: c),
-                                  if (c.error != null)
-                                    errorBanner(
-                                      c.error!,
-                                      () => c.updateSession(
-                                        (_) => c.error = null,
-                                      ),
-                                    ),
-                                  if (c.failures.isNotEmpty)
-                                    errorBanner(
-                                      c.failures.values.first,
-                                      () => c.retry(c.failures.keys.first),
-                                      recovery: () => c.saveConflictCopy(
-                                        c.failures.keys.first,
-                                      ),
-                                    ),
-                                  if (c.repository.issues.isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 16,
-                                        vertical: 6,
-                                      ),
-                                      child: Text(
-                                        c.repository.issues.join(' · '),
-                                        maxLines: 3,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.error,
-                                          fontSize: 12,
+                              ],
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    if (!canvasFocus)
+                                      header(wide: wide, sidebar: sidebar),
+                                    if (!c.session.focusMode)
+                                      ProjectContextBar(controller: c),
+                                    if (c.error != null)
+                                      errorBanner(
+                                        c.error!,
+                                        () => c.updateSession(
+                                          (_) => c.error = null,
                                         ),
                                       ),
-                                    ),
-                                  if (c.session.tabs.isNotEmpty) tabs(),
-                                  Expanded(
-                                    child: DropTarget(
-                                      key: const ValueKey(
-                                        'content-drop-target',
-                                      ),
-                                      onDragDone: dropFiles,
-                                      onDragEntered: (_) =>
-                                          setState(() => dropping = true),
-                                      onDragExited: (_) =>
-                                          setState(() => dropping = false),
-                                      child: DecoratedBox(
-                                        decoration: BoxDecoration(
-                                          border: dropping
-                                              ? Border.all(
-                                                  color: colors.accent,
-                                                  width: 2,
-                                                )
-                                              : null,
+                                    if (c.failures.isNotEmpty)
+                                      errorBanner(
+                                        c.failures.values.first,
+                                        () => c.retry(c.failures.keys.first),
+                                        recovery: () => c.saveConflictCopy(
+                                          c.failures.keys.first,
                                         ),
-                                        child: OrbitContentTransition(
-                                          identity: (
-                                            c.session.destination,
-                                            c.session.activeId,
+                                      ),
+                                    if (c.repository.issues.isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                          vertical: 6,
+                                        ),
+                                        child: Text(
+                                          c.repository.issues.join(' · '),
+                                          maxLines: 3,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.error,
+                                            fontSize: 12,
                                           ),
-                                          child: content(),
+                                        ),
+                                      ),
+                                    if (c.session.tabs.isNotEmpty &&
+                                        !canvasFocus)
+                                      tabs(),
+                                    Expanded(
+                                      child: DropTarget(
+                                        key: const ValueKey(
+                                          'content-drop-target',
+                                        ),
+                                        onDragDone: dropFiles,
+                                        onDragEntered: (_) =>
+                                            setState(() => dropping = true),
+                                        onDragExited: (_) =>
+                                            setState(() => dropping = false),
+                                        child: DecoratedBox(
+                                          decoration: BoxDecoration(
+                                            border: dropping
+                                                ? Border.all(
+                                                    color: colors.accent,
+                                                    width: 2,
+                                                  )
+                                                : null,
+                                          ),
+                                          child: OrbitContentTransition(
+                                            identity: (
+                                              c.session.destination,
+                                              c.session.activeId,
+                                            ),
+                                            child: content(),
+                                          ),
                                         ),
                                       ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (inspector)
-                              SizedBox(
-                                width: 300,
-                                child: OrbitEntrance(
-                                  spatial: true,
-                                  offset: const Offset(6, 0),
-                                  child: inspectorView(),
+                                  ],
                                 ),
                               ),
-                          ],
+                              if (inspector)
+                                SizedBox(
+                                  width: 300,
+                                  child: OrbitEntrance(
+                                    spatial: true,
+                                    offset: const Offset(6, 0),
+                                    child: inspectorView(),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
-                      ),
-                      statusBar(),
-                    ],
+                        if (!canvasFocus) statusBar(),
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -2567,6 +2716,23 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                         tooltip: 'Life workspace',
                         onPressed: () => showLifeWorkspace(context, c),
                         icon: const Icon(Icons.spa_outlined, size: 19),
+                      ),
+                      IconButton(
+                        tooltip: 'Finance · expenses, budgets and accounts',
+                        onPressed: () => showFinanceWorkspace(context, c),
+                        icon: const Icon(
+                          Icons.account_balance_wallet_outlined,
+                          size: 19,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip:
+                            'Research dossiers · functions, structures and evidence',
+                        onPressed: () => showResearchDossier(context, c),
+                        icon: const Icon(
+                          Icons.manage_search_outlined,
+                          size: 19,
+                        ),
                       ),
                       IconButton(
                         tooltip: 'Courses & study progress',
@@ -4171,6 +4337,8 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   }
 
   Widget objectView(UniversalObject object, {String pane = 'primary'}) {
+    final viewGeneration = c.workspaceGeneration,
+        viewWorkspace = c.repository.workspaceId;
     final lifeIndex = object.typeId == 'orbit.canvas' ? c.lifeIndex : null;
     final positionKey = '$pane:${object.id}';
     final otherObject = c.find(
@@ -4197,6 +4365,10 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
               collaboration.viewer && collaboration.shares(object.id),
           location: c.locationRequests[object.id]?.reference,
           locationSerial: c.locationRequests[object.id]?.serial ?? 0,
+          restoreViewSerial:
+              pane == 'primary' && c.navigationRestoreTargetId == object.id
+              ? c.navigationRestoreSerial
+              : 0,
           locationOffset: c.locationRequests[object.id]?.offset,
           locationLength: c.locationRequests[object.id]?.length ?? 0,
           key: ValueKey('$pane:note-${object.id}:${c.studyResumeSerial}'),
@@ -4351,6 +4523,12 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       'orbit.canvas' => ListenableBuilder(
         listenable: collaboration.viewerChanges,
         builder: (context, _) => CanvasEditor(
+          interactionActive:
+              !_secondaryVisible || _targetSecondary == (pane == 'secondary'),
+          onActivate: () => _focusPaneEditor(secondary: pane == 'secondary'),
+          focusMode: c.session.focusMode,
+          onToggleFocusMode: () =>
+              c.updateSession((s) => s.focusMode = !s.focusMode),
           onSavePersonalTemplate: () =>
               saveObjectAsLifeTemplate(context, c, object),
           readOnly:
@@ -4557,6 +4735,10 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
             return chain.length > 1 ? chain : null;
           }(),
           camera: c.session.cameras[object.id],
+          restoreViewSerial:
+              pane == 'primary' && c.navigationRestoreTargetId == object.id
+              ? c.navigationRestoreSerial
+              : 0,
           onCameraChanged: (v) {
             c.session.cameras = {...c.session.cameras, object.id: v};
             c.persistSession();
@@ -4579,6 +4761,10 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         controller: c,
       ),
       'orbit.file' when objectKindLabel(object) == 'PDF' => OrbitPdfReader(
+        restoreViewSerial:
+            pane == 'primary' && c.navigationRestoreTargetId == object.id
+            ? c.navigationRestoreSerial
+            : 0,
         key: ValueKey(
           '$pane:pdf:${object.id}:${object.properties['contentRef']}:${object.properties['checksum']}:${c.studyResumeSerial}',
         ),
@@ -4753,6 +4939,23 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
             (c.session.noteViews['pdf:$pane:${object.id}']?['zoom'] as num?)
                 ?.toDouble(),
         initialFavorite: object.properties['isFavorite'] == true,
+        initialViewOptions:
+            c.session.noteViews['pdf-options:${object.id}'] ?? const {},
+        onViewOptions: (options) {
+          if (!_captureStillCurrent(viewGeneration, viewWorkspace) ||
+              c.find(object.id) == null) {
+            return;
+          }
+          c.updateSession(
+            (s) => s.noteViews = {
+              ...s.noteViews,
+              'pdf-options:${object.id}': {
+                ...?s.noteViews['pdf-options:${object.id}'],
+                ...options,
+              },
+            },
+          );
+        },
         onToggleFavorite: (fav) {
           final latest = c.find(object.id);
           if (latest != null) {
@@ -4985,7 +5188,8 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     };
     final view = Column(
       children: [
-        ObjectBridgeBar(controller: c, object: object),
+        if (!(c.session.focusMode && object.typeId == 'orbit.canvas'))
+          ObjectBridgeBar(controller: c, object: object),
         Expanded(child: content),
       ],
     );
@@ -4997,34 +5201,62 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       key: ValueKey('workspace-pane:$pane'),
       node: paneFocus,
       onFocusChange: (focused) {
-        if (focused) _secondaryFocused = pane == 'secondary';
+        if (focused && _secondaryFocused != (pane == 'secondary')) {
+          setState(() => _secondaryFocused = pane == 'secondary');
+        }
       },
       child: Listener(
         behavior: HitTestBehavior.translucent,
         onPointerDown: (_) {
-          _secondaryFocused = pane == 'secondary';
+          if (_secondaryFocused != (pane == 'secondary')) {
+            setState(() => _secondaryFocused = pane == 'secondary');
+          }
           if (readOnly) paneFocus.requestFocus();
         },
-        child: readOnly
-            ? Column(
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: Text(
-                      'Read-only: this format requires a newer compatible version.',
-                    ),
-                  ),
-                  Expanded(child: AbsorbPointer(child: view)),
-                ],
-              )
-            : ['orbit.note', 'orbit.canvas'].contains(object.typeId)
-            ? SharedDocumentSurface(
-                controller: collaboration,
-                objectId: object.id,
-                canvas: object.typeId == 'orbit.canvas',
-                child: view,
-              )
-            : view,
+        child: DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(
+            border:
+                _secondaryVisible && _targetSecondary == (pane == 'secondary')
+                ? Border.all(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: .5),
+                    width: 1.5,
+                  )
+                : null,
+          ),
+          child: Semantics(
+            container: true,
+            label:
+                '${pane == "secondary" ? "Secondary" : "Primary"} pane${_secondaryVisible && _targetSecondary == (pane == "secondary") ? ", active" : ""}${readOnly ? ", read-only" : ""}',
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                readOnly
+                    ? Column(
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: Text(
+                              'Read-only: this format requires a newer compatible version.',
+                            ),
+                          ),
+                          Expanded(child: AbsorbPointer(child: view)),
+                        ],
+                      )
+                    : ['orbit.note', 'orbit.canvas'].contains(object.typeId)
+                    ? SharedDocumentSurface(
+                        controller: collaboration,
+                        objectId: object.id,
+                        canvas: object.typeId == 'orbit.canvas',
+                        child: view,
+                      )
+                    : view,
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -5039,26 +5271,18 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   }
 
   Widget statusBar() {
+    // Status chrome must never activate an account adapter for a local-only Vault.
+    final drive = ref.exists(driveSyncProvider)
+        ? ref.watch(driveSyncProvider)
+        : null;
+    final shared = ref.watch(collaborationProvider);
     final activeObject = c.find(c.session.activeId);
     final isNote =
         c.session.destination == OrbitDestination.notes &&
         activeObject?.typeId == 'orbit.note';
     String? noteStats;
     if (isNote && activeObject != null) {
-      final body = activeObject.body;
-      final characters = body.length;
-      final words = body.trim().isEmpty
-          ? 0
-          : body.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
-      final readingMinutes = (words / 200).ceil();
-      final wordsLabel = '$words ${words == 1 ? 'word' : 'words'}';
-      final charsLabel =
-          '$characters ${characters == 1 ? 'character' : 'characters'}';
-      final readLabel = '$readingMinutes min read';
-      noteStats = '$wordsLabel · $charsLabel · $readLabel';
-      if (activeObject.properties['documentFormat'] == 'latex') {
-        noteStats = 'LaTeX document · $charsLabel';
-      }
+      noteStats = noteStatistics(activeObject);
     }
 
     return Container(
@@ -5078,14 +5302,24 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
           ),
           const SizedBox(width: 7),
           Expanded(
-            child: Text(
-              c.saveLabel,
-              style: TextStyle(
-                fontSize: 10,
-                color: OrbitColors.of(context).subtle,
+            child: Tooltip(
+              message: c.failures.isEmpty
+                  ? c.saveLabel
+                  : '${c.saveLabel}. Click to retry saving; the recovery banner has details.',
+              child: InkWell(
+                onTap: c.failures.isEmpty
+                    ? null
+                    : () => unawaited(c.flushAll()),
+                child: Text(
+                  c.saveLabel,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: OrbitColors.of(context).subtle,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
           ),
           if (noteStats != null) ...[
@@ -5107,15 +5341,67 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
             ),
             const SizedBox(width: 14),
           ],
-          Text(
-            c.repository.isBrowser ? 'Browser storage' : 'Local workspace',
-            style: TextStyle(
-              fontSize: 10,
-              color: OrbitColors.of(context).subtle,
+          Flexible(
+            child: Text(
+              c.repository.isBrowser ? 'Browser storage' : 'Local workspace',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10,
+                color: OrbitColors.of(context).subtle,
+              ),
             ),
           ),
           const SizedBox(width: 10),
-          const Icon(Icons.cloud_off_outlined, size: 12),
+          Flexible(
+            child: ListenableBuilder(
+              listenable: Listenable.merge([?drive, shared]),
+              builder: (context, _) {
+                final label = shared.connected
+                    ? shared.status
+                    : drive?.enabled == true
+                    ? drive!.status
+                    : 'Local only';
+                final details = shared.connected
+                    ? shared.status
+                    : drive != null && drive.error.isNotEmpty
+                    ? '${drive.status}\n${drive.error}'
+                    : drive?.enabled == true
+                    ? '${drive!.status}\nLast checked: ${drive.lastChecked?.toLocal() ?? 'not yet'}'
+                    : 'Your work is saved on this device. Configure Sync & sharing to connect another device.';
+                return Tooltip(
+                  message: details,
+                  child: TextButton.icon(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      minimumSize: const Size(32, 24),
+                    ),
+                    onPressed: () {
+                      c.session.extra['settingsCategory'] = 'sync';
+                      c.navigate(OrbitDestination.settings);
+                    },
+                    icon: Icon(
+                      shared.connected
+                          ? Icons.people_outline
+                          : drive?.enabled == true
+                          ? Icons.sync
+                          : Icons.cloud_off_outlined,
+                      size: 12,
+                    ),
+                    label: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 180),
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 10),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
         ],
       ),
     );

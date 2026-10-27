@@ -41,6 +41,9 @@ final driveSyncStartupProvider = Provider<void>((ref) {
           workspace.workspaceGeneration == opening &&
           settings?['enabled'] == true) {
         ref.read(driveSyncProvider);
+        // The shell observes existing sync only. Refresh it after this explicit
+        // saved opt-in activates the adapter, without activating local-only Vaults.
+        workspace.notify();
       }
     } on Object {
       /* Settings provides an explicit recovery/status path. */
@@ -118,6 +121,7 @@ class DriveSyncController extends ChangeNotifier {
   Timer? _poll, _debounce;
   Object? _objects;
   int _attachmentRevision = -1, _changeSerial = 0;
+  int _preferenceRevision = -1;
   bool _localChangesPending = false, _refreshPending = false;
 
   /// Includes edits made after the current transfer took its snapshot.
@@ -196,9 +200,11 @@ class DriveSyncController extends ChangeNotifier {
       if (automatic && _ready) _schedule();
     }
     if (!identical(_objects, workspace.objects) ||
-        _attachmentRevision != workspace.attachmentRevision) {
+        _attachmentRevision != workspace.attachmentRevision ||
+        _preferenceRevision != workspace.preferenceRevision) {
       _objects = workspace.objects;
       _attachmentRevision = workspace.attachmentRevision;
+      _preferenceRevision = workspace.preferenceRevision;
       _changeSerial++;
       _localChangesPending = true;
       if (enabled && !busy && _ready) {
@@ -322,6 +328,7 @@ class DriveSyncController extends ChangeNotifier {
           : 'Ready to sync';
       _objects = workspace.objects;
       _attachmentRevision = workspace.attachmentRevision;
+      _preferenceRevision = workspace.preferenceRevision;
       if (automatic && _ready) _schedule();
     } on Object catch (e) {
       if (_sameOpening) {
@@ -409,6 +416,42 @@ class DriveSyncController extends ChangeNotifier {
         await restore();
       }
     }
+  }
+
+  Future<DriveRetentionPlan?> maintainHistory({
+    DriveRetentionPlan? reviewed,
+  }) async {
+    DriveRetentionPlan? preview;
+    await runVaultBatch((current) async {
+      final replica = workspace.createSyncReplica(isCurrent: current);
+      final settings = await replica.createDriveSettingsStore().load();
+      validateDriveBinding(settings, replica.workspaceId);
+      if (settings == null ||
+          settings['subject'] != cloud.account?.subject ||
+          settings['folder'] is! String) {
+        throw const WorkspaceConflict(
+          'Connect this Vault to the selected Google account first.',
+        );
+      }
+      final provider = GoogleDriveSyncProvider(
+        api: cloud.drive,
+        vault: GoogleRemoteVault(
+          folderId: settings['folder'] as String,
+          workspaceId: replica.workspaceId,
+          name: workspace.repository.name,
+          accountSubject: cloud.account!.subject,
+        ),
+        journal: replica.createDriveJournalStore(),
+        stage: replica.stageTransfer,
+        isCurrent: current,
+      );
+      if (reviewed == null) {
+        preview = await provider.previewRetention();
+      } else {
+        await provider.applyRetention(reviewed);
+      }
+    });
+    return preview;
   }
 
   void reportBatchAccountError(GoogleCloudError error) {

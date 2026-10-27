@@ -70,37 +70,45 @@ class DriftObjectIndex implements ObjectIndex, PdfTextCache {
 
   @override
   Future<void> replaceAll(List<UniversalObject> objects) async {
+    final snapshot = List<UniversalObject>.of(objects);
     final db = _database!;
     await db.transaction(() async {
       await db.customStatement('DELETE FROM objects');
-      for (final object in objects) {
-        await upsert(object);
+      // A bounded batch shares one prepared statement and isolate round-trip.
+      // Keep the enclosing transaction: searches must never see a partial index.
+      for (var start = 0; start < snapshot.length; start += 64) {
+        final end = (start + 64).clamp(0, snapshot.length);
+        await db.batch((batch) {
+          for (var i = start; i < end; i++) {
+            batch.customStatement(_upsertSql, _values(snapshot[i]));
+          }
+        });
       }
     });
   }
 
   @override
   Future<void> upsert(UniversalObject object) async {
-    await _database!.customStatement(
-      '''
+    await _database!.customStatement(_upsertSql, _values(object));
+  }
+
+  static const _upsertSql = '''
       INSERT INTO objects(id, workspace_id, type_id, title, body, revision, deleted, search_text)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET workspace_id=excluded.workspace_id,
         type_id=excluded.type_id, title=excluded.title, body=excluded.body,
         revision=excluded.revision, deleted=excluded.deleted, search_text=excluded.search_text
-    ''',
-      [
-        object.id,
-        object.workspaceId,
-        object.typeId,
-        object.title,
-        object.body,
-        object.revision,
-        object.isDeleted ? 1 : 0,
-        searchableText(object),
-      ],
-    );
-  }
+    ''';
+  static List<Object?> _values(UniversalObject object) => [
+    object.id,
+    object.workspaceId,
+    object.typeId,
+    object.title,
+    object.body,
+    object.revision,
+    object.isDeleted ? 1 : 0,
+    searchableText(object),
+  ];
 
   @override
   Future<List<String>> search(String query) async {

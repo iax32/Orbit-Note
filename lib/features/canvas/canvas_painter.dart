@@ -1,3 +1,4 @@
+import '../../canvas/university_glyph.dart';
 import '../../canvas/presentation.dart';
 import 'dart:math' as math;
 import 'dart:async';
@@ -537,11 +538,15 @@ class OrbitCanvasPainter extends CustomPainter {
     this.revealProgress = const {},
     this.inkCache,
     this.devicePixelRatio = 1,
+    this.tracedConnectorId,
+    this.failedImages = const {},
   }) : sceneRevision = scene.revision,
        super(repaint: inkCache);
   final CanvasTextCache textCache;
   final CanvasInkCache? inkCache;
   final double devicePixelRatio;
+  final String? tracedConnectorId;
+  final Set<String> failedImages;
   final int sceneRevision;
   final CanvasScene scene;
   final CanvasCamera camera;
@@ -599,6 +604,29 @@ class OrbitCanvasPainter extends CustomPainter {
       _element(canvas, element);
     }
     if (preview != null) _element(canvas, preview!);
+    // Paint the traced edge last so its markers and multiplicities stay readable.
+    // Resolve cached geometry only; hovering never recomputes routing or moves nodes.
+    if (exportElementIds == null && tracedConnectorId != null) {
+      final edge = scene[tracedConnectorId!];
+      if (edge != null && isConnectorElement(edge)) {
+        _element(canvas, edge);
+        for (final id in [edge.startId, edge.endId]) {
+          final endpoint = id == null ? null : scene[id];
+          if (endpoint != null) {
+            canvas.drawRRect(
+              RRect.fromRectAndRadius(
+                _rect(endpoint.bounds).inflate(4 / camera.zoom),
+                const Radius.circular(6),
+              ),
+              Paint()
+                ..color = colors.primary
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 2 / camera.zoom,
+            );
+          }
+        }
+      }
+    }
     if (exportElementIds == null) {
       if (searchMatchIds.isNotEmpty) {
         final matchBorderPaint = Paint()
@@ -781,6 +809,39 @@ class OrbitCanvasPainter extends CustomPainter {
           ..style = PaintingStyle.stroke;
         final vp = camera.viewport(size.width, size.height);
         for (final guide in guides) {
+          if (guide.from != null && guide.to != null) {
+            final start = guide.isVertical
+                ? Offset(guide.position, guide.from!)
+                : Offset(guide.from!, guide.position);
+            final end = guide.isVertical
+                ? Offset(guide.position, guide.to!)
+                : Offset(guide.to!, guide.position);
+            final tick = guide.isVertical
+                ? Offset(4 / camera.zoom, 0)
+                : Offset(0, 4 / camera.zoom);
+            canvas.drawLine(start, end, guidePaint);
+            canvas.drawLine(start - tick, start + tick, guidePaint);
+            canvas.drawLine(end - tick, end + tick, guidePaint);
+            if (guide.label != null) {
+              final text = textCache.layout(
+                guide.label!,
+                TextStyle(
+                  fontSize: 11 / camera.zoom,
+                  fontFamily: fontFamily,
+                  color: colors.primary,
+                  backgroundColor: colors.surface,
+                ),
+                160 / camera.zoom,
+                1,
+              );
+              text.paint(
+                canvas,
+                (start + end) / 2 -
+                    Offset(text.width / 2, text.height + 3 / camera.zoom),
+              );
+            }
+            continue;
+          }
           if (guide.isVertical) {
             _drawDashedLine(
               canvas,
@@ -1622,7 +1683,9 @@ class OrbitCanvasPainter extends CustomPainter {
   void _paintElement(Canvas canvas, CanvasElement element) {
     if (!element.renderable || element.id == editingId) return;
     final bounds = _rect(element.bounds);
-    final accent = isInteractionItem(element) && element.data['color'] is! int
+    final accent =
+        (isInteractionItem(element) || isUniversityItem(element)) &&
+            element.data['color'] is! int
         ? colors.onSurface
         : Color(element.color);
     final stroke = Paint()
@@ -1631,8 +1694,22 @@ class OrbitCanvasPainter extends CustomPainter {
       ..strokeWidth = element.strokeWidth
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
-    if (isInteractionNode(element)) {
-      final glyph = interactionGlyph(element);
+    if (exportElementIds == null &&
+        element.id == tracedConnectorId &&
+        isConnectorElement(element)) {
+      stroke.color = colors.primary;
+      stroke.strokeWidth = math.max(element.strokeWidth, 2.5 / camera.zoom);
+    }
+    if (isInteractionNode(element) || isUniversityGlyph(element)) {
+      final glyph = isUniversityGlyph(element)
+          ? universityGlyph(element)
+          : interactionGlyph(element);
+      for (final oval in glyph.solidOvals) {
+        canvas.drawOval(_rect(oval), Paint()..color = colors.onSurface);
+      }
+      for (final box in glyph.solidBoxes) {
+        canvas.drawRect(_rect(box), Paint()..color = colors.onSurface);
+      }
       final line = Paint()
         ..color = accent.withValues(alpha: .75)
         ..style = PaintingStyle.stroke
@@ -1917,6 +1994,22 @@ class OrbitCanvasPainter extends CustomPainter {
             RRect.fromRectAndRadius(destination, const Radius.circular(10)),
             Paint()..color = colors.surfaceContainerHigh,
           );
+          if (failedImages.contains(element.data['contentRef'])) {
+            final text = textCache.layout(
+              'Image unavailable\nUse Retry unavailable images',
+              TextStyle(
+                fontSize: 13,
+                color: colors.error,
+                fontFamily: fontFamily,
+              ),
+              math.max(40, element.width - 24),
+              3,
+            );
+            text.paint(
+              canvas,
+              destination.center - Offset(text.width / 2, text.height / 2),
+            );
+          }
         }
       case 'ink':
         final cache = inkCache;
@@ -1937,6 +2030,30 @@ class OrbitCanvasPainter extends CustomPainter {
       case 'arrow':
       case 'line':
         final endpoints = resolveConnectorEndpoints(element, scene);
+        if (endpoints.routeBlocked) {
+          final rect = _rect(connectorRouteWarningBounds(endpoints));
+          final outline = RRect.fromRectAndRadius(
+            rect,
+            const Radius.circular(5),
+          );
+          canvas.drawRRect(outline, Paint()..color = colors.surface);
+          canvas.drawRRect(
+            outline,
+            Paint()
+              ..color = colors.onSurfaceVariant
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1,
+          );
+          _text(
+            canvas,
+            connectorRouteWarningText,
+            rect.deflate(5),
+            color: colors.onSurface,
+            size: 11,
+            maxLines: 2,
+          );
+          break;
+        }
         final start = Offset(endpoints.start.x, endpoints.start.y);
         final end = Offset(endpoints.end.x, endpoints.end.y);
         final routing = ConnectorRouting.parse(element.routing);
@@ -1951,7 +2068,8 @@ class OrbitCanvasPainter extends CustomPainter {
 
         final path = Path();
         path.moveTo(start.dx, start.dy);
-        if (routing == ConnectorRouting.curved &&
+        if (!endpoints.isPolyline &&
+            routing == ConnectorRouting.curved &&
             endpoints.controlPoints.length >= 2) {
           final cp1 = Offset(
             endpoints.controlPoints[0].x,
@@ -1962,7 +2080,8 @@ class OrbitCanvasPainter extends CustomPainter {
             endpoints.controlPoints[1].y,
           );
           path.cubicTo(cp1.dx, cp1.dy, cp2.dx, cp2.dy, end.dx, end.dy);
-        } else if (routing == ConnectorRouting.orthogonal &&
+        } else if ((endpoints.isPolyline ||
+                routing == ConnectorRouting.orthogonal) &&
             endpoints.controlPoints.isNotEmpty) {
           for (final cp in endpoints.controlPoints) {
             path.lineTo(cp.x, cp.y);
@@ -2126,6 +2245,13 @@ class OrbitCanvasPainter extends CustomPainter {
         for (final label in connectorEndLabels(element, endpoints)) {
           final rect = _rect(label.bounds);
           canvas.drawRect(rect, Paint()..color = colors.surface);
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(rect, const Radius.circular(3)),
+            Paint()
+              ..color = stroke.color.withValues(alpha: .4)
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = .8,
+          );
           _text(
             canvas,
             label.text,
@@ -3705,6 +3831,7 @@ class OrbitCanvasPainter extends CustomPainter {
       sceneRevision != oldDelegate.sceneRevision ||
       inkCache != oldDelegate.inkCache ||
       devicePixelRatio != oldDelegate.devicePixelRatio ||
+      tracedConnectorId != oldDelegate.tracedConnectorId ||
       camera.x != oldDelegate.camera.x ||
       camera.y != oldDelegate.camera.y ||
       camera.zoom != oldDelegate.camera.zoom ||
@@ -3714,6 +3841,7 @@ class OrbitCanvasPainter extends CustomPainter {
       !setEquals(selection, oldDelegate.selection) ||
       !mapEquals(objects, oldDelegate.objects) ||
       !mapEquals(images, oldDelegate.images) ||
+      !setEquals(failedImages, oldDelegate.failedImages) ||
       colors != oldDelegate.colors ||
       semanticColors != oldDelegate.semanticColors ||
       region != oldDelegate.region ||

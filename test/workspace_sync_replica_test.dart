@@ -8,6 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:orbit_note/application/workspace_repository.dart';
 import 'package:orbit_note/application/sync/sync_engine.dart';
 import 'package:orbit_note/domain/sync_entry.dart';
+import 'package:orbit_note/domain/portable_preferences.dart';
+import 'package:orbit_note/domain/finance.dart';
+import 'package:orbit_note/domain/research_dossier.dart';
 import 'package:orbit_note/domain/workspace_failure.dart';
 import 'package:orbit_note/infrastructure/storage/memory_object_index.dart';
 import 'package:orbit_note/infrastructure/storage/native_workspace_store.dart';
@@ -106,6 +109,175 @@ void main() {
     await b.close();
     await root.delete(recursive: true);
   });
+
+  test(
+    'portable preferences transfer both ways and retain concurrent fields',
+    () async {
+      const deviceA = '11111111-1111-4111-8111-111111111111';
+      const deviceB = '22222222-2222-4222-8222-222222222222';
+      await a.writeDeviceSettings({
+        'uiZoom': 1.5,
+        'tabs': ['private-a'],
+      });
+      await b.writeDeviceSettings({
+        'uiZoom': .8,
+        'tabs': ['private-b'],
+      });
+      await a.writePortablePreferences(deviceA, {
+        'collapsedFolders': ['Notes/Course'],
+        'fontSize': 20,
+      });
+      await syncA();
+      await syncB();
+      expect(
+        PortablePreferences.merge(
+          b.preferenceRecords,
+        ).values['collapsedFolders'],
+        ['Notes/Course'],
+      );
+      // Both edit while disconnected; independent fields survive the round trip.
+      await a.writePortablePreferences(deviceA, {'defaultCodeWrap': true});
+      await b.writePortablePreferences(deviceB, {
+        'themePreset': 'paper',
+        'collapsedFolders': [],
+      });
+      await syncA();
+      await syncB();
+      await syncA();
+      final merged = PortablePreferences.merge(a.preferenceRecords).values;
+      expect(merged, PortablePreferences.merge(b.preferenceRecords).values);
+      expect(merged['fontSize'], 20);
+      expect(merged['defaultCodeWrap'], true);
+      expect(merged['themePreset'], 'paper');
+      expect(merged['collapsedFolders'], isEmpty);
+      expect(a.objects, isEmpty);
+      expect(b.objects, isEmpty);
+      expect((await a.readDeviceSettings())['tabs'], ['private-a']);
+      expect((await b.readDeviceSettings())['uiZoom'], .8);
+      expect(
+        (await replicaA.inventory()).values.any(
+          (e) => e.path.contains('/device/'),
+        ),
+        isFalse,
+      );
+    },
+  );
+
+  test('finance notes and exact amounts survive real two-Vault sync', () async {
+    final account = await a.create(
+      typeId: 'orbit.note',
+      title: 'Current account',
+      properties: {
+        'finance': {
+          'version': 1,
+          'kind': 'account',
+          'currency': 'EUR',
+          'openingMinor': 100000,
+        },
+      },
+    );
+    final expense = await a.create(
+      typeId: 'orbit.note',
+      title: 'Groceries',
+      body: 'Receipt memo',
+      properties: {
+        'finance': {
+          'version': 1,
+          'kind': 'transaction',
+          'currency': 'EUR',
+          'accountId': account.id,
+          'direction': 'expense',
+          'amountMinor': 1299,
+          'category': 'Groceries',
+          'date': '2026-10-26',
+          'future': {'retained': true},
+        },
+      },
+    );
+    await syncA();
+    await syncB();
+    final ledger = FinanceIndex(b.objects);
+    expect(ledger.summary('2026-10', 'EUR').expenses, 1299);
+    expect(ledger.balance(ledger.accounts.single), 98701);
+    final remote = b.objects.singleWhere((o) => o.id == expense.id);
+    expect(remote.body, 'Receipt memo');
+    expect(financeData(remote)['future'], {'retained': true});
+    expect(ledger.report('2026-10', 'EUR'), contains(expense.id));
+  });
+
+  test(
+    'research dossiers and exact field layouts survive native two-Vault synchronization',
+    () async {
+      final metadata = <String, dynamic>{
+        'version': 1,
+        'kind': 'dossier',
+        'state': 'suspected',
+        'confidence': 'low',
+        'build': 'test-build',
+        'rows': [],
+        'links': [],
+      };
+      final dossier = await a.create(
+        typeId: 'orbit.note',
+        title: 'Game research',
+        body: updateDossierBody('', metadata, creating: true),
+        properties: {'researchDossier': metadata},
+      );
+      final layout = <String, dynamic>{
+        ...metadata,
+        'kind': 'structure',
+        'dossierId': dossier.id,
+        'rows': [
+          {
+            'offset': '0xFFFFFFFFFFFFFFF0',
+            'size': '8',
+            'name': 'handle',
+            'type': 'uint64',
+            'explanation': 'Recorded value',
+            'future': {'preserved': true},
+          },
+        ],
+      };
+      final note = await a.create(
+        typeId: 'orbit.note',
+        title: 'Entity layout',
+        body: updateDossierBody(
+          '',
+          layout,
+          creating: true,
+          notes: 'Original observations 😀',
+        ),
+        properties: {'researchDossier': layout},
+      );
+      await syncA();
+      await syncB();
+      final received = b.objects.firstWhere((o) => o.id == note.id);
+      expect(received.body, note.body);
+      expect(
+        dossierRows(dossierData(received), 'rows').single['offset'],
+        '0xFFFFFFFFFFFFFFF0',
+      );
+      expect(dossierRows(dossierData(received), 'rows').single['future'], {
+        'preserved': true,
+      });
+      final updated = {
+        ...dossierData(received),
+        'summary': 'Reviewed on the second local client',
+      };
+      await b.save(
+        received.copyWith(
+          properties: {...received.properties, 'researchDossier': updated},
+          body: updateDossierBody(received.body, updated),
+        ),
+      );
+      await syncB();
+      await syncA();
+      expect(
+        a.objects.firstWhere((o) => o.id == note.id).body,
+        contains('Reviewed on the second local client'),
+      );
+    },
+  );
 
   test('late state checkpoint cannot write a newly opened Vault', () async {
     final state = replicaB.createStateStore();

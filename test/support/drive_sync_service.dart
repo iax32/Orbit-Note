@@ -51,6 +51,8 @@ class DriveSyncService {
   bool failFolderCreateOnce = false;
   int? rejectStatus;
   Future<void> Function()? beforeRecord;
+  Future<void> Function(String)? beforeDelete;
+  bool loseDeleteReply = false;
   final changes = <Map<String, dynamic>>[];
   final _observed = <String, String>{};
   int historyLists = 0, changeLists = 0, mediaReads = 0;
@@ -177,6 +179,29 @@ class DriveSyncService {
           ? http.Response.bytes(f.bytes, 200)
           : http.Response(jsonEncode(f.json), 200);
     }
+    if (path.startsWith('/drive/v3/files/') && r.method == 'PATCH') {
+      final f = files[r.url.pathSegments.last];
+      if (f == null) return http.Response('{}', 404);
+      final value = jsonDecode(r.body) as Map;
+      if (value['appProperties'] is Map) {
+        f.metadata['appProperties'] = {
+          ...(f.metadata['appProperties'] as Map),
+          ...(value['appProperties'] as Map),
+        };
+      }
+      return http.Response(jsonEncode(f.json), 200);
+    }
+    if (path.startsWith('/drive/v3/files/') && r.method == 'DELETE') {
+      final id = r.url.pathSegments.last;
+      await beforeDelete?.call(id);
+      if (files.remove(id) == null) return http.Response('{}', 404);
+      if (loseDeleteReply) {
+        loseDeleteReply = false;
+        offline = true;
+        throw http.ClientException('Lost delete acknowledgement');
+      }
+      return http.Response('', 204);
+    }
     if (path == '/drive/v3/files' && r.method == 'POST') {
       if (failFolderCreateOnce) {
         failFolderCreateOnce = false;
@@ -201,7 +226,7 @@ class DriveSyncService {
       }
       final chunks = utf8
           .decode(r.bodyBytes)
-          .split('--orbit-revision-boundary');
+          .split('--${r.headers['Content-Type']!.split('boundary=').last}');
       final metadata =
           jsonDecode(chunks[1].split('\r\n\r\n')[1].trim())
               as Map<String, dynamic>;

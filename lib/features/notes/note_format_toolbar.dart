@@ -22,6 +22,7 @@ enum NoteFormatAction {
   alignLeft,
   alignCenter,
   alignRight,
+  alignJustify,
 }
 
 class NoteFormatToolbar extends StatelessWidget {
@@ -126,6 +127,7 @@ class NoteFormatToolbar extends StatelessWidget {
                                       'Horizontal rule',
                                       'BTW block',
                                       'Math Lab',
+                                      'University Lab',
                                     ]
                                     .map(
                                       (label) => PopupMenuItem(
@@ -150,6 +152,11 @@ class NoteFormatToolbar extends StatelessWidget {
                             NoteFormatAction.alignRight,
                             Icons.format_align_right,
                             'Align right',
+                          ),
+                          (
+                            NoteFormatAction.alignJustify,
+                            Icons.format_align_justify,
+                            'Justify · Blocksatz',
                           ),
                           (
                             NoteFormatAction.heading,

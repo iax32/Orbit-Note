@@ -9,7 +9,10 @@ extension GoogleDrivePersonalVaults on GoogleDriveApi {
     );
     return files.map((f) {
       final p = f['appProperties'] as Map;
-      if (p['orbitProtocol'] != '2' || p['orbitVaultId'] is! String) {
+      if (!{'2', '3'}.contains(p['orbitProtocol']) ||
+          (p['orbitProtocol'] == '3' &&
+              p['orbitRetention'] != 'head-blobs-v1') ||
+          p['orbitVaultId'] is! String) {
         throw const GoogleCloudError(
           'protocol',
           'A cloud Vault requires a newer sync format.',
@@ -36,7 +39,9 @@ extension GoogleDrivePersonalVaults on GoogleDriveApi {
         f['trashed'] == true ||
         f['mimeType'] != GoogleDriveApi.folderMime ||
         p?['orbitRole'] != 'sync-vault' ||
-        p?['orbitProtocol'] != '2' ||
+        !{'2', '3'}.contains(p?['orbitProtocol']) ||
+        (p?['orbitProtocol'] == '3' &&
+            p?['orbitRetention'] != 'head-blobs-v1') ||
         p?['orbitVaultId'] != vault.workspaceId) {
       throw const GoogleCloudError(
         'identity',
@@ -180,7 +185,8 @@ class _DriveRevision {
 final _driveId = RegExp(r'^[A-Za-z0-9_-]{1,180}$');
 
 /// Append-only graph publication: concurrent heads are retained, never elected by
-/// time. No PATCH/DELETE of an authored cloud revision exists in this adapter.
+/// time. Authored revision metadata is never patched or deleted. Explicit
+/// retention may expire obsolete payloads after protocol negotiation/review.
 class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
   GoogleDriveSyncProvider({
     required this.api,

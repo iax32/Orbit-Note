@@ -145,6 +145,7 @@ class DriveVaultBatch {
           final replica =
               lease.createReplica?.call(current) ??
               WorkspaceSyncReplica(repo, canApply: current, isCurrent: current);
+          GoogleRemoteVault? existing;
           if (requireEnabledBinding) {
             final saved = await replica.createDriveSettingsStore().load();
             validateDriveBinding(saved, replica.workspaceId);
@@ -153,15 +154,29 @@ class DriveVaultBatch {
               job.message = 'Automatic sync is off for this Vault';
               continue;
             }
+            if (saved['subject'] != subject) {
+              throw const WorkspaceConflict(
+                'Reconnect the account bound to this Vault.',
+              );
+            }
+            existing = GoogleRemoteVault(
+              folderId: saved['folder'] as String,
+              workspaceId: repo.workspaceId,
+              name: repo.name,
+              accountSubject: subject,
+            );
+            await api.verifySyncVault(existing);
           }
-          final vault = await connectDriveVault(
-            replica: replica,
-            api: api,
-            name: repo.name,
-            target: job.remote,
-            isCurrent: current,
-            enableAutomaticSync: false,
-          );
+          final vault =
+              existing ??
+              await connectDriveVault(
+                replica: replica,
+                api: api,
+                name: repo.name,
+                target: job.remote,
+                isCurrent: current,
+                enableAutomaticSync: false,
+              );
           _check(subject);
           job.message = 'Syncing notes, boards and attachments…';
           onChanged();
@@ -192,7 +207,10 @@ class DriveVaultBatch {
             );
           }
           _check(subject);
-          await settingsStore.save({...settings, 'enabled': true});
+          // A scheduled/background check must never re-enable a paused Vault.
+          if (!requireEnabledBinding) {
+            await settingsStore.save({...settings, 'enabled': true});
+          }
           _check(subject);
           job.state = result.upToDate
               ? VaultTransferState.complete

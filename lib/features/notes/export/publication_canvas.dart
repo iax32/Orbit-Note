@@ -6,6 +6,7 @@ import '../../../domain/universal_object.dart';
 import '../../../domain/smart_view_query.dart';
 import '../../canvas/canvas_painter.dart';
 import 'publication_svg.dart';
+import '../../../canvas/geometry.dart';
 
 /// The normal spatial painter, detached from desktop/UI interaction. Input is an
 /// immutable opening snapshot; attachments still use the repository read adapter.
@@ -14,9 +15,13 @@ Future<Uint8List?> renderPublicationCanvas(
   required List<UniversalObject> objects,
   required void Function(String) warn,
   Future<Uint8List?> Function(String)? readImage,
+  CanvasBounds? pageBounds,
+  bool printPaper = false,
+  double longestEdge = 1600,
+  ColorScheme? canvasColors,
 }) async {
   final scene = snapshot.scene;
-  final bounds = scene.contentBounds?.inflate(40);
+  final bounds = pageBounds ?? scene.contentBounds?.inflate(40);
   if (bounds == null ||
       !bounds.width.isFinite ||
       !bounds.height.isFinite ||
@@ -149,14 +154,18 @@ Future<Uint8List?> renderPublicationCanvas(
       }
     }
     final longest = bounds.width > bounds.height ? bounds.width : bounds.height;
-    final scale = longest > 800 ? 1600 / longest : 2.0;
+    final scale = (longestEdge.clamp(800, 4096) / longest).clamp(.0001, 3.0);
     return await renderCanvasToPng(
       scene: scene,
-      colors: ColorScheme.fromSeed(
-        seedColor: const Color(0xff8b7cf6),
-        brightness: Brightness.dark,
-      ),
-      backgroundStyle: snapshot.object.data['backgroundStyle'] is String
+      colors:
+          canvasColors ??
+          ColorScheme.fromSeed(
+            seedColor: const Color(0xff8b7cf6),
+            brightness: printPaper ? Brightness.light : Brightness.dark,
+          ),
+      backgroundStyle: printPaper
+          ? 'blank'
+          : snapshot.object.data['backgroundStyle'] is String
           ? snapshot.object.data['backgroundStyle'] as String
           : 'dots',
       bounds: bounds,

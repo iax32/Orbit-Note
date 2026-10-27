@@ -121,7 +121,11 @@ class CollaborationController extends ChangeNotifier {
   int get pendingChanges =>
       {
         ..._documents.keys,
-        if (_liveReplication) ...workspace.repository.objects.map((o) => o.id),
+        if (_liveReplication)
+          ...[
+            ...workspace.repository.objects,
+            ...workspace.repository.preferenceRecords,
+          ].map((o) => o.id),
       }.where((id) {
         final local = workspace.find(id);
         final doc = _documents[id];
@@ -1021,7 +1025,10 @@ class CollaborationController extends ChangeNotifier {
         ? mergeSharedDocument
         : mergeCollaboration)(base, collaborationSnapshot(local), remote);
     final object = collaborationObject(merged, allowDeleted: _liveReplication);
-    if (_liveReplication && (local.isDeleted || object.isDeleted)) {
+    if (_liveReplication &&
+        (local.isDeleted ||
+            object.isDeleted ||
+            object.typeId == 'orbit.preferences')) {
       await _saveSharedObject(
         object,
         local,

@@ -105,3 +105,11 @@ operations. Removing a placement never removes a course, task or source. This
 reuses existing Canvas references, captions, checklists, links and layout tools;
 it does not claim complete Milanote/Notion feature parity, timetable imports,
 automatic grading or a new course-specific database.
+
+## University modeling and engineering lab — 2026-10-26
+
+Owner-approved STUDY-06–12 extend CAN/EDT/DEV/PORT with the shared offline
+[University Lab](university-modeling-lab.md): state/activity replay, structural UML
+checks, test evidence, Java/SMQP, distributed traces and explicit Dafny adapters.
+The specification records operational subsets, native-tool prerequisites,
+portable data and acceptance limits. It does not claim full UML/IDE certification.

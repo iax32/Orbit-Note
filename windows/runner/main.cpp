@@ -1,6 +1,7 @@
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
+#include <algorithm>
 
 #include "flutter_window.h"
 #include "utils.h"
@@ -22,9 +23,22 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
 
+  const bool background = std::find(command_line_arguments.begin(),
+      command_line_arguments.end(), "--sync-background") != command_line_arguments.end();
+  HANDLE foreground_marker = nullptr;
+  if (background) {
+    auto active = OpenMutexW(SYNCHRONIZE, FALSE, L"Local\\OrbitNoteForeground");
+    if (active != nullptr) {
+      CloseHandle(active);
+      ::CoUninitialize();
+      return EXIT_SUCCESS;
+    }
+  } else {
+    foreground_marker = CreateMutexW(nullptr, FALSE, L"Local\\OrbitNoteForeground");
+  }
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
-  FlutterWindow window(project);
+  FlutterWindow window(project, background);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
   if (!window.Create(L"Orbit Note", origin, size)) {
@@ -39,5 +53,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   }
 
   ::CoUninitialize();
+  if (foreground_marker != nullptr) CloseHandle(foreground_marker);
   return EXIT_SUCCESS;
 }

@@ -1,5 +1,20 @@
 # Canonical feature backlog
 
+2026-10-27 owner-approved REV-06–15: [research dossiers](../features/research-dossiers.md).
+Connected authoring on ordinary notes/history/Canvas/sync, with manual recorded
+observations and explicit evidence/build review.
+
+2026-10-26 owner-approved FIN-01–08: substantial local finance workspace using
+ordinary portable notes and existing history/sync. Account and expense ledger,
+budgets, bills, savings, reports and reviewed CSV flows. [Scope](../features/finance.md).
+
+2026-10-26 owner-approved LAY-01/06/10 persistence/sync correction: keep folder
+collapse through tab/history changes, remap it on folder rename, and synchronize
+allowlisted Vault preferences through existing Drive/live replication with device
+layout/secrets excluded. Per-writer records and interrupted-save recovery are
+described in [ADR 0035](../adr/0035-portable-vault-preferences.md); delivery evidence
+is in [the current task](../tasks/current.md).
+
 2026-10-23 owner-approved CAN-04/05/07/14/15/16, EDT-08/PORT-05 continuation:
 Use-case and sequence notation from the supplied exercise, both explicitly
 selected by the owner. Existing class diagrams/live references are extended;
@@ -470,3 +485,10 @@ remaining requirement planned. Do not interpret a row as a giant implementation 
 Motion implementation evidence (2026-10-23): [motion studio and authored replay](../tasks/motion-studio-2026-10-23.md)
 advances MOT-01–06 without closing all requirements. The 70-item inspiration
 catalog includes explicit concept previews; it is not a completed-feature count.
+
+2026-10-26 owner-approved STUDY-06–12 / CAN / EDT / DEV / PORT continuation:
+[University modeling and engineering lab](../features/university-modeling-lab.md).
+Delivered operational teaching subsets: state/activity replay, UML consistency,
+CFG/DU/boundary evidence, Java/JUnit/SMQP, distributed clocks/election observations
+and Dafny adapters. Broader UML semantics, automatic source instrumentation and
+real installed Java/Dafny acceptance remain explicitly outside validated claims.

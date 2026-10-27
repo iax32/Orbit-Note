@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'geometry.dart';
 import 'scene.dart';
+import 'use_case_routing.dart';
 
 bool isConnectorElement(CanvasElement e) =>
     const {'arrow', 'line', 'connector'}.contains(e.type);
@@ -210,6 +211,9 @@ class ConnectorEndpoints {
     this.resolvedStartAnchor = ConnectorAnchor.auto,
     this.resolvedEndAnchor = ConnectorAnchor.auto,
     this.controlPoints = const [],
+    this.isPolyline = false,
+    this.routeBlocked = false,
+    this.endLabels,
   });
 
   final CanvasPoint start;
@@ -217,6 +221,9 @@ class ConnectorEndpoints {
   final ConnectorAnchor resolvedStartAnchor;
   final ConnectorAnchor resolvedEndAnchor;
   final List<CanvasPoint> controlPoints;
+  final bool isPolyline;
+  final bool routeBlocked;
+  final List<({String text, CanvasBounds bounds})>? endLabels;
 
   CanvasPoint tangentTarget({required bool atStart}) {
     final tip = atStart ? start : end;
@@ -230,6 +237,21 @@ class ConnectorEndpoints {
   }
 
   CanvasPoint get midpoint {
+    if (isPolyline) {
+      final points = [start, ...controlPoints, end];
+      var remaining = 0.0;
+      for (var i = 1; i < points.length; i++) {
+        remaining += (points[i] - points[i - 1]).length / 2;
+      }
+      for (var i = 1; i < points.length; i++) {
+        final delta = points[i] - points[i - 1];
+        if (delta.length >= remaining && delta.length > .001) {
+          return points[i - 1] + delta * (remaining / delta.length);
+        }
+        remaining -= delta.length;
+      }
+      return end;
+    }
     if (controlPoints.isNotEmpty) {
       final midIdx = controlPoints.length ~/ 2;
       return controlPoints[midIdx];
@@ -238,6 +260,7 @@ class ConnectorEndpoints {
   }
 
   CanvasBounds get bounds {
+    if (routeBlocked) return connectorRouteWarningBounds(this);
     final allPoints = [start, end, ...controlPoints];
     var minX = allPoints.first.x;
     var maxX = allPoints.first.x;
@@ -291,6 +314,13 @@ ConnectorAnchor findClosestAnchor(
 ConnectorEndpoints resolveConnectorEndpoints(
   CanvasElement connector,
   CanvasScene scene,
+) => isAutomaticUseCaseConnector(connector)
+    ? useCaseConnectorLayout(connector, scene, _resolveConnectorEndpoints)
+    : _resolveConnectorEndpoints(connector, scene);
+
+ConnectorEndpoints _resolveConnectorEndpoints(
+  CanvasElement connector,
+  CanvasScene scene,
 ) {
   final startId = connector.startId;
   final endId = connector.endId;
@@ -300,6 +330,87 @@ ConnectorEndpoints resolveConnectorEndpoints(
   final startAnchorSetting = ConnectorAnchor.parse(connector.startAnchor);
   final endAnchorSetting = ConnectorAnchor.parse(connector.endAnchor);
   final routing = ConnectorRouting.parse(connector.routing);
+
+  if (startElem != null &&
+      endElem?.id == startElem.id &&
+      ((startElem.data['uml'] is Map &&
+              connector.data['umlRelationship'] == 'association') ||
+          (startElem.data['universityNode'] is Map &&
+              connector.data['universityEdge'] is String))) {
+    final sideA = startAnchorSetting == ConnectorAnchor.auto
+        ? ConnectorAnchor.right
+        : startAnchorSetting;
+    final sideB = endAnchorSetting == ConnectorAnchor.auto
+        ? sideA
+        : endAnchorSetting;
+    double fraction(String key, double fallback) {
+      final v = connector.data[key];
+      return v is num && v.isFinite ? v.toDouble().clamp(0, 1) : fallback;
+    }
+
+    var fa = fraction('startAnchorOffset', .3),
+        fb = fraction('endAnchorOffset', .7);
+    if (sideA == sideB && (fa - fb).abs() < .001) {
+      fa = .3;
+      fb = .7;
+    }
+    CanvasPoint point(ConnectorAnchor side, double f) => switch (side) {
+      ConnectorAnchor.left => CanvasPoint(
+        startElem.x,
+        startElem.y + startElem.height * f,
+      ),
+      ConnectorAnchor.right => CanvasPoint(
+        startElem.bounds.right,
+        startElem.y + startElem.height * f,
+      ),
+      ConnectorAnchor.top => CanvasPoint(
+        startElem.x + startElem.width * f,
+        startElem.y,
+      ),
+      _ => CanvasPoint(
+        startElem.x + startElem.width * f,
+        startElem.bounds.bottom,
+      ),
+    };
+    final a = point(sideA, fa), b = point(sideB, fb);
+    final lane = connector.data['routingOffset'];
+    final box = startElem.bounds.inflate(
+      48 + (lane is num && lane.isFinite ? lane.abs().toDouble() : 0),
+    );
+    CanvasPoint exit(ConnectorAnchor side, CanvasPoint p) => switch (side) {
+      ConnectorAnchor.left => CanvasPoint(box.left, p.y),
+      ConnectorAnchor.right => CanvasPoint(box.right, p.y),
+      ConnectorAnchor.top => CanvasPoint(p.x, box.top),
+      _ => CanvasPoint(p.x, box.bottom),
+    };
+    const sides = [
+      ConnectorAnchor.right,
+      ConnectorAnchor.bottom,
+      ConnectorAnchor.left,
+      ConnectorAnchor.top,
+    ];
+    final corners = [
+      CanvasPoint(box.right, box.bottom),
+      CanvasPoint(box.left, box.bottom),
+      CanvasPoint(box.left, box.top),
+      CanvasPoint(box.right, box.top),
+    ];
+    var side = sides.indexOf(sideA);
+    final controls = <CanvasPoint>[exit(sideA, a)];
+    while (sides[side] != sideB) {
+      controls.add(corners[side]);
+      side = (side + 1) % 4;
+    }
+    controls.add(exit(sideB, b));
+    return ConnectorEndpoints(
+      start: a,
+      end: b,
+      controlPoints: controls,
+      isPolyline: true,
+      resolvedStartAnchor: sideA,
+      resolvedEndAnchor: sideB,
+    );
+  }
 
   CanvasPoint startPoint;
   CanvasPoint endPoint;
@@ -572,6 +683,12 @@ bool hitTestConnector(
   double tolerance = 5,
 }) {
   final endpoints = resolveConnectorEndpoints(connector, scene);
+  if (endpoints.routeBlocked) {
+    return connectorRouteWarningBounds(
+      endpoints,
+    ).inflate(tolerance).contains(point);
+  }
+
   final effTol = tolerance + connector.strokeWidth / 2;
 
   for (final label in connectorEndLabels(connector, endpoints)) {
@@ -596,7 +713,8 @@ bool hitTestConnector(
 
   // 2. Test routing geometry
   final routing = ConnectorRouting.parse(connector.routing);
-  if (routing == ConnectorRouting.curved &&
+  if (!endpoints.isPolyline &&
+      routing == ConnectorRouting.curved &&
       endpoints.controlPoints.length >= 2) {
     // Subdivide cubic bezier curve
     final p0 = endpoints.start;
@@ -625,7 +743,7 @@ bool hitTestConnector(
       prev = curr;
     }
     return false;
-  } else if (routing == ConnectorRouting.orthogonal &&
+  } else if ((endpoints.isPolyline || routing == ConnectorRouting.orthogonal) &&
       endpoints.controlPoints.isNotEmpty) {
     final pts = [endpoints.start, ...endpoints.controlPoints, endpoints.end];
     for (var i = 1; i < pts.length; i++) {
@@ -675,6 +793,8 @@ List<({String text, CanvasBounds bounds})> connectorEndLabels(
   CanvasElement e,
   ConnectorEndpoints endpoints,
 ) {
+  if (endpoints.routeBlocked) return const [];
+  if (endpoints.endLabels case final labels?) return labels;
   final result = <({String text, CanvasBounds bounds})>[];
   for (final atStart in [true, false]) {
     final prefix = atStart ? 'start' : 'end';
@@ -688,8 +808,8 @@ List<({String text, CanvasBounds bounds})> connectorEndLabels(
     final toward = endpoints.tangentTarget(atStart: atStart);
     final delta = toward - tip;
     final width =
-        (lines.fold<int>(0, (n, s) => math.max(n, s.length)) * 8.0 + 12).clamp(
-          36.0,
+        (lines.fold<int>(0, (n, s) => math.max(n, s.length)) * 8.0 + 8).clamp(
+          16.0,
           240.0,
         );
     final height = lines.length * 18.0 + 4;
@@ -726,3 +846,10 @@ List<({String text, CanvasBounds bounds})> connectorEndLabels(
   }
   return result;
 }
+
+CanvasBounds connectorRouteWarningBounds(ConnectorEndpoints endpoints) =>
+    endpoints.routeBlocked && (endpoints.endLabels?.isNotEmpty ?? false)
+    ? endpoints.endLabels!.first.bounds
+    : CanvasBounds(endpoints.start.x + 24, endpoints.start.y - 48, 156, 44);
+
+const connectorRouteWarningText = 'Route needs space\nOrganize diagram';

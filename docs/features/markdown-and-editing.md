@@ -1,5 +1,16 @@
 # Markdown and document editing
 
+## Paragraph justification — 2026-10-26
+
+The formatting toolbar adds Justify · Blocksatz beside left/center/right alignment.
+It uses the existing single-paragraph/heading orbit:align comment with justify,
+preserving source text, inline formatting, native selection, editing and undo.
+Rich uses native TextAlign.justify; Read uses the renderer's corresponding justify
+alignment. Source remains literal editable Markdown, including CRLF. Unsupported
+structured blocks retain their own tools; code is not justified. Existing block
+type conversion remains available separately through Format block.
+
+
 ## Math explanation paste — 2026-10-21
 
 Normal Rich paste accepts mixed explanations with `\(...\)` inline and
@@ -288,6 +299,10 @@ note mutation. See FILE-10/14 in
 
 Publish document opens a styled, paginated PDF snapshot with A4/Letter, margins,
 fonts, heading numbering, title/author/header, contents and page-number controls.
+Canvas diagrams omit their long source URI/revision and text inventory by default.
+Enable **Canvas source and text inventory** in publishing to include those details;
+the option persists with document settings and applies consistently to PDF/HTML/Word.
+The rendered diagram and original live reference remain intact.
 Writing tools also inserts a recoverable page-break marker. PDF, standalone HTML
 and editable Word export share the snapshot and retain local resource fallbacks.
 See [publishing fidelity and limits](import-export-and-portability.md).
@@ -1129,7 +1144,10 @@ Presentation is stored in device-local pane/note view state; no Markdown,
 frontmatter, object properties, relations, history or attachments are rewritten.
 Malformed/future preferences safely display Orbit; their raw data survives unrelated
 view updates. Explicit changes keep unfamiliar preference fields. These preferences
-do not alter printed/exported document styles or share a design across devices.
+remain device-local and do not share a design across devices. As of 2026-10-25,
+PDF publishing captures the active design by default, with a plain-document
+opt-out; HTML/Word continue using document styles. See the editor-design PDF
+section in [portability](import-export-and-portability.md).
 Static decorative layers never intercept input; high-contrast mode removes CRT
 scanlines/vignette. There is no flicker, blur over text or background animation.
 Themes are cached while typing; background painting sits in its own repaint boundary.

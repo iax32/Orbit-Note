@@ -28,6 +28,7 @@ import 'pdf_notes_panel.dart';
 import 'pdf_zoom_dialog.dart';
 import 'pdf_outline_dialog.dart';
 import 'pdf_bookmarks_dialog.dart';
+import '../notes/paste_feedback.dart';
 import 'reading_rooms/reading_room_model.dart';
 import 'reading_rooms/reading_atmosphere_painter.dart';
 import 'reading_rooms/reading_room_dialog.dart';
@@ -93,6 +94,9 @@ class OrbitPdfReader extends StatefulWidget {
     this.initialPage = 1,
     this.initialReadingRoomId,
     this.initialZoom,
+    this.initialViewOptions = const {},
+    this.onViewOptions,
+    this.restoreViewSerial = 0,
     this.bookmarks = const [],
     this.bookmarkNames = const {},
     this.onRenameBookmark,
@@ -180,6 +184,9 @@ class OrbitPdfReader extends StatefulWidget {
   final int initialPage;
   final String? initialReadingRoomId;
   final double? initialZoom;
+  final Map<String, dynamic> initialViewOptions;
+  final ValueChanged<Map<String, dynamic>>? onViewOptions;
+  final int restoreViewSerial;
   final List<int> bookmarks;
   final Map<int, String> bookmarkNames;
   final Future<bool> Function(int, String)? onRenameBookmark;
@@ -222,6 +229,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   PdfTextSearcher? _search;
   late Future<Uint8List?> _bytes = Future.sync(widget.loadBytes);
   int _documentEpoch = 0, _viewerEpoch = 0;
+  final _failedRenderPages = <int>{};
   late int _restorePage;
   double? _restoreZoom;
   bool _loadedOnce = false, _showNotes = false, _savingSelection = false;
@@ -258,6 +266,57 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   String _paperTone = 'normal';
   bool _zenMode = false;
   bool _zenControlsVisible = true;
+  String _optionsSignature = '';
+  Map<String, dynamic> _persistedOptions = {};
+  int _optionsTicket = 0;
+  Map<String, dynamic> get _viewOptions => {
+    'pageMode': _pageMode.name,
+    'showMarkup': _showMarkup,
+    'showNotes': _showNotes,
+    'paperTone': _paperTone,
+    'comfort': _comfort,
+    'textOnly': _textOnly,
+    'highlightColor': _activeColor,
+  };
+  void _restoreViewOptions() {
+    final v = widget.initialViewOptions;
+    _pageMode =
+        PdfPageMode.values.where((m) => m.name == v['pageMode']).firstOrNull ??
+        PdfPageMode.continuous;
+    _showMarkup = v['showMarkup'] != false;
+    _showNotes = v['showNotes'] == true;
+    _paperTone =
+        ['normal', 'sepia', 'editorial', 'dark'].contains(v['paperTone'])
+        ? v['paperTone'] as String
+        : 'normal';
+    _comfort = v['comfort'] == true;
+    _textOnly = v['textOnly'] == true;
+    _activeColor = v['highlightColor'] is int
+        ? v['highlightColor'] as int
+        : 0xff8b7cf6;
+    _optionsSignature = _viewOptions.toString();
+    _persistedOptions = _viewOptions;
+    _optionsTicket++;
+  }
+
+  void _rememberViewOptions() {
+    final values = _viewOptions, signature = _viewOptions.toString();
+    if (signature == _optionsSignature || widget.onViewOptions == null) return;
+    _optionsSignature = signature;
+    final ticket = ++_optionsTicket, owner = widget.objectId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && ticket == _optionsTicket && owner == widget.objectId) {
+        final changes = {
+          for (final entry in values.entries)
+            if (_persistedOptions[entry.key] != entry.value)
+              entry.key: entry.value,
+        };
+        _persistedOptions = values;
+        if (changes.isNotEmpty) widget.onViewOptions?.call(changes);
+      }
+    });
+  }
+
   late bool _isFavorite;
   int? _sessionSecondsRemaining;
   Timer? _sessionTimer;
@@ -449,6 +508,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     _globalSearchRange = null;
     _globalOcrPage = null;
     _viewerEpoch++;
+    _failedRenderPages.clear();
     _contentWidths.clear();
     _fitGeneration++;
     _ready = false;
@@ -1191,6 +1251,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     _restoreZoom = widget.initialZoom;
     _pageInput.text = '$_page';
     _viewer.addListener(_positionChanged);
+    _restoreViewOptions();
   }
 
   void _restoreReadingRoom() {
@@ -1202,6 +1263,31 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   @override
   void didUpdateWidget(OrbitPdfReader oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.objectId == oldWidget.objectId &&
+        widget.restoreViewSerial != oldWidget.restoreViewSerial) {
+      final owner = widget.objectId,
+          serial = widget.restoreViewSerial,
+          checksum = widget.checksum;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted ||
+            widget.objectId != owner ||
+            widget.checksum != checksum ||
+            !_ready ||
+            widget.restoreViewSerial != serial ||
+            !_viewer.isReady) {
+          return;
+        }
+        _go(widget.initialPage);
+        final zoom = widget.initialZoom;
+        if (zoom != null && zoom.isFinite) {
+          await _viewer.setZoom(
+            _viewer.centerPosition,
+            zoom.clamp(_viewer.minScale, _viewer.maxScale),
+            duration: Duration.zero,
+          );
+        }
+      });
+    }
     final annotationsChanged = !_annotationIndex.matches(
       widget.annotations,
       widget.objectId,
@@ -1228,6 +1314,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
             widget.initialSearchChecksum != oldWidget.initialSearchChecksum &&
             widget.initialSearchChecksum != widget.checksum)) {
       _flushReadingState();
+      if (widget.objectId != oldWidget.objectId) _restoreViewOptions();
       _restorePage = _page = math.max(1, widget.initialPage);
       _restoreZoom = widget.initialZoom;
       _pageInput.text = '$_page';
@@ -1891,6 +1978,40 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     }
   }
 
+  bool _copyingText = false;
+  Future<void> _copySelectedPdfText() async {
+    if (_copyingText || !_ready || !_viewer.isReady) return;
+    final delegate = _viewer.textSelectionDelegate;
+    if (!delegate.isCopyAllowed || !delegate.hasSelectedText) return;
+    final owner = widget.objectId, checksum = widget.checksum;
+    _copyingText = true;
+    try {
+      final ranges = await delegate.getSelectedTextRanges();
+      if (!mounted ||
+          owner != widget.objectId ||
+          checksum != widget.checksum ||
+          ranges.isEmpty) {
+        return;
+      }
+      final quote = PdfQuoteDragData(
+        objectId: owner,
+        title: widget.title,
+        page: ranges.first.pageNumber,
+        text: ranges.map((r) => r.text).join('\n'),
+        checksum: checksum,
+      );
+      await Clipboard.setData(ClipboardData(text: quote.text));
+      rememberPdfCopy(quote);
+      _notice(
+        'Text copied. Paste into a note to choose paragraphs or a linked quote.',
+      );
+    } catch (_) {
+      if (mounted) _notice('Clipboard unavailable. Your PDF is unchanged.');
+    } finally {
+      _copyingText = false;
+    }
+  }
+
   Widget? _buildPdfContextMenu(
     BuildContext context,
     PdfViewerContextMenuBuilderParams params,
@@ -1903,7 +2024,10 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     final items = <ContextMenuButtonItem>[
       if (params.textSelectionDelegate.isCopyAllowed)
         ContextMenuButtonItem(
-          onPressed: () => params.textSelectionDelegate.copyTextSelection(),
+          onPressed: () async {
+            await _copySelectedPdfText();
+            if (mounted) params.dismissContextMenu();
+          },
           type: ContextMenuButtonType.copy,
         ),
       if (!params.textSelectionDelegate.isSelectingAllText)
@@ -2272,11 +2396,23 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     for (var i = 0; i < layouts.length; i++) {
       final rect = layouts[i];
       if (!rect.contains(details.documentPosition)) continue;
-      final annotation = _annotationIndex.hitTest(
+      final scale = controller.currentZoom;
+      final hits = _annotationIndex.hitTests(
         i + 1,
         (details.documentPosition.dx - rect.left) / rect.width,
         (details.documentPosition.dy - rect.top) / rect.height,
+        toleranceX: 10 / (rect.width * scale),
+        toleranceY: 10 / (rect.height * scale),
       );
+      if (hits.length > 1) {
+        _chooseMarkup(
+          hits,
+          details.documentPosition,
+          details.type == PdfViewerGeneralTapType.secondaryTap,
+        );
+        return true;
+      }
+      final annotation = hits.firstOrNull;
       if (annotation != null) {
         if (details.type == PdfViewerGeneralTapType.secondaryTap) {
           _showAnnotationMenu(annotation, details.documentPosition);
@@ -2292,6 +2428,60 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
       return true;
     }
     return false;
+  }
+
+  Future<void> _chooseMarkup(
+    List<PdfAnnotation> hits,
+    Offset position,
+    bool menu,
+  ) async {
+    final epoch = _documentEpoch;
+    final picked = await showDialog<PdfAnnotation>(
+      context: context,
+      builder: (context) => OrbitDialog(
+        title: const Text('Choose a marking'),
+        content: SizedBox(
+          width: 440,
+          height: math.min(360, hits.length * 76.0),
+          child: ListView(
+            children: [
+              for (final a in hits)
+                ListTile(
+                  leading: Icon(Icons.format_underline, color: Color(a.color)),
+                  title: Text(
+                    a.quote.isEmpty ? a.object.title : a.quote,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    '${a.style} · ${a.object.body.isEmpty ? "No comment" : a.object.body}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: () => Navigator.pop(context, a),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted ||
+        epoch != _documentEpoch ||
+        picked == null ||
+        !widget.annotations.any((a) => identical(a.object, picked.object))) {
+      return;
+    }
+    if (menu) {
+      await _showAnnotationMenu(picked, position);
+    } else {
+      _showHighlightDetail(picked);
+    }
   }
 
   Widget _annotationPanel({bool expanded = false}) => PdfReviewPanel(
@@ -2363,1226 +2553,1347 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   );
 
   @override
-  Widget build(BuildContext context) => CallbackShortcuts(
-    bindings: {
-      const SingleActivator(LogicalKeyboardKey.keyF, control: true): _find,
-      const SingleActivator(LogicalKeyboardKey.digit0, control: true): () =>
-          _readingTool('page'),
-      const SingleActivator(LogicalKeyboardKey.digit1, control: true): () =>
-          _readingTool('1'),
-      const SingleActivator(LogicalKeyboardKey.digit2, control: true): () =>
-          _readingTool('width'),
-      const SingleActivator(LogicalKeyboardKey.arrowRight, alt: true): () =>
-          _go(_page + 1),
-      const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true): () =>
-          _go(_page - 1),
-      const SingleActivator(LogicalKeyboardKey.f3): () =>
-          _search?.goToNextMatch(),
-      const SingleActivator(LogicalKeyboardKey.f3, shift: true): () =>
-          _search?.goToPrevMatch(),
-      const SingleActivator(
-        LogicalKeyboardKey.keyZ,
-        control: true,
-        shift: true,
-      ): () =>
-          setState(() => _zenMode = !_zenMode),
-      const SingleActivator(LogicalKeyboardKey.escape): () {
-        if (_zenMode) setState(() => _zenMode = false);
+  Widget build(BuildContext context) {
+    _rememberViewOptions();
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyF, control: true): _find,
+        const SingleActivator(LogicalKeyboardKey.digit0, control: true): () =>
+            _readingTool('page'),
+        const SingleActivator(LogicalKeyboardKey.digit1, control: true): () =>
+            _readingTool('1'),
+        const SingleActivator(LogicalKeyboardKey.digit2, control: true): () =>
+            _readingTool('width'),
+        const SingleActivator(LogicalKeyboardKey.arrowRight, alt: true): () =>
+            _go(_page + 1),
+        const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true): () =>
+            _go(_page - 1),
+        const SingleActivator(LogicalKeyboardKey.f3): () =>
+            _search?.goToNextMatch(),
+        const SingleActivator(LogicalKeyboardKey.f3, shift: true): () =>
+            _search?.goToPrevMatch(),
+        const SingleActivator(
+          LogicalKeyboardKey.keyZ,
+          control: true,
+          shift: true,
+        ): () =>
+            setState(() => _zenMode = !_zenMode),
+        const SingleActivator(LogicalKeyboardKey.escape): () {
+          if (_zenMode) setState(() => _zenMode = false);
+        },
       },
-    },
-    child: Focus(
-      focusNode: _readerFocus,
-      child: Column(
-        children: [
-          if (!_zenMode)
-            OrbitWorkbenchToolbar(
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Scrollbar(
-                  controller: _toolbarScroll,
-                  thumbVisibility: true,
-                  child: SingleChildScrollView(
+      child: Focus(
+        focusNode: _readerFocus,
+        child: Column(
+          children: [
+            if (!_zenMode)
+              OrbitWorkbenchToolbar(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Scrollbar(
                     controller: _toolbarScroll,
-                    scrollDirection: Axis.horizontal,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            tooltip: 'Page thumbnails',
-                            isSelected: _thumbnails,
-                            onPressed: _ready
-                                ? () {
-                                    setState(() => _thumbnails = !_thumbnails);
-                                    if (_thumbnails) {
-                                      WidgetsBinding.instance
-                                          .addPostFrameCallback((_) {
-                                            if (!mounted || !_thumbnails) {
-                                              return;
-                                            }
-                                            _thumbnailFocus.requestFocus();
-                                            _revealThumbnail();
-                                          });
-                                    } else {
-                                      _readerFocus.requestFocus();
+                    thumbVisibility: true,
+                    child: SingleChildScrollView(
+                      controller: _toolbarScroll,
+                      scrollDirection: Axis.horizontal,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: 'Page thumbnails',
+                              isSelected: _thumbnails,
+                              onPressed: _ready
+                                  ? () {
+                                      setState(
+                                        () => _thumbnails = !_thumbnails,
+                                      );
+                                      if (_thumbnails) {
+                                        WidgetsBinding.instance
+                                            .addPostFrameCallback((_) {
+                                              if (!mounted || !_thumbnails) {
+                                                return;
+                                              }
+                                              _thumbnailFocus.requestFocus();
+                                              _revealThumbnail();
+                                            });
+                                      } else {
+                                        _readerFocus.requestFocus();
+                                      }
                                     }
-                                  }
-                                : null,
-                            icon: const Icon(Icons.view_sidebar_outlined),
-                          ),
-                          IconButton(
-                            tooltip: 'PDF outline',
-                            onPressed: _ready && !_outlineLoading
-                                ? _showOutline
-                                : null,
-                            icon: const Icon(Icons.format_list_bulleted),
-                          ),
-                          const OrbitToolbarDivider(),
-                          IconButton(
-                            tooltip: 'Previous page',
-                            onPressed: _ready && _page > 1
-                                ? () => _go(_page - 1)
-                                : null,
-                            icon: const Icon(Icons.chevron_left),
-                          ),
-                          SizedBox(
-                            width: 58,
-                            child: TextField(
-                              controller: _pageInput,
-                              enabled: _ready,
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.digitsOnly,
-                              ],
-                              decoration: const InputDecoration(
-                                isDense: true,
-                                contentPadding: EdgeInsets.all(8),
-                              ),
-                              onSubmitted: (value) =>
-                                  _go(int.tryParse(value) ?? _page),
+                                  : null,
+                              icon: const Icon(Icons.view_sidebar_outlined),
                             ),
-                          ),
-                          Text(' / ${_ready ? _viewer.pageCount : '—'}'),
-                          IconButton(
-                            tooltip: 'Next page',
-                            onPressed: _ready && _page < _viewer.pageCount
-                                ? () => _go(_page + 1)
-                                : null,
-                            icon: const Icon(Icons.chevron_right),
-                          ),
-                          IconButton(
-                            tooltip: 'Zoom out',
-                            onPressed: _ready
-                                ? () {
-                                    setState(() {
-                                      _comfort = false;
-                                      _textOnly = false;
-                                    });
-                                    _fitGeneration++;
-                                    _contentWidths.cancel();
-                                    _viewer.zoomDown(duration: Duration.zero);
-                                  }
-                                : null,
-                            icon: const Icon(Icons.remove),
-                          ),
-                          IconButton(
-                            tooltip: 'Fit page width',
-                            onPressed: _ready
-                                ? () => _readingTool('width')
-                                : null,
-                            icon: const Icon(Icons.fit_screen),
-                          ),
-                          PopupMenuButton<String>(
-                            tooltip: 'PDF zoom and reading tools',
-                            enabled: _ready,
-                            onSelected: _readingTool,
-                            itemBuilder: (_) => const [
-                              PopupMenuItem(
-                                value: 'content',
-                                child: Text('Fit content · images and tables'),
-                              ),
-                              PopupMenuItem(
-                                value: 'page',
-                                child: Text('Fit entire page · Ctrl+0'),
-                              ),
-                              PopupMenuItem(
-                                value: 'width',
-                                child: Text('Fit page width · Ctrl+2'),
-                              ),
-                              PopupMenuDivider(),
-                              PopupMenuItem(value: '0.5', child: Text('50%')),
-                              PopupMenuItem(value: '0.75', child: Text('75%')),
-                              PopupMenuItem(
-                                value: '1',
-                                child: Text('100% · Ctrl+1'),
-                              ),
-                              PopupMenuItem(value: '1.5', child: Text('150%')),
-                              PopupMenuItem(value: '2', child: Text('200%')),
-                              PopupMenuItem(value: '4', child: Text('400%')),
-                              PopupMenuItem(
-                                value: 'custom',
-                                child: Text('Custom zoom…'),
-                              ),
-                            ],
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 8,
-                              ),
-                              child: Text('$_zoomPercent%'),
+                            IconButton(
+                              tooltip: 'PDF outline',
+                              onPressed: _ready && !_outlineLoading
+                                  ? _showOutline
+                                  : null,
+                              icon: const Icon(Icons.format_list_bulleted),
                             ),
-                          ),
-                          IconButton(
-                            tooltip: 'Zoom in',
-                            onPressed: _ready
-                                ? () {
-                                    setState(() {
-                                      _comfort = false;
-                                      _textOnly = false;
-                                    });
-                                    _fitGeneration++;
-                                    _contentWidths.cancel();
-                                    _viewer.zoomUp(duration: Duration.zero);
-                                  }
-                                : null,
-                            icon: const Icon(Icons.add),
-                          ),
-                          IconButton(
-                            tooltip: 'Find in PDF · Ctrl+F',
-                            onPressed: _ready ? _find : null,
-                            icon: const Icon(Icons.search),
-                          ),
-                          const OrbitToolbarDivider(),
-                          PopupMenuButton<PdfPageMode>(
-                            tooltip: 'Page display mode',
-                            initialValue: _pageMode,
-                            icon: Icon(switch (_pageMode) {
-                              PdfPageMode.continuous => Icons.view_day_outlined,
-                              PdfPageMode.single =>
-                                Icons.crop_portrait_outlined,
-                              PdfPageMode.twoPage => Icons.menu_book_outlined,
-                            }),
-                            onSelected: _setPageMode,
-                            itemBuilder: (_) => const [
-                              PopupMenuItem(
-                                value: PdfPageMode.continuous,
-                                child: Text('Continuous vertical scroll'),
+                            const OrbitToolbarDivider(),
+                            IconButton(
+                              tooltip: 'Previous page',
+                              onPressed: _ready && _page > 1
+                                  ? () => _go(_page - 1)
+                                  : null,
+                              icon: const Icon(Icons.chevron_left),
+                            ),
+                            SizedBox(
+                              width: 58,
+                              child: TextField(
+                                controller: _pageInput,
+                                enabled: _ready,
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                ],
+                                decoration: const InputDecoration(
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.all(8),
+                                ),
+                                onSubmitted: (value) =>
+                                    _go(int.tryParse(value) ?? _page),
                               ),
-                              PopupMenuItem(
-                                value: PdfPageMode.single,
-                                child: Text('Single page (horizontal flow)'),
-                              ),
-                              PopupMenuItem(
-                                value: PdfPageMode.twoPage,
-                                child: Text('Two-page spread (facing pages)'),
-                              ),
-                            ],
-                          ),
-                          IconButton(
-                            tooltip: _comfort
-                                ? 'Original page'
-                                : 'Comfort reading',
-                            isSelected: _comfort,
-                            onPressed: _ready
-                                ? () {
-                                    setState(() {
-                                      _comfort = !_comfort;
-                                      _textOnly = false;
-                                      _forms = false;
-                                    });
-                                    if (_comfort) {
-                                      _fitComfort();
-                                    } else {
+                            ),
+                            Text(' / ${_ready ? _viewer.pageCount : '—'}'),
+                            IconButton(
+                              tooltip: 'Next page',
+                              onPressed: _ready && _page < _viewer.pageCount
+                                  ? () => _go(_page + 1)
+                                  : null,
+                              icon: const Icon(Icons.chevron_right),
+                            ),
+                            IconButton(
+                              tooltip: 'Zoom out',
+                              onPressed: _ready
+                                  ? () {
+                                      setState(() {
+                                        _comfort = false;
+                                        _textOnly = false;
+                                      });
                                       _fitGeneration++;
                                       _contentWidths.cancel();
-                                      _viewer.goTo(
-                                        _viewer.calcMatrixFitWidthForPage(
-                                          pageNumber: _page,
-                                        ),
-                                        duration: Duration.zero,
-                                      );
+                                      _viewer.zoomDown(duration: Duration.zero);
                                     }
-                                  }
-                                : null,
-                            icon: const Icon(Icons.chrome_reader_mode_outlined),
-                          ),
-                          IconButton(
-                            tooltip: _textOnly
-                                ? 'Return to visual reading'
-                                : 'Text-only reading',
-                            isSelected: _textOnly,
-                            onPressed:
-                                _ready &&
-                                    (_viewer
-                                            .document
-                                            .permissions
-                                            ?.allowsCopying ??
-                                        true)
-                                ? () {
-                                    setState(() {
-                                      _textOnly = !_textOnly;
-                                      _comfort = true;
-                                      _forms = false;
-                                    });
-                                    if (!_textOnly) _fitComfort();
-                                  }
-                                : null,
-                            icon: const Icon(Icons.text_fields),
-                          ),
-                          if (widget.onPageComment != null)
-                            IconButton(
-                              tooltip: 'Add page comment',
-                              onPressed: _ready && !widget.readOnly
-                                  ? _addPageComment
                                   : null,
-                              icon: const Icon(Icons.add_comment_outlined),
+                              icon: const Icon(Icons.remove),
                             ),
-                          IconButton(
-                            tooltip: _showMarkup
-                                ? 'Hide review markup'
-                                : 'Show review markup',
-                            onPressed: _ready
-                                ? () {
-                                    setState(() => _showMarkup = !_showMarkup);
-                                    _viewer.invalidate();
-                                  }
-                                : null,
-                            icon: Icon(
-                              _showMarkup
-                                  ? Icons.layers_outlined
-                                  : Icons.layers_clear_outlined,
-                            ),
-                          ),
-                          if (widget.onFormChanged != null)
                             IconButton(
-                              tooltip: 'Fill PDF forms',
-                              isSelected: _forms,
-                              onPressed: _ready && !widget.readOnly
-                                  ? () => setState(() {
-                                      _forms = !_forms;
-                                      _comfort = false;
-                                      _textOnly = false;
-                                    })
+                              tooltip: 'Fit page width',
+                              onPressed: _ready
+                                  ? () => _readingTool('width')
                                   : null,
-                              icon: const Icon(Icons.check_box_outlined),
+                              icon: const Icon(Icons.fit_screen),
                             ),
-                          if (_forms && widget.onSaveFilledCopy != null)
-                            OrbitControl(
-                              label: _savingCopy
-                                  ? 'Saving…'
-                                  : 'Save filled copy',
+                            PopupMenuButton<String>(
+                              tooltip: 'PDF zoom and reading tools',
+                              enabled: _ready,
+                              onSelected: _readingTool,
+                              itemBuilder: (_) => const [
+                                PopupMenuItem(
+                                  value: 'content',
+                                  child: Text(
+                                    'Fit content · images and tables',
+                                  ),
+                                ),
+                                PopupMenuItem(
+                                  value: 'page',
+                                  child: Text('Fit entire page · Ctrl+0'),
+                                ),
+                                PopupMenuItem(
+                                  value: 'width',
+                                  child: Text('Fit page width · Ctrl+2'),
+                                ),
+                                PopupMenuDivider(),
+                                PopupMenuItem(value: '0.5', child: Text('50%')),
+                                PopupMenuItem(
+                                  value: '0.75',
+                                  child: Text('75%'),
+                                ),
+                                PopupMenuItem(
+                                  value: '1',
+                                  child: Text('100% · Ctrl+1'),
+                                ),
+                                PopupMenuItem(
+                                  value: '1.5',
+                                  child: Text('150%'),
+                                ),
+                                PopupMenuItem(value: '2', child: Text('200%')),
+                                PopupMenuItem(value: '4', child: Text('400%')),
+                                PopupMenuItem(
+                                  value: 'custom',
+                                  child: Text('Custom zoom…'),
+                                ),
+                              ],
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                child: Text('$_zoomPercent%'),
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Zoom in',
+                              onPressed: _ready
+                                  ? () {
+                                      setState(() {
+                                        _comfort = false;
+                                        _textOnly = false;
+                                      });
+                                      _fitGeneration++;
+                                      _contentWidths.cancel();
+                                      _viewer.zoomUp(duration: Duration.zero);
+                                    }
+                                  : null,
+                              icon: const Icon(Icons.add),
+                            ),
+                            IconButton(
+                              tooltip: 'Find in PDF · Ctrl+F',
+                              onPressed: _ready ? _find : null,
+                              icon: const Icon(Icons.search),
+                            ),
+                            const OrbitToolbarDivider(),
+                            PopupMenuButton<PdfPageMode>(
+                              tooltip: 'Page display mode',
+                              initialValue: _pageMode,
+                              icon: Icon(switch (_pageMode) {
+                                PdfPageMode.continuous =>
+                                  Icons.view_day_outlined,
+                                PdfPageMode.single =>
+                                  Icons.crop_portrait_outlined,
+                                PdfPageMode.twoPage => Icons.menu_book_outlined,
+                              }),
+                              onSelected: _setPageMode,
+                              itemBuilder: (_) => const [
+                                PopupMenuItem(
+                                  value: PdfPageMode.continuous,
+                                  child: Text('Continuous vertical scroll'),
+                                ),
+                                PopupMenuItem(
+                                  value: PdfPageMode.single,
+                                  child: Text('Single page (horizontal flow)'),
+                                ),
+                                PopupMenuItem(
+                                  value: PdfPageMode.twoPage,
+                                  child: Text('Two-page spread (facing pages)'),
+                                ),
+                              ],
+                            ),
+                            IconButton(
+                              tooltip: _comfort
+                                  ? 'Original page'
+                                  : 'Comfort reading',
+                              isSelected: _comfort,
+                              onPressed: _ready
+                                  ? () {
+                                      setState(() {
+                                        _comfort = !_comfort;
+                                        _textOnly = false;
+                                        _forms = false;
+                                      });
+                                      if (_comfort) {
+                                        _fitComfort();
+                                      } else {
+                                        _fitGeneration++;
+                                        _contentWidths.cancel();
+                                        _viewer.goTo(
+                                          _viewer.calcMatrixFitWidthForPage(
+                                            pageNumber: _page,
+                                          ),
+                                          duration: Duration.zero,
+                                        );
+                                      }
+                                    }
+                                  : null,
+                              icon: const Icon(
+                                Icons.chrome_reader_mode_outlined,
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: _textOnly
+                                  ? 'Return to visual reading'
+                                  : 'Text-only reading',
+                              isSelected: _textOnly,
                               onPressed:
-                                  _savingCopy ||
-                                      widget.formValues.isEmpty ||
-                                      widget.readOnly
-                                  ? null
-                                  : _saveFilledCopy,
-                            ),
-                          const OrbitToolbarDivider(),
-                          IconButton(
-                            tooltip: 'Copy page reference',
-                            onPressed: _ready ? _copyReference : null,
-                            icon: const Icon(Icons.link),
-                          ),
-                          if (widget.onCreateDocument != null)
-                            PopupMenuButton<ResearchDocument>(
-                              tooltip: 'Create document from PDF',
-                              enabled:
                                   _ready &&
-                                  !widget.readOnly &&
-                                  !_creatingDocument,
-                              onSelected: _createDocument,
+                                      (_viewer
+                                              .document
+                                              .permissions
+                                              ?.allowsCopying ??
+                                          true)
+                                  ? () {
+                                      setState(() {
+                                        _textOnly = !_textOnly;
+                                        _comfort = true;
+                                        _forms = false;
+                                      });
+                                      if (!_textOnly) _fitComfort();
+                                    }
+                                  : null,
+                              icon: const Icon(Icons.text_fields),
+                            ),
+                            if (widget.onPageComment != null)
+                              IconButton(
+                                tooltip: 'Add page comment',
+                                onPressed: _ready && !widget.readOnly
+                                    ? _addPageComment
+                                    : null,
+                                icon: const Icon(Icons.add_comment_outlined),
+                              ),
+                            IconButton(
+                              tooltip: _showMarkup
+                                  ? 'Hide review markup'
+                                  : 'Show review markup',
+                              onPressed: _ready
+                                  ? () {
+                                      setState(
+                                        () => _showMarkup = !_showMarkup,
+                                      );
+                                      _viewer.invalidate();
+                                    }
+                                  : null,
+                              icon: Icon(
+                                _showMarkup
+                                    ? Icons.layers_outlined
+                                    : Icons.layers_clear_outlined,
+                              ),
+                            ),
+                            if (widget.onFormChanged != null)
+                              IconButton(
+                                tooltip: 'Fill PDF forms',
+                                isSelected: _forms,
+                                onPressed: _ready && !widget.readOnly
+                                    ? () => setState(() {
+                                        _forms = !_forms;
+                                        _comfort = false;
+                                        _textOnly = false;
+                                      })
+                                    : null,
+                                icon: const Icon(Icons.check_box_outlined),
+                              ),
+                            if (_forms && widget.onSaveFilledCopy != null)
+                              OrbitControl(
+                                label: _savingCopy
+                                    ? 'Saving…'
+                                    : 'Save filled copy',
+                                onPressed:
+                                    _savingCopy ||
+                                        widget.formValues.isEmpty ||
+                                        widget.readOnly
+                                    ? null
+                                    : _saveFilledCopy,
+                              ),
+                            const OrbitToolbarDivider(),
+                            IconButton(
+                              tooltip: 'Copy page reference',
+                              onPressed: _ready ? _copyReference : null,
+                              icon: const Icon(Icons.link),
+                            ),
+                            if (widget.onCreateDocument != null)
+                              PopupMenuButton<ResearchDocument>(
+                                tooltip: 'Create document from PDF',
+                                enabled:
+                                    _ready &&
+                                    !widget.readOnly &&
+                                    !_creatingDocument,
+                                onSelected: _createDocument,
+                                itemBuilder: (_) => [
+                                  for (final document
+                                      in ResearchDocument.values)
+                                    PopupMenuItem(
+                                      value: document,
+                                      child: Text(document.label),
+                                    ),
+                                ],
+                                icon: const Icon(Icons.post_add_rounded),
+                              ),
+                            IconButton(
+                              tooltip: 'Highlights and comments',
+                              isSelected: _showAnnotations,
+                              onPressed: () => setState(() {
+                                _showAnnotations = !_showAnnotations;
+                                if (_showAnnotations) _showNotes = false;
+                              }),
+                              icon: const Icon(Icons.edit_note_rounded),
+                            ),
+                            if (widget.onOpenLinkedNote != null)
+                              IconButton(
+                                tooltip: 'Connected notes',
+                                isSelected: _showNotes,
+                                onPressed: () => setState(() {
+                                  _showNotes = !_showNotes;
+                                  if (_showNotes) _showAnnotations = false;
+                                  if (_showNotes) {
+                                    WidgetsBinding.instance
+                                        .addPostFrameCallback((_) {
+                                          if (mounted && _showNotes) {
+                                            _notesSearchFocus.requestFocus();
+                                          }
+                                        });
+                                  } else {
+                                    _readerFocus.requestFocus();
+                                  }
+                                }),
+                                icon: const Icon(Icons.description_outlined),
+                              ),
+                            PopupMenuButton<int>(
+                              tooltip: 'Highlight color',
+                              icon: Container(
+                                width: 16,
+                                height: 16,
+                                decoration: BoxDecoration(
+                                  color: Color(_activeColor),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: OrbitColors.of(context).border,
+                                    width: 1.5,
+                                  ),
+                                ),
+                              ),
+                              onSelected: (color) =>
+                                  setState(() => _activeColor = color),
                               itemBuilder: (_) => [
-                                for (final document in ResearchDocument.values)
+                                for (final entry in pdfHighlightColors.entries)
                                   PopupMenuItem(
-                                    value: document,
-                                    child: Text(document.label),
+                                    value: entry.value,
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          width: 14,
+                                          height: 14,
+                                          decoration: BoxDecoration(
+                                            color: Color(entry.value),
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(entry.key),
+                                        if (_activeColor == entry.value) ...[
+                                          const Spacer(),
+                                          Icon(
+                                            Icons.check,
+                                            size: 16,
+                                            color: OrbitColors.of(
+                                              context,
+                                            ).accent,
+                                          ),
+                                        ],
+                                      ],
+                                    ),
                                   ),
                               ],
-                              icon: const Icon(Icons.post_add_rounded),
                             ),
-                          IconButton(
-                            tooltip: 'Highlights and comments',
-                            isSelected: _showAnnotations,
-                            onPressed: () => setState(() {
-                              _showAnnotations = !_showAnnotations;
-                              if (_showAnnotations) _showNotes = false;
-                            }),
-                            icon: const Icon(Icons.edit_note_rounded),
-                          ),
-                          if (widget.onOpenLinkedNote != null)
                             IconButton(
-                              tooltip: 'Connected notes',
-                              isSelected: _showNotes,
-                              onPressed: () => setState(() {
-                                _showNotes = !_showNotes;
-                                if (_showNotes) _showAnnotations = false;
-                                if (_showNotes) {
-                                  WidgetsBinding.instance.addPostFrameCallback((
-                                    _,
-                                  ) {
-                                    if (mounted && _showNotes) {
-                                      _notesSearchFocus.requestFocus();
-                                    }
-                                  });
-                                } else {
-                                  _readerFocus.requestFocus();
-                                }
-                              }),
-                              icon: const Icon(Icons.description_outlined),
-                            ),
-                          PopupMenuButton<int>(
-                            tooltip: 'Highlight color',
-                            icon: Container(
-                              width: 16,
-                              height: 16,
-                              decoration: BoxDecoration(
-                                color: Color(_activeColor),
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: OrbitColors.of(context).border,
-                                  width: 1.5,
-                                ),
+                              tooltip: widget.bookmarks.contains(_page)
+                                  ? 'Remove page bookmark'
+                                  : 'Bookmark page',
+                              onPressed: !_ready || widget.readOnly
+                                  ? null
+                                  : () {
+                                      final pages = widget.bookmarks.toSet();
+                                      if (!pages.remove(_page)) {
+                                        pages.add(_page);
+                                      }
+                                      widget.onBookmarks(
+                                        pages.toList()..sort(),
+                                      );
+                                    },
+                              icon: Icon(
+                                widget.bookmarks.contains(_page)
+                                    ? Icons.bookmark
+                                    : Icons.bookmark_border,
                               ),
                             ),
-                            onSelected: (color) =>
-                                setState(() => _activeColor = color),
-                            itemBuilder: (_) => [
-                              for (final entry in pdfHighlightColors.entries)
+                            IconButton(
+                              key: const ValueKey('pdf-favorite-button'),
+                              tooltip: _isFavorite
+                                  ? 'Remove from favorites'
+                                  : 'Mark as favorite',
+                              isSelected: _isFavorite,
+                              onPressed: _toggleFavorite,
+                              icon: Icon(
+                                _isFavorite ? Icons.star : Icons.star_border,
+                                color: _isFavorite ? Colors.amber : null,
+                              ),
+                            ),
+                            IconButton(
+                              key: const ValueKey('pdf-reading-room-button'),
+                              tooltip: _activeReadingRoom != null
+                                  ? 'Virtual room: ${_activeReadingRoom!.name}'
+                                  : 'Virtual reading rooms & ambience',
+                              isSelected: _activeReadingRoom != null,
+                              onPressed: _openReadingRoomSheet,
+                              icon: Icon(
+                                _activeReadingRoom != null
+                                    ? Icons.spa
+                                    : Icons.spa_outlined,
+                                color: _activeReadingRoom != null
+                                    ? OrbitColors.of(context).accent
+                                    : null,
+                              ),
+                            ),
+                            IconButton(
+                              key: const ValueKey('pdf-zen-mode-toggle'),
+                              tooltip: 'Zen distraction-free reading',
+                              isSelected: _zenMode,
+                              onPressed: () =>
+                                  setState(() => _zenMode = !_zenMode),
+                              icon: const Icon(Icons.fullscreen),
+                            ),
+                            IconButton(
+                              tooltip: 'Saved pages',
+                              onPressed: _ready ? _showBookmarks : null,
+                              icon: const Icon(Icons.bookmarks_outlined),
+                            ),
+                            IconButton(
+                              tooltip: 'Open original externally',
+                              onPressed: widget.onOpenOriginal,
+                              icon: const Icon(Icons.open_in_new),
+                            ),
+                            PopupMenuButton<String>(
+                              tooltip: 'Document tools',
+                              enabled: _ready,
+                              icon: const Icon(Icons.more_horiz),
+                              onSelected: (value) {
+                                switch (value) {
+                                  case 'back':
+                                    _visitHistory(false);
+                                  case 'forward':
+                                    _visitHistory(true);
+                                  case 'first':
+                                    _go(1);
+                                  case 'last':
+                                    _go(_viewer.pageCount);
+                                  case 'info':
+                                    _documentInfo();
+                                  case 'ocr':
+                                    widget.onRecognizeText?.call();
+                                  case 'rooms':
+                                    _openReadingRoomSheet();
+                                  case 'memories':
+                                    if (widget.onOpenMemories != null) {
+                                      widget.onOpenMemories!();
+                                    } else {
+                                      _showBookmarks();
+                                    }
+                                  case 'lens':
+                                    setState(
+                                      () => _magnifyingLens = !_magnifyingLens,
+                                    );
+                                  case 'zen':
+                                    setState(() => _zenMode = !_zenMode);
+                                }
+                              },
+                              itemBuilder: (_) => [
                                 PopupMenuItem(
-                                  value: entry.value,
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 14,
-                                        height: 14,
-                                        decoration: BoxDecoration(
-                                          color: Color(entry.value),
-                                          shape: BoxShape.circle,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(entry.key),
-                                      if (_activeColor == entry.value) ...[
-                                        const Spacer(),
-                                        Icon(
-                                          Icons.check,
-                                          size: 16,
-                                          color: OrbitColors.of(context).accent,
-                                        ),
-                                      ],
-                                    ],
+                                  value: 'back',
+                                  enabled: _previousPages.isNotEmpty,
+                                  child: const Text('Previous visited page'),
+                                ),
+                                PopupMenuItem(
+                                  value: 'forward',
+                                  enabled: _nextPages.isNotEmpty,
+                                  child: const Text('Next visited page'),
+                                ),
+                                const PopupMenuDivider(),
+                                if (widget.onRecognizeText != null)
+                                  const PopupMenuItem(
+                                    value: 'ocr',
+                                    child: Text('Recognize and review text…'),
+                                  ),
+                                const PopupMenuItem(
+                                  value: 'first',
+                                  child: Text('First page'),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'last',
+                                  child: Text('Last page'),
+                                ),
+                                const PopupMenuDivider(),
+                                const PopupMenuItem(
+                                  value: 'rooms',
+                                  child: Text(
+                                    'Virtual reading rooms & ambience…',
                                   ),
                                 ),
-                            ],
-                          ),
-                          IconButton(
-                            tooltip: widget.bookmarks.contains(_page)
-                                ? 'Remove page bookmark'
-                                : 'Bookmark page',
-                            onPressed: !_ready || widget.readOnly
-                                ? null
-                                : () {
-                                    final pages = widget.bookmarks.toSet();
-                                    if (!pages.remove(_page)) {
-                                      pages.add(_page);
-                                    }
-                                    widget.onBookmarks(pages.toList()..sort());
-                                  },
-                            icon: Icon(
-                              widget.bookmarks.contains(_page)
-                                  ? Icons.bookmark
-                                  : Icons.bookmark_border,
-                            ),
-                          ),
-                          IconButton(
-                            key: const ValueKey('pdf-favorite-button'),
-                            tooltip: _isFavorite
-                                ? 'Remove from favorites'
-                                : 'Mark as favorite',
-                            isSelected: _isFavorite,
-                            onPressed: _toggleFavorite,
-                            icon: Icon(
-                              _isFavorite ? Icons.star : Icons.star_border,
-                              color: _isFavorite ? Colors.amber : null,
-                            ),
-                          ),
-                          IconButton(
-                            key: const ValueKey('pdf-reading-room-button'),
-                            tooltip: _activeReadingRoom != null
-                                ? 'Virtual room: ${_activeReadingRoom!.name}'
-                                : 'Virtual reading rooms & ambience',
-                            isSelected: _activeReadingRoom != null,
-                            onPressed: _openReadingRoomSheet,
-                            icon: Icon(
-                              _activeReadingRoom != null
-                                  ? Icons.spa
-                                  : Icons.spa_outlined,
-                              color: _activeReadingRoom != null
-                                  ? OrbitColors.of(context).accent
-                                  : null,
-                            ),
-                          ),
-                          IconButton(
-                            key: const ValueKey('pdf-zen-mode-toggle'),
-                            tooltip: 'Zen distraction-free reading',
-                            isSelected: _zenMode,
-                            onPressed: () =>
-                                setState(() => _zenMode = !_zenMode),
-                            icon: const Icon(Icons.fullscreen),
-                          ),
-                          IconButton(
-                            tooltip: 'Saved pages',
-                            onPressed: _ready ? _showBookmarks : null,
-                            icon: const Icon(Icons.bookmarks_outlined),
-                          ),
-                          IconButton(
-                            tooltip: 'Open original externally',
-                            onPressed: widget.onOpenOriginal,
-                            icon: const Icon(Icons.open_in_new),
-                          ),
-                          PopupMenuButton<String>(
-                            tooltip: 'Document tools',
-                            enabled: _ready,
-                            icon: const Icon(Icons.more_horiz),
-                            onSelected: (value) {
-                              switch (value) {
-                                case 'back':
-                                  _visitHistory(false);
-                                case 'forward':
-                                  _visitHistory(true);
-                                case 'first':
-                                  _go(1);
-                                case 'last':
-                                  _go(_viewer.pageCount);
-                                case 'info':
-                                  _documentInfo();
-                                case 'ocr':
-                                  widget.onRecognizeText?.call();
-                                case 'rooms':
-                                  _openReadingRoomSheet();
-                                case 'memories':
-                                  if (widget.onOpenMemories != null) {
-                                    widget.onOpenMemories!();
-                                  } else {
-                                    _showBookmarks();
-                                  }
-                                case 'lens':
-                                  setState(
-                                    () => _magnifyingLens = !_magnifyingLens,
-                                  );
-                                case 'zen':
-                                  setState(() => _zenMode = !_zenMode);
-                              }
-                            },
-                            itemBuilder: (_) => [
-                              PopupMenuItem(
-                                value: 'back',
-                                enabled: _previousPages.isNotEmpty,
-                                child: const Text('Previous visited page'),
-                              ),
-                              PopupMenuItem(
-                                value: 'forward',
-                                enabled: _nextPages.isNotEmpty,
-                                child: const Text('Next visited page'),
-                              ),
-                              const PopupMenuDivider(),
-                              if (widget.onRecognizeText != null)
                                 const PopupMenuItem(
-                                  value: 'ocr',
-                                  child: Text('Recognize and review text…'),
+                                  value: 'memories',
+                                  child: Text('Book memories & notes archive…'),
                                 ),
-                              const PopupMenuItem(
-                                value: 'first',
-                                child: Text('First page'),
-                              ),
-                              const PopupMenuItem(
-                                value: 'last',
-                                child: Text('Last page'),
-                              ),
-                              const PopupMenuDivider(),
-                              const PopupMenuItem(
-                                value: 'rooms',
-                                child: Text(
-                                  'Virtual reading rooms & ambience…',
+                                PopupMenuItem(
+                                  value: 'lens',
+                                  child: Text(
+                                    _magnifyingLens
+                                        ? 'Hide magnifying lens'
+                                        : 'Magnifying lens',
+                                  ),
                                 ),
-                              ),
-                              const PopupMenuItem(
-                                value: 'memories',
-                                child: Text('Book memories & notes archive…'),
-                              ),
-                              PopupMenuItem(
-                                value: 'lens',
-                                child: Text(
-                                  _magnifyingLens
-                                      ? 'Hide magnifying lens'
-                                      : 'Magnifying lens',
+                                const PopupMenuItem(
+                                  value: 'zen',
+                                  child: Text('Zen distraction-free reading'),
                                 ),
-                              ),
-                              const PopupMenuItem(
-                                value: 'zen',
-                                child: Text('Zen distraction-free reading'),
-                              ),
-                              const PopupMenuDivider(),
-                              const PopupMenuItem(
-                                value: 'info',
-                                child: Text('Document information'),
-                              ),
-                            ],
-                          ),
-                        ],
+                                const PopupMenuDivider(),
+                                const PopupMenuItem(
+                                  value: 'info',
+                                  child: Text('Document information'),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-          if ((_globalSearchRange != null || _globalOcrPage != null) && _ready)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              child: Wrap(
-                spacing: 12,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text(
-                    'Global search match · Page ${_globalOcrPage ?? _globalSearchRange!.pageNumber}',
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      setState(() {
-                        _globalSearchRange = null;
-                        _globalOcrPage = null;
-                      });
-                      _viewer.invalidate();
-                    },
-                    child: const Text('Clear match'),
-                  ),
-                ],
-              ),
-            ),
-          if (_finding && _ready)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Wrap(
-                alignment: WrapAlignment.end,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                runSpacing: 4,
-                children: [
-                  SizedBox(
-                    width: double.infinity,
-                    child: TextField(
-                      controller: _query,
-                      focusNode: _searchFocus,
-                      decoration: const InputDecoration(
-                        hintText: 'Find text in this PDF',
-                        isDense: true,
-                      ),
-                      onChanged: (value) => _search!.startTextSearch(value),
-                      onSubmitted: (_) => _search!.goToNextMatch(),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    _search!.isSearching
-                        ? 'Searching…'
-                        : '${_search!.matches.length} matches',
-                  ),
-                  IconButton(
-                    tooltip: 'Previous match',
-                    onPressed: _search!.hasMatches
-                        ? _search!.goToPrevMatch
-                        : null,
-                    icon: const Icon(Icons.keyboard_arrow_up),
-                  ),
-                  IconButton(
-                    tooltip: 'Next match',
-                    onPressed: _search!.hasMatches
-                        ? _search!.goToNextMatch
-                        : null,
-                    icon: const Icon(Icons.keyboard_arrow_down),
-                  ),
-                  IconButton(
-                    tooltip: 'Close PDF search',
-                    onPressed: () {
-                      _search!.resetTextSearch();
-                      _query.clear();
-                      setState(() => _finding = false);
-                    },
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-            ),
-          Expanded(
-            child: FutureBuilder<Uint8List?>(
-              future: _bytes,
-              builder: (context, snapshot) {
-                final epoch = _viewerEpoch;
-                if (snapshot.connectionState != ConnectionState.done) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError || snapshot.data == null) {
-                  return _fallback(
-                    'PDF bytes are unavailable. The file reference has been preserved.',
-                  );
-                }
-                return Stack(
+            if ((_globalSearchRange != null || _globalOcrPage != null) &&
+                _ready)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
+                child: Wrap(
+                  spacing: 12,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Row(
-                      children: [
-                        if (_thumbnails && _ready)
-                          Focus(
-                            focusNode: _thumbnailFocus,
-                            onKeyEvent: _thumbnailKey,
-                            onFocusChange: (_) => setState(() {}),
-                            child: Container(
-                              width: 130,
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: _thumbnailFocus.hasFocus
-                                      ? OrbitColors.of(context).accent
-                                      : Colors.transparent,
+                    Text(
+                      'Global search match · Page ${_globalOcrPage ?? _globalSearchRange!.pageNumber}',
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _globalSearchRange = null;
+                          _globalOcrPage = null;
+                        });
+                        _viewer.invalidate();
+                      },
+                      child: const Text('Clear match'),
+                    ),
+                  ],
+                ),
+              ),
+            if (_finding && _ready)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  runSpacing: 4,
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextField(
+                        controller: _query,
+                        focusNode: _searchFocus,
+                        decoration: const InputDecoration(
+                          hintText: 'Find text in this PDF',
+                          isDense: true,
+                        ),
+                        onChanged: (value) => _search!.startTextSearch(value),
+                        onSubmitted: (_) => _search!.goToNextMatch(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _search!.isSearching
+                          ? 'Searching…'
+                          : '${_search!.matches.length} matches',
+                    ),
+                    IconButton(
+                      tooltip: 'Previous match',
+                      onPressed: _search!.hasMatches
+                          ? _search!.goToPrevMatch
+                          : null,
+                      icon: const Icon(Icons.keyboard_arrow_up),
+                    ),
+                    IconButton(
+                      tooltip: 'Next match',
+                      onPressed: _search!.hasMatches
+                          ? _search!.goToNextMatch
+                          : null,
+                      icon: const Icon(Icons.keyboard_arrow_down),
+                    ),
+                    IconButton(
+                      tooltip: 'Close PDF search',
+                      onPressed: () {
+                        _search!.resetTextSearch();
+                        _query.clear();
+                        setState(() => _finding = false);
+                      },
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+              ),
+            Expanded(
+              child: FutureBuilder<Uint8List?>(
+                future: _bytes,
+                builder: (context, snapshot) {
+                  final epoch = _viewerEpoch;
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError || snapshot.data == null) {
+                    return _fallback(
+                      'PDF bytes are unavailable. The file reference has been preserved.',
+                    );
+                  }
+                  return Stack(
+                    children: [
+                      Row(
+                        children: [
+                          if (_thumbnails && _ready)
+                            Focus(
+                              focusNode: _thumbnailFocus,
+                              onKeyEvent: _thumbnailKey,
+                              onFocusChange: (_) => setState(() {}),
+                              child: Container(
+                                width: 130,
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: _thumbnailFocus.hasFocus
+                                        ? OrbitColors.of(context).accent
+                                        : Colors.transparent,
+                                  ),
                                 ),
-                              ),
-                              child: ListView.builder(
-                                controller: _thumbnailScroll,
-                                itemExtent: _thumbnailExtent,
-                                itemCount: _viewer.pageCount,
-                                itemBuilder: (context, index) => Semantics(
-                                  label: 'Page ${index + 1}',
-                                  selected: index + 1 == _page,
-                                  button: true,
-                                  child: InkWell(
-                                    onTap: () => _go(index + 1),
-                                    child: Container(
-                                      margin: const EdgeInsets.all(8),
-                                      padding: const EdgeInsets.all(6),
-                                      decoration: BoxDecoration(
-                                        border: Border.all(
-                                          color: index + 1 == _page
-                                              ? OrbitColors.of(context).accent
-                                              : OrbitColors.of(context).border,
-                                        ),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Column(
-                                        children: [
-                                          SizedBox(
-                                            height: 120,
-                                            child: PdfPageView(
-                                              document: _viewer.document,
-                                              pageNumber: index + 1,
-                                            ),
+                                child: ListView.builder(
+                                  controller: _thumbnailScroll,
+                                  itemExtent: _thumbnailExtent,
+                                  itemCount: _viewer.pageCount,
+                                  itemBuilder: (context, index) => Semantics(
+                                    label: 'Page ${index + 1}',
+                                    selected: index + 1 == _page,
+                                    button: true,
+                                    child: InkWell(
+                                      onTap: () => _go(index + 1),
+                                      child: Container(
+                                        margin: const EdgeInsets.all(8),
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(
+                                            color: index + 1 == _page
+                                                ? OrbitColors.of(context).accent
+                                                : OrbitColors.of(
+                                                    context,
+                                                  ).border,
                                           ),
-                                          Text('${index + 1}'),
-                                        ],
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        child: Column(
+                                          children: [
+                                            SizedBox(
+                                              height: 120,
+                                              child: PdfPageView(
+                                                document: _viewer.document,
+                                                pageNumber: index + 1,
+                                              ),
+                                            ),
+                                            Text('${index + 1}'),
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        Expanded(
-                          child: _buildFilteredViewer(
-                            PdfViewer.data(
-                              snapshot.data!,
-                              key: ValueKey(
-                                '${widget.objectId}:${widget.key}:$_documentEpoch:$_viewerEpoch',
-                              ),
-                              sourceName:
-                                  '${widget.objectId}:${widget.key}:${widget.checksum}:$_documentEpoch',
-                              controller: _viewer,
-                              initialPageNumber: _restorePage,
-                              passwordProvider: _password,
-                              params: PdfViewerParams(
-                                layoutPages: _layoutPages,
-                                onGeneralTap: _tapMarkup,
-                                sizeDelegateProvider:
-                                    const PdfViewerSizeDelegateProviderLegacy(
-                                      minScale: .1,
-                                      maxScale: 8,
-                                      useAlternativeFitScaleAsMinScale: false,
-                                    ),
-                                onViewSizeChanged: (size, oldSize, controller) {
-                                  if (oldSize != null &&
-                                      oldSize.width != size.width) {
-                                    WidgetsBinding.instance
-                                        .addPostFrameCallback((_) {
-                                          if (!mounted ||
-                                              !_ready ||
-                                              !controller.isReady) {
-                                            return;
-                                          }
-                                          if (_comfort) {
-                                            _fitComfort(
-                                              keepVerticalPosition: true,
-                                            );
-                                          } else if (!_textOnly) {
-                                            final matrix = controller
-                                                .calcMatrixFitWidthForPage(
-                                                  pageNumber: _page,
-                                                );
-                                            if (matrix != null) {
-                                              controller.goTo(
-                                                matrix,
-                                                duration: Duration.zero,
-                                              );
-                                            }
-                                          }
-                                        });
-                                  }
-                                },
-                                pageOverlaysBuilder: (context, rect, page) {
-                                  if (_forms && widget.onFormChanged != null) {
-                                    return [
-                                      PdfFormLayer(
-                                        key: ValueKey(
-                                          'forms:${page.pageNumber}',
-                                        ),
-                                        document: _viewer.document,
-                                        page: page,
-                                        values: widget.formValues,
-                                        onChanged: widget.onFormChanged!,
-                                      ),
-                                    ];
-                                  }
-                                  return _buildAnnotationOverlays(
-                                    context,
-                                    rect,
-                                    page,
-                                  );
-                                },
-                                backgroundColor: OrbitColors.of(context).panel,
-                                onViewerReady: (document, controller) async {
-                                  if (!mounted || epoch != _viewerEpoch) {
-                                    return;
-                                  }
-                                  setState(() {
-                                    _search?.dispose();
-                                    _search = PdfTextSearcher(controller)
-                                      ..addListener(_refresh);
-                                    _ready = true;
-                                    if (!_loadedOnce &&
-                                        _restoreZoom == null &&
-                                        controller.viewSize.width < 600) {
-                                      _comfort = true;
+                          Expanded(
+                            child: _buildFilteredViewer(
+                              PdfViewer.data(
+                                snapshot.data!,
+                                key: ValueKey(
+                                  '${widget.objectId}:${widget.key}:$_documentEpoch:$_viewerEpoch',
+                                ),
+                                sourceName:
+                                    '${widget.objectId}:${widget.key}:${widget.checksum}:$_documentEpoch',
+                                controller: _viewer,
+                                initialPageNumber: _restorePage,
+                                passwordProvider: _password,
+                                params: PdfViewerParams(
+                                  onKey: (_, key, real) {
+                                    if (key == LogicalKeyboardKey.keyC &&
+                                        (HardwareKeyboard
+                                                .instance
+                                                .isControlPressed ||
+                                            HardwareKeyboard
+                                                .instance
+                                                .isMetaPressed)) {
+                                      if (real) {
+                                        unawaited(_copySelectedPdfText());
+                                      }
+                                      return true;
                                     }
-                                    _loadedOnce = true;
-                                    _page =
-                                        (controller.pageNumber ?? _restorePage)
-                                            .clamp(1, controller.pageCount);
-                                    _pageInput.text = '$_page';
-                                  });
-                                  if (_comfort) {
-                                    await _fitComfort();
-                                  }
-                                  if (!mounted ||
-                                      epoch != _viewerEpoch ||
-                                      !controller.isReady) {
-                                    return;
-                                  }
-                                  final zoom = _comfort ? null : _restoreZoom;
-                                  if (zoom != null && zoom.isFinite) {
-                                    await controller.setZoom(
-                                      controller.centerPosition,
-                                      zoom.clamp(
-                                        controller.minScale,
-                                        controller.maxScale,
-                                      ),
-                                      duration: Duration.zero,
-                                    );
-                                  } else if (!_comfort && !_textOnly) {
-                                    final matrix = controller
-                                        .calcMatrixFitWidthForPage(
-                                          pageNumber: _page,
-                                        );
-                                    if (matrix != null) {
-                                      await controller.goTo(
-                                        matrix,
-                                        duration: Duration.zero,
-                                      );
-                                    }
-                                  }
-                                  if (!mounted ||
-                                      epoch != _viewerEpoch ||
-                                      !controller.isReady) {
-                                    return;
-                                  }
-                                  if (_query.text.isNotEmpty) {
-                                    _search?.startTextSearch(_query.text);
-                                  }
-                                  if (_sourceNavigationPending &&
-                                      (widget.initialAnnotationId != null ||
-                                          widget.initialSearchChecksum !=
-                                              null)) {
-                                    await _navigateRequestedSource();
-                                  }
-                                  _sourceNavigationPending = false;
-                                  if (!mounted || epoch != _viewerEpoch) {
-                                    return;
-                                  }
-                                  _positionChanged();
-                                  try {
-                                    final outline = await document
-                                        .loadOutline();
-                                    if (mounted && epoch == _viewerEpoch) {
-                                      setState(() {
-                                        _outline = outline;
-                                        _outlineLoading = false;
-                                      });
-                                    }
-                                  } catch (_) {
-                                    if (mounted && epoch == _viewerEpoch) {
-                                      setState(() {
-                                        _outlineFailed = true;
-                                        _outlineLoading = false;
-                                      });
-                                    }
-                                  }
-                                },
-                                onPageChanged: (page) {
-                                  if (mounted &&
-                                      epoch == _viewerEpoch &&
-                                      page != null) {
-                                    if (_navigationTarget != null &&
-                                        page != _navigationTarget) {
+                                    return null;
+                                  },
+                                  layoutPages: _layoutPages,
+                                  onPageRenderCompleted: (page, error) {
+                                    if (!mounted || epoch != _viewerEpoch) {
                                       return;
                                     }
-                                    final changed = _page != page;
-                                    if (changed) {
-                                      setState(() {
-                                        _page = page;
-                                        _pageInput.text = '$page';
-                                      });
+                                    final changed = error == null
+                                        ? _failedRenderPages.remove(page)
+                                        : _failedRenderPages.add(page);
+                                    if (changed) setState(() {});
+                                  },
+                                  onGeneralTap: _tapMarkup,
+                                  sizeDelegateProvider:
+                                      const PdfViewerSizeDelegateProviderLegacy(
+                                        minScale: .1,
+                                        maxScale: 8,
+                                        useAlternativeFitScaleAsMinScale: false,
+                                      ),
+                                  onViewSizeChanged:
+                                      (size, oldSize, controller) {
+                                        if (oldSize != null &&
+                                            oldSize.width != size.width) {
+                                          WidgetsBinding.instance
+                                              .addPostFrameCallback((_) {
+                                                if (!mounted ||
+                                                    !_ready ||
+                                                    !controller.isReady) {
+                                                  return;
+                                                }
+                                                if (_comfort) {
+                                                  _fitComfort(
+                                                    keepVerticalPosition: true,
+                                                  );
+                                                } else if (!_textOnly) {
+                                                  final matrix = controller
+                                                      .calcMatrixFitWidthForPage(
+                                                        pageNumber: _page,
+                                                      );
+                                                  if (matrix != null) {
+                                                    controller.goTo(
+                                                      matrix,
+                                                      duration: Duration.zero,
+                                                    );
+                                                  }
+                                                }
+                                              });
+                                        }
+                                      },
+                                  pageOverlaysBuilder: (context, rect, page) {
+                                    if (_forms &&
+                                        widget.onFormChanged != null) {
+                                      return [
+                                        PdfFormLayer(
+                                          key: ValueKey(
+                                            'forms:${page.pageNumber}',
+                                          ),
+                                          document: _viewer.document,
+                                          page: page,
+                                          values: widget.formValues,
+                                          onChanged: widget.onFormChanged!,
+                                        ),
+                                      ];
+                                    }
+                                    return _buildAnnotationOverlays(
+                                      context,
+                                      rect,
+                                      page,
+                                    );
+                                  },
+                                  backgroundColor: OrbitColors.of(
+                                    context,
+                                  ).panel,
+                                  onViewerReady: (document, controller) async {
+                                    if (!mounted || epoch != _viewerEpoch) {
+                                      return;
+                                    }
+                                    setState(() {
+                                      _search?.dispose();
+                                      _search = PdfTextSearcher(controller)
+                                        ..addListener(_refresh);
+                                      _ready = true;
+                                      if (!_loadedOnce &&
+                                          _restoreZoom == null &&
+                                          controller.viewSize.width < 600) {
+                                        _comfort = true;
+                                      }
+                                      _loadedOnce = true;
+                                      _page =
+                                          (controller.pageNumber ??
+                                                  _restorePage)
+                                              .clamp(1, controller.pageCount);
+                                      _pageInput.text = '$_page';
+                                    });
+                                    if (_comfort) {
+                                      await _fitComfort();
+                                    }
+                                    if (!mounted ||
+                                        epoch != _viewerEpoch ||
+                                        !controller.isReady) {
+                                      return;
+                                    }
+                                    final zoom = _comfort ? null : _restoreZoom;
+                                    if (zoom != null && zoom.isFinite) {
+                                      await controller.setZoom(
+                                        controller.centerPosition,
+                                        zoom.clamp(
+                                          controller.minScale,
+                                          controller.maxScale,
+                                        ),
+                                        duration: Duration.zero,
+                                      );
+                                    } else if (!_comfort && !_textOnly) {
+                                      final matrix = controller
+                                          .calcMatrixFitWidthForPage(
+                                            pageNumber: _page,
+                                          );
+                                      if (matrix != null) {
+                                        await controller.goTo(
+                                          matrix,
+                                          duration: Duration.zero,
+                                        );
+                                      }
+                                    }
+                                    if (!mounted ||
+                                        epoch != _viewerEpoch ||
+                                        !controller.isReady) {
+                                      return;
+                                    }
+                                    if (_query.text.isNotEmpty) {
+                                      _search?.startTextSearch(_query.text);
+                                    }
+                                    if (_sourceNavigationPending &&
+                                        (widget.initialAnnotationId != null ||
+                                            widget.initialSearchChecksum !=
+                                                null)) {
+                                      await _navigateRequestedSource();
+                                    }
+                                    _sourceNavigationPending = false;
+                                    if (!mounted || epoch != _viewerEpoch) {
+                                      return;
                                     }
                                     _positionChanged();
-                                    if (changed) _fitComfort();
-                                  }
-                                },
-                                errorBannerBuilder: (_, error, _, _) => _fallback(
-                                  'This PDF could not be opened. Its original bytes are unchanged.',
-                                ),
-                                pagePaintCallbacks: [
-                                  (canvas, pageRect, page) {
-                                    if (_globalOcrPage == page.pageNumber) {
-                                      for (final region
-                                          in widget.initialSearchRegions) {
+                                    try {
+                                      final outline = await document
+                                          .loadOutline();
+                                      if (mounted && epoch == _viewerEpoch) {
+                                        setState(() {
+                                          _outline = outline;
+                                          _outlineLoading = false;
+                                        });
+                                      }
+                                    } catch (_) {
+                                      if (mounted && epoch == _viewerEpoch) {
+                                        setState(() {
+                                          _outlineFailed = true;
+                                          _outlineLoading = false;
+                                        });
+                                      }
+                                    }
+                                  },
+                                  onPageChanged: (page) {
+                                    if (mounted &&
+                                        epoch == _viewerEpoch &&
+                                        page != null) {
+                                      if (_navigationTarget != null &&
+                                          page != _navigationTarget) {
+                                        return;
+                                      }
+                                      final changed = _page != page;
+                                      if (changed) {
+                                        setState(() {
+                                          _page = page;
+                                          _pageInput.text = '$page';
+                                        });
+                                      }
+                                      _positionChanged();
+                                      if (changed) _fitComfort();
+                                    }
+                                  },
+                                  errorBannerBuilder: (_, error, _, _) => _fallback(
+                                    'This PDF could not be opened. Its original bytes are unchanged.',
+                                  ),
+                                  pagePaintCallbacks: [
+                                    (canvas, pageRect, page) {
+                                      if (_globalOcrPage == page.pageNumber) {
+                                        for (final region
+                                            in widget.initialSearchRegions) {
+                                          canvas.drawRect(
+                                            Rect.fromLTWH(
+                                              pageRect.left +
+                                                  region['x']! * pageRect.width,
+                                              pageRect.top +
+                                                  region['y']! *
+                                                      pageRect.height,
+                                              region['width']! * pageRect.width,
+                                              region['height']! *
+                                                  pageRect.height,
+                                            ),
+                                            Paint()
+                                              ..color = OrbitColors.of(
+                                                context,
+                                              ).accent.withValues(alpha: .3),
+                                          );
+                                        }
+                                      }
+                                      final range = _globalSearchRange;
+                                      if (range == null ||
+                                          range.pageNumber != page.pageNumber) {
+                                        return;
+                                      }
+                                      for (final fragment
+                                          in range
+                                              .enumerateFragmentBoundingRects()) {
+                                        final rect = fragment.bounds
+                                            .toRect(
+                                              page: page,
+                                              scaledPageSize: pageRect.size,
+                                            )
+                                            .translate(
+                                              pageRect.left,
+                                              pageRect.top,
+                                            );
                                         canvas.drawRect(
-                                          Rect.fromLTWH(
-                                            pageRect.left +
-                                                region['x']! * pageRect.width,
-                                            pageRect.top +
-                                                region['y']! * pageRect.height,
-                                            region['width']! * pageRect.width,
-                                            region['height']! * pageRect.height,
-                                          ),
+                                          rect,
                                           Paint()
                                             ..color = OrbitColors.of(
                                               context,
                                             ).accent.withValues(alpha: .3),
                                         );
                                       }
-                                    }
-                                    final range = _globalSearchRange;
-                                    if (range == null ||
-                                        range.pageNumber != page.pageNumber) {
-                                      return;
-                                    }
-                                    for (final fragment
-                                        in range
-                                            .enumerateFragmentBoundingRects()) {
-                                      final rect = fragment.bounds
-                                          .toRect(
-                                            page: page,
-                                            scaledPageSize: pageRect.size,
-                                          )
-                                          .translate(
-                                            pageRect.left,
-                                            pageRect.top,
-                                          );
-                                      canvas.drawRect(
-                                        rect,
-                                        Paint()
-                                          ..color = OrbitColors.of(
-                                            context,
-                                          ).accent.withValues(alpha: .3),
-                                      );
-                                    }
-                                  },
-                                  _paintAnnotations,
-                                  if (_search != null)
-                                    _search!.pageTextMatchPaintCallback,
-                                ],
-                                linkHandlerParams: PdfLinkHandlerParams(
-                                  onLinkTap: (link) {
-                                    if (link.dest != null) _rememberPageJump();
-                                    if (link.dest != null) {
-                                      _viewer.goToDest(
-                                        link.dest,
-                                        duration: Duration.zero,
-                                      );
-                                    }
-                                    final url = link.url;
-                                    if (url != null &&
-                                        {
-                                          'http',
-                                          'https',
-                                          'mailto',
-                                        }.contains(url.scheme)) {
-                                      widget.onOpenExternal(url);
-                                    }
-                                  },
+                                    },
+                                    _paintAnnotations,
+                                    if (_search != null)
+                                      _search!.pageTextMatchPaintCallback,
+                                  ],
+                                  linkHandlerParams: PdfLinkHandlerParams(
+                                    onLinkTap: (link) {
+                                      if (link.dest != null) {
+                                        _rememberPageJump();
+                                      }
+                                      if (link.dest != null) {
+                                        _viewer.goToDest(
+                                          link.dest,
+                                          duration: Duration.zero,
+                                        );
+                                      }
+                                      final url = link.url;
+                                      if (url != null &&
+                                          {
+                                            'http',
+                                            'https',
+                                            'mailto',
+                                          }.contains(url.scheme)) {
+                                        widget.onOpenExternal(url);
+                                      }
+                                    },
+                                  ),
+                                  buildContextMenu: _buildPdfContextMenu,
+                                  customizeContextMenuItems: (params, items) =>
+                                      _populateContextMenuItems(params, items),
                                 ),
-                                buildContextMenu: _buildPdfContextMenu,
-                                customizeContextMenuItems: (params, items) =>
-                                    _populateContextMenuItems(params, items),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_failedRenderPages.contains(_page) && !_textOnly)
+                        Positioned(
+                          top: 12,
+                          left: 12,
+                          right: 12,
+                          child: Material(
+                            color: OrbitColors.of(context).panel,
+                            borderRadius: BorderRadius.circular(10),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.warning_amber_rounded,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Page $_page could not be rendered. Your PDF and annotations are preserved.',
+                                    ),
+                                  ),
+                                  TextButton.icon(
+                                    key: const ValueKey(
+                                      'pdf-retry-page-render',
+                                    ),
+                                    onPressed: !_viewer.isReady
+                                        ? null
+                                        : () {
+                                            final page = _page;
+                                            setState(
+                                              () => _failedRenderPages.remove(
+                                                page,
+                                              ),
+                                            );
+                                            _viewer.retryPageRendering(page);
+                                          },
+                                    icon: const Icon(Icons.refresh, size: 16),
+                                    label: const Text('Retry page'),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                    if (_textOnly && _ready)
-                      Positioned.fill(
-                        child: PdfComfortPage(
-                          key: ValueKey('comfort:$_page'),
-                          page:
-                              _viewer.document.pages[(_page - 1).clamp(
-                                0,
-                                _viewer.pageCount - 1,
-                              )],
+                      if (_textOnly && _ready)
+                        Positioned.fill(
+                          child: PdfComfortPage(
+                            key: ValueKey('comfort:$_page'),
+                            page:
+                                _viewer.document.pages[(_page - 1).clamp(
+                                  0,
+                                  _viewer.pageCount - 1,
+                                )],
+                          ),
                         ),
-                      ),
-                    if (_zenMode && _zenControlsVisible)
-                      Positioned(
-                        bottom: 20,
-                        left: 0,
-                        right: 0,
-                        child: Center(
-                          child: Material(
-                            elevation: 0,
-                            color: Colors.transparent,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: OrbitColors.of(context).panel,
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: OrbitColors.of(context).border,
+                      if (_zenMode && _zenControlsVisible)
+                        Positioned(
+                          bottom: 20,
+                          left: 0,
+                          right: 0,
+                          child: Center(
+                            child: Material(
+                              elevation: 0,
+                              color: Colors.transparent,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
                                 ),
-                                boxShadow: OrbitDepth.floating,
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    'Page $_page of ${_ready ? _viewer.pageCount : '—'} (${_ready ? ((_page / math.max(1, _viewer.pageCount)) * 100).toInt() : 0}%)',
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                      letterSpacing: 0.2,
-                                    ),
+                                decoration: BoxDecoration(
+                                  color: OrbitColors.of(context).panel,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: OrbitColors.of(context).border,
                                   ),
-                                  if (_sessionSecondsRemaining != null) ...[
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                        vertical: 2,
+                                  boxShadow: OrbitDepth.floating,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      'Page $_page of ${_ready ? _viewer.pageCount : '—'} (${_ready ? ((_page / math.max(1, _viewer.pageCount)) * 100).toInt() : 0}%)',
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500,
+                                        letterSpacing: 0.2,
                                       ),
-                                      decoration: BoxDecoration(
-                                        color: OrbitColors.of(
-                                          context,
-                                        ).accent.withValues(alpha: 0.15),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.timer_outlined,
-                                            size: 12,
-                                            color: OrbitColors.of(
-                                              context,
-                                            ).accent,
+                                    ),
+                                    if (_sessionSecondsRemaining != null) ...[
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: OrbitColors.of(
+                                            context,
+                                          ).accent.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
                                           ),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            '${(_sessionSecondsRemaining! ~/ 60).toString().padLeft(2, '0')}:${(_sessionSecondsRemaining! % 60).toString().padLeft(2, '0')}',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.bold,
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.timer_outlined,
+                                              size: 12,
                                               color: OrbitColors.of(
                                                 context,
                                               ).accent,
                                             ),
-                                          ),
-                                        ],
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              '${(_sessionSecondsRemaining! ~/ 60).toString().padLeft(2, '0')}:${(_sessionSecondsRemaining! % 60).toString().padLeft(2, '0')}',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                                color: OrbitColors.of(
+                                                  context,
+                                                ).accent,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                    const SizedBox(width: 10),
+                                    Container(
+                                      width: 1,
+                                      height: 16,
+                                      color: OrbitColors.of(context).border,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    IconButton(
+                                      key: const ValueKey('zen-prev-page'),
+                                      icon: const Icon(
+                                        Icons.chevron_left,
+                                        size: 20,
+                                      ),
+                                      tooltip: 'Previous page',
+                                      onPressed: _page > 1
+                                          ? () => _go(_page - 1)
+                                          : null,
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 32,
+                                        minHeight: 32,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      key: const ValueKey('zen-next-page'),
+                                      icon: const Icon(
+                                        Icons.chevron_right,
+                                        size: 20,
+                                      ),
+                                      tooltip: 'Next page',
+                                      onPressed:
+                                          _ready && _page < _viewer.pageCount
+                                          ? () => _go(_page + 1)
+                                          : null,
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 32,
+                                        minHeight: 32,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    IconButton(
+                                      key: const ValueKey(
+                                        'zen-bookmark-toggle',
+                                      ),
+                                      icon: Icon(
+                                        widget.bookmarks.contains(_page)
+                                            ? Icons.bookmark
+                                            : Icons.bookmark_border,
+                                        size: 18,
+                                        color: widget.bookmarks.contains(_page)
+                                            ? OrbitColors.of(context).accent
+                                            : null,
+                                      ),
+                                      tooltip: widget.bookmarks.contains(_page)
+                                          ? 'Remove bookmark'
+                                          : 'Bookmark page',
+                                      onPressed: !_ready || widget.readOnly
+                                          ? null
+                                          : () {
+                                              final pages = widget.bookmarks
+                                                  .toSet();
+                                              if (!pages.remove(_page)) {
+                                                pages.add(_page);
+                                              }
+                                              widget.onBookmarks(
+                                                pages.toList()..sort(),
+                                              );
+                                            },
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 32,
+                                        minHeight: 32,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      key: const ValueKey(
+                                        'zen-ambience-button',
+                                      ),
+                                      icon: Icon(
+                                        _activeReadingRoom != null
+                                            ? Icons.spa
+                                            : Icons.spa_outlined,
+                                        size: 18,
+                                        color: _activeReadingRoom != null
+                                            ? OrbitColors.of(context).accent
+                                            : null,
+                                      ),
+                                      tooltip: 'Reading room ambience',
+                                      onPressed: _openReadingRoomSheet,
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 32,
+                                        minHeight: 32,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      key: const ValueKey('zen-exit-button'),
+                                      icon: const Icon(
+                                        Icons.fullscreen_exit,
+                                        size: 20,
+                                      ),
+                                      tooltip:
+                                          'Exit Zen mode (show all controls)',
+                                      onPressed: () =>
+                                          setState(() => _zenMode = false),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 32,
+                                        minHeight: 32,
                                       ),
                                     ),
                                   ],
-                                  const SizedBox(width: 10),
-                                  Container(
-                                    width: 1,
-                                    height: 16,
-                                    color: OrbitColors.of(context).border,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  IconButton(
-                                    key: const ValueKey('zen-prev-page'),
-                                    icon: const Icon(
-                                      Icons.chevron_left,
-                                      size: 20,
-                                    ),
-                                    tooltip: 'Previous page',
-                                    onPressed: _page > 1
-                                        ? () => _go(_page - 1)
-                                        : null,
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(
-                                      minWidth: 32,
-                                      minHeight: 32,
-                                    ),
-                                  ),
-                                  IconButton(
-                                    key: const ValueKey('zen-next-page'),
-                                    icon: const Icon(
-                                      Icons.chevron_right,
-                                      size: 20,
-                                    ),
-                                    tooltip: 'Next page',
-                                    onPressed:
-                                        _ready && _page < _viewer.pageCount
-                                        ? () => _go(_page + 1)
-                                        : null,
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(
-                                      minWidth: 32,
-                                      minHeight: 32,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  IconButton(
-                                    key: const ValueKey('zen-bookmark-toggle'),
-                                    icon: Icon(
-                                      widget.bookmarks.contains(_page)
-                                          ? Icons.bookmark
-                                          : Icons.bookmark_border,
-                                      size: 18,
-                                      color: widget.bookmarks.contains(_page)
-                                          ? OrbitColors.of(context).accent
-                                          : null,
-                                    ),
-                                    tooltip: widget.bookmarks.contains(_page)
-                                        ? 'Remove bookmark'
-                                        : 'Bookmark page',
-                                    onPressed: !_ready || widget.readOnly
-                                        ? null
-                                        : () {
-                                            final pages = widget.bookmarks
-                                                .toSet();
-                                            if (!pages.remove(_page)) {
-                                              pages.add(_page);
-                                            }
-                                            widget.onBookmarks(
-                                              pages.toList()..sort(),
-                                            );
-                                          },
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(
-                                      minWidth: 32,
-                                      minHeight: 32,
-                                    ),
-                                  ),
-                                  IconButton(
-                                    key: const ValueKey('zen-ambience-button'),
-                                    icon: Icon(
-                                      _activeReadingRoom != null
-                                          ? Icons.spa
-                                          : Icons.spa_outlined,
-                                      size: 18,
-                                      color: _activeReadingRoom != null
-                                          ? OrbitColors.of(context).accent
-                                          : null,
-                                    ),
-                                    tooltip: 'Reading room ambience',
-                                    onPressed: _openReadingRoomSheet,
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(
-                                      minWidth: 32,
-                                      minHeight: 32,
-                                    ),
-                                  ),
-                                  IconButton(
-                                    key: const ValueKey('zen-exit-button'),
-                                    icon: const Icon(
-                                      Icons.fullscreen_exit,
-                                      size: 20,
-                                    ),
-                                    tooltip:
-                                        'Exit Zen mode (show all controls)',
-                                    onPressed: () =>
-                                        setState(() => _zenMode = false),
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(
-                                      minWidth: 32,
-                                      minHeight: 32,
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    if (_reviewExpanded && _showAnnotations)
-                      Positioned.fill(child: _annotationPanel(expanded: true)),
-                  ],
-                );
-              },
-            ),
-          ),
-          if (!_reviewExpanded)
-            OrbitDisclosure(
-              visible: _showAnnotations,
-              child: _annotationPanel(),
-            ),
-          if (widget.onOpenLinkedNote != null)
-            OrbitDisclosure(
-              visible: _showNotes,
-              child: PdfNotesPanel(
-                searchFocusNode: _notesSearchFocus,
-                notes: widget.linkedNotes,
-                fileId: widget.objectId,
-                checksum: widget.checksum,
-                onOpen: (id) => _openNote(id),
-                onDelete: widget.readOnly ? null : widget.onDeleteLinkedNote,
-                onRestore: widget.readOnly ? null : widget.onRestoreLinkedNote,
-                onClose: () {
-                  setState(() => _showNotes = false);
-                  _readerFocus.requestFocus();
+                      if (_reviewExpanded && _showAnnotations)
+                        Positioned.fill(
+                          child: _annotationPanel(expanded: true),
+                        ),
+                    ],
+                  );
                 },
-                onCreate:
-                    !_ready ||
-                        widget.readOnly ||
-                        _creatingDocument ||
-                        widget.onCreateDocument == null
-                    ? null
-                    : () => _createDocument(ResearchDocument.research),
               ),
             ),
-        ],
+            if (!_reviewExpanded)
+              OrbitDisclosure(
+                visible: _showAnnotations,
+                child: _annotationPanel(),
+              ),
+            if (widget.onOpenLinkedNote != null)
+              OrbitDisclosure(
+                visible: _showNotes,
+                child: PdfNotesPanel(
+                  searchFocusNode: _notesSearchFocus,
+                  notes: widget.linkedNotes,
+                  fileId: widget.objectId,
+                  checksum: widget.checksum,
+                  onOpen: (id) => _openNote(id),
+                  onDelete: widget.readOnly ? null : widget.onDeleteLinkedNote,
+                  onRestore: widget.readOnly
+                      ? null
+                      : widget.onRestoreLinkedNote,
+                  onClose: () {
+                    setState(() => _showNotes = false);
+                    _readerFocus.requestFocus();
+                  },
+                  onCreate:
+                      !_ready ||
+                          widget.readOnly ||
+                          _creatingDocument ||
+                          widget.onCreateDocument == null
+                      ? null
+                      : () => _createDocument(ResearchDocument.research),
+                ),
+              ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _PdfDraggableQuoteHandle extends StatefulWidget {

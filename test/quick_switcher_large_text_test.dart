@@ -14,7 +14,8 @@ class _Controller extends WorkspaceController {
   final createdTitles = <String?>[];
 
   @override
-  void openObject(String id, {bool secondary = false}) => openedId = id;
+  void openObject(String id, {bool secondary = false, bool reveal = false}) =>
+      openedId = id;
 
   @override
   Future<UniversalObject?> create(

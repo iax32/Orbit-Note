@@ -1,5 +1,14 @@
 # Customization, layouts, themes and Spaces
 
+## Canvas drawing focus — 2026-10-27
+
+Focus on drawing hides the shell bars, Canvas toolbar/title/zoom/minimap and
+object bridge, leaving a small floating Undo/tools/exit group over the safe drawing
+area. Full tools open on demand without resizing the drawing. System Back exits
+focus first; Escape closes revealed tools. Tabs, panel/minimap choices, camera,
+tool and history survive; save/read-only recovery stays visible. Existing splits
+are preserved. [Behavior, tablet-size checks and Android build limitation](../tasks/tablet-canvas-focus-2026-10-27.md).
+
 ## Searchable settings workspace — 2026-10-23
 
 LAY-01/06/08/10 subset: Settings has nine categories with 43 searchable entries,

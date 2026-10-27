@@ -10,6 +10,30 @@ import '../../domain/search_workspace.dart';
 import 'workspace_views.dart' show objectIcon;
 import '../notes/ocr_review_dialog.dart';
 
+// One bounded return point per controller; never retain a different Vault's data.
+final _searchReturns = Expando<_SearchReturn>();
+
+class _SearchReturn {
+  _SearchReturn(
+    this.generation,
+    this.project,
+    this.query,
+    this.options,
+    this.results,
+    this.page,
+    this.selected,
+    this.scroll,
+    this.preview,
+  );
+  final int generation, page, selected;
+  final String? project;
+  final String query;
+  final SearchOptions options;
+  final List<OrbitSearchResult> results;
+  final double scroll;
+  final bool preview;
+}
+
 class SearchView extends StatefulWidget {
   const SearchView({super.key, required this.controller});
   final WorkspaceController controller;
@@ -23,11 +47,13 @@ class _SearchViewState extends State<SearchView> {
   final _scroll = ScrollController();
   final _selectionReveal = OrbitListSelectionReveal();
   List<OrbitSearchResult> _results = [];
+  OrbitSearchResult? _refreshSelection;
   SearchOptions _options = const SearchOptions();
   Timer? _debounce;
   int _generation = 0, _selected = 0;
   int _page = 0, _pdfRevision = 0;
   String? _projectScope;
+  late int _ownerGeneration;
   static const _pageSize = 50;
   StreamSubscription<void>? _indexSubscription;
   Timer? _indexRefresh;
@@ -64,7 +90,7 @@ class _SearchViewState extends State<SearchView> {
 
   void _retainSelection(OrbitSearchResult? previous) {
     final filtered = _filtered;
-    final index = previous == null
+    var index = previous == null
         ? -1
         : filtered.indexWhere(
             (r) =>
@@ -76,6 +102,25 @@ class _SearchViewState extends State<SearchView> {
                 r.sourceOffset == previous.sourceOffset &&
                 r.sourceChecksum == previous.sourceChecksum,
           );
+    if (index < 0 && previous != null) {
+      var distance = 1 << 62;
+      for (var i = 0; i < filtered.length; i++) {
+        final r = filtered[i];
+        if (r.object.id != previous.object.id ||
+            r.matchKind != previous.matchKind ||
+            r.location.page != previous.location.page ||
+            r.location.anchorType != previous.location.anchorType ||
+            r.location.anchorId != previous.location.anchorId) {
+          continue;
+        }
+        final difference =
+            ((r.sourceOffset ?? 0) - (previous.sourceOffset ?? 0)).abs();
+        if (difference < distance) {
+          distance = difference;
+          index = i;
+        }
+      }
+    }
     if (index >= 0) {
       _page = index ~/ _pageSize;
       _selected = index % _pageSize;
@@ -91,8 +136,46 @@ class _SearchViewState extends State<SearchView> {
   @override
   void initState() {
     super.initState();
+    _ownerGeneration = widget.controller.workspaceGeneration;
     _projectScope = widget.controller.selectedProjectId;
     _listenIndex();
+    final saved = _searchReturns[widget.controller];
+    if (saved != null &&
+        saved.generation == widget.controller.workspaceGeneration &&
+        saved.project == _projectScope) {
+      _query.text = saved.query;
+      _options = saved.options;
+      _filters = _options.hasFilters;
+      _results = saved.results;
+      _page = saved.page;
+      _selected = saved.selected;
+      _preview = saved.preview;
+      _retainSelection(_selectionIn(_results));
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _scroll.hasClients) {
+          _scroll.jumpTo(
+            saved.scroll.clamp(0, _scroll.position.maxScrollExtent),
+          );
+        }
+      });
+      // Keep the visible return point while refreshing changed sources.
+      _search(saved.query, refresh: true);
+    }
+  }
+
+  void _rememberReturn() {
+    if (_ownerGeneration != widget.controller.workspaceGeneration) return;
+    _searchReturns[widget.controller] = _SearchReturn(
+      widget.controller.workspaceGeneration,
+      _projectScope,
+      _query.text,
+      _options,
+      _results,
+      _page,
+      _selected,
+      _scroll.hasClients ? _scroll.offset : 0,
+      _preview,
+    );
   }
 
   void _listenIndex() {
@@ -105,6 +188,7 @@ class _SearchViewState extends State<SearchView> {
       if (!mounted) return;
       if (_pdfRevision != widget.controller.pdfIndexRevision) {
         final previous = _selectionIn(_filterCache);
+        _refreshSelection ??= previous;
         _pdfRevision = widget.controller.pdfIndexRevision;
         _retainSelection(previous);
         _indexRefresh ??= Timer(const Duration(milliseconds: 250), () {
@@ -119,6 +203,17 @@ class _SearchViewState extends State<SearchView> {
   @override
   void didUpdateWidget(SearchView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (_ownerGeneration != widget.controller.workspaceGeneration ||
+        oldWidget.controller != widget.controller) {
+      _ownerGeneration = widget.controller.workspaceGeneration;
+      _query.clear();
+      _options = const SearchOptions();
+      _results = [];
+      _selected = _page = 0;
+      _preview = _filters = false;
+      _listenIndex();
+      _search('');
+    }
     final changedProject = _projectScope != widget.controller.selectedProjectId;
     _projectScope = widget.controller.selectedProjectId;
     if (oldWidget.controller != widget.controller || changedProject) {
@@ -128,6 +223,7 @@ class _SearchViewState extends State<SearchView> {
   }
 
   void _changePage(int page) {
+    _refreshSelection = null;
     _selectionReveal.cancel();
     if (_scroll.hasClients) _scroll.jumpTo(0);
     setState(() {
@@ -143,6 +239,11 @@ class _SearchViewState extends State<SearchView> {
   }
 
   void _search(String value, {bool refresh = false}) {
+    if (refresh) {
+      _refreshSelection ??= _selectionIn(_filterCache);
+    } else {
+      _refreshSelection = null;
+    }
     _selectionReveal.cancel();
     _debounce?.cancel();
     if (!refresh && _scroll.hasClients) _scroll.jumpTo(0);
@@ -162,9 +263,12 @@ class _SearchViewState extends State<SearchView> {
         final found = await widget.controller.searchLocations(value.trim());
         if (mounted && generation == _generation) {
           setState(() {
-            final previous = refresh ? _selectionIn(_filtered) : null;
+            final previous = refresh
+                ? _refreshSelection ?? _selectionIn(_filterCache)
+                : null;
             _results = found;
             _loading = false;
+            _refreshSelection = null;
             _retainSelection(previous);
           });
         }
@@ -189,6 +293,7 @@ class _SearchViewState extends State<SearchView> {
   }
 
   void _setOptions(Map<String, dynamic> change) => setState(() {
+    _refreshSelection = null;
     _selectionReveal.cancel();
     _options = SearchOptions.fromJson({..._options.toJson(), ...change});
     _selected = 0;
@@ -196,6 +301,7 @@ class _SearchViewState extends State<SearchView> {
     if (_scroll.hasClients) _scroll.jumpTo(0);
   });
   void _open(OrbitSearchResult result) {
+    _rememberReturn();
     _libraryChange(_library.remember(_query.text));
     widget.controller.openSearchResult(result);
   }
@@ -220,6 +326,7 @@ class _SearchViewState extends State<SearchView> {
         ? -1
         : 0;
     if (direction != 0 && shown.isNotEmpty) {
+      _refreshSelection = null;
       setState(
         () => _selected = (_selected + direction).clamp(0, shown.length - 1),
       );
@@ -235,6 +342,7 @@ class _SearchViewState extends State<SearchView> {
 
   @override
   void dispose() {
+    _rememberReturn();
     _indexSubscription?.cancel();
     _indexRefresh?.cancel();
     _selectionReveal.cancel();
@@ -1094,7 +1202,10 @@ class _SearchViewState extends State<SearchView> {
                                             size: 18,
                                           ),
                                           onPressed: () {
-                                            setState(() => _selected = i);
+                                            setState(() {
+                                              _refreshSelection = null;
+                                              _selected = i;
+                                            });
                                             _showPeek(result, wide);
                                           },
                                         ),

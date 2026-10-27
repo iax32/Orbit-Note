@@ -13,7 +13,8 @@ import '../read_attachment_preview.dart';
 class AlignmentBlockSyntax extends md.BlockSyntax {
   const AlignmentBlockSyntax();
   @override
-  RegExp get pattern => RegExp(r'^<!-- orbit:align=(left|center|right) -->$');
+  RegExp get pattern =>
+      RegExp(r'^<!-- orbit:align=(left|center|right|justify) -->$');
 
   MarkdownBlock? _next(md.BlockParser parser) {
     final lines = <String>[];
@@ -73,6 +74,7 @@ class AlignmentElementBuilder extends MarkdownElementBuilder {
     final align = switch (element.attributes['alignment']) {
       'center' => WrapAlignment.center,
       'right' => WrapAlignment.end,
+      'justify' => WrapAlignment.spaceBetween,
       _ => WrapAlignment.start,
     };
     final theme = Theme.of(context);

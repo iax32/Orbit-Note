@@ -104,8 +104,8 @@ bool SetWindowsRichClipboard(HWND owner, const std::string& plain_text,
 
 }  // namespace
 
-FlutterWindow::FlutterWindow(const flutter::DartProject& project)
-    : project_(project) {}
+FlutterWindow::FlutterWindow(const flutter::DartProject& project, bool background)
+    : project_(project), background_(background) {}
 
 FlutterWindow::~FlutterWindow() { ocr_channel_.reset(); }
 
@@ -125,6 +125,18 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  background_channel_ = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+      flutter_controller_->engine()->messenger(), "orbit_note/background_sync",
+      &flutter::StandardMethodCodec::GetInstance());
+  background_channel_->SetMethodCallHandler(
+      [](const flutter::MethodCall<flutter::EncodableValue>& call,
+          std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+        if (call.method_name() != "foregroundActive") { result->NotImplemented(); return; }
+        auto marker = OpenMutexW(SYNCHRONIZE, FALSE, L"Local\\OrbitNoteForeground");
+        const bool active = marker != nullptr;
+        if (marker != nullptr) CloseHandle(marker);
+        result->Success(flutter::EncodableValue(active));
+      });
   ocr_channel_ = std::make_unique<OcrChannel>(flutter_controller_->engine()->messenger(), GetHandle());
   clipboard_channel_ = std::make_unique<
       flutter::MethodChannel<flutter::EncodableValue>>(
@@ -161,7 +173,7 @@ bool FlutterWindow::OnCreate() {
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
-    this->Show();
+    if (!background_) this->Show();
   });
 
   // Flutter can complete the first frame before the "show window" callback is
@@ -174,6 +186,7 @@ bool FlutterWindow::OnCreate() {
 
 void FlutterWindow::OnDestroy() {
   ocr_channel_.reset();
+  background_channel_.reset();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }

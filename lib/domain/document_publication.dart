@@ -1,3 +1,4 @@
+import 'university/lab_document.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'document_footnotes.dart';
 import 'markdown_math.dart';
@@ -19,26 +20,40 @@ class PublicationStyle {
     this.fontSize = 11,
     this.serif = false,
     this.numberHeadings = false,
+    this.h1PageBreaks = false,
     this.titlePage = false,
     this.contents = true,
     this.pageNumbers = true,
+    this.canvasDetails = false,
     this.author = '',
     this.header = '',
   });
-  final bool letter, serif, numberHeadings, titlePage, contents, pageNumbers;
+  final bool letter,
+      serif,
+      numberHeadings,
+      h1PageBreaks,
+      titlePage,
+      contents,
+      pageNumbers,
+      canvasDetails;
   final double margin, fontSize;
   final String author, header;
   double get width => letter ? 612 : 595.28;
   double get height => letter ? 792 : 841.89;
+
+  /// Keep every heading above body size, including large-print exports.
+  double headingSize(int level) => fontSize + 14 - level.clamp(1, 6) * 2;
   Map<String, dynamic> toJson() => {
     'letter': letter,
     'margin': margin,
     'fontSize': fontSize,
     'serif': serif,
     'numberHeadings': numberHeadings,
+    'h1PageBreaks': h1PageBreaks,
     'titlePage': titlePage,
     'contents': contents,
     'pageNumbers': pageNumbers,
+    'canvasDetails': canvasDetails,
     'author': author,
     'header': header,
   };
@@ -49,9 +64,11 @@ class PublicationStyle {
       fontSize: (value['fontSize'] as num?)?.toDouble() ?? 11,
       serif: value['serif'] as bool? ?? false,
       numberHeadings: value['numberHeadings'] as bool? ?? false,
+      h1PageBreaks: value['h1PageBreaks'] as bool? ?? false,
       titlePage: value['titlePage'] as bool? ?? false,
       contents: value['contents'] as bool? ?? true,
       pageNumbers: value['pageNumbers'] as bool? ?? true,
+      canvasDetails: value['canvasDetails'] as bool? ?? false,
       author: value['author'] as String? ?? '',
       header: value['header'] as String? ?? '',
     );
@@ -202,6 +219,7 @@ class PublicationDocument {
       ownerId: ownerId,
       paths: objectPaths,
       now: snapshotTime ?? DateTime.now(),
+      includeCanvasDetails: style.canvasDetails,
     );
     source = objectSnapshots.expanded;
     warnings.addAll(objectSnapshots.warnings);
@@ -243,8 +261,9 @@ class PublicationDocument {
       }
       final value = line[0]!.trimRight();
       if (ReviewAnnotation.parse(value) != null ||
+          UniversityDocument.metadataLine(value) ||
           RegExp(
-            r'^<!-- (?:/?orbit:media(?: (?:left|right) width=(?:160|200|260))?|/?orbit:figure|orbit:align=(?:left|center|right)|orbit:columns v=1|orbit:column|/orbit:columns|orbit:object v=1|/orbit:object) -->$',
+            r'^<!-- (?:/?orbit:media(?: (?:left|right) width=(?:160|200|260))?|/?orbit:figure|orbit:columns v=1|orbit:column|/orbit:columns|orbit:object v=1|/orbit:object) -->$',
           ).hasMatch(value)) {
         source = source.replaceRange(line.start, line.end, '');
       }
@@ -252,23 +271,45 @@ class PublicationDocument {
     final document = md.Document(
       extensionSet: md.ExtensionSet.gitHubFlavored,
       encodeHtml: false,
-      blockSyntaxes: [_PageBreak(), _DisplayMath(), const MathTableSyntax()],
+      blockSyntaxes: [
+        _PublicationAlignment(),
+        _PageBreak(),
+        _DisplayMath(),
+        const MathTableSyntax(),
+      ],
       inlineSyntaxes: [_Footnote(), _InlineMath()],
     );
     final nodes = document.parseLines(source.split(RegExp(r'\r\n|\n|\r')));
+    _resolvePublicationAlignment(nodes);
+    nodes.removeWhere(
+      (node) =>
+          node is md.Element &&
+          RegExp(r'^h[1-6]$').hasMatch(node.tag) &&
+          node.textContent.trim().isEmpty,
+    );
+    // Apply the global rule to every H1, including headings added later.
+    for (final node in nodes.whereType<md.Element>()) {
+      if (style.h1PageBreaks && node.tag == 'h1') {
+        node.attributes['orbit-h1-pagebreak'] = 'true';
+      }
+    }
     final keys = <String, int>{};
-    for (final node in nodes.where(publicationLayoutTarget)) {
+    for (final node in nodes.where(
+      (n) => publicationLayoutTarget(n) || publicationHeadingTarget(n),
+    )) {
       final key = publicationLayoutKey(node);
       keys[key] = (keys[key] ?? 0) + 1;
     }
-    for (final node in nodes.where(publicationLayoutTarget)) {
+    for (final node in nodes.where(
+      (n) => publicationLayoutTarget(n) || publicationHeadingTarget(n),
+    )) {
       final e = node as md.Element, key = publicationLayoutKey(node);
       e.attributes['orbit-key'] = key;
       if (keys[key] != 1) {
         e.attributes['orbit-ambiguous'] = 'true';
         if (printLayouts.containsKey(key)) {
           warnings.add(
-            'Identical images/tables have ambiguous layout settings. Their layout is not applied.',
+            'Identical content has ambiguous layout settings. Its layout is not applied.',
           );
         }
         continue;
@@ -384,5 +425,50 @@ class _Footnote extends md.InlineSyntax {
     element.attributes['id'] = match[1]!;
     parser.addNode(element);
     return true;
+  }
+}
+
+/// Consume only the marker: standard Markdown must own following block boundaries.
+class _PublicationAlignment extends md.BlockSyntax {
+  @override
+  RegExp get pattern =>
+      RegExp(r'^<!-- orbit:align=(left|center|right|justify) -->$');
+  @override
+  bool canParse(md.BlockParser parser) =>
+      pattern.hasMatch(parser.current.content) &&
+      parser.peek(1)?.content.trim().isNotEmpty == true;
+  @override
+  md.Node parse(md.BlockParser parser) {
+    final alignment = pattern.firstMatch(parser.current.content)![1]!;
+    parser.advance();
+    return md.Element.empty('orbit-alignment-marker')
+      ..attributes['alignment'] = alignment;
+  }
+}
+
+void _resolvePublicationAlignment(List<md.Node> nodes) {
+  String? alignment;
+  var markers = false;
+  for (final node in nodes) {
+    if (node is md.Element && node.tag == 'orbit-alignment-marker') {
+      alignment = node.attributes['alignment'];
+      markers = true;
+      continue;
+    }
+    if (node is md.Element) {
+      if (alignment != null &&
+          (node.tag == 'p' || RegExp(r'^h[1-6]$').hasMatch(node.tag))) {
+        node.attributes['orbit-text-align'] = alignment;
+      }
+      if (node.children case final children?) {
+        _resolvePublicationAlignment(children);
+      }
+    }
+    alignment = null;
+  }
+  if (markers) {
+    nodes.removeWhere(
+      (node) => node is md.Element && node.tag == 'orbit-alignment-marker',
+    );
   }
 }

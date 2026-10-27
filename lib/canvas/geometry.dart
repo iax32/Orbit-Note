@@ -71,9 +71,17 @@ class CanvasBounds {
 }
 
 class CanvasGuideLine {
-  const CanvasGuideLine({required this.isVertical, required this.position});
+  const CanvasGuideLine({
+    required this.isVertical,
+    required this.position,
+    this.from,
+    this.to,
+    this.label,
+  });
   final bool isVertical;
   final double position;
+  final double? from, to;
+  final String? label;
 
   @override
   bool operator ==(Object other) =>
@@ -81,10 +89,13 @@ class CanvasGuideLine {
       other is CanvasGuideLine &&
           runtimeType == other.runtimeType &&
           isVertical == other.isVertical &&
-          position == other.position;
+          position == other.position &&
+          from == other.from &&
+          to == other.to &&
+          label == other.label;
 
   @override
-  int get hashCode => Object.hash(isVertical, position);
+  int get hashCode => Object.hash(isVertical, position, from, to, label);
 }
 
 class CanvasCamera {

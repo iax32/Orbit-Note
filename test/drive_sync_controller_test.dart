@@ -474,6 +474,34 @@ void main() {
     await sync.restore();
   }
 
+  test('a preference-only change queues and uploads automatically', () async {
+    expect(await workspace.flushAll(), isTrue);
+    await sync.enable();
+    await sync.syncNow(force: true);
+    await automaticController();
+    final records = server.recordCreates;
+    final objects = workspace.objects;
+    workspace.updateSession((s) => s.fontSize = 23);
+    expect(await workspace.flushAll(), isTrue);
+    expect(identical(objects, workspace.objects), isTrue);
+    sync.changed();
+    expect(sync.localChangesPending, isTrue);
+    await until(
+      () =>
+          !sync.busy &&
+          !sync.localChangesPending &&
+          server.recordCreates > records,
+    );
+    expect(sync.error, isEmpty);
+    expect(
+      server.files.values.any(
+        (f) =>
+            utf8.decode(f.bytes, allowMalformed: true).contains('"fontSize"'),
+      ),
+      isTrue,
+    );
+  });
+
   test(
     'edits during an upload automatically drain the latest saved version',
     () async {

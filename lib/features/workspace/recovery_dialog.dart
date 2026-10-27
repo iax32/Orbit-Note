@@ -1,9 +1,10 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import '../../app/orbit_components.dart';
+import '../../app/retained_form.dart';
+import 'package:flutter/services.dart';
 import '../../application/workspace_recovery.dart';
 import '../../application/workspace_repository.dart';
 import '../../platform/export_file.dart';
@@ -36,6 +37,159 @@ class _WorkspaceRecoveryDialogState extends State<WorkspaceRecoveryDialog> {
   String? _selectedPath, _error;
   int _generation = 0;
   bool _loading = false, _exporting = false;
+
+  Widget _keptForms() {
+    final owner = RetainedForm.capture(context, 'recovery', {});
+    if (owner == null ||
+        !identical(owner.controller.repository, widget.repository)) {
+      return const SizedBox.shrink();
+    }
+    final raw = owner.controller.session.extra['retainedForms'];
+    if (raw is! Map || raw['version'] != 1 || raw['entries'] is! Map) {
+      return const SizedBox.shrink();
+    }
+    final entries = (raw['entries'] as Map).entries
+        .where(
+          (e) =>
+              e.key is String &&
+              e.value is Map &&
+              (e.value as Map)['values'] is Map,
+        )
+        .take(25)
+        .toList();
+    if (entries.isEmpty) return const SizedBox.shrink();
+    return ExpansionTile(
+      tilePadding: EdgeInsets.zero,
+      title: Text('Kept form drafts · ${entries.length}'),
+      children: [
+        SizedBox(
+          height: 160,
+          child: ListView(
+            children: [
+              for (final entry in entries)
+                Builder(
+                  builder: (context) {
+                    final key = entry.key as String, parts = key.split(':');
+                    final kind = switch (parts.first) {
+                      'reference' => 'Reference details',
+                      'figure' => 'Figure caption and sources',
+                      'pdf-review' => 'PDF review',
+                      _ => 'Form draft',
+                    };
+                    final original = parts.length > 1
+                        ? owner.controller.find(parts[1])
+                        : null;
+                    return ListTile(
+                      title: Text(
+                        '$kind · ${original?.title ?? "Original unavailable"}',
+                      ),
+                      subtitle: Text(
+                        '${(entry.value as Map)["savedAt"] ?? "Time unavailable"}',
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => _inspectKeptForm(key, kind),
+                    );
+                  },
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _inspectKeptForm(String key, String title) async {
+    final draft = RetainedForm.capture(context, key, {});
+    if (draft == null ||
+        !identical(draft.controller.repository, widget.repository)) {
+      return;
+    }
+    final values = draft.recovered;
+    if (values == null) return;
+    final text = const JsonEncoder.withIndent('  ').convert(values);
+    final ownerId = key.split(':').length > 1 ? key.split(':')[1] : '';
+    final original = draft.controller.find(ownerId);
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => OrbitDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: 520,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Unapplied input. Open the original and its form to review and apply it. Copy the contents before discarding a draft you may need.',
+                ),
+                const SizedBox(height: 12),
+                SelectableText(
+                  text.length > 20000
+                      ? '${text.substring(0, 20000)}\n… Copy contents preserves all text.'
+                      : text,
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'copy'),
+            child: const Text('Copy contents'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'discard'),
+            child: const Text('Discard draft…'),
+          ),
+          if (original != null && !original.isDeleted)
+            FilledButton(
+              onPressed: () => Navigator.pop(context, 'open'),
+              child: const Text('Open original'),
+            ),
+        ],
+      ),
+    );
+    if (!mounted || !draft.current) return;
+    try {
+      if (action == 'copy') {
+        await Clipboard.setData(ClipboardData(text: text));
+      } else if (action == 'open') {
+        draft.controller.openObject(ownerId);
+        Navigator.pop(context);
+      } else if (action == 'discard') {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => OrbitDialog(
+            title: const Text('Discard retained form draft?'),
+            content: const Text(
+              'This removes the unapplied form input. Your original note, Canvas and PDF are unchanged.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Keep draft'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Discard draft'),
+              ),
+            ],
+          ),
+        );
+        if (confirmed == true && mounted) {
+          await draft.discard();
+          if (mounted) setState(() {});
+        }
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = '$error');
+    }
+  }
 
   @override
   void initState() {
@@ -131,7 +285,12 @@ class _WorkspaceRecoveryDialogState extends State<WorkspaceRecoveryDialog> {
         const Text(
           'Review copies retained after an interrupted save or conflict. Export a copy before resolving anything in the Vault folder. Files are never applied or deleted here.',
         ),
+        const SizedBox(height: 8),
+        const Text(
+          'Unapplied form drafts reopen in their original Reference details, Figure caption and sources, or PDF Review dialog. A recovered draft requires your review. Unsaved editor conflicts appear in the editor recovery banner; inspect both versions before choosing one.',
+        ),
         const SizedBox(height: 12),
+        _keptForms(),
         SizedBox(
           height: 320,
           child: FutureBuilder<List<WorkspaceRecoveryFile>>(

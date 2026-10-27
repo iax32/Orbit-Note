@@ -41,6 +41,36 @@ void main() {
     await f.close();
   });
   test(
+    'live shared preferences propagate without sharing device layout',
+    () async {
+      f.firstWorkspace.updateSession((s) {
+        s.collapsedFolders = ['Notes/Research'];
+        s.fontSize = 21;
+        s.uiZoom = 1.5;
+      });
+      expect(await f.firstWorkspace.flushAll(), isTrue);
+      await f.first.pump();
+      await f.second.pump();
+      expect(f.secondWorkspace.session.collapsedFolders, ['Notes/Research']);
+      expect(f.secondWorkspace.session.fontSize, 21);
+      expect(f.secondWorkspace.session.uiZoom, 1);
+      f.secondWorkspace.updateSession((s) => s.defaultCodeWrap = true);
+      expect(await f.secondWorkspace.flushAll(), isTrue);
+      await f.second.pump();
+      await f.first.pump();
+      expect(f.firstWorkspace.session.defaultCodeWrap, isTrue);
+      expect(f.firstWorkspace.session.uiZoom, 1.5);
+      expect(
+        f.firstWorkspace.activeObjects.any(
+          (o) => o.typeId == 'orbit.preferences',
+        ),
+        isFalse,
+      );
+      expect(f.first.conflicts, isEmpty);
+      expect(f.second.conflicts, isEmpty);
+    },
+  );
+  test(
     'shared rooms capture loose PDFs initially and publish newly added media',
     () async {
       final pdf = Uint8List.fromList([37, 80, 68, 70, 0, 255]);
@@ -243,6 +273,11 @@ void main() {
   test(
     'viewer cannot upload, publish or permanently delete shared knowledge',
     () async {
+      final before = await f.first.inspectRoom(
+        f.endpoint,
+        f.room,
+        f.firstToken,
+      );
       final viewer = await f.first.invite('Reader', 'viewer');
       for (final action in ['put', 'remove', 'attachment']) {
         await expectLater(
@@ -265,7 +300,7 @@ void main() {
       );
       expect(response.statusCode, 403);
       final state = await f.first.inspectRoom(f.endpoint, f.room, f.firstToken);
-      expect((state['documents'] as Map).length, 1);
+      expect(state['documents'], before['documents']);
     },
   );
   test(

@@ -1,4 +1,6 @@
 import 'life_workspace.dart';
+import 'finance_workspace.dart';
+import 'research_dossier_workspace.dart';
 import 'object_tag_dialog.dart';
 import 'course_hub.dart';
 import 'code_ide_workspace.dart';
@@ -183,6 +185,18 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
         )
         .firstOrNull;
     final commands = <({String title, IconData icon, VoidCallback run})>[
+      (
+        title:
+            'Open research dossiers · functions, memory layouts, offsets, glossary and investigations',
+        icon: Icons.manage_search_outlined,
+        run: () => showResearchDossier(context, c),
+      ),
+      (
+        title:
+            'Open Finance · expenses, income, accounts, budgets, bills and savings',
+        icon: Icons.account_balance_wallet_outlined,
+        run: () => showFinanceWorkspace(context, c),
+      ),
       (
         title: 'Open Life workspace · goals, habits, fitness and journals',
         icon: Icons.spa_outlined,

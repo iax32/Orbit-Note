@@ -7,6 +7,7 @@ import 'dashboard_columns.dart';
 import 'source_browser_dialog.dart';
 import 'code_ide_workspace.dart';
 import 'research_comparison_dialog.dart';
+import 'research_dossier_workspace.dart';
 
 class AnalysisDashboardView extends StatelessWidget {
   const AnalysisDashboardView({
@@ -359,6 +360,11 @@ class AnalysisDashboardView extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: [
+                OutlinedButton.icon(
+                  onPressed: () => showResearchDossier(context, controller),
+                  icon: const Icon(Icons.manage_search_outlined),
+                  label: const Text('Research dossiers'),
+                ),
                 OutlinedButton.icon(
                   onPressed: () => showCodeIde(
                     context,

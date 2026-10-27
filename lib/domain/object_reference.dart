@@ -70,5 +70,5 @@ class ObjectReference {
   }
 
   String quoteMarkdown(String title, String quote) =>
-      '${quote.split('\n').map((line) => '> $line').join('\n')}\n\n${markdown(title)}\n';
+      '${quote.replaceAll(RegExp(r'\r\n|\r'), '\n').split('\n').map((line) => '> $line').join('\n')}\n\n${markdown(title)}\n';
 }

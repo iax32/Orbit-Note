@@ -107,6 +107,7 @@ class _InteractionDialogState extends State<_InteractionDialog> {
     TextEditingController controller, {
     int count = 1,
     String? hint,
+    String? helper,
   }) => Padding(
     padding: const EdgeInsets.only(bottom: 16),
     child: TextField(
@@ -117,6 +118,8 @@ class _InteractionDialogState extends State<_InteractionDialog> {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
+        helperText: helper,
+        helperMaxLines: 3,
         alignLabelWithHint: true,
       ),
     ),
@@ -295,6 +298,9 @@ class _InteractionDialogState extends State<_InteractionDialog> {
                     final old = from;
                     from = to;
                     to = old;
+                    final oldMultiplicity = start.text;
+                    start.text = end.text;
+                    end.text = oldMultiplicity;
                   }),
                   icon: const Icon(Icons.swap_vert),
                   label: const Text('Swap direction'),
@@ -319,12 +325,16 @@ class _InteractionDialogState extends State<_InteractionDialog> {
                 field(
                   'From multiplicity (optional)',
                   start,
-                  hint: '1, 2, 0..*, 1..*',
+                  hint: '1, 2, 0..*, 1..*, 2..*',
+                  helper:
+                      'Shown beside ${widget.nodes.where((e) => e.id == from).firstOrNull?.text ?? 'the From endpoint'}, not at the other end.',
                 ),
                 field(
                   'To multiplicity (optional)',
                   end,
-                  hint: '1, 2, 0..*, 1..*',
+                  hint: '1, 2, 0..*, 1..*, 2..*',
+                  helper:
+                      'Shown beside ${widget.nodes.where((e) => e.id == to).firstOrNull?.text ?? 'the To endpoint'}, not at the other end.',
                 ),
               ],
               if (widget.sequence) ...[

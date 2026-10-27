@@ -152,6 +152,9 @@ class CodeProjectSession {
 }
 
 String sourceStarter(String language) => switch (language) {
+  'java' =>
+    'class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, Orbit");\n    }\n}\n',
+  'dafny' => 'method Main() {\n    assert 1 + 1 == 2;\n}\n',
   'python' =>
     'def main():\n    print("Hello from Orbit Note")\n\n\nif __name__ == "__main__":\n    main()\n',
   'cpp' =>

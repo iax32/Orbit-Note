@@ -13,6 +13,8 @@ import '../../application/code_profile_run.dart';
 import '../../application/code_language_client.dart';
 import '../../application/source_search.dart';
 import '../../domain/code_project.dart';
+import '../../domain/university/assignment_protection.dart';
+import '../university/university_lab_dialog.dart';
 import '../../domain/code_launch.dart';
 import '../../domain/code_language.dart';
 import '../../domain/source_browser.dart';
@@ -175,21 +177,28 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
   }
 
   final python = TextEditingController(text: 'python');
+  final java = TextEditingController(text: 'java');
+  final dafny = TextEditingController(text: 'dafny');
   final compiler = TextEditingController(text: 'clang++');
   final debugger = TextEditingController(text: 'gdb');
   final debuggerArguments = TextEditingController(
     text: '["--args", "{program}"]',
   );
   bool toolsEdited = false;
+  bool assignmentProtection = false;
   final serverExecutable = {
     'python': TextEditingController(text: 'python'),
     'cpp': TextEditingController(text: 'clangd'),
     'html': TextEditingController(text: 'vscode-html-language-server'),
+    'java': TextEditingController(text: 'jdtls'),
+    'dafny': TextEditingController(text: 'dafny'),
   };
   final serverArguments = {
     'python': TextEditingController(text: '["-I", "-m", "pylsp"]'),
     'cpp': TextEditingController(text: '["--background-index=false"]'),
     'html': TextEditingController(text: '["--stdio"]'),
+    'java': TextEditingController(text: '[]'),
+    'dafny': TextEditingController(text: '["server"]'),
   };
   CodeToolProcess? running;
   CodeLaunchStore? launchStore;
@@ -222,8 +231,11 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
     loadCodeToolSettings()
         .then((settings) {
           if (!mounted || toolsEdited) return;
+          assignmentProtection = settings['assignmentProtection'] == true;
           for (final (key, field) in [
             ('python', python),
+            ('java', java),
+            ('dafny', dafny),
             ('compiler', compiler),
             ('debugger', debugger),
             ('debuggerArguments', debuggerArguments),
@@ -286,6 +298,8 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
     stdin.dispose();
     consoleUpdates.dispose();
     python.dispose();
+    java.dispose();
+    dafny.dispose();
     compiler.dispose();
     debugger.dispose();
     debuggerArguments.dispose();
@@ -474,6 +488,11 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
         !t.editor.value.composing.isCollapsed) {
       return;
     }
+    if (!await confirmAssignmentSave([t.doc.path]) ||
+        !mounted ||
+        session != s) {
+      return;
+    }
     setState(() => busy = true);
     try {
       await s.save(t.doc);
@@ -497,6 +516,16 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
   Future<void> saveAll() async {
     final s = session;
     if (s == null || busy) return;
+    if (!await confirmAssignmentSave(
+          tabs.values
+              .where((t) => t.doc.modified)
+              .map((t) => t.doc.path)
+              .toList(),
+        ) ||
+        !mounted ||
+        session != s) {
+      return;
+    }
     setState(() => busy = true);
     var count = 0;
     try {
@@ -516,6 +545,73 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
       message('Saved $count files; remaining drafts are retained. $e');
     } finally {
       if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<bool> confirmAssignmentSave(List<String> paths) async {
+    final protected = paths.where(protectedUniversityPath).toList();
+    if (!assignmentProtection || protected.isEmpty) return true;
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Protected university assignment files'),
+            content: SingleChildScrollView(
+              child: Text(
+                'These paths are commonly protected by the DSLab assignment. Saving may invalidate the submission. Check your exact assignment version.\n\n${protected.join('\n')}',
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Keep drafts'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Save explicitly'),
+              ),
+            ],
+          ),
+        ) ==
+        true;
+  }
+
+  Future<void> universityTools() async {
+    final controller = widget.controller,
+        workspace = widget.controller?.workspaceGeneration;
+    final result = await showUniversityLab(context);
+    if (!mounted || result == null) return;
+    try {
+      if (controller != null &&
+          identical(controller, widget.controller) &&
+          workspace == controller.workspaceGeneration) {
+        final note = await controller.create(
+          'orbit.note',
+          title: result.title,
+          body: result.markdown,
+          properties: {
+            if (widget.owner?.properties['courseId'] case final String courseId)
+              'courseId': courseId,
+            if (widget.owner?.properties['projectId']
+                case final String projectId)
+              'projectId': projectId,
+          },
+          open: false,
+        );
+        if (note == null) {
+          throw const FormatException('The lab report could not be saved.');
+        }
+        message('University report saved as a note in this Vault.');
+      } else {
+        await recoverUniversityReport(
+          context,
+          result,
+          'No writable originating Vault is available.',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        await recoverUniversityReport(context, result, 'Report not saved: $e');
+      }
     }
   }
 
@@ -1003,10 +1099,33 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
                 const Text(
                   'Choose installed executables. Save these settings on this device, outside the Vault. Opening a project never starts tools.',
                 ),
+                StatefulBuilder(
+                  builder: (context, change) => SwitchListTile(
+                    title: const Text('University assignment file warnings'),
+                    subtitle: const Text(
+                      'Warn before saving pom.xml, .GitLab, src/test or src/main/resources.',
+                    ),
+                    value: assignmentProtection,
+                    onChanged: (value) =>
+                        change(() => assignmentProtection = value),
+                  ),
+                ),
                 TextField(
                   controller: python,
                   decoration: const InputDecoration(
                     labelText: 'Python interpreter executable',
+                  ),
+                ),
+                TextField(
+                  controller: java,
+                  decoration: const InputDecoration(
+                    labelText: 'Java 21 executable',
+                  ),
+                ),
+                TextField(
+                  controller: dafny,
+                  decoration: const InputDecoration(
+                    labelText: 'Dafny executable',
                   ),
                 ),
                 TextField(
@@ -1030,7 +1149,13 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
                         'Debugger arguments (JSON); {program} is the built executable',
                   ),
                 ),
-                for (final language in ['html', 'python', 'cpp']) ...[
+                for (final language in [
+                  'html',
+                  'python',
+                  'cpp',
+                  'java',
+                  'dafny',
+                ]) ...[
                   const SizedBox(height: 16),
                   Text(
                     '$language language server',
@@ -1061,7 +1186,10 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
             onPressed: () async {
               try {
                 await saveCodeToolSettings({
+                  'assignmentProtection': assignmentProtection,
                   'python': python.text,
+                  'java': java.text,
+                  'dafny': dafny.text,
                   'compiler': compiler.text,
                   'debugger': debugger.text,
                   'debuggerArguments': debuggerArguments.text,
@@ -1201,6 +1329,10 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
         const check =
             'import ast,pathlib,sys\np=pathlib.Path(sys.argv[1])\ntry:\n ast.parse(p.read_text(encoding="utf-8-sig"),filename=str(p));print("Python syntax check passed")\nexcept SyntaxError as e:\n print(f"{p}:{e.lineno}:{e.offset}: {e.msg}");sys.exit(1)\n';
         await execute(ToolCommand(python.text, ['-I', '-c', check, file]));
+      } else if (codeLanguageId(t.doc.path) == 'java') {
+        await execute(ToolCommand(java.text, ['--source', '21', file]));
+      } else if (codeLanguageId(t.doc.path) == 'dafny') {
+        await execute(ToolCommand(dafny.text, ['verify', file]));
       } else if (codeLanguageId(t.doc.path) == 'python') {
         if (action == 'debug') {
           message(
@@ -1812,6 +1944,7 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
             {
               'completion': 'Complete · Ctrl+Space',
               'saveAll': 'Save all · Ctrl+Shift+S',
+              'university': 'University Lab · JUnit / SMQP / Dafny',
               if (language == 'python' || language == 'cpp')
                 'debug': 'Debug in console · F5',
               'line': 'Go to line · Ctrl+G',
@@ -1828,6 +1961,8 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
                   completion();
                 case 'saveAll':
                   saveAll();
+                case 'university':
+                  universityTools();
                 case 'debug':
                   run('debug');
                 case 'line':
@@ -1866,6 +2001,14 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
                   languageAction(v);
                 }
               },
+            ),
+          if (language == 'java' || language == 'dafny')
+            FilledButton.tonalIcon(
+              onPressed: running == null && !busy ? () => run('run') : null,
+              icon: const Icon(Icons.play_arrow),
+              label: Text(
+                language == 'java' ? 'Run Java 21 source' : 'Verify Dafny',
+              ),
             ),
           if (language == 'python') ...[
             OutlinedButton(

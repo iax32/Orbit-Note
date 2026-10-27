@@ -122,6 +122,8 @@ String codeLanguageId(String path) =>
     switch (path.split('.').last.toLowerCase()) {
       'html' || 'htm' => 'html',
       'py' => 'python',
+      'java' => 'java',
+      'dfy' => 'dafny',
       'cpp' || 'cc' || 'cxx' || 'h' || 'hpp' || 'hxx' || 'c' => 'cpp',
       _ => '',
     };
@@ -137,6 +139,22 @@ List<CodeSuggestion> offlineCodeSuggestions(
   ).firstMatch(source.substring(0, offset));
   final start = prefix?.start ?? offset, word = prefix?.group(0) ?? '';
   final templates = switch (language) {
+    'java' => {
+      'main': 'public static void main(String[] args) {\n    \n}',
+      'class': 'public class ClassName {\n    \n}',
+      'test':
+          '@org.junit.jupiter.api.Test\nvoid behavior() {\n    org.junit.jupiter.api.Assertions.assertTrue(true);\n}',
+      'try':
+          'try (var socket = new java.net.Socket("127.0.0.1", 20000)) {\n    \n} catch (java.io.IOException error) {\n    error.printStackTrace();\n}',
+      'thread':
+          'Thread worker = new Thread(() -> {\n    while (!Thread.currentThread().isInterrupted()) {\n        break;\n    }\n});\nworker.start();',
+    },
+    'dafny' => {
+      'method':
+          'method Name(x: int) returns (result: int)\n  requires x >= 0\n  ensures result >= x\n{\n  result := x;\n}',
+      'invariant': 'invariant 0 <= i <= a.Length\n    decreases a.Length - i',
+      'assert': 'assert condition;',
+    },
     'python' => {
       'def': 'def function_name():\n    pass',
       'class': 'class ClassName:\n    def __init__(self):\n        pass',

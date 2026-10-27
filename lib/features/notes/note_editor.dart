@@ -1,3 +1,5 @@
+import '../../domain/university/lab_document.dart';
+import '../university/university_lab_dialog.dart';
 import '../workspace/motion_studio.dart';
 import '../../domain/publication_image.dart';
 import 'shared_text_presence.dart';
@@ -41,7 +43,7 @@ import '../../domain/document_footnotes.dart';
 import 'package:uuid/uuid.dart';
 import 'markdown_editing.dart';
 import 'linked_section.dart';
-import 'markdown_clipboard.dart';
+import 'paste_feedback.dart';
 import 'note_format_toolbar.dart';
 import 'note_typography.dart';
 import 'note_link_dialog.dart';
@@ -129,6 +131,7 @@ class NoteEditor extends StatefulWidget {
     this.onOpenExternalLink,
     this.onOpenAttachment,
     this.initialViewState = const {},
+    this.restoreViewSerial = 0,
     this.onViewStateChanged,
     this.linkBindings = const {},
     this.onClosePane,
@@ -199,6 +202,7 @@ class NoteEditor extends StatefulWidget {
   final ValueChanged<String>? onOpenExternalLink;
   final ValueChanged<String>? onOpenAttachment;
   final Map<String, dynamic> initialViewState;
+  final int restoreViewSerial;
 
   /// Explicit pane activation; ordinary rebuilds must not move editor focus.
   final int focusRequestSerial;
@@ -1777,6 +1781,54 @@ class _NoteEditorState extends State<NoteEditor> {
     }
     _ownerWorkspace = workspace;
     _ownerGeneration = widget.controller?.workspaceGeneration;
+    if (!ownerChanged &&
+        oldWidget.restoreViewSerial != widget.restoreViewSerial) {
+      final view = Map<String, dynamic>.from(widget.initialViewState);
+      final sourceOffset = widget.initialScrollOffset;
+      final owner = widget.noteId,
+          restore = widget.restoreViewSerial,
+          revision = _documentRevision;
+      _mode = NoteEditorMode.values.firstWhere(
+        (mode) => mode.name == view['mode'],
+        orElse: () => _mode,
+      );
+      _outlineOnly = view['outlineOnly'] == true;
+      _focusedSectionKey = view['focusedSection'] as String?;
+      if (view['rich'] is Map) {
+        _richState = Map<String, dynamic>.from(view['rich'] as Map);
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted ||
+            widget.noteId != owner ||
+            widget.restoreViewSerial != restore ||
+            _documentRevision != revision) {
+          return;
+        }
+        final base = view['base'], extent = view['extent'];
+        _body.selection = TextSelection(
+          baseOffset: base is int ? base.clamp(0, _body.text.length) : 0,
+          extentOffset: extent is int ? extent.clamp(0, _body.text.length) : 0,
+        );
+        final rich = view['rich'];
+        if (rich is Map) {
+          _richKey.currentState?.restoreView(Map<String, dynamic>.from(rich));
+        }
+        if (_sourceScroll.hasClients) {
+          _sourceScroll.jumpTo(
+            sourceOffset.clamp(0, _sourceScroll.position.maxScrollExtent),
+          );
+        }
+        final preview = view['previewScroll'];
+        if (_previewScroll.hasClients && preview is num && preview.isFinite) {
+          _previewScroll.jumpTo(
+            preview.toDouble().clamp(
+              0,
+              _previewScroll.position.maxScrollExtent,
+            ),
+          );
+        }
+      });
+    }
     if (oldWidget.locationSerial != widget.locationSerial ||
         oldWidget.noteId != widget.noteId) {
       _scheduleLocation();
@@ -2271,6 +2323,10 @@ class _NoteEditorState extends State<NoteEditor> {
   }
 
   Future<void> _compositionCommand(String command) async {
+    if (command == 'University Lab') {
+      await _insertCommand(command);
+      return;
+    }
     final writingGuard = _writingGuard();
     if (_isComposing || _mode == NoteEditorMode.read) return;
     if (command == 'Review replacements') {
@@ -2581,6 +2637,29 @@ class _NoteEditorState extends State<NoteEditor> {
 
   Future<void> _insertCommand(String command) async {
     final writingGuard = _writingGuard();
+    if (command == 'University Lab') {
+      if (!_canChangeDocument || _isComposing) return;
+      final before = _body.text;
+      try {
+        final initial = UniversityDocument.fromMarkdown(before);
+        final result = await showUniversityLab(context, initial: initial);
+        if (!mounted || result == null) return;
+        if (!_applyWriting(
+          before,
+          result.applyTo(before),
+          guard: writingGuard,
+        )) {
+          await recoverUniversityReport(
+            context,
+            result,
+            'The note changed while University Lab was open. The newer note was preserved.',
+          );
+        }
+      } catch (error) {
+        if (mounted) _reviewError(error);
+      }
+      return;
+    }
     if (command == 'Article publishing') {
       final owner = widget.noteId, controller = widget.controller;
       final workspace = controller?.repository.workspaceId;
@@ -2916,6 +2995,9 @@ class _NoteEditorState extends State<NoteEditor> {
       final generation = controller?.workspaceGeneration;
       await showPublicationWorkspace(
         context,
+        writingAppearance: _writingAppearance,
+        editorFontSize: widget.fontSize,
+        readWritingPhoto: _writingPhotoLoader(),
         title: _title.text,
         source: _body.text,
         ownerId: widget.noteId,
@@ -3263,6 +3345,7 @@ class _NoteEditorState extends State<NoteEditor> {
       case NoteFormatAction.alignLeft:
       case NoteFormatAction.alignCenter:
       case NoteFormatAction.alignRight:
+      case NoteFormatAction.alignJustify:
         final document = MarkdownDocument.parse(_body.text);
         final index = document.blockAt(
           _body.selection.isValid ? _body.selection.start : 0,
@@ -3279,6 +3362,7 @@ class _NoteEditorState extends State<NoteEditor> {
         final alignment = switch (action) {
           NoteFormatAction.alignCenter => 'center',
           NoteFormatAction.alignRight => 'right',
+          NoteFormatAction.alignJustify => 'justify',
           _ => 'left',
         };
         final replacement = block.withAlignment(
@@ -3972,10 +4056,17 @@ class _NoteEditorState extends State<NoteEditor> {
         mode = _mode;
     final sel = snapshot.selection;
     if (!sel.isValid || !snapshot.composing.isCollapsed) return;
-    final pasted = await readMarkdownClipboard(
-      preferHtml: false,
-      interpretOrbitData: !plain && !_isLatex,
-    );
+    String? pasted;
+    try {
+      pasted = await readEditorClipboard(
+        context,
+        plain: plain || _isLatex,
+        preferHtml: false,
+        interpretOrbitData: !plain && !_isLatex,
+      );
+    } on EditorPasteCancelled {
+      return;
+    }
     if (!mounted ||
         widget.viewOnly ||
         widget.controller?.repository.readOnly == true ||
@@ -4005,6 +4096,19 @@ class _NoteEditorState extends State<NoteEditor> {
           text: snapshot.text.replaceRange(sel.start, sel.end, text),
           selection: TextSelection.collapsed(offset: sel.start + text.length),
         ),
+      );
+      final after = _body.text;
+      final feedbackRevision = _documentRevision;
+      showPasteFeedback(
+        context,
+        text,
+        isCurrent: () =>
+            mounted &&
+            widget.noteId == owner &&
+            _canChangeDocument &&
+            _documentRevision == feedbackRevision &&
+            _body.text == after,
+        undo: _undoDocument,
       );
     } else if (widget.onPasteImage != null) {
       _insertFrom(widget.onPasteImage);
@@ -6684,7 +6788,9 @@ class _NoteEditorState extends State<NoteEditor> {
 
   Widget _preview(BuildContext context) {
     final theme = Theme.of(context);
-    final prose = PublicationSettings.mask(_body.text);
+    final prose = UniversityDocument.maskMetadata(
+      PublicationSettings.mask(_body.text),
+    );
     final readingSource = prose.contains('<!-- orbit:')
         ? DocumentCitations(prose).publication(refreshContent: false)
         : prose;

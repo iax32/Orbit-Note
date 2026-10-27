@@ -66,7 +66,7 @@ void main() {
     );
     expect(heading.withAlignment('left'), '## Title\r\n');
     const unknown =
-        '<!-- orbit:align=justify -->\nText\n\n<!-- orbit:align=center -->\n```\ncode\n```';
+        '<!-- orbit:align=unsupported -->\nText\n\n<!-- orbit:align=center -->\n```\ncode\n```';
     expect(MarkdownDocument.parse(unknown).source, unknown);
     expect(
       MarkdownDocument.parse(
@@ -166,6 +166,41 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('justified paragraphs survive edits, undo and Read mode', (
+    tester,
+  ) async {
+    await open(tester, 'A paragraph with **bold** content.\n\nNext paragraph.');
+    await tester.tap(field('A paragraph with bold content.'));
+    await tester.ensureVisible(find.byTooltip('Justify · Blocksatz'));
+    await tester.tap(find.byTooltip('Justify · Blocksatz'));
+    await tester.pumpAndSettle();
+    expect(body, startsWith('<!-- orbit:align=justify -->'));
+    expect(
+      tester
+          .widget<TextField>(field('A paragraph with bold content.'))
+          .textAlign,
+      TextAlign.justify,
+    );
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+    expect(body, 'A paragraph with **bold** content.\n\nNext paragraph.');
+    await tester.tap(find.byTooltip('Justify · Blocksatz'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Read').first);
+    await tester.pumpAndSettle();
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is MarkdownBody &&
+            w.styleSheet?.textAlign == WrapAlignment.spaceBetween,
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'empty aligned paragraphs stay editable and Enter carries alignment',

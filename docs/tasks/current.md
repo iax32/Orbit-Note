@@ -1,3 +1,1702 @@
+# In progress — publish 1.0.3, 2026-10-27
+
+User requests source, Windows setup and Android APK on GitHub. Explicitly skip
+tests and GitHub workflows. Use local builds and existing preview signing identity.
+Scope/status: docs/tasks/publish-1.0.3-2026-10-27.md.
+
+## Previous task
+# Delivered — quiet details, 2026-10-27
+
+User approves the complete twelve-detail follow-up. Scope/validation:
+docs/tasks/quiet-details-2026-10-27.md. Implement only this batch; preserve prior
+delivered workflows and unrelated changes.
+
+All twelve areas completed through existing boundaries: reading anchors,
+selection retention, spacing guides, Canvas activation/touch hits, PDF options,
+stable refreshed search, table clipboard formats, complete titles, overlapping
+PDF mark selection, closed tab groups and local image retry/error feedback.
+Final acceptance/performance run: 53 pass; actual-font layout/retry check: 1 pass.
+Broader table/search/tab/clipboard regressions also passed; its discovered focus
+regression is corrected and covered by the final run. Analyzer clean (12.0 s),
+strict format 847 files / zero changes. Native 300-page / 10,000-mark checks run.
+
+Windows release built (99.7 s) with existing registered Google configuration and
+standalone server. Seven runtime files verified; data/app.so newer than every
+Dart source. Usual build/windows/x64/runner/Release/orbit_note.exe is ready.
+No physical tablet/pen or cross-app Excel/Word acceptance claimed.
+
+Suggested next task: native Lenovo acceptance of dense PDF selection, equal-gap
+dragging and first-press activation. Stop before implementing another feature.
+
+## Previous task
+# Delivered — steady workspace, 2026-10-27
+
+Owner approves all ten refinements from the latest workflow list. Implement only
+this batch: stable media loading, drag-edge scrolling, explicit duplicate import
+choices, retained temporary forms, unavailable-action explanations, bulk previews,
+clear recovery, selection ownership, safer export names and cancellable operations.
+Details and validation: docs/tasks/steady-workspace-2026-10-27.md.
+
+All ten areas implemented through existing boundaries: stable image geometry,
+drag-edge scrolling/panning, duplicate import choices, retained/reviewable forms,
+disabled-action context, bulk reviews, recovery browser, pane ownership, safe
+export names/staged writes and cancel/progress. Immediate-edit/close timing fixed.
+Final recovery batch: 40 pass; main regression batch: 115 pass plus its corrected
+retained-form case covered in the final batch. Analyzer clean (8.9 s); strict
+format 842 files, zero changes. Actual-font retained-form capture inspected.
+Windows release built successfully in 93.7 s with registered Google configuration
+and standalone server. All seven runtime artifacts verified; data/app.so newer
+than every Dart source. Usual Release/orbit_note.exe launches the updated app.
+No physical tablet/OS clipboard acceptance or Android build claimed.
+
+Suggested next task: profile dense-board drag/edge-pan on the native release and
+Lenovo tablet with real touch/pen input. Stop before implementing it.
+
+## Previous task
+# Delivered — everyday workflow polish, 2026-10-27
+
+Owner approves the full fourteen-area list. Scope and observable behavior:
+docs/features/everyday-workflows.md. Detailed evidence:
+docs/tasks/workflow-polish-2026-10-27.md.
+
+Implemented paste feedback/PDF text choices, per-visit navigation, guarded move
+recovery, reference previews, save/sync clarity, connection tracing, per-board
+tools, Search return, rename context, publishing memory/layout and focus fixes.
+Existing placement/object separation and draft recovery remain; note statistics
+reuse immutable snapshots for large-project view updates. Canonical references
+cannot preview another same-title note. Restart and same-object navigation retain
+their return points and never restore a different pane's view.
+
+Validation: 98 main integration checks pass; 37 final sync/settings checks and 37
+final navigation/pane checks also pass (overlap: 123 distinct checks). Native
+PDFium copy-handler → sourced Source paste → Undo checked with test clipboard
+transport; actual-font enlarged-text/connection captures inspected. Analyzer
+clean (8.3 seconds), strict format 834 files/zero changes. Windows release built
+successfully (82.9 seconds) with registered Google configuration and standalone
+server; required artifacts and AOT newer than every Dart source verified. Usual
+build/windows/x64/runner/Release/orbit_note.exe updated directly; no ZIP/server
+startup/GitHub push. Original user Vaults remain untouched.
+
+No new APK or physical tablet/stylus/cross-app clipboard test claimed. Suggested
+next task: restore Android tooling and run real Lenovo touch/pen/clipboard
+acceptance. Stop before implementing another feature.
+
+## Previous task
+# Delivered — Canvas drawing focus; Android APK blocked, 2026-10-27
+
+Owner's Lenovo tablet feedback: focus mode leaves excessive non-drawing UI.
+Scope LAY-01/08/10: reversible full-safe-area Canvas focus and accessible recovery;
+no broad native-input completion claim. Details: tablet-canvas-focus-2026-10-27.md.
+
+Implemented shell/bridge/toolbar/title/zoom/minimap hiding, floating Undo/tools/exit,
+overlay tool access, system Back exit and Escape dismissal. Existing state,
+panels/tabs/minimap settings, camera, content and Undo remain. Loading/standalone
+recovery and save/read-only warnings remain reachable; no OS fullscreen changes.
+
+44 focused tablet/pen/minimap/performance/split checks pass; 1024×768 and 820×1180
+at 2× DPI fill the safe viewport, plus 800×600 at 200% text. Simulated stylus,
+Undo/Redo, Back and exact state retention checked. Actual-font captures inspected.
+Analyzer clean (7.7 seconds), strict format 830 files/zero changes. Windows release
+rebuilt successfully (73.9-second Flutter build) with registered Google config and
+standalone server; required EXE/AOT/Flutter/PDFium/SQLite/server artifacts verified,
+AOT newer than all lib sources. Usual build/windows/x64/runner/Release updated.
+No server started or keys packaged. Android APK build is blocked by missing Android
+SDK (explicit release attempt failed); no new APK
+or physical Lenovo/iPad acceptance claimed. Original user Vaults unchanged.
+
+Suggested next task: restore Android SDK/build tooling and build a matching signed
+APK for actual Lenovo pen/palm/layout acceptance. Stop before adding other features.
+
+## Previous task
+# Delivered — research dossiers, 2026-10-27
+
+Owner approves all ten information/note-taking tools proposed for game reverse
+engineering. Scope REV-06–15 in docs/features/research-dossiers.md: recorded
+layouts/offsets/functions/instructions, manual pointer/call maps, journals,
+build/evidence review, responsive code/explanation layouts, templates and glossary.
+No memory scanner, process attachment, binary patching or new external service.
+
+Implementation uses ordinary notes with versioned additive metadata and a guarded
+generated-summary region; free writing remains owned by the note. Universal
+references and linked sections share canonical sources with Canvas, graph and
+existing sync. Function metadata bridges to recorded build comparisons.
+Unknown data, stable identities, repository history/Undo and stale/save failures
+are covered by targeted checks. No personal Vaults are seeded or modified.
+
+Validation: 92 focused integration checks passed (20 seconds). Final additional
+acceptance: 13 passed, including glossary aliases, literal summary markers inside
+code fences, live summaries, unknown-data retention and failed-save drafts.
+Counts overlap. Native two-Vault synthetic-provider sync preserved 64-bit field
+offsets, metadata and editable Markdown in both directions. 390px/200% UI exercised;
+actual-font paper-theme capture work/ui/research-dossier.png inspected. Source
+versions/build comparison, stale edits, Trash/review, undo and native reopen pass.
+One older drawing-embed fixture needed repository/provider initialization in real
+async execution instead of the fake test clock; it now passes without skipping.
+Analyzer clean (7.9 seconds); strict format: 829 files, zero changes. Logs:
+.local/dossier-{final-tests,acceptance,analyze-final,format-check}.log.
+No desktop control, real game/debugger, Google-account or physical mobile test.
+Windows release built successfully (75.3-second Flutter build) with the existing
+registered Google configuration and compiled standalone collaboration server.
+Updated build/windows/x64/runner/Release/orbit_note.exe; AOT newer than all lib
+sources and required Flutter/PDFium/SQLite/data/server files verified. No server
+started, keys packaged, ZIP created or GitHub push requested. Original user Vaults
+remain untouched. Build log: .local/dossier-windows-build.log.
+
+Suggested next task: optional reviewed specialist-tool annotation import into
+these records. Stop before implementing another feature.
+
+## Previous task
+# Delivered — performance and failure-boundary audit, 2026-10-27
+
+Owner requests performance/stress checks and fixes without removing features or
+visuals. Scope: measured Finance calculation/indexing, note Find/Replace, existing
+large Vault/Canvas/PDF and cross-pane clipboard/draft stress suites. Details and
+measured before/after results: performance-audit-2026-10-27.md.
+
+Implemented account/month/kind Finance indexing, weak immutable-object validation
+cache, correctly invalidated controller index snapshots, actionable per-card
+calculation errors, lazy/single reference scanning and bounded Unicode Find cache.
+No storage schema, feature removal, visual reduction or personal Vault mutation.
+
+Initial stress batch: 38 passed. Recovery/split-pane batch: 50 passed. Final
+combined acceptance: 118 passed (75 seconds). Analyzer clean (11.8 seconds);
+strict format: 824 files, zero changes. Normal Windows release built successfully
+(99.9-second Flutter build) with existing Google configuration and compiled
+standalone server. Updated build/windows/x64/runner/Release/orbit_note.exe;
+no server started, keys packaged or source push requested.
+Counts overlap. Initial Finance index and long-note parsing retain measurable
+cold costs; production frame-time/mobile/stylus acceptance is not claimed.
+
+Suggested next task: release-mode cold-load/frame profiling on a large synthetic
+Vault. Stop before implementing another feature.
+
+## Previous task
+# Delivered — finance workspace, 2026-10-26
+
+Owner requests a substantial finance update with expense tracking and essentials.
+Scope FIN-01–08 in docs/features/finance.md: exact account/transaction ledger,
+transfers, monthly budgets, explicit recurring bills, savings goals, reports,
+CSV preview/import/export and existing note/Canvas/history/sync integration.
+No bank credentials/API, implicit currency conversion or unrelated roadmap work.
+
+Implementation uses ordinary versioned finance notes and existing repository
+commands. Exact minor-unit arithmetic, stable occurrence/import identities,
+reviewed-plan guards, stale/Vault ownership checks and recoverable writes are
+required. Unknown data and existing user Vaults remain untouched by testing.
+
+Validation: 121 focused finance/sync/Life/reference integration checks passed.
+Final finance acceptance suite: 17 checks passed, including all workspace sections,
+actual form saves, retained drafts after failure, 390px/568px short-screen layouts
+at 200% text, a 5,000-transaction exact ledger, CSV retries and preview ownership,
+month-end/leap bill schedules and duplicate occurrence guards. Suites overlap.
+Final additional domain rerun covers currency protection with transactions in
+Trash, restoration and caller-owned edit snapshots. Native two-Vault sync used a
+synthetic provider and preserved exact amounts, memo and unknown metadata. No
+real bank, Google account or physical mobile device was used. Paper-theme UI
+capture work/ui/finance-overview.png inspected; actual app fonts and palette used.
+Logs .local/finance-{final-tests,acceptance-tests,history-tests,analyze-final}.log.
+The 5,000-record calculation uses a broad five-second test budget, not a frame-time
+promise. No personal Vault data, files or desktop clipboard were accessed by tests.
+
+Windows: separate native CMake Release completed under build/windows-finance/x64;
+standalone server compiled successfully without starting a server or packaging
+keys. At final installation the usual app/server processes were closed, so the
+verified complete bundle was also copied into build/windows/x64/runner/Release.
+EXE/AOT/server SHA-256 copies match. AOT is newer than every lib source; required
+Flutter/PDFium/SQLite/data artifacts verified. Final analyzer clean (111.3 seconds);
+strict format: 823 files, no changes. No source push requested. The original user
+Vaults were not migrated or edited by implementation/testing.
+Suggested next task: optional institution-specific bank CSV column mapping with
+an explicit preview; stop before implementing it.
+
+## Previous task
+# Delivered — durable and synchronized preferences, 2026-10-26
+
+Owner requests that collapsed subfolders stay closed through tab changes and
+similar settings persist and sync across devices. Scope LAY-01/06/10 and existing
+Drive/live shared replication. Preserve local paths, credentials, device zoom,
+tabs/cameras/positions and pane layouts. No account-wide service or new permission.
+
+Implemented: normal open/tab/history navigation no longer expands ancestors;
+explicit reveal remains available. Renaming/deleting folders remaps/cleans saved
+collapse paths. Per-installation `orbit.preferences` records use existing durable
+object saves/history and sync; allowlisted fields merge independently with logical
+counters/UUID tie-breaks. Device outbox recovers interrupted portable saves;
+pending local settings survive remote refresh. Records stay out of knowledge lists
+and search. See ADR 0035 for shared-Vault visibility and conflict boundaries.
+
+Validation: 86 focused settings/folder/native-replica/live-server checks passed;
+28 navigation/large-text checks and 29 Drive coordinator/recovery checks passed
+in follow-up suites. Final regression after first-run migration refinement: 41
+passed, including concurrent first-run choices and in-place list mutations.
+Suites overlap; counts are not distinct coverage totals. Actual native two-Vault
+sync used a synthetic provider; actual loopback HTTP shared server propagated
+preferences both ways. Automatic Drive adapter test confirmed preference-only
+updates queue and upload without changing the content list. No real Google account
+or physical second device was used. Clean analyzer (9.7 seconds); strict formatting
+818 files, zero changes. Logs .local/preferences-{final-tests,final-regressions,
+automatic-tests,navigation-tests,analyze}.log. Original user Vaults unchanged.
+
+Windows release build completed through tool/build_windows.ps1 (101.8 seconds)
+with the existing registered Google configuration; no new credentials or provider
+permissions. Updated build/windows/x64/runner/Release/orbit_note.exe, current AOT,
+Flutter/PDFium/SQLite and compiled standalone collaboration server verified.
+No server process was started. AOT is newer than all lib sources.
+
+Suggested next task: physical Windows-to-Android settings acceptance when a device
+is available, including OS font fallback. Stop before implementing other features.
+
+## Previous task
+# Delivered — university modeling and engineering lab, 2026-10-26
+
+Owner explicitly approves all seven proposed university tools based on supplied
+SE/UML/Distributed Systems PDFs: state/activity modeling and execution, connected
+UML checks, test/coverage workbench, Java/JUnit/SMQP, distributed event simulation,
+and Dafny contracts. Extend CAN-04/05/07/14/15/16, EDT-08, STUDY-01/02/03,
+DEV-01/03/05, PORT-05. Shared offline models/reports in ordinary notes and native
+Canvas shapes; explicit local-tool adapters, no automatic network/process starts.
+Preserve existing objects/unknown fields, undo/history and platform boundaries.
+Build bounded deterministic educational semantics, with unsupported forms/errors
+explicit. No arbitrary Java/UML inference or invented proof/coverage results.
+Validate domain failures, UI integration, persistence/reopen and native adapters;
+run focused tests, format, analyze, and normal Windows release.
+
+
+Implementation: shared portable UniversityDocument v1, ordinary Canvas placements
+and live diagram export, Rich/Read note presentation, generated Markdown reports,
+state/activity/CFG/vector-clock/SMQP operational teaching engines, UML checks,
+Java/Dafny tools and profiles. Explicit tool failures, bounded runs, stale-owner
+recovery copy dialog, protected-path warnings and draft-discard controls included.
+Canvas regeneration retains model-frame/node/edge identities, geometry and unknown
+fields; free untracked members remain. See full operational subsets and exclusions
+in docs/features/university-modeling-lab.md; no whole-UML/IDE/proof-engine claim.
+
+Validation evidence: 133 focused editor/IDE/launch/UML/model/export integration
+checks passed, with four native Python/toolchain cases skipped by their existing
+opt-in prerequisites. Final additional suite: 95 checks passed (including the new
+models/UI/native adapters/reopen/PDF tests plus publication theme/structure,
+split-pane history and large clipboard/Canvas transfers). Suites overlap; these
+counts must not be summed as distinct coverage. All seven lab UIs exercised;
+390px / 200% text, invalid JSON, Rich reopen, Canvas selected-frame replacement,
+free member retention and exact Undo exercised. Actual local TCP covers fragmented
+UTF-8 frames, stateful SMQP, disconnect and oversized peer input. Missing Dafny
+executable returns real failure; no Java/Dafny installation or genuine compiler/
+verifier acceptance is claimed. Original user PDFs and Vaults unchanged.
+
+Performance: 90 orthogonal state regions and 200 events (18,000 internal actions)
+completed in 108–114 ms in synthetic isolated runs; exact state count/result
+asserted with a broad five-second test budget. Not a device frame-time guarantee.
+Native PDFium extraction verified report PDF text and absence of JSON metadata;
+HTML/Word outputs and ordinary Markdown file reopen also exercised. Known model
+metadata is masked in Read/search/export; fenced literal examples stay literal.
+
+Final analyzer clean (8.9 seconds); strict format: 816 files, no changes. UI captures
+use actual paper-theme fonts and the production Canvas painter. Evidence logs:
+.local/university-final-tests.log, university-integration-tests.log,
+university-analyze-final.log, university-format-check.log. Captures work/ui/university-*.png.
+
+Windows: isolated CMake Release completed successfully under
+build/windows-university/x64/runner/Release/orbit_note.exe. Original running
+release/locked DLLs were not overwritten. Verified current AOT newer than all lib
+sources, executable, Flutter/data, PDFium/SQLite and standalone collaboration
+server present. Server compiled successfully; no server process started or keys
+packaged. Three final paper-theme UI capture checks passed; inspected state and
+activity layouts with production routing. Existing usual release folder unchanged.
+
+Follow-up: owner confirmed Orbit closed. Normal tool/build_windows.ps1 completed
+successfully (45.6-second Flutter release build) with registered Google desktop
+configuration and standalone collaboration server. Verified normal executable,
+current AOT, Flutter/PDFium/SQLite and server at build/windows/x64/runner/Release.
+The usual run folder now contains this update; no additional source changes.
+
+Suggested next task: use one real course exercise to validate the declared
+state/activity model against the lecturer's expected trace, then real installed
+Java/Dafny toolchain acceptance. No automatic proof/instrumentation is implied.
+
+## Previous task
+# Delivered — clipboard, selection and transfer stress audit, 2026-10-26
+
+Owner requests heavy PDF→Markdown, cross-pane selection, copy/cut/paste and
+Canvas movement/transfer acceptance (response annotation 1). Scope DES-01/02/05/06,
+existing editor/PDF/Canvas adapters and history. Audit large rich/plain payloads,
+source links, Unicode/newlines, pending callbacks and repeated operations.
+Use synthetic data and isolated tests; preserve user Vaults and desktop clipboard.
+Fix reproducible loss/corruption/performance issues, run focused stress checks,
+format/analyze, and build normal Windows release. No new feature layer.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
+## Previous task
+
+# Delivered — heavy-use reliability audit, 2026-10-26
+
+Owner requests broad bug/performance/visual hunting. Prioritize reproducible
+failures around recent Canvas/workshop and document export changes, then focused
+PDF/editor/large-scene regressions. Preserve user Vaults and unrelated changes.
+Fix data-loss, stale callbacks, sorting/focus, timer rebuild cost, placement
+collisions and literal-source parsing boundaries. No new product feature scope.
+Run focused stress/regressions, format/analyze and normal Windows release.
+
+Fixed reproducible export corruption: an aligned heading followed immediately by
+a code fence containing a blank line split one fence into two and consumed prose.
+Alignment now marks one line and resolves after standard parsing, with a linear
+marker pass. Added exact fence/prose and 1,200-marker regressions.
+
+Canvas/workshop fixes: isolate countdown rebuilds from sorting/list rows; read
+current score for rapid clicks; keep keyed row identity during ranking; correct
+fractional countdown display; guard unapplied bulk/vote drafts; keep stale-save
+tallies visible; left-align idea labels. Color clustering avoids fixed/unselected
+solid content and adds no no-op Undo. CSV includes protected visible notes and
+works read-only, with bounded complete output and UTF-8 BOM. User Vaults untouched.
+
+Validation: 57 heavy-use/native PDF/storage/performance checks passed, plus 51
+editor/Canvas/publication checks. Final 14 audit/Canvas regressions passed after
+polish, including row identity and no-op Undo; over 100 distinct targeted cases
+across these runs. Exercises 1,000-note native reopen, seeded mixed Canvas history
+and index consistency, repeated native save/reopen conflicts, 300-page PDF distant
+render/text/navigation, 10,000 highlights, 100,000 ink samples, large note indexes,
+200-note clustering, 390px/200% dialog layouts and exact export fidelity. Native
+PDF benchmark: six distant text/raster measurements 236 ms in this synthetic run;
+not a frame-latency or physical pen guarantee. Workshop desktop visually inspected.
+Strict format: 793 files, no changes; final analyzer clean (6.3 sec).
+Normal Windows release succeeded (72.5 sec), including standalone server.
+Fresh AOT/runtime/assets/server files and lib/main.dart target verified.
+No Git publication or server start.
+
+Limits: this is a focused audit, not full-app proof or physical stylus/multi-device
+acceptance. Existing manual voting/local timer limits remain.
+Suggested next task: real-session clipboard and cross-pane selection acceptance
+with varied browser/office clipboard payloads and repeated mode switches.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
+## Previous task
+
+# Delivered — Canvas brainstorming and workshop pack, 2026-10-26
+
+Owner requests missing Miro-style features and prioritizes workshops/brainstorming.
+Scope CAN-04/05/10/14/15: bulk editable sticky notes, deterministic color clustering,
+CSV idea export, local workshop countdown and facilitator-controlled vote tallies.
+Use existing scene/history/persistence. No claim of participant-authenticated votes,
+synchronized timers, complete Miro parity or new backend. Guard stale/read-only
+callbacks, preserve locked/grouped/container items, IDs and unknown data. Test
+bulk limits, recovery/undo, dialog layout and stale board rejection, then Windows.
+
+Implemented toolbar lightbulb and context entries; bulk line/paragraph sticky
+creation with bounded counts/size, automatic taller notes and grouped Undo;
+deterministic color clustering preserving IDs/metadata and skipping protected
+placements; CSV with complete quoted text and spreadsheet-formula neutralization.
+Workshop panel supplies local monotonic pause/reset countdown, manual vote edits,
+score ranking and source navigation; save tallies as one undoable placement command.
+Stale board/revision/read-only callbacks reject mutation. Blocked bulk drafts stay
+in this editor instance for reopening. No backend or universal object duplication.
+
+Validation: 33 focused Canvas/arrangement/history/group/column tests passed.
+Final seven workshop regressions passed after draft recovery/polish, including
+390px/200% controls, timer disposal, votes/Undo, native JSON round-trip/unknown
+fields, switched-board refusal and retained draft. 200-note pure clustering took
+24.4 ms in initial debug run and 11.7 ms in final run; no overlap in generated
+cluster geometry. These numbers exclude routing/painting and are not device
+frame-latency acceptance. Bulk/workshop desktop dialogs visually inspected.
+Final analyzer clean (8.2 sec), strict formatting previously 792 files unchanged;
+last test capture wrapper formatted separately. Normal Windows release succeeded (90.2 sec), including standalone server.
+Verified main.dart target and fresh AOT/runtime/assets/server files. No server
+started and no Git publication.
+
+Limits: no authenticated participant ballots, synchronized timer, persistent
+cluster objects or AI semantic clustering. User Vaults unchanged.
+Suggested next task: shared workshop sessions with participant vote budgets and
+a synchronized host-controlled countdown through the existing collaboration server.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
+## Previous task
+
+# Delivered — H1 chapter breaks and justified paragraphs, 2026-10-26
+
+Owner requests a global option starting every H1 on a fresh export page and
+Blockformat in the Markdown editor, interpreted as Blocksatz (justification),
+because block-type conversion already exists. Scope existing EDT/PORT paragraph
+alignment and publication settings. Preserve exact Markdown, undo/selection,
+code literals and old settings; support Rich/Read/Source and PDF/HTML/Word.
+Validate focused editing/pagination regressions and normal Windows release.
+
+Implemented persisted optional h1PageBreaks, default off, retained through style
+presets and cleared by Reset style. It decorates every current/future H1 across
+PDF/HTML/Word; PDF deduplicates explicit breaks and avoids a blank fresh chapter.
+Toolbar Justify · Blocksatz uses existing portable paragraph alignment comments.
+Rich/Read/Source edits and undo retain inline markup; code remains literal.
+Publishing now retains paragraph alignment, combines HTML style rules safely and
+uses full-width spanning PDF text so alignment is visible without losing pagination.
+
+Validation: 90 focused editor/publication tests passed; 19 visibility/chapter/
+profile tests rerun after PDF width correction. Final geometric assertion checks
+right-aligned heading placement. CRLF/unknown comment safety, code literals,
+H1/H2 boundaries, duplicate page breaks, metadata round-trip and 390px/200% UI
+save flow covered. PDF chapter/alignment fixture rendered and visually inspected.
+Strict formatting: 788 files unchanged; analyzer clean (6.5 sec).
+Normal Windows release succeeded (73.9 sec), including standalone server.
+Main.dart target and fresh AOT/runtime/assets/server files verified. No server
+started, no Git publication and no user Vault changes.
+Suggested next task: paragraph spacing/line-height publication controls using
+the same preview and recoverable settings boundary.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
+## Previous task
+
+# Delivered — PDF export profiles and scalable typography, 2026-10-26
+
+Owner requests continued PDF structure/layout improvement. Scope EDT/PORT-05
+existing publication settings: useful compact, accessible-reading and technical
+profiles alongside existing styles, preserving paper choice, metadata, per-block
+layout and editor theme. Make heading typography scale with body size consistently
+in PDF/HTML/Word. Verify large-text long headings/tables and draft/save behavior,
+then build normal Windows release. No Vault mutation or schema migration.
+
+Implemented three additional explained profiles and current/custom descriptions;
+all six presets preserve metadata, paper choice, Canvas inventory, block layout
+and editor appearance. Shared heading scale fixes fixed-size headings in
+large-print PDF/HTML/Word; title and contents typography scale with body size.
+
+Validation: 58 targeted publication/layout/visibility/images/theme/bundle tests
+passed. Final new-profile tests also pass at 390 px width with 200% text scaling,
+including selection and explicit save. Large-print fixture retains 45 table rows,
+very long headings and end sentinel over seven pages. PDF contents, heading and
+table pages visually inspected. No user Vault changes.
+Strict formatting: 787 files, no changes. Final analyzer clean (6.7 sec).
+Normal Windows release succeeded (76.0 sec), including standalone server.
+Verified main.dart target and fresh AOT/runtime/assets/server files. No server
+started, no Vault changes and no Git publication.
+Suggested next task: per-Canvas export selection and page-range preview for
+large technical appendices, using existing immutable export snapshots.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
+## Previous task
+
+# Delivered — PDF structure and layout polish, 2026-10-25
+
+Owner requests a broader PDF quality pass. Scope current EDT/PORT publication
+layout, chapter breaks, heading pagination, contents alignment and Canvas page
+navigation while preserving the delivered editor designs and complete content.
+Use existing print-layout settings and snapshot boundaries; no owning migration.
+Plan: heading break controls in the page-aware outline; measured/estimated safe
+heading/figure spacing, fixed-column TOC page numbers, optional whole-board
+overviews before tiled Canvas detail, bounded preview caches and isolated bundle
+generation. Exercise real homework snapshots read-only plus focused regressions;
+build normal Windows release after verification.
+
+Implemented chapter break controls with guarded draft/save behavior, cross-format
+page-break output, duplicate-heading safety, estimated heading/figure pagination,
+aligned linked contents, palette-aware table striping, quieter header/footer,
+optional tiled-Canvas overview/bookmarks/coordinates, small-board scale cap,
+independent combined-preview state and bounded theme surface cache.
+
+Validation: 55 focused publication/layout/theme/images/bundle tests passed.
+Read-only current Software Engineering snapshot exported as a 10-page warm-grid
+note and multi-page Aufgabe 7 Canvas. Visually inspected contents, first body/table
+page, Canvas overview and detail. No missing-resource warnings; source Vault not
+changed. Analyzer clean (68.8 sec). Full suite intentionally not repeated.
+Final 10-test structure/bundle regression rerun passed after warning propagation.
+Strict formatting: 785 files, no changes. Normal Windows release succeeded
+(79.9 sec), including standalone server; main.dart target and runtime/data/AOT
+files verified. No server started, no user Vault changed, no Git publication.
+
+Limits: heading room is estimated, so unusual oversized layouts still require
+preview review; Canvas PDF uses the existing bounded raster renderer.
+Suggested next task: accessible preset profiles for compact handouts versus
+large-print reading, using these existing publication settings.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
+## Previous task
+
+# Delivered — PDF editor design fidelity, 2026-10-25
+
+Owner requests the full editor design in PDF: Orbit palette, writing paper rules,
+and pixel-book/other design chrome, beyond just themed Canvas illustrations.
+Scope existing EDT/PORT publication + LAY presentation, no owning schema change.
+Capture current device-local writing appearance and effective theme when publishing
+opens. Use the same WritingSurfacePainter on each page, bounded photo loading,
+embedded design fonts and searchable paginated text. Provide a plain-document
+opt-out; do not serialize private design/photo recipes into Markdown or sync.
+Carry current Canvas palette onto appendix page backgrounds/headings as well.
+
+Implemented existing shared painter backgrounds, all ten designs/four paper types,
+216-dpi repeated page surfaces, palette-aware text/links/borders/footer, embedded
+Tiny5/Crimson/SpaceMono design fonts and recolored PDF math resources. PDF theme
+snapshots/cache do not alter HTML/Word resources. Personal photos use existing
+position/fit/opacity/readability controls, a reading sheet, dimension/input caps
+and a ten-second load deadline; high contrast omits photos and CRT scanlines.
+Framed designs have a safe minimum print margin. Source text still flows across
+pages; the paginated PDF is not a pixel-for-pixel viewport screenshot.
+
+Validation: 44 focused checks passed across themed PDFs, background photos,
+mixed note/Canvas bundles, selected UML/text references, pagination, attachment
+images and connected publishing. Covers all ten design surfaces, real rendered
+pixel-book/warm-grid/CRT PDFs across multiple pages, searchable end sentinels and
+safe text bounds, photo decoding/reading-sheet/cache/missing fallback/high contrast,
+and narrow enlarged-text controls. Pixel-book and CRT pages visually inspected.
+Strict formatting: 784 files, no changes. Final analyzer clean (6.8 sec).
+Normal Windows release succeeded (79.6 sec), including the standalone collaboration
+server. Verified normal lib/main.dart target, EXE/runtime/AOT/server files and
+payload newer than the final theme/export sources; no profiler marker. Usual
+release run folder updated, no ZIP, server launch, desktop interaction or Vault
+write. This build also contains the earlier combined note/Canvas PDF and mixed
+UML/text Markdown export updates which previously awaited a release.
+
+Suggested next task: page-aware manual break controls in the themed PDF preview.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
+## Previous task
+
+# Submission PDFs delivered; export update awaiting release — 2026-10-25
+
+Latest urgent export: outputs/pdf/Uebung 2 - Aufgaben 1 bis 7.pdf contains all
+seven tasks in order (16 pages), retaining the note text/images and complete
+current Canvases for tasks 2, 3, 4, 6 and 7. Replaced duplicate embedded selections
+with those current complete board snapshots in the export only. Warm Paper palette,
+mixed A4/A3 pages and task bookmarks retained. Reopened all seven parts and merged
+output; no missing-image fallbacks. Inspected rendered Canvas 3 and 7 pages.
+Original Vault untouched; no additional source/release changes for this export.
+
+Urgent follow-up: Canvas publication snapshots now accept the captured app
+ColorScheme instead of forcing dark. Publishing and combined/standalone PDF
+dialogs pass the current theme. Regenerated both submission files with Paper's
+warm palette and inspected an embedded diagram page. Markdown diagram selection
+also includes free connectors/lines, ink, frames and section text; bound internal
+connectors retain implicit resolution. Five focused bundle/selection/palette
+tests pass; existing technical-article workflow regressions passed in the same
+preceding run. No Windows release build yet; installed executable unchanged.
+
+Owner requests standalone Canvas PDF and note-first combined PDF with independent
+Canvas orientation, readable pagination and full bounds. Then explicitly asks to
+finish quickly for imminent submission. Scope PORT/EDT publishing + Canvas export.
+
+Implemented source: shared PDF append callback, standalone Canvas PDF entry in
+Canvas export, note publishing Combine with Canvases dialog with ordered Canvas
+appendices, per-Canvas auto/portrait/landscape/A3/fit or overlapping readable tiles,
+bounded 100 pages per Canvas/500 total and preview-before-save. Original objects
+remain untouched. Three new focused checks pass (coverage/orientation, mixed PDF
+pages/TOC/failure propagation, compact enlarged-text controls). Existing focused
+publishing/image checks passed in the preceding run; one new failure-path test
+was corrected and rerun. Full analyzer attempts stalled and were interrupted;
+no Windows release build completed for this update. Do not claim installed.
+
+Prioritized the imminent submission: generated outputs/pdf/Aufgabe 7.pdf (one A3
+portrait page, matching tall diagram) and outputs/pdf/Uebung 2 mit Aufgabe 7.pdf
+(11 pages, Canvas last). Eight embedded images, no missing-image fallback warnings.
+Actual note and Canvas read as snapshots; no Vault write. Native generation test
+passed, PDF reopened and rendered for visual inspection. PDF source paths and
+relative attachment resolution checked. Mixed-page PDF can use landscape in UI;
+these deliverables use portrait for the tall sequence diagram's readable fit.
+
+Next task: finish analyzer/release verification and build the Windows update;
+audit preservation of explicit light ink on print-paper Canvas exports.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
+## Previous task
+
+# Delivered — Aufgabe 7 editable Canvas content, 2026-10-25
+
+Owner requests transferring their attached Aufgabe_7_Sequenzdiagramm.pdf into
+the existing Software Engineering / Aufgabe 7 Canvas, matching their earlier
+chat solution. Read the named chat and verified identical source PDF hashes.
+No application feature expansion, build, screenshots-in-Canvas or mouse control.
+
+Prepared 138 ordinary editable Canvas elements (44 messages including returns),
+native participant lifelines, Screen actor, activation bars, notes and fragment
+frames. Preserved ordering, created-object start positions, loop bounds, full
+break coverage, result alternatives and source labels. Per-message arrows and
+labels are grouped; message geometry uses ordinary explicitly positioned Canvas
+connectors, not a new live sequence-routing model. Label/frame placement was
+visually inspected with Orbit's renderer and adjusted for native text padding.
+
+Scratch-Vault round-trip and message manifest checks passed. Initial insertion
+was correctly refused by the live Vault lock. After owner closed Orbit, saved
+through WorkspaceRepository/NativeWorkspaceStore with revision/source guards,
+normal recoverable history and an extra original-file backup under .local.
+Existing board identity 92a5d2ae-5ca3-491f-aed1-7cf92073afb6, revision 3 -> 4.
+Reopen confirmed all 138 elements; other five Canvas file hashes unchanged.
+No app code changes; broad code tests/build are unrelated to this content task.
+
+Suggested next task: independent sender/receiver heights for native sequence
+messages, so arrows can stay bound across differently created lifelines.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
+## Previous task
+
+# Implemented — class exercise tools and reviewed sequence drafts, 2026-10-25
+
+Owner requests the missing tools for deriving class diagrams from sequence
+diagrams: navigable associations, self-associations and a quick conversion path.
+Scope CAN-04/05/14/15/16. Preserve source sequences and unknown data. Add only
+reviewed draft generation from typed Canvas lifelines/messages, not image/PDF
+interpretation or semantic correctness claims. Infer only unambiguous literal
+types/explicit signatures; leave unknowns visible. One Undo removes insertion.
+Focused regressions and normal Windows build; no full-suite run.
+
+Implemented class tools in the existing interaction popup and Shapes menu,
+four navigability choices, same-class associations with exterior shared-engine
+loops, and reviewed independent sequence-to-class drafts. Source instances and
+messages remain unchanged. Unknown types and ambiguous replies require review;
+there is no PDF/image interpretation or semantic proof of a class model.
+
+Validation: 60 focused tests passed across sequence drafts, class UML,
+interaction diagrams, connectors and connected publishing. Includes the exercise
+topology, inferred literal returns/overloads, bidirectional and self relations,
+fresh-ID conflicts, source preservation, cancel/insert/one-step Undo, loop
+hit/export/reload/movement, navigation and custom routing preservation, narrow
+dialogs with enlarged text. Fixed a large-text navigation dropdown overflow.
+Final analyzer clean (9.4 sec); strict format check passed across 778 files.
+Normal Windows release built successfully (102.6 sec), including the standalone
+collaboration server. Target lib/main.dart; usual EXE/DLL/data folder, no ZIP or
+server launch. AOT payload newer than edited source; required release files
+verified. No user Vault or desktop/mouse interaction.
+
+Suggested next task: preview/validate class-member signatures and parameter names
+without attempting to infer attributes or hidden navigability from images.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
+## Previous task
+
+# Delivered — high-degree actor routing, 2026-10-25
+
+Owner cancels PDF insertion (already completed manually) and requests reliable,
+readable routing for the many coffee-machine associations shown in screenshots.
+Do not alter personal Canvas files or use mouse/desktop control. Scope existing
+CAN-05/07/14/15/16 routing, actor fan-out, warning legibility and performance.
+
+Plan: reproduce the real geometry read-only with anonymized IDs/text in ignored
+fixtures; identify degree-related port/corridor limits; fix distinct routing
+without shared trunks or bypassing obstacles, exercise 12–64+ associations,
+labels/export/undo/workers and native performance; build normal Windows release.
+Preserve layout, identities, notation, manual paths and unrelated changes.
+
+Delivered reserved independent actor stems, globally distinct tips, validated
+direct associations, adaptive narrow-gutter routing and finer dense-fan search.
+Shared spatial indexing bounds large-board neighbor work and label collisions;
+projected preview labels are reused safely. Direct paths follow the actor during
+drag and warning text no longer clips. No personal Canvas/PDF edits or mouse use.
+
+Current coffee geometry: 9 blocked routes before, all 16 resolved after, including
+repeated moves. 106 combined tests passed; final 42 routing checks and 15 capacity
+checks also passed (overlapping, not summed). Final capacity run includes the
+coffee topology with 600 unrelated objects. Analyzer clean (10.3 sec), strict
+format clean across 779 app/test/tool files. Normal Windows release and matching
+server built (92.0 sec), current AOT/main target/runtime verified.
+
+Native coffee input p95 2.185 ms; extreme 64-numbered-link input p95 29.976 ms.
+No universal planarity, constant latency or pixel-separation guarantee is claimed.
+[Implementation, measurements, acceptance and limits](high-degree-routing-2026-10-25.md).
+
+Suggested next task: offload remaining label-heavy extreme-fan pointer work.
+Stop before implementing it.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
+## Previous task
+
+# Delivered — compact Canvas publication defaults, 2026-10-25
+
+Owner requests hiding the long Canvas source URI/revision and text inventory in
+PDF by default. Keep the actual rendered diagram, authored references and useful
+unavailable-source fallbacks. Add an opt-in publishing checkbox through existing
+portable settings; old settings without the new flag default to compact output.
+Validate native PDF text/images, settings, linked snapshots and export layout;
+build the normal Windows release. No unrelated editor/routing changes.
+
+Implemented optional `canvasDetails` publishing setting, default false including
+older saved styles. Available as **Canvas source and text inventory** in the
+export workspace. Successful Canvas snapshots retain their image/title but omit
+generated provenance/inventory unless explicitly enabled. Original notes/IDs and
+unavailable-source recovery text remain; PDF/HTML/Word share the option.
+
+41 targeted publishing/layout/visibility tests passed (9 sec). Native PDF text
+checks confirm details absent by default and restored on opt-in; PNG embedding,
+precise selections, PDF/HTML/Word resources, compact controls and settings remain
+covered. Root analyzer clean (8.6 sec); strict format clean across 775 lib/test
+files. Evidence: `.local/compact-canvas-publication-{tests,analyze,build}.log`.
+Normal configured Windows release and matching server built (83.4-second Windows
+compile). Verified new export-setting string, required runtime files and absence
+of the profiler entrypoint in release AOT. Updated the usual
+`build/windows/x64/runner/Release/orbit_note.exe` distribution (Dart changes are in
+the sibling `data/app.so`). No archive, personal-Vault launch or publication.
+
+Suggested next task: review page breaks for large diagram exports. Stop before
+implementing it.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
+## Previous task
+
+# Delivered — readable use-case routes and automatic organization, 2026-10-25
+
+Owner requests an explicit organize button, easier-to-follow independent lines,
+fewer unnecessary bends/back-side detours, no shared line segments, and legible
+endpoint multiplicities. Scope CAN-05/07/14/15/16. Preserve existing identities,
+manual routing, unknown data, styles, unrelated board content and undo/redo.
+
+Plan: reproduce the pictured actor/use-case topology; remove unsafe routing
+fallback, improve port/path choice with bounded work; add deterministic,
+component-scoped organization as one history command; test route separation,
+obstacle avoidance, topology/metadata preservation and real performance; build
+the normal Windows release. No full-suite run or personal-Vault mutation.
+
+Delivered the **Organize use-case diagram** toolbar button as one recoverable
+placement command, short-path side scoring and separate relationship corridors.
+Removed the crossing/merged emergency route. Canvas/SVG/hit testing now display
+selectable warnings rather than phantom straight blocked paths; safe interactive
+repair keeps dragging responsive. Existing identities/notation/manual data kept.
+
+80 focused tests passed (14 sec), strict format and analysis clean. Verified
+native Windows drags: event p95 2.474 ms synthetic / 1.001 ms anonymized existing
+layout; maximum 3.082 / 1.205 ms, zero errors. Organizing the existing layout
+needed 7 ms and resolved all 12 relationships. Normal configured Windows release
+and matching server built (97.9 sec); regular entrypoint/runtime/new feature
+strings verified. No global-optimum or arbitrary-graph planarity claim.
+[Implementation, measurements and boundaries](readable-use-case-layout-2026-10-25.md).
+
+Suggested next task: arrangement alternatives for diagrams with many actors.
+Stop before implementing it.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
+## Previous task
+
+# Delivered improvement; residual spikes documented — large-workspace latency and stability, 2026-10-25
+
+Owner requests completing the stability/performance audit: remaining load and
+recalculation spikes, large Vaults, long notes, mixed Canvas/PDF workloads and
+the previously measured ~70-ms routing event. Preserve visuals, capabilities,
+authored data and unrelated sync/PDF/UML work. Focused tests, not the full suite.
+
+Plan: capture reproducible before measurements and exact route snapshots; fix
+measured algorithmic/rebuild hot spots; exercise repository/long-note/PDF/Canvas
+failure boundaries together; rerun native profile measurements and focused
+regressions; analyze/format and build the normal Windows release. Use isolated
+fixtures, no writes to personal Vaults/accounts. Report synthetic versus real
+device/Vault coverage honestly, including retained worst-case limits.
+
+Delivered worker-based cold/release routing, exact geometry optimization,
+unchanged-object reuse, bounded transactional index batches and cancellable
+delayed PDF loading. Combined 160 focused tests passed; final routing group
+21 passed (overlapping, not additive). Strict format and app/vendor analysis
+clean. Normal configured Windows release and matching server built (93.1 sec).
+Synthetic release event 43.508 → 0.799 ms; native index 867 → 298–303 ms.
+One synthetic in-gesture fallback still took 44.813 ms; cold GPU raster reached
+163.428 ms. These residual limits are open, not universal performance closure.
+[Workloads, before/after evidence and acceptance limits](large-workspace-performance-2026-10-25.md).
+
+Suggested next task: remaining invalid-preview routing fallback and first-raster
+spikes. Stop before implementing it.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
+## Previous task
+
+# Windows delivered; Android acceptance blocked — background Drive sync, 2026-10-25
+
+Owner authorizes completing device synchronization: closed-app/background runs,
+Windows/Android convergence, reconnect/conflict safety and Drive revision cleanup.
+No physical Android device is available (owner confirmed). Real-device acceptance
+must remain explicitly unverified; isolated native two-client and network-failure
+checks will be used. Preserve unrelated diagram/PDF work and local-first authority.
+
+Implement opt-in platform background scheduling through the existing repository,
+Vault locking, account binding and SyncEngine. No surprise task installation or
+uploads: enablement is an app setting; background execution never opens consent
+UI. Use reviewed immutable cleanup receipts before old payload removal; older
+clients fail closed after the protocol upgrade. Keep the revision metadata,
+current heads, conflicts and tombstones. Metadata compaction is not delivered;
+the 10,000-record safety bound remains. Interrupted maintenance is replayable.
+Focused tests/platform builds and documentation evidence required. No personal
+Vault transfer, external deletion, active background task installation or public publication is
+performed as part of development validation.
+
+Implemented scope and acceptance limits:
+[background Drive delivery](background-drive-2026-10-25.md),
+[ADR-0033](../adr/0033-background-drive-and-payload-retention.md).
+
+78 focused sync tests passed; analyzer clean. Windows release and hidden disabled
+worker validated. A temporary disabled Task Scheduler schema test was accepted,
+queried and immediately deleted; no job executed. Android build attempted but
+blocked by missing SDK; no physical Android device is available. Real-account
+background runtime/physical acceptance and graph metadata compaction remain
+explicitly open; this is not a claim that every original sync gap is closed.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
+## Previous task
+
+# Validated — use-case routing performance, 2026-10-24
+
+Owner reports useful paths with minimal crossings but severe lag; explicitly
+requested performance tests and focused validation, NOT the full ~3,000-test suite.
+Scope existing CAN-05/07/14/15/16 geometry and interaction performance. Accepted
+route/label presentation and unrelated PDF/sync changes preserved.
+
+Exact routing-input cache reuse removes complete searches for styling, stacking
+and attached fallback-coordinate updates. Related drag/history writes batch
+spatial bounds refreshes; in-batch queries remain current. Spatial line filtering
+and grid-edge collision memoization accelerate searches. Validated interactive
+path continuation avoids whole-graph routing at each pointer sample; release and
+cancellation restore canonical geometry. Captured cold routes and label boxes
+are identical to the baseline. No durable data/schema change.
+
+**88 focused tests passed** (17 sec), including five new cache/batch/gesture
+regressions; no full-suite run. Analyzer clean (82.4 sec); format/strict clean
+across 764 lib/test files, plus both benchmark tools. Isolated native Windows
+profile: 32 input moves, event p95 **2.853 ms**, frame-build p95 **3.549 ms**,
+raster p95 **3.821 ms**, no errors. One full-layout event still took 69.992 ms;
+release/finalization 49.535 ms. No physical-device latency guarantee.
+[Before/after evidence, limitations and logs](use-case-performance-2026-10-24.md).
+
+Configured Windows app and matching standalone server built (90.8-second Windows
+compile). All 910 frozen inputs unchanged; seven runtime/server files, regular
+app PDF control and absence of the synthetic profiler entrypoint verified.
+Updated `build/windows/x64/runner/Release/orbit_note.exe`. Only the isolated
+synthetic profiler ran and closed itself; no personal Vault/account, main-app or
+server launch, GitHub publication, Android/web rebuild or archive.
+
+Suggested next task: profile remaining full-layout spikes using a larger
+anonymized diagram. Stop before implementing it.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
+## Previous task
+
+# Built, runtime untested — separated obstacle-avoiding use-case connections, 2026-10-24
+
+Owner clarified all requirements together: avoid use-case interiors, avoid other
+lines/crossings, never merge separate relationships, and clearly associate each
+multiplicity with its own line. Explicitly requested NO tests and a Windows build.
+This supersedes both previous routing presentations below.
+
+Automatic use-case links now route with hard line-corridor separation instead of
+crossing/overlap penalties or direct-line fallback. Node clearance is retained;
+actor/oval ports are distributed. Alternate endpoint sides and up to six ordering
+passes retry blocked links. Search is bounded per candidate. If an impossible or
+exhausted layout has no free route, show a selectable 'Move items to route this
+connection' indicator instead of fabricating a crossing/merged connection. No
+stored relationship is removed. Endpoint multiplicities are placed inline on
+their own line with a small outlined background and avoid other routes/labels.
+Canvas, SVG, Markdown previews, hit areas and selected export bounds share it.
+
+Tests and analyzer deliberately not run per owner instruction. Changed Dart files
+formatted; configured Windows app and matching standalone server built successfully
+(94.5-second Windows compile). Seven runtime/server files and the new safe-routing
+fallback text in AOT verified. Updated usual
+`build/windows/x64/runner/Release/orbit_note.exe`. Eleven existing regression cases
+were adjusted to the new contract but NOT executed. Owner confirmed app closure
+for replacement. No runtime acceptance or universal planar-routing guarantee is
+claimed. Source snapshot: `.local/uml-separated-final-inputs.json` (907 inputs);
+build log: `.local/uml-separated-windows-20261024.log`.
+No personal Vault edits or GitHub publication. Prior validation counts apply
+only to the previous revisions, not this changed routing algorithm.
+
+Suggested next task: optional manual waypoints for blocked layouts; stop before
+implementing it.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
+## Previous task — superseded presentation below
+
+# Validated — independent use-case lines, 2026-10-24
+
+Owner rejected bundled automatic routes: connections appeared joined and harder
+to trace. Explicitly requested a quick fix, no large test-suite rerun, and a
+Windows release. Removed the automatic Manhattan search/shared lanes/opposite-side
+detours. Existing default use-case links now draw independent direct segments,
+with distinct endpoint ports and retained multiplicity label spacing. Manual
+curves/orthogonal routes, endpoint guidance, direction-swap multiplicities and
+SVG bounds remain. No stored diagram data is changed.
+
+Eleven focused diagram checks passed (one second execution plus compilation),
+including an explicit no-common-lane regression, actor move/Undo/Redo/reopen,
+label positions/hit areas, direction swapping, manual routes and SVG. The full
+suite is intentionally NOT rerun for this revision, per owner instruction.
+Analyzer clean (7.4 seconds); changed files formatted. Windows app and matching
+standalone server built successfully (81.9-second Windows compile). All 907 frozen
+inputs unchanged and seven runtime/server files present. The usual
+`build/windows/x64/runner/Release/orbit_note.exe` is updated. No app/server launch,
+GitHub publication, Android/web build or personal Vault modification. Logs:
+`.local/uml-independent-{tests,analyze}.log` and
+`.local/uml-independent-windows-20261024.log`. A final brace-only analyzer style
+correction followed the focused tests; no functional change. See updated
+spatial-board behavior.
+
+Suggested next task: optional manual connector waypoints; stop before implementing.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
+## Previous task — superseded routing behavior below
+
+# Validated — use-case multiplicities and obstacle routing, 2026-10-24
+
+Owner reports overlapping/illegible actor-end multiplicities and connections
+crossing use cases/other lines. Scope CAN-04/05/07/14/15/16: repair existing
+use-case relationships in the shared Canvas/Markdown/export geometry. Preserve
+stored endpoint labels, identities, manual routing, sequence/class diagrams,
+undo/history and unknown data. Inspect the authorized Software Engineering chat
+for the actor-end `2..*` example; no homework changes or messages to that chat.
+
+Implemented derived obstacle-aware routes for existing automatic use-case links,
+separate shared actor ports and endpoint labels, and spatial bounds refresh when
+unrelated obstacles change. Alternate actor-side escape avoids crossings beside
+the figure. From/To guidance names the endpoint; swapping direction carries its
+multiplicity. Label edits retain authored manual routes/anchors. SVG selection
+bounds include actual detours and endpoint labels. Route calculations remain
+local and derived; no durable migration or source-content copying.
+
+Full suite: **3,059 passed, five existing skips** (13:32, concurrency 2), including
+11 new regressions for labels, obstacle/crossing avoidance, move/remove/undo/reopen,
+hit/index areas, manual route preservation, reversed endpoints, temporary drags,
+selected SVG and direction swapping. Real-font light/dark previews reviewed.
+Analyzer clean (18.4 seconds); format/strict clean across 763 files. All 907 frozen
+inputs unchanged through checks and final build. Configured Windows app and
+matching standalone server built (117.4-second Windows compile). Runtime files
+and new endpoint guidance/multiplicity examples in release AOT verified, alongside
+the previous PDF retry control. The usual
+`build/windows/x64/runner/Release/orbit_note.exe` is updated. No personal Vault
+changes, app/host launch, Android/web rebuild or GitHub publication.
+[Behavior, checks and routing limits](use-case-routing-2026-10-24.md).
+
+Suggested next task: user-adjustable waypoints for intentionally arranged
+use-case connections. Stop before implementing it.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
+## Previous task
+
+# Validated — PDF rendering reliability and performance, 2026-10-24
+
+Owner reported PDF pages disappearing into blank pages after scrolling and
+reopening tabs. Scope FILE-04/05/11/12/13: existing reading, selection and
+annotation performance/reliability while preserving visual quality.
+
+Confirmed upstream Windows custom-read synchronization race (issue 595),
+equal-key initialization race (PR 727), and cache eviction below budget.
+Tracked compatibility packages backport fixes without requiring a Flutter/Dart
+upgrade or changing PDFium, durable formats or source bytes.
+[Dependency provenance and patches](../../third_party/README.md).
+
+Visible previews precede neighbour work and start after positioning the restored
+viewport. Preview/high-resolution jobs coalesce and share a serial native-render
+queue per cache. Canceled/retired decodes cannot populate a new source's caches.
+Off-screen previews survive within budget; eviction runs once per paint.
+Transient preview failures retry at most three times, then offer a page retry
+that preserves document, page, zoom and selection. Native reads use bulk copying;
+retired text and document loads are released safely.
+
+Validation: **201 focused tests passed** (37 seconds), including deterministic
+Windows spurious wakeups, >1 MiB callback-backed reopen/render, full-resolution
+pixel fidelity, startup rebuild/disposal, cache eviction/reuse, high-DPI
+coalescing and selection-preserving retry. Root and both compatibility-package
+analyzers clean; format/strict clean across 761 application/test files.
+Native Windows profile completed a 300-page/24,000-region PDF workload without
+reported errors. Cold-load/distant-jump frame spikes remain; physical stylus and
+full-suite acceptance were not rerun. [Evidence and limits](pdf-rendering-reliability-2026-10-24.md).
+
+Final Windows release (76.4-second compile), matching standalone server and web
+release (103.8 seconds) built. All 905 frozen implementation/test/tool/asset inputs
+remain identical to those validated. Required runtime files and new recovery
+strings verified in release AOT. The user closed Orbit Note again for replacement;
+the normal `build/windows/x64/runner/Release/orbit_note.exe` is updated. No personal
+Vault/PDF uploaded or modified, app/server launch, GitHub publication or Android rebuild.
+
+Suggested next task: an exportable PDF diagnostic report excluding document text
+and private file paths.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
+## Previous task
+
 # Validated — unified folder/file Explorer, 2026-10-24
 
 Owner requested right-click PDF/file imports into subfolders and organized loose
@@ -42,6 +1741,42 @@ preview tag avoids the GitHub release build workflow.
 
 Suggested next task: direct external file drops onto individual folder rows.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Validated — loose PDF and document synchronization, 2026-10-24
@@ -79,6 +1814,42 @@ Real-account and physical second-device testing were not repeated.
 Suggested next task: a user-facing preflight list explaining unsupported files
 before starting a bulk Vault upload.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Published — Windows preview, 2026-10-24
@@ -96,6 +1867,42 @@ Vaults, temporary PDFs, SDKs and build output are excluded from source commits.
 No long tests/builds were rerun and CI was skipped as requested. The existing
 3,030-test validation below predates publication. Android was not rebuilt.
 Further PDF-performance work was paused before implementation at owner request.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task
 
@@ -134,6 +1941,42 @@ untested; reports use synthetic input/documents and no personal Vault/account.
 Suggested next task: reduce measured cold-preview warmup and first/distant PDF
 page-transition spikes. Physical pen acceptance is a separate pending check.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Validated — Native PDF and pen performance, 2026-10-24
@@ -166,6 +2009,42 @@ unmeasured. No private Vault/cloud operation, app/server launch or shutdown.
 
 Suggested next task: physical stylus/profile-mode input and frame-latency
 acceptance with representative large real documents. Stop before another feature.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task
 
@@ -226,6 +2105,42 @@ with checksum recorded in `release-assets/SHA256SUMS-Windows.txt`.
 Suggested next task: native PDF/pen performance and interaction acceptance for
 these effects with large real documents; do not build another feature ahead.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Validated — Use-case and sequence diagrams, 2026-10-23
@@ -246,6 +2161,42 @@ the existing SDK Wasm/Cupertino-font warnings. No native/manual acceptance or
 Android build is claimed. No app/host launch, private Vault/account work,
 publication or shutdown. Existing work remains.
 [Scope, use, evidence and limits](uml-interaction-diagrams-2026-10-23.md).
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task
 
@@ -287,6 +2238,42 @@ Preview: `build/previews/orbit-settings-appearance.png` (also Code/compact sampl
 Next suggested task: user-defined settings profiles using existing Spaces, with
 preview and recoverable apply; stop before that feature.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Validated — Shared semantic colors and Orbit defaults, 2026-10-23
@@ -320,6 +2307,42 @@ Preview: `build/previews/orbit-semantic-colors.png`.
 Next suggested task: native focus/hover/selected/disabled and high-contrast audit;
 stop before implementing it.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Validated — System appearance for paired palettes, 2026-10-22
@@ -351,6 +2374,42 @@ publication or shutdown.
 Run `build/windows/x64/runner/Release/orbit_note.exe` with sibling runtime files.
 Next suggested task: explicit preferred light/dark pairing for original/custom
 themes; stop before that expansion.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task
 
@@ -388,6 +2447,42 @@ Vault/account work, publication or shutdown. All prior dirty work preserved.
 Run `build/windows/x64/runner/Release/orbit_note.exe` with sibling runtime files.
 Next suggested task: optional system-driven light/dark switching for paired
 palettes; stop before that expansion.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task
 
@@ -427,6 +2522,42 @@ Run `build/windows/x64/runner/Release/orbit_note.exe` with sibling runtime files
 [Full evidence and operation](live-shared-sync-2026-10-22.md).
 Next suggested task: constrained mobile background jobs and physical-device
 acceptance once SDK/device access exists; stop before that platform expansion.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task
 
@@ -473,6 +2604,42 @@ Run `build/windows/x64/runner/Release/orbit_note.exe` with its sibling runtime f
 Next suggested task: complete live shared-Vault new/deleted-object and attachment
 replication with push events and device acceptance; stop before that expansion.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Validated — Connected publishing snapshots, 2026-10-22
@@ -505,6 +2672,42 @@ is saved; follow with normal shutdown only, no forced app closure. A short-delay
 hidden helper may invoke `shutdown /s /t 0`; unsaved applications may block it.
 See `.local/connected-publishing-shutdown-plan.json` for dispatch state if present.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Validated — Complete visible PDF content, 2026-10-22
@@ -535,6 +2738,42 @@ glyphs, complex SVG and live workspace widgets retain explicit fidelity warnings
 Next suggested task: resolved Canvas/live-object previews in publishing; stop
 before implementing it.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Validated — Markdown PDF images, 2026-10-22
@@ -563,6 +2802,42 @@ local import. No personal Vaults/accounts, live image sites, desktop control or 
 launch. Prior uncommitted sync work is retained; no publication or APK rebuild.
 [Evidence and limits](markdown-pdf-images-2026-10-22.md).
 Next suggested task: SVG image normalization for publishing; stop before implementing it.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task
 
@@ -593,6 +2868,42 @@ deletion/attachment streaming remain outstanding.
 Next suggested task: durable shared new-object/attachment synchronization with
 explicit deletion and recoverable operation replay; stop before implementing it.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Published — GitHub Windows/Android 1.0.2 preview, 2026-10-21
@@ -618,6 +2929,42 @@ acceptance remains pending. [Evidence and limits](github-publication-2026-10-21.
 Next suggested task: physical Android update/import and cross-device acceptance;
 stop before implementing it.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Validated — Math explanation paste, 2026-10-21
@@ -640,6 +2987,42 @@ The previous running app/release folder remains intact. Physical clipboard/devic
 acceptance remains unverified; [evidence and limits](math-explanation-paste-2026-10-21.md).
 Next suggested task: equation labels, numbering and cross-references; stop before
 implementing it. Earlier unrelated changes are preserved.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task
 
@@ -664,6 +3047,42 @@ open. No desktop control, personal Vault/account access, publishing or shutdown.
 Next suggested task: local daily reminders and mobile quick logging; stop before
 implementing it. Earlier unrelated uncommitted work is preserved.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Validated — Shared Canvas review and everyday templates, 2026-10-20
@@ -682,6 +3101,42 @@ Unknown common bases/document metadata conflicts retain existing recovery.
 No desktop control, personal Vaults, cloud mutations, publishing or shutdown.
 Next suggested task: save personal notes and Canvas layouts as reusable templates;
 stop before implementing it.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task
 
@@ -703,6 +3158,42 @@ GitHub releases/APK unchanged. No CRDT/new-object/attachment streaming expansion
 Next suggested task: placement-level review of overlapping shared Canvas edits;
 stop before implementing it.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Published — GitHub source and Windows/Android preview, 2026-10-20
@@ -721,6 +3212,42 @@ No personal Vaults or app auto-launch. Next suggested task: physical Android upd
 import and cross-device acceptance with the published preview; stop before it.
 See [publication evidence](github-publication-2026-10-20.md).
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Validated — Editor transactions and split-pane reliability, 2026-10-20
@@ -738,6 +3265,42 @@ Vault mutation, publishing or shutdown. Next suggested task: structured
 table/code-block selection and command ownership across split panes. Stop before
 implementing it.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Validated — Split-pane navigation and focus quality, 2026-10-20
@@ -753,6 +3316,42 @@ and font hashes. See [evidence and limits](split-focus-quality-2026-10-20.md).
 Preserve unrelated work and portable data. No desktop control, personal Vault
 mutation, publishing or shutdown. Next suggested task: find/replace and undo/redo
 ownership while switching split panes. Stop before implementing it.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task
 
@@ -771,6 +3370,42 @@ mutation, publishing or shutdown. Next suggested task: split-pane tab switching
 and keyboard focus restoration after dialogs with several long documents. Stop
 before implementing it.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Validated — Metadata dialog quality, 2026-10-19
@@ -787,6 +3422,42 @@ Preserve unrelated work and portable data. No desktop control, personal Vault
 changes or shutdown. Next suggested task: bulk tag/project assignments and retained
 relation pickers under concurrent edits, large selections and failed saves. Stop
 before implementing that follow-up.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task
 
@@ -805,6 +3476,42 @@ shutdown. Next suggested task: Explorer rename/property/color dialogs under
 concurrent edits, retained callbacks and narrow/large-text layouts. Stop before
 implementing it.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Validated — Creation and source/file workflow quality, 2026-10-19
@@ -820,6 +3527,42 @@ and portable originals are preserved. No desktop control, personal Vault changes
 or shutdown. Suggested next task: mixed-type bulk move/delete/restore and guarded
 Undo after partial failures or later edits. Stop before implementing it.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Validated — Kanban and project-board quality, 2026-10-19
@@ -833,6 +3576,42 @@ fresh payloads, runtime files and font hashes verified. See
 unknown data and legacy scope semantics are preserved. No desktop control,
 personal Vault changes or shutdown. Suggested next task: specialized-object
 creation flows, including the generic Other type group. Stop before implementing it.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task
 
@@ -848,6 +3627,42 @@ unrelated changes and legacy scope precedence are preserved. No desktop control,
 personal Vault changes or shutdown. Suggested next task: Kanban cross-view edits
 and large-project board interactions. Stop before implementing it.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Validated — Writing font and zoom quality, 2026-10-18
@@ -860,6 +3675,42 @@ fresh payloads and all packaged font faces/hashes verified. See [changes, checks
 and limits](writing-font-quality-2026-10-18.md). No desktop-control testing,
 personal Vault changes or shutdown. Preserve unrelated work. Suggested next task:
 document preview/export font-style fidelity audit. Stop before implementing it.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task
 
@@ -874,6 +3725,42 @@ No desktop-control testing, personal Vault changes or shutdown. Preserve all
 unrelated working-tree changes. Suggested next task: Canvas connector routing
 and UML editing quality audit. Stop before implementing it.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Validated — Editor and document-tool quality, 2026-10-17
@@ -886,6 +3773,42 @@ boundaries](editor-quality-2026-10-17.md). No desktop-control testing or shutdow
 Suggested next task: Canvas selection, drag-and-drop and cross-editor clipboard
 quality. Stop before implementing it; preserve all unrelated working-tree changes.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 # Validated — Technical articles and CMS publishing, 2026-10-17
@@ -894,6 +3817,42 @@ Implement the owner's technical-article, memory/reverse-engineering diagram and
 SEO publishing request. WordPress/another CMS is the chosen destination.
 See [scope, plan and evidence](technical-articles-2026-10-17.md). Preserve the
 completed PDF work and unrelated changes. Do not repeat the previous shutdown.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task
 
@@ -994,6 +3953,42 @@ Suggested next task: import existing native PDF annotations into linked Orbit
 review notes, with explicit fidelity warnings and recoverable duplicate handling.
 Do not implement that next task as part of this completed update.
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task
 
 ### Validated — PDF note deletion and extraction reliability, 2026-10-16
@@ -1065,6 +4060,42 @@ Suggested next task: keyboard navigation and multi-selection for PDF review
 items, building on the existing recoverable deletion commands. Stop before
 implementing the next task. These checks cover the reproduced failures and
 related save/deletion paths, not a claim that every PDF issue is resolved.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task
 
@@ -1138,6 +4169,42 @@ filename; the corrected check confirms the actual OrbitNote-Server.exe.
 
 Suggested next task: vector diagram snapshots in published PDF/HTML/Word output,
 with explicit source/freshness details. Stop before implementing it.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task
 
@@ -1222,6 +4289,42 @@ manual device acceptance, desktop control, personal data, publishing or ZIP.
 
 Suggested next task: Mermaid UML classDiagram import/export with fidelity
 checks and preserved authored member signatures.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task
 
@@ -1311,6 +4414,42 @@ No complete Acrobat-parity or PDF-wide keyboard undo/redo claim is made.
 
 Suggested next task: PDF annotation keyboard shortcuts and document-wide
 annotation undo/redo with the same durable recovery guarantees.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task
 
@@ -6482,6 +9621,42 @@ Suggested next task: native performance review of large populated workspaces.
 
 ---
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task — Go to Line (Ctrl+G), Live Line:Column Status Indicator, Auto-Pairing & Delimiter Wrapping, and Line Move/Duplicate Shortcuts, 2026-09-27
 
 Owner request: "go on and more little but noticiable features and no ai slop", "Go for more tiny but noticeable features" (Subtle, highly noticeable productivity and editing enhancements strictly adhering to Orbit Note's "quiet observatory" dark graphite design system, local-first offline invariants, and zero AI slop).
@@ -6543,6 +9718,42 @@ Suggested next task: Document History / Revisions Inspector Panel allowing users
 
 ---
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task — Document Breadcrumbs Trail, Tab Pinning Header Control, Word Goal Progress Badge & Quick Copy Options, 2026-09-27
 
 Owner request: "go on and more little but noticiable features and no ai slop" (High-utility productivity features adhering strictly to the "quiet observatory" dark graphite design system, local-first offline invariants, and zero AI fluff).
@@ -6601,6 +9812,42 @@ Suggested next task: Document History / Revisions Inspector Panel allowing users
 
 ---
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task — Quick Switcher & Note Header Focus/Bookmark Controls, 2026-09-27
 
 Owner request: "go on and more little but noticiable features and no ai slop" (Subtle, highly noticeable productivity and navigation enhancements following Orbit Note's "quiet observatory" design tokens, local-first offline invariants, and zero AI noise).
@@ -6637,9 +9884,81 @@ Suggested next task: Breadcrumb navigation trail in Note and Canvas headers disp
 
 ---
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task — Note Outline Rail, Target Goals & Fast Format Copy, 2026-09-26
 
 ---
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task — Product design and UI quality, 2026-09-24
 
@@ -6670,6 +9989,42 @@ shortcuts dialog. Next suggested task: populated Canvas/PDF native review and
 physical DPI-transition checks.
 
 ---
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task — Dedicated LaTeX Document Editor & Mathematics Authoring Pass, 2026-09-24
 
@@ -6725,6 +10080,42 @@ Suggested next task: Direct transclusion and live linking of LaTeX theorem and e
 
 ---
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task — Bookmark sorting and keyboard navigation, 2026-09-24
 
 Owner request: Add bookmark sorting and arrow-key navigation.
@@ -6752,6 +10143,42 @@ review in this pass.
 Suggested next task: bookmark-browser keyboard navigation from focused result rows.
 
 ---
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task — Named PDF bookmarks and previews, 2026-09-24
 
@@ -6781,6 +10208,42 @@ in 53.6 seconds (`.local/pdf-bookmarks-build.log`). No fresh manual native visua
 Suggested next task: keyboard arrow navigation and sorting in the bookmark browser.
 
 ---
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task — Searchable PDF outline, 2026-09-22
 
@@ -6814,6 +10277,42 @@ Suggested next task: named personal bookmarks with search and page previews.
 
 ---
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task — PDF reading and navigation tools, 2026-09-22
 
 Owner request: Add more Acrobat-style features; preference: reading and navigation.
@@ -6843,6 +10342,42 @@ Evidence: `.local/pdf-reading-focused.log`.
 Suggested next task: a searchable outline panel for long PDFs.
 
 ---
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task — PDF keyboard navigation, 2026-09-22
 
@@ -6875,6 +10410,42 @@ closing search or switching between reader panes.
 
 ---
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task — PDF controls in narrow and short panes, 2026-09-22
 
 Owner request: Proceed with the suggested PDF toolbar and annotation-dialog audit.
@@ -6903,6 +10474,42 @@ keyboard input and constrained pane heights.
 
 ---
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task — Search and calendar layout reliability, 2026-09-21
 
 Owner request: Look for more issues like the formula-menu overflow and fix them.
@@ -6930,6 +10537,42 @@ Suggested next task: audit PDF toolbars and annotation dialogs at narrow widths
 and enlarged text sizes.
 
 ---
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task — Dense Mathematical Canvas & Transclusion Rendering & Minimap Spatial Search Radar, 2026-09-21
 
@@ -6971,6 +10614,42 @@ Suggested next task: Audio voice memos and visual audio player card for Canvas b
 
 ---
 
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
+
 ## Previous task — UI/UX refinement, 2026-09-21
 
 Completed the calmer Home, compact explorer creation/filter menus and calendar,
@@ -6991,6 +10670,42 @@ The combined production Windows release also built successfully in 54.1 seconds.
 
 Suggested next visual task: review dense mathematical boards and complex equation
 fidelity using the newer Canvas rendering.
+
+
+Fixed six reproduced content/failure boundaries: browser destinations containing
+spaces/parentheses/entities, multiline HTML table cells, multi-paragraph/code
+block quotations, PDF quote mixed line endings, repeated Rich cut/undo/redo/paste
+with a stale trailing empty field, and repeated protected-fragment scans on large
+HTML pastes. Note-to-Canvas prose uses buffered accumulation. Existing ordinary
+source/plain-paste behavior, reference identities and document history remain.
+
+Validation: 260 focused tests passed in 66 seconds, covering clipboard failure
+and stale callbacks, split-pane selections/history, tables/code, selection scroll,
+images, PDF quotes and Canvas transfer. New stress acceptance extracts real text
+from 30 synthetic PDFium pages into a 500-paragraph Rich note, then performs five
+cut/undo/redo/paste cycles with exact source restoration. A 180-element connected
+Canvas survives movement, cut/undo and three duplicate/undo cycles with valid
+unique identities. A 4,000-code-run HTML fixture retained all content; conversion
+fell from 1,424 ms before the fix to 118–175 ms in isolated/final synthetic runs.
+These are conversion timings, not an end-to-end frame or hardware latency claim.
+
+Actual Windows Unicode/CF_HTML clipboard helper acceptance passed 12 alternating
+empty/small/multi-megabyte round trips in a private window station, with exact
+UTF-8 fragment byte offsets. User clipboard and personal Vaults were untouched.
+The probe compiles the existing native helper functions and does not launch Orbit.
+External Firefox/Acrobat UI transfer and physical device testing remain unverified.
+No full all-repository test run or device-wide bug-free claim. No architecture or
+storage migration. Logs: .local/clipboard-final-tests.log, clipboard-analyze.log,
+clipboard-format-check.log; native probe: .local/native_clipboard_audit.cpp/.exe.
+
+Final analyzer clean (6.5 seconds); strict format checked 795 files with no
+changes. Normal Windows release built successfully in 79.3 seconds; direct
+EXE, Flutter DLL, current AOT data and standalone server verified. Build targets
+lib/main.dart. No server was started and no credentials were packaged by the
+server build. Run build/windows/x64/runner/Release/orbit_note.exe directly.
+
+Suggested next task: real external browser/Firefox/Acrobat clipboard interoperability
+acceptance on isolated disposable notes, covering native menus and image formats.
 
 ## Previous task — Workspace Tabs, Bookmarking & Backlinks Local Context Graph with 1-Click Linking (Option 2 & Option 5), 2026-09-21
 

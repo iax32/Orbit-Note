@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'connectors.dart';
+import 'use_case_routing.dart';
 import 'geometry.dart';
 
 const canvasElementTypes = {
@@ -249,7 +250,12 @@ class CanvasElement {
 
 /// Unknown root and element fields survive edits. Future schemas are read-only.
 class CanvasScene {
-  CanvasScene.fromJson(Map<String, dynamic> value) : _root = Map.of(value) {
+  /// With [deferAutomaticRouting], keep the scene hidden until prepared routing
+  /// is installed or [finishPendingRouting] completes its spatial index.
+  CanvasScene.fromJson(
+    Map<String, dynamic> value, {
+    bool deferAutomaticRouting = false,
+  }) : _root = Map.of(value) {
     final items = value['elements'];
     if (items is List) {
       _nextOrder = items.length;
@@ -270,6 +276,10 @@ class CanvasScene {
       for (final element in _elements.values) {
         _trackConnector(element);
         if (element.renderable && !element.hidden) {
+          if (deferAutomaticRouting && isAutomaticUseCaseConnector(element)) {
+            canonicalRoutingPending = true;
+            continue;
+          }
           index.put(
             element.id,
             _effectiveBounds(element).inflate(element.strokeWidth),
@@ -285,6 +295,95 @@ class CanvasScene {
   // Reverse references include hidden connectors and missing endpoints, so
   // showing/restoring/replacing an endpoint follows the same update path.
   final Map<String, Set<String>> _attachedConnectors = {};
+  final Set<String> _automaticConnectors = {};
+  bool interactiveRouting = false;
+  bool canonicalRoutingPending = false;
+  int routingEpoch = 0;
+
+  void beginInteractiveRouting() {
+    if (!readOnly) interactiveRouting = true;
+  }
+
+  bool finishInteractiveRouting({bool deferCanonical = false}) {
+    if (!interactiveRouting) return false;
+    interactiveRouting = false;
+    if (hasCurrentUseCaseLayout(this, canonical: true)) {
+      canonicalRoutingPending = false;
+      return false;
+    }
+    if (deferCanonical && hasCurrentUseCaseLayout(this, canonical: false)) {
+      // The retained preview has already passed obstacle/intersection checks.
+      // Keep its bounds/hit testing until the canonical worker result is ready.
+      canonicalRoutingPending = true;
+      return true;
+    }
+    canonicalRoutingPending = false;
+    routingEpoch++;
+    revision++;
+    _refreshAutomaticConnectors();
+    return false;
+  }
+
+  bool applyPreparedRouting(PreparedUseCaseRouting prepared) {
+    if (!canonicalRoutingPending || interactiveRouting) return false;
+    if (!_automaticConnectors.any(
+      (id) =>
+          _elements[id]?.hidden == false && _elements[id]?.renderable == true,
+    )) {
+      canonicalRoutingPending = false;
+      return false;
+    }
+    if (hasCurrentUseCaseLayout(this, canonical: true)) {
+      canonicalRoutingPending = false;
+      return false;
+    }
+    if (!installPreparedUseCaseRouting(this, prepared)) return false;
+    canonicalRoutingPending = false;
+    routingEpoch++;
+    revision++;
+    _refreshAutomaticConnectors();
+    return true;
+  }
+
+  void finishPendingRouting() {
+    if (!canonicalRoutingPending || interactiveRouting) return;
+    canonicalRoutingPending = false;
+    routingEpoch++;
+    revision++;
+    _refreshAutomaticConnectors();
+  }
+
+  int _batchDepth = 0;
+  bool _automaticBoundsPending = false;
+  final Set<String> _pendingConnectorBounds = {};
+
+  /// Coalesce related geometry writes without exposing stale spatial queries.
+  void batch(void Function() mutate) {
+    _batchDepth++;
+    try {
+      mutate();
+    } finally {
+      _batchDepth--;
+      if (_batchDepth == 0) _flushConnectorBounds();
+    }
+  }
+
+  void _flushConnectorBounds() {
+    if (_automaticBoundsPending) {
+      _pendingConnectorBounds.addAll(_automaticConnectors);
+      _automaticBoundsPending = false;
+    }
+    if (_pendingConnectorBounds.isEmpty) return;
+    final ids = List<String>.of(_pendingConnectorBounds);
+    _pendingConnectorBounds.clear();
+    for (final id in ids) {
+      final e = _elements[id];
+      if (e != null && e.renderable && !e.hidden) {
+        index.put(id, _effectiveBounds(e).inflate(e.strokeWidth));
+      }
+    }
+  }
+
   int _boundsRevision = -1;
   CanvasBounds? _cachedContentBounds;
   int _nextOrder = 0;
@@ -300,6 +399,11 @@ class CanvasScene {
 
   void _trackConnector(CanvasElement element, {bool remove = false}) {
     if (!isConnectorElement(element)) return;
+    if (remove) {
+      _automaticConnectors.remove(element.id);
+    } else if (isAutomaticUseCaseConnector(element)) {
+      _automaticConnectors.add(element.id);
+    }
     for (final endpoint in {
       element.startId,
       element.endId,
@@ -314,10 +418,28 @@ class CanvasScene {
     }
   }
 
+  void _refreshAutomaticConnectors() {
+    if (_batchDepth > 0) {
+      _automaticBoundsPending = true;
+      return;
+    }
+    // Obstacles and shared actor ports affect links beyond attached endpoints.
+    for (final id in _automaticConnectors) {
+      final e = _elements[id]!;
+      if (e.renderable && !e.hidden) {
+        index.put(id, _effectiveBounds(e).inflate(e.strokeWidth));
+      }
+    }
+  }
+
   void _refreshAttachedConnectors(String id) {
     for (final connectorId in _attachedConnectors[id] ?? const <String>{}) {
       final conn = _elements[connectorId]!;
       if (conn.renderable && !conn.hidden) {
+        if (_batchDepth > 0) {
+          _pendingConnectorBounds.add(conn.id);
+          continue;
+        }
         index.put(conn.id, _effectiveBounds(conn).inflate(conn.strokeWidth));
       }
     }
@@ -357,6 +479,7 @@ class CanvasScene {
   }
 
   List<CanvasElement> query(CanvasBounds bounds) {
+    _flushConnectorBounds();
     final result = index.query(bounds).map((id) => _elements[id]!).toList();
     result.sort((a, b) => _order[a.id]!.compareTo(_order[b.id]!));
     return result;
@@ -400,13 +523,16 @@ class CanvasScene {
     _elements[element.id] = element;
     _trackConnector(element);
     index.remove(element.id);
-    if (!element.hidden) {
+    if (!element.hidden && _batchDepth > 0 && isConnectorElement(element)) {
+      _pendingConnectorBounds.add(element.id);
+    } else if (!element.hidden) {
       index.put(
         element.id,
         _effectiveBounds(element).inflate(element.strokeWidth),
       );
     }
     _refreshAttachedConnectors(element.id);
+    _refreshAutomaticConnectors();
   }
 
   void remove(String id) {
@@ -417,9 +543,11 @@ class CanvasScene {
     _order.remove(id);
     index.remove(id);
     _refreshAttachedConnectors(id);
+    _refreshAutomaticConnectors();
   }
 
   CanvasBounds? get contentBounds {
+    _flushConnectorBounds();
     if (_boundsRevision == revision) return _cachedContentBounds;
     CanvasBounds? result;
     for (final element in elements.where((e) => e.renderable && !e.hidden)) {
@@ -576,17 +704,19 @@ class CanvasHistory {
   }
 
   void _apply(Map<String, _ElementState> states) {
-    for (final entry in states.entries) {
-      final element = entry.value.element;
-      if (element == null) {
-        scene.remove(entry.key);
-      } else {
-        scene.put(element);
-        if (entry.value.order != null) {
-          scene._order[entry.key] = entry.value.order!;
+    scene.batch(() {
+      for (final entry in states.entries) {
+        final element = entry.value.element;
+        if (element == null) {
+          scene.remove(entry.key);
+        } else {
+          scene.put(element);
+          if (entry.value.order != null) {
+            scene._order[entry.key] = entry.value.order!;
+          }
         }
       }
-    }
+    });
   }
 
   void cancel() {

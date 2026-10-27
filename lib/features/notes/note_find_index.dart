@@ -1,3 +1,4 @@
+import '../../domain/university/lab_document.dart';
 import 'rich/markdown_document.dart';
 import '../../domain/note_composition.dart';
 import '../../domain/publication_layout.dart';
@@ -56,9 +57,7 @@ class _FoldedSegment {
   late final List<int> _sourceEnds;
   late final List<bool> _boundaries;
 
-  List<_FoldedMatch> matches(String query) {
-    if (query.isEmpty) return const [];
-    final foldedQuery = unicodeCaseFold(query);
+  List<_FoldedMatch> matches(String foldedQuery) {
     if (foldedQuery.isEmpty) return const [];
     final result = <_FoldedMatch>[];
     var searchStart = 0;
@@ -82,15 +81,17 @@ class NoteFindIndex {
     this.source, {
     required this.rich,
     Map<String, String>? definitions,
-  }) : referenceDefinitions =
-           definitions ?? MarkdownDocument.referenceDefinitionsFor(source) {
+  }) : _definitions = definitions {
     if (!rich) {
       _segments.add((0, source, null, null));
       return;
     }
+    final document = MarkdownDocument.parse(source);
+    _referenceDefinitions = definitions ?? document.referenceDefinitions;
     var offset = 0;
-    for (final block in MarkdownDocument.parse(source).blocks) {
-      if (offset == 0 && PublicationSettings.metadataLine(block.source)) {
+    for (final block in document.blocks) {
+      if ((offset == 0 && PublicationSettings.metadataLine(block.source)) ||
+          UniversityDocument.metadataLine(block.source.trimRight())) {
         offset += block.source.length;
         continue;
       }
@@ -193,7 +194,10 @@ class NoteFindIndex {
 
   final String source;
   final bool rich;
-  final Map<String, String> referenceDefinitions;
+  final Map<String, String>? _definitions;
+  Map<String, String>? _referenceDefinitions;
+  Map<String, String> get referenceDefinitions => _referenceDefinitions ??=
+      _definitions ?? MarkdownDocument.referenceDefinitionsFor(source);
   final _segments =
       <(int, String, InlineProjection?, StructuredTextProjection?)>[];
   final _titleSegments = <int>{};
@@ -209,6 +213,37 @@ class NoteFindIndex {
   }
 
   final _segmentTexts = <int, String>{};
+  // Reuse Unicode offset projections while the user refines a query. Keep a
+  // bounded LRU: a huge Source block must not retain an unbounded offset table.
+  final _foldedSegments = <int, _FoldedSegment>{};
+  int _foldedUnits = 0;
+  static const _maxFoldedUnits = 262144;
+
+  _FoldedSegment _folded(int segment, String text) {
+    final cached = _foldedSegments.remove(segment);
+    if (cached != null) {
+      _foldedSegments[segment] = cached;
+      return cached;
+    }
+    final value = _FoldedSegment(text);
+    if (text.length <= _maxFoldedUnits) {
+      while (_foldedSegments.isNotEmpty &&
+          (_foldedUnits + text.length > _maxFoldedUnits ||
+              _foldedSegments.length >= 8192)) {
+        final first = _foldedSegments.keys.first;
+        _foldedUnits -= _segmentTextLength(first);
+        _foldedSegments.remove(first);
+      }
+      _foldedSegments[segment] = value;
+      _foldedUnits += text.length;
+    }
+    return value;
+  }
+
+  int _segmentTextLength(int segment) {
+    final (_, raw, inline, structured) = _segments[segment];
+    return (structured?.text ?? inline?.text ?? raw).length;
+  }
 
   String selectedText(int start, int end) {
     final result = StringBuffer();
@@ -242,6 +277,7 @@ class NoteFindIndex {
   }) {
     if (query.isEmpty) return const [];
     final regex = matchCase ? RegExp(RegExp.escape(query)) : null;
+    final foldedQuery = matchCase ? '' : unicodeCaseFold(query);
     final wordStart = wholeWord && _word.hasMatch(query.charactersFirst);
     final wordEnd = wholeWord && _word.hasMatch(query.charactersLast);
     final result = <NoteFindMatch>[];
@@ -253,7 +289,7 @@ class NoteFindIndex {
               for (final match in regex!.allMatches(text))
                 _FoldedMatch(match.start, match.end),
             ]
-          : _FoldedSegment(text).matches(query);
+          : _folded(i, text).matches(foldedQuery);
       for (final match in matches) {
         // Test boundaries in the full segment, never a sliced selection.
         if (wholeWord &&

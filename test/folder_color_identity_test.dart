@@ -165,6 +165,7 @@ void main() {
       await repository.createFolder('Notes/Science/Physics');
       c.setFolderColor('Notes/Science', 0xFF10B981);
       c.setFolderColor('Notes/Science/Physics', 0xFF3B82F6);
+      c.updateSession((s) => s.collapsedFolders = ['Notes/Science/Physics']);
 
       // Rename/move folder to 'Notes/STEM'
       await c.moveFolder('Notes/Science', 'Notes/STEM');
@@ -172,6 +173,7 @@ void main() {
       expect(c.folderColorValue('Notes/Science'), isNull);
       expect(c.folderColorValue('Notes/STEM'), 0xFF10B981);
       expect(c.folderColorValue('Notes/STEM/Physics'), 0xFF3B82F6);
+      expect(c.session.collapsedFolders, ['Notes/STEM/Physics']);
     });
 
     test(
@@ -192,10 +194,12 @@ void main() {
         await repository.createFolder('Notes/Temp/Drafts');
         c.setFolderColor('Notes/Temp', 0xFFF59E0B);
         c.setFolderColor('Notes/Temp/Drafts', 0xFFF43F5E);
+        c.updateSession((s) => s.collapsedFolders = ['Notes/Temp/Drafts']);
 
         await c.deleteFolder('Notes/Temp');
 
         expect(c.folderColorValue('Notes/Temp'), isNull);
+        expect(c.session.collapsedFolders, isEmpty);
         expect(c.folderColorValue('Notes/Temp/Drafts'), isNull);
         expect(c.session.folderColors.containsKey('Notes/Temp'), isFalse);
         expect(

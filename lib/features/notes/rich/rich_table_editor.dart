@@ -308,6 +308,9 @@ class RichTableEditorState extends State<RichTableEditor> {
       case 'copy-html':
         unawaited(copySelectionAsHtml());
         return;
+      case 'copy-markdown':
+        unawaited(copySelectionAsMarkdown());
+        return;
       case 'above':
         if (table.rows.length < 1000) {
           table.rows.insert(row == 0 ? 1 : row, List.filled(table.columns, ''));
@@ -501,7 +504,9 @@ class RichTableEditorState extends State<RichTableEditor> {
       (r) => List.generate(
         maxColumn - minColumn + 1,
         (c) => encode(
-          MarkdownTable.visibleCell(table.rows[minRow + r][minColumn + c]),
+          MarkdownTable.visibleCell(
+            table.rows[minRow + r][minColumn + c],
+          ).replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n'),
         ),
       ).join(delimiter),
     ).join('\n');
@@ -517,12 +522,26 @@ class RichTableEditorState extends State<RichTableEditor> {
   }
 
   Future<void> copySelection() async {
-    if (!hasRectangleSelection) {
-      await copyCell();
-      return;
-    }
+    final accepted = await writeRichClipboard(
+      plainText: _gridText(),
+      html: _gridHtml(),
+    );
+    if (!accepted) _clipboardError();
+  }
+
+  Future<void> copySelectionAsMarkdown() async {
+    final range = selectedRectangle;
+    final first = range?.$1 ?? row, last = range?.$2 ?? row;
+    final left = range?.$3 ?? col, right = range?.$4 ?? col;
+    String line(List<String> cells) =>
+        '| ${cells.sublist(left, right + 1).join(' | ')} |';
+    final text = [
+      line(table.rows.first),
+      '| ${List.filled(right - left + 1, '---').join(' | ')} |',
+      for (var r = first == 0 ? 1 : first; r <= last; r++) line(table.rows[r]),
+    ].join('\n');
     try {
-      await Clipboard.setData(ClipboardData(text: _gridText()));
+      await Clipboard.setData(ClipboardData(text: text));
     } catch (_) {
       _clipboardError();
     }
@@ -548,7 +567,7 @@ class RichTableEditorState extends State<RichTableEditor> {
         .replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;')
         .replaceAllMapped(
-          RegExp(r'&lt;br&gt;', caseSensitive: false),
+          RegExp(r'&lt;br\s*/?&gt;', caseSensitive: false),
           (_) => '<br>',
         );
     final rows = <String>[];
@@ -779,6 +798,7 @@ class RichTableEditorState extends State<RichTableEditor> {
   static const actions = <String, String>{
     'copy-csv': 'Copy selection as CSV',
     'copy-html': 'Copy selection as HTML',
+    'copy-markdown': 'Copy selection as Markdown (with headers)',
     'above': 'Add row above',
     'below': 'Add row below',
     'delete-row': 'Delete row',

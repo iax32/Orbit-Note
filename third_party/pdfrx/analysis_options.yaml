@@ -1,0 +1,2 @@
+# Vendored upstream style; perform language/type analysis independently of app lints.
+{}

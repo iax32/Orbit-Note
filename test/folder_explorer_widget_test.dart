@@ -76,6 +76,9 @@ void main() {
       expect(find.byKey(ValueKey('folder-note:${note.id}')), findsNothing);
       c.openObject(note.id);
       await tester.pumpAndSettle();
+      expect(find.byKey(ValueKey('folder-note:${note.id}')), findsNothing);
+      c.openObject(note.id, reveal: true);
+      await tester.pumpAndSettle();
       expect(find.byKey(ValueKey('folder-note:${note.id}')), findsOneWidget);
       final rootRow = find.byKey(const ValueKey('folder:Notes'));
       final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);

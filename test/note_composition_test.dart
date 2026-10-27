@@ -521,14 +521,20 @@ void main() {
   testWidgets(
     'live tasks write to their canonical owner and drawing edits reject stale data',
     (tester) async {
-      final repo = WorkspaceRepository(
-        store: MemoryStore(),
-        index: MemoryObjectIndex(),
-      );
-      final container = ProviderContainer(
-        overrides: [repositoryProvider.overrideWithValue(repo)],
-      );
-      final controller = container.read(workspaceProvider.notifier);
+      late WorkspaceRepository repo;
+      late ProviderContainer container;
+      late WorkspaceController controller;
+      await tester.runAsync(() async {
+        repo = WorkspaceRepository(
+          store: MemoryStore(),
+          index: MemoryObjectIndex(),
+        );
+        container = ProviderContainer(
+          overrides: [repositoryProvider.overrideWithValue(repo)],
+        );
+        controller = container.read(workspaceProvider.notifier);
+        await controller.initialize();
+      });
       await tester.pumpAndSettle();
       final task = (await tester.runAsync(
         () =>
@@ -550,8 +556,10 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.byType(Checkbox));
-      await tester.runAsync(() => controller.flushAll());
+      await tester.runAsync(() async {
+        await tester.tap(find.byType(Checkbox));
+        await controller.flushAll();
+      });
       await tester.pump();
       expect(controller.find(task.id)!.isCompleted, true);
       await tester.pumpWidget(
@@ -570,30 +578,34 @@ void main() {
       await tester.tap(find.text('Edit drawing'));
       await tester.pumpAndSettle();
       final editor = tester.widget<CanvasEditor>(find.byType(CanvasEditor));
-      editor.onChanged({
-        ...drawing.data,
-        'elements': [
-          {
-            'id': 'first',
-            'type': 'text',
-            'text': 'Accepted',
-            'x': 0,
-            'y': 0,
-            'width': 120,
-            'height': 80,
-          },
-        ],
+      await tester.runAsync(() async {
+        editor.onChanged({
+          ...drawing.data,
+          'elements': [
+            {
+              'id': 'first',
+              'type': 'text',
+              'text': 'Accepted',
+              'x': 0,
+              'y': 0,
+              'width': 120,
+              'height': 80,
+            },
+          ],
+        });
+        await controller.flushAll();
       });
-      await tester.runAsync(() => controller.flushAll());
       expect(
         (controller.find(drawing.id)!.data['elements'] as List).single['text'],
         'Accepted',
       );
-      controller.edit(
-        drawing.id,
-        data: {...drawing.data, 'unknown': 'External edit'},
-      );
-      await tester.runAsync(() => controller.flushAll());
+      await tester.runAsync(() async {
+        controller.edit(
+          drawing.id,
+          data: {...drawing.data, 'unknown': 'External edit'},
+        );
+        await controller.flushAll();
+      });
       editor.onChanged({...drawing.data, 'elements': []});
       expect(controller.find(drawing.id)!.data['unknown'], 'External edit');
       await tester.pump();

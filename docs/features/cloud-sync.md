@@ -1,5 +1,25 @@
 # Cloud sync — delivery status
 
+## Background checks and reviewed payload retention — 2026-10-25
+
+Selected-Vault schedules now offer explicit background checks using Windows Task
+Scheduler or Android JobScheduler. Only existing enabled account-bound Vaults
+are eligible; foreground/shared ownership and individual pause take priority.
+OS/network restrictions can delay checks; this does not promise continuous sync
+after force-stop/sign-out. Device-only run outcomes appear in schedule settings.
+
+Review old Drive payload cleanup previews eligible byte/file totals and requires
+confirmation. It preserves current content, recent objects, at least 20 payload
+versions per object, all revision metadata and local history. Forks prevent cleanup.
+An immutable receipt precedes protocol-3 activation/deletion; interrupted cleanup
+keeps its receipt/targets. Older clients must update before syncing a cleaned
+Vault. This reclaims payload bytes; the 10,000-record metadata bound remains.
+No cleanup runs automatically.
+
+Windows/Dart validation does not establish Android runtime/physical-device
+acceptance. [Evidence and limits](../tasks/background-drive-2026-10-25.md),
+[ADR-0033](../adr/0033-background-drive-and-payload-retention.md).
+
 ## Loose documents and media — 2026-10-24
 
 PDFs and common document/media formats can sync from the Vault root or nested

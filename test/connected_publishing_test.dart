@@ -108,11 +108,12 @@ PublicationDocument publish(
   String source,
   List<UniversalObject> objects, {
   String owner = 'owner',
+  bool canvasDetails = false,
   Map<String, String> paths = const {},
 }) => PublicationDocument.parse(
   'Connected report',
   source,
-  const PublicationStyle(contents: false),
+  PublicationStyle(contents: false, canvasDetails: canvasDetails),
   ownerId: owner,
   objects: objects,
   objectPaths: paths,
@@ -208,7 +209,7 @@ void main() {
         'player',
         'controller',
       ]);
-      final doc = publish(source, [board]);
+      final doc = publish(source, [board], canvasDetails: true);
       final canvas = doc.objectSnapshots.canvases.values.single;
       expect(
         canvas.scene.elements.map((e) => e.id),
@@ -357,8 +358,29 @@ void main() {
       final export = PublicationExport(doc, images: {snapshot.key: png});
       final bytes = await export.pdf();
       final text = await pdfText(bytes);
-      expect(text, contains('Canvas contents'));
-      expect(text, contains('Player'));
+      expect(text, isNot(contains('Canvas contents')));
+      expect(text, isNot(contains('Source:')));
+      expect(text, isNot(contains('orbit-object:')));
+      expect(doc.objectSnapshots.canvases, hasLength(1));
+      final detailed = PublicationDocument.parse(
+        'Detailed',
+        diagramMarkdown('board', 'Mechanics', ['player', 'controller']),
+        const PublicationStyle(canvasDetails: true),
+        objects: [board],
+      );
+      final detailedText = await pdfText(
+        await PublicationExport(detailed, images: {snapshot.key: png}).pdf(),
+      );
+      expect(detailedText, contains('Canvas contents'));
+      expect(detailedText, contains('Source:'));
+      expect(detailedText, contains('Player'));
+      expect(PublicationStyle.fromJson({}).canvasDetails, false);
+      expect(
+        PublicationStyle.fromJson(
+          const PublicationStyle(canvasDetails: true).toJson(),
+        ).canvasDetails,
+        true,
+      );
       expect(text, isNot(contains('[Image:')));
       expect(export.html(), contains('data:image/png;base64,'));
       final zip = ZipDecoder().decodeBytes(export.docx());

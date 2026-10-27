@@ -1,3 +1,4 @@
+import 'university_glyph.dart';
 import 'dart:math' as math;
 
 import 'connectors.dart';
@@ -27,7 +28,18 @@ String canvasToSvg(
     for (final id in targetIds) {
       final elem = scene[id];
       if (elem != null) {
-        unionBounds = unionBounds?.union(elem.bounds) ?? elem.bounds;
+        var visible = elem.bounds;
+        if (isConnectorElement(elem)) {
+          final endpoints = resolveConnectorEndpoints(elem, scene);
+          visible = endpoints.bounds;
+          if (endpoints.routeBlocked) {
+            visible = visible.union(connectorRouteWarningBounds(endpoints));
+          }
+          for (final label in connectorEndLabels(elem, endpoints)) {
+            visible = visible.union(label.bounds);
+          }
+        }
+        unionBounds = unionBounds?.union(visible) ?? visible;
       }
     }
     exportBounds = (unionBounds ?? const CanvasBounds(0, 0, 800, 600)).inflate(
@@ -136,14 +148,28 @@ void _renderElementSvg(
     foreground: foregroundColor,
   );
   final accent = _toHexColor(
-    isInteractionItem(element) && element.data['color'] is! int
+    (isInteractionItem(element) || isUniversityItem(element)) &&
+            element.data['color'] is! int
         ? palette.text
         : element.color,
   );
   final strokeW = element.strokeWidth;
 
-  if (isInteractionNode(element)) {
-    final glyph = interactionGlyph(element);
+  if (isInteractionNode(element) || isUniversityGlyph(element)) {
+    final glyph = isUniversityGlyph(element)
+        ? universityGlyph(element)
+        : interactionGlyph(element);
+    final solid = _toHexColor(foregroundColor ?? palette.text);
+    for (final b in glyph.solidOvals) {
+      buf.writeln(
+        '<ellipse cx="${b.center.x}" cy="${b.center.y}" rx="${b.width / 2}" ry="${b.height / 2}" fill="$solid" />',
+      );
+    }
+    for (final b in glyph.solidBoxes) {
+      buf.writeln(
+        '<rect x="${b.left}" y="${b.top}" width="${b.width}" height="${b.height}" fill="$solid" />',
+      );
+    }
     for (final box in glyph.boxes) {
       final b = box.bounds;
       buf.writeln(
@@ -566,6 +592,24 @@ void _renderElementSvg(
     case 'arrow':
     case 'line':
       final endpoints = resolveConnectorEndpoints(element, scene);
+      if (endpoints.routeBlocked) {
+        final box = connectorRouteWarningBounds(endpoints);
+        buf.writeln(
+          '<g data-route-status="blocked"><title>Route needs space; organize diagram</title>'
+          '<rect x="${_formatNum(box.left)}" y="${_formatNum(box.top)}" '
+          'width="${_formatNum(box.width)}" height="${_formatNum(box.height)}" '
+          'rx="5" fill="$canvasBgHex" stroke="$accent"/>',
+        );
+        for (final (index, line)
+            in connectorRouteWarningText.split('\n').indexed) {
+          buf.writeln(
+            '<text x="${_formatNum(box.left + 5)}" '
+            'y="${_formatNum(box.top + 14 + index * 13)}" font-size="11" fill="$accent">${_escapeXml(line)}</text>',
+          );
+        }
+        buf.writeln('</g>');
+        break;
+      }
       final start = endpoints.start;
       final end = endpoints.end;
       final routing = ConnectorRouting.parse(element.routing);
@@ -589,14 +633,16 @@ void _renderElementSvg(
       // Path data
       final d = StringBuffer();
       d.write('M ${_formatNum(start.x)} ${_formatNum(start.y)}');
-      if (routing == ConnectorRouting.curved &&
+      if (!endpoints.isPolyline &&
+          routing == ConnectorRouting.curved &&
           endpoints.controlPoints.length >= 2) {
         final cp1 = endpoints.controlPoints[0];
         final cp2 = endpoints.controlPoints[1];
         d.write(
           ' C ${_formatNum(cp1.x)} ${_formatNum(cp1.y)}, ${_formatNum(cp2.x)} ${_formatNum(cp2.y)}, ${_formatNum(end.x)} ${_formatNum(end.y)}',
         );
-      } else if (routing == ConnectorRouting.orthogonal &&
+      } else if ((endpoints.isPolyline ||
+              routing == ConnectorRouting.orthogonal) &&
           endpoints.controlPoints.isNotEmpty) {
         for (final cp in endpoints.controlPoints) {
           d.write(' L ${_formatNum(cp.x)} ${_formatNum(cp.y)}');

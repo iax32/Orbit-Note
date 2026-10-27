@@ -91,6 +91,15 @@ class _SettingsViewState extends State<SettingsView> {
   final offsets = <_Category, double>{};
   _Category category = _Category.appearance;
   String query = '';
+  @override
+  void initState() {
+    super.initState();
+    final requested = widget.controller.session.extra.remove(
+      'settingsCategory',
+    );
+    if (requested == 'sync') category = _Category.sync;
+  }
+
   WorkspaceController get controller => widget.controller;
   VoidCallback get onExport => widget.onExport;
   VoidCallback get onImport => widget.onImport;
@@ -325,7 +334,7 @@ class _SettingsViewState extends State<SettingsView> {
               const SizedBox(height: 24),
             ],
             Text(
-              'Changes save automatically on this device. Document-specific choices keep their own settings.',
+              'Changes save automatically. Appearance, editor defaults and folder preferences travel with this Vault through Drive or a live shared server. Tabs, window layout, tool paths and credentials stay on this device. Shared Vault preferences apply to its participants.',
               style: TextStyle(color: colors.muted, fontSize: 12),
             ),
           ],

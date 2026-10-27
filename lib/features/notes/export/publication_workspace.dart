@@ -7,8 +7,10 @@ import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart';
 import '../../../domain/document_publication.dart';
 import '../../../domain/json_values.dart';
+import '../../../domain/export_name.dart';
 import '../../../app/orbit_draft_guard.dart';
 import '../../../domain/publication_layout.dart';
+import '../../../domain/publication_preset.dart';
 import 'package:markdown/markdown.dart' as md;
 import '../../../domain/universal_object.dart';
 import '../../../platform/export_file.dart';
@@ -16,6 +18,9 @@ import 'publication_export.dart';
 import 'publication_math.dart';
 import 'publication_svg.dart';
 import 'publication_canvas.dart';
+import 'pdf_bundle_dialog.dart';
+import 'publication_theme.dart';
+import '../../../domain/note_writing_appearance.dart';
 
 Future<void> showPublicationWorkspace(
   BuildContext context, {
@@ -26,18 +31,35 @@ Future<void> showPublicationWorkspace(
   Map<String, String> objectPaths = const {},
   Future<Uint8List?> Function(String)? readImage,
   bool Function(String, String)? onApply,
-}) => showDialog<void>(
-  context: context,
-  builder: (_) => PublicationWorkspace(
-    title: title,
-    source: source,
-    ownerId: ownerId,
-    objects: objects,
-    objectPaths: objectPaths,
-    readImage: readImage,
-    onApply: onApply,
-  ),
-);
+  NoteWritingAppearance writingAppearance = const NoteWritingAppearance(),
+  double editorFontSize = 16,
+  Future<Uint8List?> Function(String)? readWritingPhoto,
+}) {
+  final capturedTheme = PublicationPdfTheme(
+    Theme.of(context),
+    appearance: writingAppearance,
+    editorFontSize: editorFontSize,
+    highContrast: MediaQuery.highContrastOf(context),
+    readPhoto: readWritingPhoto,
+  );
+  final origin = FocusManager.instance.primaryFocus;
+  return showDialog<void>(
+    context: context,
+    builder: (_) => PublicationWorkspace(
+      title: title,
+      source: source,
+      ownerId: ownerId,
+      objects: objects,
+      objectPaths: objectPaths,
+      readImage: readImage,
+      onApply: onApply,
+      canvasColors: capturedTheme.theme.colorScheme,
+      pdfTheme: capturedTheme,
+    ),
+  ).whenComplete(() {
+    if (origin?.context != null) origin!.requestFocus();
+  });
+}
 
 class PublicationWorkspace extends StatefulWidget {
   const PublicationWorkspace({
@@ -52,6 +74,8 @@ class PublicationWorkspace extends StatefulWidget {
     this.onApply,
     this.onNavigatePage,
     this.imageDownloader,
+    this.canvasColors,
+    this.pdfTheme,
   });
   final String title, source, ownerId;
   final List<UniversalObject> objects;
@@ -61,6 +85,8 @@ class PublicationWorkspace extends StatefulWidget {
   final bool Function(String before, String next)? onApply;
   final ValueChanged<int>? onNavigatePage;
   final PublicationImageDownload? imageDownloader;
+  final ColorScheme? canvasColors;
+  final PublicationPdfTheme? pdfTheme;
   @override
   State<PublicationWorkspace> createState() => _PublicationWorkspaceState();
 }
@@ -69,11 +95,20 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
   bool letter = false,
       serif = false,
       numbering = false,
+      h1PageBreaks = false,
       titlePage = false,
       contents = true,
       pageNumbers = true,
+      canvasDetails = false,
       busy = true,
       exporting = false;
+  bool useEditorTheme = true;
+  bool rememberOnExport = true;
+  late final exportName = TextEditingController(
+    text: suggestedExportName(widget.title),
+  );
+  bool dateFileName = false, cancelExport = false;
+  double? exportProgress;
   double margin = 54, fontSize = 11;
   final author = TextEditingController(), header = TextEditingController();
   Timer? debounce;
@@ -81,7 +116,7 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
   String? error, exportError;
   late Object appliedSettings;
   Map<String, dynamic> get currentSettings => {
-    'style': style.toJson(),
+    'style': {...style.toJson(), 'useEditorTheme': useEditorTheme},
     'blocks': layouts,
   };
   void rememberSettings() {
@@ -92,6 +127,22 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
   PublicationExport? ready;
   Map<String, Uint8List>? images, equations;
   Future<void>? resourceFuture;
+  bool preparationCanceled = false;
+  String preparationPhase = 'Preparing pages…';
+
+  void cancelPreparation() {
+    revision++;
+    debounce?.cancel();
+    preparationCanceled = true;
+    imageDownloader.cancel();
+    setState(() {
+      busy = false;
+      ready = null;
+      error =
+          'Preparation canceled. Your content and export settings are retained.';
+    });
+  }
+
   final resourceWarnings = <String>[];
   late final publicationObjects = List<UniversalObject>.unmodifiable(
     widget.objects,
@@ -147,15 +198,19 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
         );
       }
       if (existing != null) {
+        final storedStyle = existing.data['style'] as Map;
+        useEditorTheme = storedStyle['useEditorTheme'] != false;
         final initial = PublicationStyle.fromJson(
           Map<String, dynamic>.from(existing.data['style'] as Map),
         );
         letter = initial.letter;
         serif = initial.serif;
         numbering = initial.numberHeadings;
+        h1PageBreaks = initial.h1PageBreaks;
         titlePage = initial.titlePage;
         contents = initial.contents;
         pageNumbers = initial.pageNumbers;
+        canvasDetails = initial.canvasDetails;
         margin = initial.margin;
         fontSize = initial.fontSize;
         author.text = initial.author;
@@ -178,6 +233,7 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
     imageDownloader.dispose();
     author.dispose();
     header.dispose();
+    exportName.dispose();
     contentsFind.dispose();
     super.dispose();
   }
@@ -186,9 +242,11 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
     letter: letter,
     serif: serif,
     numberHeadings: numbering,
+    h1PageBreaks: h1PageBreaks,
     titlePage: titlePage,
     contents: contents,
     pageNumbers: pageNumbers,
+    canvasDetails: canvasDetails,
     margin: margin,
     fontSize: fontSize,
     author: author.text,
@@ -215,7 +273,12 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
     var totalBytes = 0, count = 0;
     final seenImages = <String>{};
     for (final element in export.elements) {
-      if (!mounted) return;
+      if (!mounted || preparationCanceled) return;
+      if (element.tag == 'img' || element.tag.startsWith('math')) {
+        setState(
+          () => preparationPhase = 'Preparing image / equation ${count + 1}…',
+        );
+      }
       if (element.tag == 'img') {
         final src = element.attributes['src'] ?? '';
         if (!seenImages.add(src)) continue;
@@ -234,6 +297,7 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
               canvasSnapshot,
               objects: export.document.objectSnapshots.objects,
               readImage: widget.readImage,
+              canvasColors: widget.canvasColors,
               warn: (message) {
                 if (!resourceWarnings.contains(message)) {
                   resourceWarnings.add(message);
@@ -250,7 +314,7 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
               PublicationImageDownload.allows(uri)) {
             bytes = await imageDownloader.read(uri);
           }
-          if (!mounted) return;
+          if (!mounted || preparationCanceled) return;
           if (bytes == null ||
               bytes.length > 20 * 1024 * 1024 ||
               totalBytes + bytes.length > 64 * 1024 * 1024) {
@@ -339,14 +403,28 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
         }
       }
     }
-    if (!mounted) return;
+    if (!mounted || preparationCanceled) return;
     images = loadedImages;
     equations = loadedMath;
   }
 
   Future<void> generate() async {
     final ticket = ++revision;
+    if (mounted) {
+      setState(() {
+        busy = true;
+        error = null;
+      });
+    }
     try {
+      if (preparationCanceled) {
+        await resourceFuture;
+        if (!mounted || ticket != revision) return;
+        preparationCanceled = false;
+        resourceFuture = null;
+        images = equations = null;
+        resourceWarnings.clear();
+      }
       final document = PublicationDocument.parse(
         widget.title,
         source,
@@ -360,8 +438,10 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
       final initial = PublicationExport(document);
       await resources(initial);
       if (!mounted || ticket != revision) return;
+      setState(() => preparationPhase = 'Laying out PDF pages…');
       final export = PublicationExport(
         document,
+        pdfTheme: useEditorTheme ? widget.pdfTheme : null,
         images: images ?? {},
         equations: equations ?? {},
         warnings: resourceWarnings,
@@ -374,6 +454,7 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
         pdfError = 'PDF preview unavailable: $failure';
         export.warn(pdfError);
       }
+      if (!mounted || ticket != revision) return;
       // Generate all formats before showing the common fidelity report.
       export.html();
       export.docx();
@@ -404,26 +485,51 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
     }
     setState(() {
       exporting = true;
+      cancelExport = false;
+      exportProgress = null;
       exportError = null;
     });
     try {
-      final name = publicationFileName(widget.title);
+      final name = suggestedExportName(
+        exportName.text,
+        dated: dateFileName ? DateTime.now() : null,
+      );
+      void progress(int completed, int total) {
+        if (mounted) {
+          setState(() => exportProgress = total == 0 ? 1 : completed / total);
+        }
+      }
+
       final saved = format == 'html'
           ? await exportFile(
               '$name.html',
               snapshot.html(),
               mimeType: 'text/html',
+              isCancelled: () => cancelExport || !mounted,
+              onProgress: progress,
             )
           : await exportBinaryFile(
               '$name.$format',
+              isCancelled: () => cancelExport || !mounted,
+              onProgress: progress,
               format == 'pdf' ? bytes! : snapshot.docx(),
               mimeType: format == 'pdf'
                   ? 'application/pdf'
                   : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             );
       if (mounted && saved) {
+        if (rememberOnExport &&
+            widget.onApply != null &&
+            settingsWarning == null &&
+            !jsonValuesEqual(currentSettings, appliedSettings)) {
+          saveSettings();
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('${format.toUpperCase()} exported')),
+        );
+      } else if (mounted) {
+        setState(
+          () => exportError = 'Export canceled. Your preview is retained.',
         );
       }
     } catch (failure) {
@@ -439,6 +545,12 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
   }
 
   Widget settings(BuildContext controlsContext) {
+    final headingNodes = <String, md.Element>{
+      for (final node
+          in ready?.document.nodes.where(publicationHeadingTarget) ??
+              <md.Node>[])
+        (node as md.Element).attributes['id']!: node,
+    };
     final headings =
         ready?.document.headings
             .where(
@@ -456,6 +568,18 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (widget.pdfTheme != null)
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Use editor design in PDF'),
+            subtitle: Text(
+              '${widget.pdfTheme!.name}\nIncludes palette, paper, frame and selected background photo. HTML and Word use document styles.',
+            ),
+            value: useEditorTheme,
+            onChanged: exporting
+                ? null
+                : (v) => change(() => useEditorTheme = v),
+          ),
         if (exportError != null)
           Semantics(
             liveRegion: true,
@@ -471,26 +595,44 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            PopupMenuButton<String>(
+            PopupMenuButton<PublicationPreset>(
               tooltip: 'Document style presets',
+              enabled: !exporting,
               onSelected: exporting
                   ? null
                   : (value) => change(() {
-                      serif = value == 'Academic';
-                      fontSize = serif ? 12 : 11;
-                      margin = serif
-                          ? 72
-                          : value == 'Design brief'
-                          ? 48
-                          : 54;
-                      numbering = serif;
-                      titlePage = serif;
-                      contents = true;
-                      pageNumbers = true;
+                      final next = value.apply(style);
+                      serif = next.serif;
+                      fontSize = next.fontSize;
+                      margin = next.margin;
+                      numbering = next.numberHeadings;
+                      titlePage = next.titlePage;
+                      contents = next.contents;
+                      pageNumbers = next.pageNumbers;
                     }),
               itemBuilder: (_) => [
-                for (final name in ['Report', 'Academic', 'Design brief'])
-                  PopupMenuItem(value: name, child: Text(name)),
+                for (final preset in PublicationPreset.values)
+                  PopupMenuItem(
+                    value: preset,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 300),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              preset.label,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(preset.description),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
               ],
               child: const Padding(
                 padding: EdgeInsets.all(8),
@@ -506,6 +648,7 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
                       fontSize = 11;
                       margin = 54;
                       numbering = false;
+                      h1PageBreaks = false;
                       titlePage = false;
                       contents = true;
                       pageNumbers = true;
@@ -513,6 +656,16 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
               child: const Text('Reset style'),
             ),
           ],
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Text(
+            PublicationPreset.values
+                    .where((p) => p.matches(style))
+                    .firstOrNull
+                    ?.description ??
+                'Custom layout. Choose a preset or adjust the controls below.',
+          ),
         ),
         Wrap(
           spacing: 8,
@@ -623,7 +776,17 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
           ('Title page', titlePage, (v) => titlePage = v),
           ('Contents', contents, (v) => contents = v),
           ('Number headings', numbering, (v) => numbering = v),
+          (
+            'Start every Heading 1 on a new page',
+            h1PageBreaks,
+            (v) => h1PageBreaks = v,
+          ),
           ('Page numbers', pageNumbers, (v) => pageNumbers = v),
+          (
+            'Canvas source and text inventory',
+            canvasDetails,
+            (v) => canvasDetails = v,
+          ),
         ])
           CheckboxListTile(
             contentPadding: EdgeInsets.zero,
@@ -657,6 +820,36 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
             ListTile(
               contentPadding: EdgeInsets.only(left: (heading.level - 1) * 8),
               title: Text(heading.text),
+              trailing: IconButton(
+                tooltip: 'Start chapter on a new page',
+                isSelected:
+                    headingNodes[heading.id]
+                        ?.attributes['orbit-pageBreakBefore'] ==
+                    'true',
+                icon: const Icon(Icons.insert_page_break_outlined),
+                selectedIcon: const Icon(Icons.insert_page_break),
+                onPressed:
+                    busy ||
+                        exporting ||
+                        headingNodes[heading.id]
+                                ?.attributes['orbit-ambiguous'] ==
+                            'true'
+                    ? null
+                    : () {
+                        final node = headingNodes[heading.id],
+                            key = headingNodes[heading.id]
+                                ?.attributes['orbit-key'];
+                        if (node == null || key == null) return;
+                        change(
+                          () => layouts[key] = {
+                            ...?layouts[key],
+                            'pageBreakBefore':
+                                node.attributes['orbit-pageBreakBefore'] !=
+                                'true',
+                          },
+                        );
+                      },
+              ),
               subtitle: Text(
                 busy
                     ? 'Updating pages…'
@@ -715,6 +908,18 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
             'Captured when publishing opened. Reopen to refresh linked content. Source objects are unchanged.',
           ),
         ],
+        if (widget.onApply != null)
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Remember settings after export'),
+            subtitle: const Text(
+              'Stored with this note and included in Vault sync.',
+            ),
+            value: rememberOnExport,
+            onChanged: exporting
+                ? null
+                : (value) => setState(() => rememberOnExport = value == true),
+          ),
         if (ready != null && ready!.warnings.isNotEmpty) ...[
           const SizedBox(height: 16),
           const Text(
@@ -843,7 +1048,10 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
 
   void saveSettings() {
     try {
-      final next = PublicationSettings.update(source, style.toJson(), layouts);
+      final next = PublicationSettings.update(source, {
+        ...style.toJson(),
+        'useEditorTheme': useEditorTheme,
+      }, layouts);
       if (widget.onApply?.call(source, next) != true) {
         setState(
           () => settingsWarning =
@@ -933,9 +1141,32 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
                                   ),
                       ),
                       if (busy)
-                        const Align(
+                        Align(
                           alignment: Alignment.topCenter,
-                          child: LinearProgressIndicator(),
+                          child: Material(
+                            color: Theme.of(context).colorScheme.surface,
+                            child: Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const LinearProgressIndicator(),
+                                  Wrap(
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    spacing: 12,
+                                    children: [
+                                      Text(preparationPhase),
+                                      TextButton(
+                                        onPressed: cancelPreparation,
+                                        child: const Text('Cancel preparation'),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
                     ],
                   );
@@ -975,38 +1206,112 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
                 },
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Wrap(
-                spacing: 12,
-                runSpacing: 8,
-                children: [
-                  if (widget.onApply != null)
-                    OutlinedButton.icon(
-                      onPressed: exporting || busy || settingsWarning != null
-                          ? null
-                          : saveSettings,
-                      icon: Icon(saved ? Icons.check : Icons.save_outlined),
-                      label: Text(
-                        saved ? 'Settings saved' : 'Save settings to note',
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight:
+                    (MediaQuery.sizeOf(context).height -
+                            MediaQuery.viewInsetsOf(context).bottom)
+                        .clamp(160.0, 900.0) *
+                    .25,
+              ),
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: [
+                      SizedBox(
+                        width: 260,
+                        child: TextField(
+                          controller: exportName,
+                          enabled: !exporting,
+                          decoration: const InputDecoration(
+                            labelText: 'Export file name',
+                            helperText:
+                                'Choose the destination in the save dialog',
+                          ),
+                        ),
                       ),
-                    ),
-                  for (final format in ['pdf', 'html', 'docx'])
-                    FilledButton.tonal(
-                      onPressed:
-                          busy ||
-                              exporting ||
-                              ready == null ||
-                              (format == 'pdf' && preview == null)
-                          ? null
-                          : () => save(format),
-                      child: Text(
-                        format == 'docx'
-                            ? 'Export Word'
-                            : 'Export ${format.toUpperCase()}',
+                      FilterChip(
+                        label: const Text('Add date to file name'),
+                        selected: dateFileName,
+                        onSelected: exporting
+                            ? null
+                            : (v) => setState(() => dateFileName = v),
                       ),
-                    ),
-                ],
+                      if (exporting)
+                        SizedBox(
+                          width: 230,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              LinearProgressIndicator(value: exportProgress),
+                              Text(
+                                exportProgress == null
+                                    ? 'Choose a destination…'
+                                    : 'Writing export · ${(exportProgress! * 100).round()}%',
+                              ),
+                              TextButton(
+                                onPressed: cancelExport
+                                    ? null
+                                    : () => setState(() => cancelExport = true),
+                                child: Text(
+                                  cancelExport ? 'Canceling…' : 'Cancel export',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (ready != null && !busy)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Text(
+                            '${ready!.pageCount} pages · ${ready!.warnings.toSet().length} export notices',
+                            key: const ValueKey('publication-export-summary'),
+                          ),
+                        ),
+                      if (widget.onApply != null)
+                        OutlinedButton.icon(
+                          onPressed:
+                              exporting || busy || settingsWarning != null
+                              ? null
+                              : saveSettings,
+                          icon: Icon(saved ? Icons.check : Icons.save_outlined),
+                          label: Text(
+                            saved ? 'Settings saved' : 'Save settings to note',
+                          ),
+                        ),
+                      for (final format in ['pdf', 'html', 'docx'])
+                        FilledButton.tonal(
+                          onPressed:
+                              busy ||
+                                  exporting ||
+                                  ready == null ||
+                                  (format == 'pdf' && preview == null)
+                              ? null
+                              : () => save(format),
+                          child: Text(
+                            format == 'docx'
+                                ? 'Export Word'
+                                : 'Export ${format.toUpperCase()}',
+                          ),
+                        ),
+                      OutlinedButton.icon(
+                        onPressed: busy || exporting || ready == null
+                            ? null
+                            : () => showPdfBundleDialog(
+                                context,
+                                note: ready,
+                                objects: publicationObjects,
+                                readImage: widget.readImage,
+                              ),
+                        icon: const Icon(Icons.library_add_outlined),
+                        label: const Text('Combine with Canvases…'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ],

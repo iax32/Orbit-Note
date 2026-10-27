@@ -29,6 +29,12 @@ String htmlToMarkdown(String html) {
     return token;
   }
 
+  final tokens = RegExp('${RegExp.escape(marker)}([0-9]+)\u0000');
+  String restore(String text) => text.replaceAllMapped(tokens, (m) {
+    final index = int.tryParse(m[1]!);
+    return index != null && index < protected.length ? protected[index] : m[0]!;
+  });
+
   String codeText(String text) => _decodeEntities(
     text.replaceAll(RegExp(r'<[^>]+>'), ''),
   ).replaceAll('\r\n', '\n').replaceAll('\r', '\n');
@@ -79,6 +85,19 @@ String htmlToMarkdown(String html) {
         '',
       );
 
+  // Work from inner quotes outward, preserving complete code/math before
+  // adding quote prefixes. Bound malformed nesting without truncating text.
+  final quote = RegExp(
+    r'<blockquote(?:\s[^>]*)?>((?:(?!<blockquote(?:\s|>))[\s\S])*?)</blockquote>',
+    caseSensitive: false,
+  );
+  for (var depth = 0; depth < 32 && quote.hasMatch(value); depth++) {
+    value = value.replaceAllMapped(quote, (m) {
+      final body = restore(htmlToMarkdown('<div>${m[1]}</div>'));
+      return '\n\n${protect(body.split('\n').map((line) => '> $line').join('\n'))}\n\n';
+    });
+  }
+
   value = value
       .replaceAllMapped(
         RegExp(r'<h([1-6])(?:\s[^>]*)?>', caseSensitive: false),
@@ -113,7 +132,7 @@ String htmlToMarkdown(String html) {
           r"""<a\s+[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)</a>""",
           caseSensitive: false,
         ),
-        (m) => '[${m[2]}](${m[1]})',
+        (m) => '[${m[2]}](${protect(_clipboardDestination(m[1]!))})',
       )
       .replaceAllMapped(
         RegExp(
@@ -127,7 +146,7 @@ String htmlToMarkdown(String html) {
                 caseSensitive: false,
               ).firstMatch(m[0]!)?.group(1) ??
               '';
-          return '![$alt](${m[1]})';
+          return '![${protect(_clipboardLabel(alt))}](${protect(_clipboardDestination(m[1]!))})';
         },
       );
 
@@ -135,7 +154,7 @@ String htmlToMarkdown(String html) {
   // stripping the remaining markup so text and links stay intact.
   value = value.replaceAllMapped(
     RegExp(r'<table(?:\s[^>]*)?>\s*([\s\S]*?)</table>', caseSensitive: false),
-    (table) => _tableToMarkdown(table[1]!),
+    (table) => '\n\n${protect(_tableToMarkdown(table[1]!, restore))}\n\n',
   );
 
   value = value
@@ -167,7 +186,7 @@ String htmlToMarkdown(String html) {
       .replaceAll(RegExp(r'<[^>]+>'), '')
       .splitMapJoin(RegExp(r'\n[ \t]+\n'), onMatch: (_) => '\n\n');
 
-  value = normalizePastedMath(_decodeEntities(value), protect: protect)
+  value = normalizePastedMath(_clipboardProse(value), protect: protect)
       .replaceAll('\r\n', '\n')
       .replaceAll('\r', '\n')
       .replaceAllMapped(RegExp(r'[^\S\n]{2,}'), (m) => ' ')
@@ -182,14 +201,10 @@ String htmlToMarkdown(String html) {
     }
     compact.add(line);
   }
-  var result = compact.join('\n');
-  for (var i = 0; i < protected.length; i++) {
-    result = result.replaceAll('$marker$i\u0000', protected[i]);
-  }
-  return result;
+  return restore(compact.join('\n'));
 }
 
-String _tableToMarkdown(String source) {
+String _tableToMarkdown(String source, String Function(String) restore) {
   final rows = <List<String>>[];
   for (final row in RegExp(
     r'<tr(?:\s[^>]*)?>([\s\S]*?)</tr>',
@@ -198,7 +213,15 @@ String _tableToMarkdown(String source) {
     final cells =
         RegExp(r'<t[hd](?:\s[^>]*)?>([\s\S]*?)</t[hd]>', caseSensitive: false)
             .allMatches(row[1]!)
-            .map((m) => htmlToMarkdown(m[1]!).replaceAll('|', '\\|').trim())
+            .map(
+              (m) => restore(htmlToMarkdown(m[1]!))
+                  .trim()
+                  .replaceAllMapped(
+                    RegExp(r'(\\*)\|'),
+                    (m) => m[1]!.length.isOdd ? m[0]! : '${m[1]}\\|',
+                  )
+                  .replaceAll(RegExp(r'\r\n|[\r\n]'), '<br>'),
+            )
             .toList();
     if (cells.isNotEmpty) rows.add(cells);
   }
@@ -212,7 +235,7 @@ String _tableToMarkdown(String source) {
     '| ${List.filled(width, '---').join(' | ')} |',
   ];
   lines.addAll(rows.skip(1).map((row) => '| ${row.join(' | ')} |'));
-  return '\n\n${lines.join('\n')}\n\n';
+  return lines.join('\n');
 }
 
 String _decodeEntities(String value) =>
@@ -306,3 +329,32 @@ Future<String?> readMarkdownClipboard({
   }
   return preferHtml && plain != null ? normalizePastedMath(plain) : plain;
 }
+
+String _clipboardDestination(String raw) {
+  final decoded = markdown_util
+      .decodeHtmlCharacters(raw)
+      .replaceAllMapped(
+        RegExp(r'&(?=(?:#[0-9]+|#x[0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]+);)'),
+        (_) => '&amp;',
+      );
+  final encoded = decoded.replaceAllMapped(
+    RegExp(r'[\s\x00-\x1f\x7f<>"\\]'),
+    (m) => Uri.encodeComponent(m[0]!),
+  );
+  return RegExp(r'[\s()<>\[\]\\]').hasMatch(decoded) ? '<$encoded>' : encoded;
+}
+
+String _clipboardLabel(String raw) => _clipboardProse(raw)
+    .replaceAll('\\', '\\\\')
+    .replaceAll('[', r'\[')
+    .replaceAll(']', r'\]')
+    .replaceAll(RegExp(r'[\r\n]'), ' ');
+
+/// Text entities are decoded once, then escaped for Markdown's own parser.
+String _clipboardProse(String raw) => _decodeEntities(raw)
+    .replaceAllMapped(
+      RegExp(r'&(?=(?:#[0-9]+|#x[0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]+);)'),
+      (_) => '&amp;',
+    )
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');

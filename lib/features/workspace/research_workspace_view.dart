@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import '../../app/workspace_controller.dart';
+import '../../app/retained_form.dart';
 import '../../canvas/scene.dart';
 import '../../domain/object_reference.dart';
 import '../../domain/research_workspace.dart';
@@ -321,10 +322,16 @@ class _ResearchWorkspaceViewState extends ConsumerState<ResearchWorkspaceView> {
                         ? null
                         : () async {
                             final expected = researchVersion(view);
+                            final retained = RetainedForm.capture(
+                              context,
+                              'reference:${view.id}:$id',
+                              {'id': id, 'type': 'card', ...e},
+                            );
                             final result = await showReferenceDetails(
                               context,
                               CanvasElement({'id': id, 'type': 'card', ...e}),
                               o?.title ?? 'Missing source',
+                              ownerId: view.id,
                             );
                             if (result == null || !mounted) return;
                             if (researchVersion(view) != expected) {
@@ -347,6 +354,11 @@ class _ResearchWorkspaceViewState extends ConsumerState<ResearchWorkspaceView> {
                                     entry,
                               ],
                             });
+                            if (mounted &&
+                                !c.dirty.contains(view.id) &&
+                                !c.failures.containsKey(view.id)) {
+                              await retained?.complete();
+                            }
                           },
                     child: const Text('Edit collection details'),
                   ),

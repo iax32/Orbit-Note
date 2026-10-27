@@ -11,6 +11,8 @@ import '../../app/orbit_theme.dart';
 import '../../domain/universal_object.dart';
 import '../../domain/wiki_links.dart';
 import '../../domain/backlinks.dart';
+import '../../domain/object_reference.dart';
+import '../../domain/linked_section.dart';
 
 /// Interactive internal link widget following Orbit's "make the content itself interactive" invariant.
 ///
@@ -117,7 +119,7 @@ class _OrbitInternalLinkState extends State<OrbitInternalLink> {
     final mediaQuery = MediaQuery.of(context);
     final screenSize = mediaQuery.size;
 
-    const cardWidth = 350.0;
+    final cardWidth = math.min(350.0, math.max(0.0, screenSize.width - 24));
     const estimatedHeight = 190.0;
 
     // Flip above link if near bottom of screen
@@ -144,31 +146,39 @@ class _OrbitInternalLinkState extends State<OrbitInternalLink> {
           Positioned(
             top: top,
             left: left,
-            child: MouseRegion(
-              onEnter: (_) {
-                _dismissTimer?.cancel();
-              },
-              onExit: (_) {
-                _scheduleDismiss();
-              },
-              child: OrbitPeekCard(
-                href: widget.href,
-                label: widget.text,
-                allObjects: widget.allObjects,
-                linkTargets: widget.linkTargets,
-                onOpen: (target) {
-                  _removeOverlay();
-                  widget.onOpen(target);
-                },
-                onOpenInNewTab: (target) {
-                  _removeOverlay();
-                  if (widget.onOpenInNewTab != null) {
-                    widget.onOpenInNewTab!(target);
-                  } else {
-                    widget.onOpen(target);
-                  }
-                },
-                onClose: _removeOverlay,
+            width: cardWidth,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: math.max(80, screenSize.height - top - 12),
+              ),
+              child: SingleChildScrollView(
+                child: MouseRegion(
+                  onEnter: (_) {
+                    _dismissTimer?.cancel();
+                  },
+                  onExit: (_) {
+                    _scheduleDismiss();
+                  },
+                  child: OrbitPeekCard(
+                    href: widget.href,
+                    label: widget.text,
+                    allObjects: widget.allObjects,
+                    linkTargets: widget.linkTargets,
+                    onOpen: (target) {
+                      _removeOverlay();
+                      widget.onOpen(target);
+                    },
+                    onOpenInNewTab: (target) {
+                      _removeOverlay();
+                      if (widget.onOpenInNewTab != null) {
+                        widget.onOpenInNewTab!(target);
+                      } else {
+                        widget.onOpen(target);
+                      }
+                    },
+                    onClose: _removeOverlay,
+                  ),
+                ),
               ),
             ),
           ),
@@ -414,6 +424,7 @@ class _OrbitInternalLinkState extends State<OrbitInternalLink> {
             },
             child: GestureDetector(
               onTap: _handleTap,
+              onLongPress: _showPeekOverlay,
               onTertiaryTapUp: (_) => _handleTertiaryTap(),
               onSecondaryTapUp: (details) =>
                   _showContextMenu(details.globalPosition),
@@ -468,6 +479,9 @@ class OrbitPeekCard extends StatelessWidget {
     final title = resolvedObject?.title.isNotEmpty == true
         ? resolvedObject!.title
         : (label.isNotEmpty ? label : 'Untitled');
+    final canOpen = resolvedObject != null
+        ? !resolvedObject.isDeleted
+        : isMissing || isExternal || href.startsWith('orbit-ambiguous:');
     final folder = resolvedObject?.properties['folder'] as String?;
     final backlinkCount = resolvedObject != null
         ? findLinkedMentions(
@@ -490,155 +504,183 @@ class OrbitPeekCard extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(10),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: colors.raised,
-                  border: Border(bottom: BorderSide(color: colors.border)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(resolvedIcon, size: 16, color: colors.accent),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colors.accent.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        resolvedBadge.toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 9,
-                          letterSpacing: 0.8,
-                          fontWeight: FontWeight.bold,
-                          color: colors.accent,
-                        ),
-                      ),
-                    ),
-                    if (folder != null && folder.isNotEmpty) ...[
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colors.raised,
+                    border: Border(bottom: BorderSide(color: colors.border)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(resolvedIcon, size: 16, color: colors.accent),
                       const SizedBox(width: 8),
-                      Expanded(
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colors.accent.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
                         child: Text(
-                          folder,
-                          style: TextStyle(fontSize: 11, color: colors.subtle),
-                          overflow: TextOverflow.ellipsis,
+                          resolvedBadge.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 9,
+                            letterSpacing: 0.8,
+                            fontWeight: FontWeight.bold,
+                            color: colors.accent,
+                          ),
                         ),
                       ),
-                    ] else
-                      const Spacer(),
-                    if (backlinkCount > 0)
-                      Tooltip(
-                        message: '$backlinkCount backlinks',
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.hub_outlined,
-                              size: 12,
+                      if (folder != null && folder.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            folder,
+                            style: TextStyle(
+                              fontSize: 11,
                               color: colors.subtle,
                             ),
-                            const SizedBox(width: 3),
-                            Text(
-                              '$backlinkCount',
-                              style: TextStyle(
-                                fontSize: 10,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ] else
+                        const Spacer(),
+                      if (backlinkCount > 0)
+                        Tooltip(
+                          message: '$backlinkCount backlinks',
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.hub_outlined,
+                                size: 12,
                                 color: colors.subtle,
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 3),
+                              Text(
+                                '$backlinkCount',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: colors.subtle,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
 
-              // Title and Snippet
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                // Title and Snippet
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 6),
-                    _buildContentSnippet(
-                      colors,
-                      resolvedObject,
-                      isMissing,
-                      isExternal,
-                    ),
-                  ],
+                      const SizedBox(height: 6),
+                      _buildContentSnippet(
+                        colors,
+                        resolvedObject,
+                        isMissing,
+                        isExternal,
+                      ),
+                      if (resolvedObject != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          resolvedObject.isDeleted
+                              ? 'Source is in Trash'
+                              : resolvedObject.isReadOnly
+                              ? 'Read-only source'
+                              : 'Live source',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: resolvedObject.isDeleted
+                                ? colors.warning
+                                : colors.subtle,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
 
-              // Footer Action Row
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  border: Border(top: BorderSide(color: colors.divider)),
-                ),
-                child: Row(
-                  children: [
-                    TextButton.icon(
-                      onPressed: () => onOpen(href),
-                      icon: const Icon(Icons.arrow_forward_rounded, size: 13),
-                      label: Text(isMissing ? 'Create' : 'Open'),
-                      style: TextButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
+                // Footer Action Row
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border(top: BorderSide(color: colors.divider)),
+                  ),
+                  child: Wrap(
+                    spacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      TextButton.icon(
+                        onPressed: canOpen ? () => onOpen(href) : null,
+                        icon: const Icon(Icons.arrow_forward_rounded, size: 13),
+                        label: Text(
+                          isMissing
+                              ? 'Create'
+                              : canOpen
+                              ? 'Open'
+                              : 'Unavailable',
                         ),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    TextButton.icon(
-                      onPressed: () => onOpenInNewTab(href),
-                      icon: const Icon(Icons.tab_outlined, size: 13),
-                      label: const Text('New tab'),
-                      style: TextButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      'Ctrl+Click',
-                      style: TextStyle(fontSize: 10, color: colors.subtle),
-                    ),
-                  ],
+                      const SizedBox(width: 4),
+                      TextButton.icon(
+                        onPressed: canOpen ? () => onOpenInNewTab(href) : null,
+                        icon: const Icon(Icons.tab_outlined, size: 13),
+                        label: const Text('New tab'),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                      Text(
+                        'Ctrl+Click',
+                        style: TextStyle(fontSize: 10, color: colors.subtle),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -671,8 +713,15 @@ class OrbitPeekCard extends StatelessWidget {
     }
     if (obj == null) {
       return Text(
-        'Reference: $href',
+        'Source unavailable. It may be in another Vault or in Trash. The reference is retained.',
         style: TextStyle(fontSize: 12, color: colors.subtle),
+      );
+    }
+
+    if (obj.isDeleted) {
+      return Text(
+        'Source is in Trash. Restore it from Trash to use this reference.',
+        style: TextStyle(fontSize: 12, color: colors.warning),
       );
     }
 
@@ -724,7 +773,27 @@ class OrbitPeekCard extends StatelessWidget {
       );
     }
 
-    final cleanBody = _stripMarkdown(obj.body);
+    var passage = obj.body;
+    final reference = ObjectReference.parse(
+      href.replaceFirst(RegExp(r'^orbit-object:'), ''),
+    );
+    if (reference.anchorType == 'heading' || reference.anchorType == 'block') {
+      final resolved = resolveLinkedSection(
+        LinkedSection(reference, '', section: true),
+        allObjects,
+        {},
+      );
+      if (resolved.warning != null) {
+        return Text(
+          'Section unavailable. Open the source to repair this reference.',
+          style: TextStyle(fontSize: 12, color: colors.warning),
+        );
+      }
+      passage = resolved.text;
+    }
+    final cleanBody = _stripMarkdown(
+      passage.substring(0, math.min(passage.length, 4000)),
+    );
     if (cleanBody.isEmpty) {
       return Text(
         'Empty note',
@@ -759,20 +828,26 @@ class OrbitPeekCard extends StatelessWidget {
     if (href.startsWith('orbit-object:')) {
       final raw = href.substring('orbit-object:'.length);
       final hash = raw.indexOf('#');
-      targetId = Uri.decodeComponent(hash >= 0 ? raw.substring(0, hash) : raw);
+      try {
+        targetId = Uri.decodeComponent(
+          hash >= 0 ? raw.substring(0, hash) : raw,
+        );
+      } on FormatException {
+        return (null, 'Unavailable', Icons.link_off, false, false);
+      }
     } else {
       targetId = href;
     }
 
     UniversalObject? obj;
     for (final o in allObjects) {
-      if (o.id == targetId && !o.isDeleted) {
+      if (o.id == targetId) {
         obj = o;
         break;
       }
     }
 
-    if (obj == null) {
+    if (obj == null && !href.startsWith('orbit-object:')) {
       // Check linkTargets by id or title
       for (final t in linkTargets) {
         if (t.id == targetId || t.title.toLowerCase() == label.toLowerCase()) {

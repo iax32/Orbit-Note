@@ -88,9 +88,12 @@ class MarkdownDocument {
     final lines = RegExp(
       r'[^\n]*\n|[^\n]+$',
     ).allMatches(source).map((m) => m[0]!).toList();
-    final definitions = _scanReferenceDefinitions(
-      lines.map((line) => line.replaceFirst(RegExp(r'\r?\n$'), '')).toList(),
-    );
+    final textLines = lines.map((line) {
+      if (!line.endsWith('\n')) return line;
+      final length = line.length - (line.endsWith('\r\n') ? 2 : 1);
+      return line.substring(0, length);
+    }).toList();
+    final definitions = _scanReferenceDefinitions(textLines);
     final references = {
       ..._referenceTargets(definitions),
       ...inheritedDefinitions,
@@ -100,7 +103,7 @@ class MarkdownDocument {
         MarkdownBlock('', MarkdownBlockKind.text),
       ], referenceDefinitions: references);
     }
-    String text(int i) => lines[i].replaceFirst(RegExp(r'\r?\n$'), '');
+    String text(int i) => textLines[i];
     String ending(int i) => lines[i].substring(text(i).length);
     final blocks = <MarkdownBlock>[];
     var i = 0;
@@ -412,7 +415,7 @@ class MarkdownDocument {
     }
     if (blocks.last.kind == MarkdownBlockKind.blank ||
         RegExp(
-          r'^<!-- orbit:align=(left|center|right) -->\r?\n$',
+          r'^<!-- orbit:align=(left|center|right|justify) -->\r?\n$',
         ).hasMatch(blocks.last.source)) {
       blocks.add(MarkdownBlock('', MarkdownBlockKind.text));
     }
@@ -420,7 +423,7 @@ class MarkdownDocument {
     // block. Unknown comments and unsupported targets remain literal source.
     for (var j = 0; j + 1 < blocks.length; j++) {
       final marker = RegExp(
-        r'^<!-- orbit:align=(left|center|right) -->\r?\n$',
+        r'^<!-- orbit:align=(left|center|right|justify) -->\r?\n$',
       ).firstMatch(blocks[j].source);
       final next = blocks[j + 1];
       if (marker == null ||

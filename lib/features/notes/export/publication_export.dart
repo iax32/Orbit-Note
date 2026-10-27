@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:archive/archive.dart';
 import 'package:flutter/services.dart';
 import 'package:markdown/markdown.dart' as md;
@@ -7,6 +8,7 @@ import 'package:pdf/widgets.dart' as pw;
 import '../../../domain/document_publication.dart';
 import '../../../domain/publication_layout.dart';
 import '../../../domain/technical_article.dart';
+import 'publication_theme.dart';
 
 PublicationBlockLayout publicationBlockLayout(md.Element node) =>
     PublicationBlockLayout.fromJson({
@@ -32,6 +34,34 @@ class _PublicationAnchor extends pw.Anchor {
       pages[name] = context.pageNumber;
       super.paint(context);
     }
+  }
+}
+
+/// Retain RichText's pagination while aligning against the full column width.
+class _PublicationAlignedText extends pw.RichText {
+  _PublicationAlignedText({
+    required super.text,
+    super.textAlign,
+    super.overflow,
+  });
+  @override
+  void layout(
+    pw.Context context,
+    pw.BoxConstraints constraints, {
+    bool parentUsesSize = false,
+  }) {
+    super.layout(
+      context,
+      constraints.maxWidth.isFinite
+          ? pw.BoxConstraints(
+              minWidth: constraints.maxWidth,
+              maxWidth: constraints.maxWidth,
+              minHeight: constraints.minHeight,
+              maxHeight: constraints.maxHeight,
+            )
+          : constraints,
+      parentUsesSize: parentUsesSize,
+    );
   }
 }
 
@@ -73,6 +103,7 @@ class PublicationExport {
     this.document, {
     this.images = const {},
     this.equations = const {},
+    this.pdfTheme,
     List<String> warnings = const [],
   }) : warnings = [...document.warnings, ...warnings] {
     if (RegExp(
@@ -103,6 +134,7 @@ class PublicationExport {
     );
   }
   final PublicationDocument document;
+  final PublicationPdfTheme? pdfTheme;
   final Map<String, Uint8List> images, equations;
   final List<String> warnings;
   final headingPages = <String, int>{};
@@ -204,12 +236,20 @@ class PublicationExport {
       final language = e.tag == 'code' ? e.attributes['class'] : null;
       final alignment = e.tag == 'th' || e.tag == 'td'
           ? e.attributes['align']
-          : null;
+          : e.attributes['orbit-text-align'];
+      final css = <String>[
+        if (const ['left', 'right', 'center', 'justify'].contains(alignment))
+          'text-align:$alignment',
+        if (publicationHeadingTarget(e) &&
+            (e.attributes['orbit-pageBreakBefore'] == 'true' ||
+                e.attributes['orbit-h1-pagebreak'] == 'true'))
+          'break-before:page',
+      ].join(';');
       final attributes =
           '${id == null ? '' : ' id="${publicationEscape(id)}"'}'
           '${start == null ? '' : ' start="${publicationEscape(start)}"'}'
           '${language != null && RegExp(r'^language-[A-Za-z0-9_+.-]{1,40}$').hasMatch(language) ? ' class="${publicationEscape(language)}"' : ''}'
-          '${const ['left', 'right', 'center'].contains(alignment) ? ' style="text-align:$alignment"' : ''}';
+          '${css.isEmpty ? '' : ' style="$css"'}';
       if (e.tag == 'hr' || e.tag == 'br') return '<${e.tag}$attributes>';
       return '<${e.tag}$attributes>$content</${e.tag}>';
     }
@@ -271,7 +311,7 @@ class PublicationExport {
         '<title>${publicationEscape(title)}</title>$metadata<style>'
         '@page{size:${style.letter ? 'Letter' : 'A4'};margin:${style.margin}pt}'
         'body{max-width:${style.width - 2 * style.margin}pt;margin:40px auto;padding:20px;background:white;color:#202124;font:${style.fontSize}pt ${style.serif ? 'Georgia,serif' : 'Arial,sans-serif'};line-height:1.5}'
-        'h1,h2,h3,h4,h5,h6{break-after:avoid}p{orphans:3;widows:3}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:6px;overflow-wrap:anywhere}pre{white-space:pre-wrap;background:#f3f3f3;padding:12px;overflow-wrap:anywhere}'
+        '${List.generate(6, (i) => 'h${i + 1}{font-size:${style.headingSize(i + 1)}pt}').join()}h1,h2,h3,h4,h5,h6{break-after:avoid}p{orphans:3;widows:3}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:6px;overflow-wrap:anywhere}pre{white-space:pre-wrap;background:#f3f3f3;padding:12px;overflow-wrap:anywhere}'
         '.print-layout .figure{width:100%}.figure{max-width:100%;max-height:${style.height - 2 * style.margin - 100}pt;object-fit:contain}.equation{max-width:100%;max-height:48pt;vertical-align:middle}.pagebreak{break-before:page}.title-page{break-after:page;padding-top:30%}blockquote{border-left:3px solid #bbb;padding-left:14px}a{color:#35538c}.fallback{color:#744}header{color:#666}.layout-caption{font-size:90%;color:#555}figure{break-inside:avoid}thead{display:table-header-group}.no-repeat thead{display:table-row-group} @media print{body{margin:0;padding:0}}'
         '</style></head><body><header>${publicationEscape(style.header)}</header>'
         '<section class="${style.titlePage ? 'title-page' : ''}"><h1$titleAnchor>${publicationEscape(document.title)}</h1>${article == null ? '<p>${publicationEscape(style.author)}</p>' : byline}</section>'
@@ -279,17 +319,26 @@ class PublicationExport {
         '$body$endnotes</body></html>';
   }
 
-  Future<Uint8List> pdf() => _pdf(false);
-  Future<Uint8List> _pdf(bool finalPass) async {
+  Future<Uint8List> pdf({Future<void> Function(pw.Document)? appendPages}) =>
+      _pdf(false, appendPages);
+  Future<Uint8List> _pdf(
+    bool finalPass,
+    Future<void> Function(pw.Document)? appendPages,
+  ) async {
     final tocPages = Map<String, int>.of(headingPages);
     headingPages.clear();
     final s = document.style;
     final family = s.serif ? 'CrimsonText' : 'Lato';
-    final base = pw.Font.ttf(
-      await rootBundle.load('assets/publishing/$family-Regular.ttf'),
-    );
+    final customPrefix = pdfTheme?.fontPrefix;
+    final pixel = pdfTheme?.fontFamily == 'OrbitPixel';
+    String fontAsset(String face) => customPrefix == null
+        ? 'assets/publishing/$family-$face.ttf'
+        : pixel
+        ? '$customPrefix.ttf'
+        : '$customPrefix-$face.ttf';
+    final base = pw.Font.ttf(await rootBundle.load(fontAsset('Regular')));
     final coverage = TtfParser(
-      await rootBundle.load('assets/publishing/$family-Regular.ttf'),
+      await rootBundle.load(fontAsset('Regular')),
     ).charToGlyphIndexMap;
     final fallbackData = await rootBundle.load(
       'assets/publishing/Lato-Regular.ttf',
@@ -314,14 +363,30 @@ class PublicationExport {
         'PDF font lacks ${missingRunes.length} character(s): ${String.fromCharCodes(missingRunes.take(12))}. HTML and Word retain the original Unicode text.',
       );
     }
-    final bold = pw.Font.ttf(
-      await rootBundle.load('assets/publishing/$family-Bold.ttf'),
-    );
-    final italicFont = pw.Font.ttf(
-      await rootBundle.load('assets/publishing/$family-Italic.ttf'),
-    );
+    final bold = pw.Font.ttf(await rootBundle.load(fontAsset('Bold')));
+    final italicFont = pw.Font.ttf(await rootBundle.load(fontAsset('Italic')));
     final boldItalicFont = pw.Font.ttf(
-      await rootBundle.load('assets/publishing/$family-BoldItalic.ttf'),
+      await rootBundle.load(fontAsset('BoldItalic')),
+    );
+    PdfColor color(int value) => PdfColor.fromInt(value);
+    final ink = pdfTheme == null
+        ? PdfColors.black
+        : color(pdfTheme!.theme.colorScheme.onSurface.toARGB32());
+    final subtle = pdfTheme == null
+        ? PdfColors.grey700
+        : color(pdfTheme!.theme.colorScheme.onSurfaceVariant.toARGB32());
+    final accent = pdfTheme == null
+        ? PdfColors.black
+        : color(pdfTheme!.theme.colorScheme.primary.toARGB32());
+    final border = pdfTheme == null
+        ? PdfColors.grey400
+        : color(pdfTheme!.theme.colorScheme.outlineVariant.toARGB32());
+    final bodyStyle = pw.TextStyle(
+      font: base,
+      fontSize: s.fontSize,
+      lineSpacing: 3,
+      fontFallback: [fallback],
+      color: ink,
     );
     final theme =
         pw.ThemeData.withFont(
@@ -330,22 +395,60 @@ class PublicationExport {
           italic: italicFont,
           boldItalic: boldItalicFont,
         ).copyWith(
-          defaultTextStyle: pw.TextStyle(
-            font: base,
-            fontSize: s.fontSize,
-            lineSpacing: 3,
-            fontFallback: [fallback],
-          ),
+          defaultTextStyle: bodyStyle,
+          paragraphStyle: bodyStyle,
+          bulletStyle: bodyStyle,
+          tableCell: bodyStyle,
+          tableHeader: bodyStyle.copyWith(fontWeight: pw.FontWeight.bold),
+          header0: pw.TextStyle(color: ink),
+          header1: pw.TextStyle(color: ink),
+          header2: pw.TextStyle(color: ink),
+          header3: pw.TextStyle(color: ink),
+          header4: pw.TextStyle(color: ink),
+          header5: pw.TextStyle(color: ink),
         );
     final pdf = pw.Document(
       title: document.title,
       author: s.author,
       creator: 'Orbit Note',
     );
-    final format = PdfPageFormat(s.width, s.height, marginAll: s.margin);
-    final pageWidth = s.width - 2 * s.margin;
+    // Keep content clear of book bindings and desktop-theme title bars, even
+    // when an older document chose the smallest permitted print margin.
+    final printMargin =
+        pdfTheme != null &&
+            pdfTheme!.appearance.design.name != 'orbit' &&
+            s.margin < 40
+        ? 40.0
+        : s.margin;
+    final format = PdfPageFormat(s.width, s.height, marginAll: printMargin);
+    final backdrop = pdfTheme == null
+        ? null
+        : pw.MemoryImage(
+            await pdfTheme!.page(
+              s.width,
+              s.height,
+              printMargin,
+              s.fontSize,
+              warn,
+            ),
+          );
+    final pdfEquations = <String, Uint8List>{};
+    for (final entry in equations.entries) {
+      if (pdfTheme == null) {
+        pdfEquations[entry.key] = entry.value;
+        continue;
+      }
+      try {
+        pdfEquations[entry.key] = await pdfTheme!.equation(entry.key);
+      } catch (_) {
+        warn(
+          'Equation rendering unavailable in this editor theme; complete TeX retained.',
+        );
+      }
+    }
+    final pageWidth = s.width - 2 * printMargin;
     // Reserve room for running text/footer and breathing space on every page.
-    final pageHeight = s.height - 2 * s.margin - 100;
+    final pageHeight = s.height - 2 * printMargin - 100;
     pw.InlineSpan inline(md.Node n, {double? maxWidth}) {
       final availableWidth = maxWidth ?? pageWidth;
       if (n is md.Text) return pw.TextSpan(text: n.text);
@@ -366,7 +469,7 @@ class PublicationExport {
       }
       if (e.tag == 'img' || e.tag.startsWith('math')) {
         final src = e.tag == 'img' ? e.attributes['src']! : e.textContent;
-        final bytes = e.tag == 'img' ? images[src] : equations[src];
+        final bytes = e.tag == 'img' ? images[src] : pdfEquations[src];
         if (bytes != null) {
           final png = bytes.length >= 24 && bytes[0] == 137
               ? ByteData.sublistView(bytes)
@@ -396,6 +499,7 @@ class PublicationExport {
           fontStyle: e.tag == 'em' ? pw.FontStyle.italic : null,
           decoration: e.tag == 'del' ? pw.TextDecoration.lineThrough : null,
           font: e.tag == 'code' ? mono : null,
+          color: e.tag == 'a' ? accent : null,
           fontFallback: [fallback],
         ),
         annotation:
@@ -410,9 +514,26 @@ class PublicationExport {
       );
     }
 
+    pw.TextAlign paragraphAlignment(md.Element e) =>
+        switch (e.attributes['orbit-text-align']) {
+          'center' => pw.TextAlign.center,
+          'right' => pw.TextAlign.right,
+          'justify' => pw.TextAlign.justify,
+          _ => pw.TextAlign.left,
+        };
     List<pw.Widget> blocks(List<md.Node> nodes, {int depth = 0}) {
       final result = <pw.Widget>[];
-      for (final n in nodes) {
+      double headingHeight(md.Element e) {
+        final size = s.headingSize(int.parse(e.tag[1]));
+        final lines = math.max(
+          1,
+          (e.textContent.runes.length * size * .6 / pageWidth).ceil(),
+        );
+        return (lines * size * 1.35 + 26).clamp(38, pageHeight * .8).toDouble();
+      }
+
+      for (var nodeIndex = 0; nodeIndex < nodes.length; nodeIndex++) {
+        final n = nodes[nodeIndex];
         if (n is md.Text) {
           result.add(pw.Paragraph(text: n.text));
           continue;
@@ -423,19 +544,63 @@ class PublicationExport {
           continue;
         }
         if (RegExp(r'^h[1-6]$').hasMatch(e.tag)) {
+          final height = headingHeight(e);
+          final next = nodeIndex + 1 < nodes.length
+              ? nodes[nodeIndex + 1]
+              : null;
+          var following = s.fontSize * 3 + 12;
+          if (next is md.Element &&
+              publicationLayoutTarget(next) &&
+              next.tag == 'p') {
+            final options = publicationBlockLayout(next);
+            final image = next.children!.single as md.Element;
+            final data = images[image.attributes['src']];
+            if (options.pageBreakBefore) {
+              following = 0;
+            } else if (data != null) {
+              following =
+                  _imageHeight(
+                    data,
+                    pageWidth * options.width / 100,
+                    math.max(40, pageHeight - height - 24),
+                  ) +
+                  24;
+            }
+          }
+          final options = publicationBlockLayout(e);
+          final previous = nodeIndex > 0 ? nodes[nodeIndex - 1] : null;
+          final freshFirst =
+              nodeIndex == 0 &&
+              (s.titlePage || s.contents || e.textContent == document.title);
+          if ((options.pageBreakBefore ||
+                  e.attributes['orbit-h1-pagebreak'] == 'true') &&
+              !freshFirst &&
+              !(previous is md.Element && previous.tag == 'pagebreak')) {
+            result.add(pw.NewPage());
+          } else if (!(next is md.Element && next.tag == 'pagebreak')) {
+            result.add(
+              pw.NewPage(freeSpace: math.min(pageHeight, height + following)),
+            );
+          }
           result.add(
             _PublicationAnchor(
               pages: headingPages,
               name: e.attributes['id']!,
               child: pw.Header(
+                decoration: pw.BoxDecoration(
+                  border: pw.Border(
+                    bottom: pw.BorderSide(color: border, width: .3),
+                  ),
+                ),
                 level: int.parse(e.tag[1]) - 1,
                 title: e.textContent,
                 text: e.textContent,
-                child: pw.RichText(
+                child: _PublicationAlignedText(
+                  textAlign: paragraphAlignment(e),
                   text: pw.TextSpan(
                     children: [inline(e)],
                     style: pw.TextStyle(
-                      fontSize: (25 - int.parse(e.tag[1]) * 2).toDouble(),
+                      fontSize: s.headingSize(int.parse(e.tag[1])),
                       fontWeight: pw.FontWeight.bold,
                     ),
                   ),
@@ -526,10 +691,37 @@ class PublicationExport {
             }
             return pw.Table(
               defaultColumnWidth: const pw.FlexColumnWidth(),
-              border: pw.TableBorder.all(color: PdfColors.grey400),
+              border: pw.TableBorder.all(color: border),
               children: [
-                for (final row in sourceRows)
+                for (final (index, row) in sourceRows.indexed)
                   pw.TableRow(
+                    decoration: pw.BoxDecoration(
+                      color: row.any((c) => c is md.Element && c.tag == 'th')
+                          ? pdfTheme == null
+                                ? PdfColors.grey200
+                                : color(
+                                    pdfTheme!
+                                        .theme
+                                        .colorScheme
+                                        .surfaceContainerHigh
+                                        .toARGB32(),
+                                  )
+                          : index.isOdd
+                          ? pdfTheme == null
+                                ? PdfColors.grey100
+                                : color(
+                                    pdfTheme!
+                                        .theme
+                                        .colorScheme
+                                        .surfaceContainerLow
+                                        .toARGB32(),
+                                  )
+                          : pdfTheme == null
+                          ? PdfColors.white
+                          : color(
+                              pdfTheme!.theme.colorScheme.surface.toARGB32(),
+                            ),
+                    ),
                     repeat:
                         options.repeatHeader &&
                         row.any((c) => c is md.Element && c.tag == 'th'),
@@ -555,7 +747,7 @@ class PublicationExport {
             );
           }
 
-          final spare = (s.width - 2 * s.margin) * (100 - options.width) / 100;
+          final spare = pageWidth * (100 - options.width) / 100;
           result.add(
             pw.Padding(
               padding: pw.EdgeInsets.only(
@@ -602,10 +794,17 @@ class PublicationExport {
           if (options.pageBreakBefore) result.add(pw.NewPage());
           final image = e.children!.single as md.Element;
           final bytes = images[image.attributes['src']];
-          final desiredWidth = (s.width - 2 * s.margin) * options.width / 100;
+          final desiredWidth = pageWidth * options.width / 100;
+          final previous = nodeIndex > 0 ? nodes[nodeIndex - 1] : null;
+          final figureHeight =
+              previous is md.Element &&
+                  publicationHeadingTarget(previous) &&
+                  !options.pageBreakBefore
+              ? math.max(40.0, pageHeight - headingHeight(previous) - 24)
+              : pageHeight;
           final fittedWidth = bytes == null
               ? desiredWidth
-              : _imageWidth(bytes, desiredWidth, pageHeight);
+              : _imageWidth(bytes, desiredWidth, figureHeight);
           final spare = pageWidth - fittedWidth;
           final padding = pw.EdgeInsets.only(
             bottom: 8,
@@ -631,7 +830,7 @@ class PublicationExport {
                   : pw.Image(
                       pw.MemoryImage(bytes),
                       width: fittedWidth,
-                      height: _imageHeight(bytes, fittedWidth, pageHeight),
+                      height: _imageHeight(bytes, fittedWidth, figureHeight),
                       fit: pw.BoxFit.contain,
                     ),
             ),
@@ -729,7 +928,7 @@ class PublicationExport {
           continue;
         }
         if (e.tag == 'hr') {
-          result.add(pw.Divider());
+          result.add(pw.Divider(color: border));
           continue;
         }
         if (e.tag == 'blockquote') {
@@ -737,7 +936,7 @@ class PublicationExport {
           continue;
         }
         if (e.tag == 'math') {
-          final bytes = equations[e.textContent];
+          final bytes = pdfEquations[e.textContent];
           final desiredWidth = bytes == null
               ? pageWidth
               : _imageWidth(
@@ -788,7 +987,11 @@ class PublicationExport {
         result.add(
           pw.Padding(
             padding: const pw.EdgeInsets.only(bottom: 9),
-            child: pw.RichText(text: inline(e), overflow: pw.TextOverflow.span),
+            child: _PublicationAlignedText(
+              text: inline(e),
+              textAlign: paragraphAlignment(e),
+              overflow: pw.TextOverflow.span,
+            ),
           ),
         );
       }
@@ -810,8 +1013,16 @@ class PublicationExport {
     try {
       pdf.addPage(
         pw.MultiPage(
-          pageFormat: format,
-          theme: theme,
+          pageTheme: pw.PageTheme(
+            pageFormat: format,
+            theme: theme,
+            buildBackground: backdrop == null
+                ? null
+                : (_) => pw.FullPage(
+                    ignoreMargins: true,
+                    child: pw.Image(backdrop, fit: pw.BoxFit.fill),
+                  ),
+          ),
           maxPages: 500,
           header: (context) {
             // MultiPage's maxPages is a debug progress guard, not a release-mode
@@ -821,26 +1032,33 @@ class PublicationExport {
                 'PDF exceeds 500 pages. Export smaller sections; no partial PDF was saved.',
               );
             }
+            if (s.header.trim().isEmpty) return pw.SizedBox();
             return pw.Padding(
               padding: const pw.EdgeInsets.only(bottom: 8),
               child: pw.Text(
                 s.header,
-                style: const pw.TextStyle(
-                  fontSize: 9,
-                  color: PdfColors.grey700,
-                ),
+                style: pw.TextStyle(fontSize: 9, color: subtle),
               ),
             );
           },
           footer: (context) => s.pageNumbers
-              ? pw.Align(
-                  alignment: pw.Alignment.centerRight,
-                  child: pw.Padding(
-                    padding: const pw.EdgeInsets.only(top: 8),
-                    child: pw.Text(
-                      '${context.pageNumber} / ${context.pagesCount}',
-                      style: const pw.TextStyle(fontSize: 9),
-                    ),
+              ? pw.Padding(
+                  padding: const pw.EdgeInsets.only(top: 8),
+                  child: pw.Row(
+                    children: [
+                      pw.Expanded(
+                        child: pw.Text(
+                          document.title,
+                          maxLines: 1,
+                          style: pw.TextStyle(fontSize: 8, color: subtle),
+                        ),
+                      ),
+                      pw.SizedBox(width: 12),
+                      pw.Text(
+                        '${context.pageNumber} / ${context.pagesCount}',
+                        style: pw.TextStyle(fontSize: 9, color: subtle),
+                      ),
+                    ],
                   ),
                 )
               : pw.SizedBox(),
@@ -849,7 +1067,7 @@ class PublicationExport {
               pw.SizedBox(height: 80),
               pw.Text(
                 document.title,
-                style: pw.TextStyle(font: bold, fontSize: 28),
+                style: pw.TextStyle(font: bold, fontSize: s.headingSize(1) + 5),
                 overflow: pw.TextOverflow.span,
               ),
               pw.SizedBox(height: 20),
@@ -857,19 +1075,27 @@ class PublicationExport {
               pw.NewPage(),
             ] else if (!titleInBody)
               pw.Header(
+                decoration: pw.BoxDecoration(
+                  border: pw.Border(
+                    bottom: pw.BorderSide(color: border, width: .3),
+                  ),
+                ),
                 level: 0,
                 title: document.title,
                 text: document.title,
                 child: pw.Text(
                   document.title,
-                  style: pw.TextStyle(font: bold, fontSize: 24),
+                  style: pw.TextStyle(
+                    font: bold,
+                    fontSize: s.headingSize(1) + 1,
+                  ),
                   overflow: pw.TextOverflow.span,
                 ),
               ),
             if (s.contents && document.headings.isNotEmpty) ...[
               pw.Text(
                 'Contents',
-                style: pw.TextStyle(font: bold, fontSize: 22),
+                style: pw.TextStyle(font: bold, fontSize: s.headingSize(2)),
               ),
               pw.SizedBox(height: 16),
               for (final heading in document.headings)
@@ -878,19 +1104,53 @@ class PublicationExport {
                     left: (heading.level - 1) * 12,
                     bottom: 8,
                   ),
-                  child: pw.RichText(
-                    overflow: pw.TextOverflow.span,
-                    text: pw.TextSpan(
-                      text: '${heading.text}  ${tocPages[heading.id] ?? ''}',
-                      annotation: pw.AnnotationLink(heading.id),
-                    ),
-                  ),
+                  child: heading.text.length > 300
+                      ? pw.RichText(
+                          overflow: pw.TextOverflow.span,
+                          text: pw.TextSpan(
+                            text:
+                                '${heading.text}  ${tocPages[heading.id] ?? ''}',
+                            annotation: pw.AnnotationLink(heading.id),
+                          ),
+                        )
+                      : pw.Row(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            pw.Expanded(
+                              child: pw.RichText(
+                                text: pw.TextSpan(
+                                  text: heading.text,
+                                  annotation: pw.AnnotationLink(heading.id),
+                                ),
+                              ),
+                            ),
+                            pw.SizedBox(width: 12),
+                            pw.SizedBox(
+                              width: 34,
+                              child: pw.Align(
+                                alignment: pw.Alignment.topRight,
+                                child: pw.Text(
+                                  '${tocPages[heading.id] ?? ''}',
+                                  style: pw.TextStyle(color: subtle),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                 ),
               pw.NewPage(),
             ],
             ...blocks(document.nodes),
             if (document.footnotes.isNotEmpty) ...[
-              pw.Header(level: 0, text: 'Footnotes'),
+              pw.Header(
+                level: 0,
+                text: 'Footnotes',
+                decoration: pw.BoxDecoration(
+                  border: pw.Border(
+                    bottom: pw.BorderSide(color: border, width: .3),
+                  ),
+                ),
+              ),
               for (final entry in document.footnotes.entries)
                 _PublicationAnchor(
                   pages: endnotePages,
@@ -906,11 +1166,18 @@ class PublicationExport {
     } on FormatException catch (error) {
       return Future<Uint8List>.error(error);
     }
+    final needsFinalPass =
+        !finalPass && s.contents && document.headings.isNotEmpty;
+    if (!needsFinalPass) await appendPages?.call(pdf);
+    if (pdf.document.pdfPageList.pages.length > 500) {
+      throw const FormatException(
+        'PDF exceeds 500 pages. No partial PDF was saved.',
+      );
+    }
     final bytes = await pdf.save();
     pageCount = pdf.document.pdfPageList.pages.length;
-    return !finalPass && s.contents && document.headings.isNotEmpty
-        ? _pdf(true)
-        : bytes;
+    if (needsFinalPass) return await _pdf(true, appendPages);
+    return bytes;
   }
 
   Uint8List docx() => _WordExport(this).build();
@@ -1085,7 +1352,13 @@ class _WordExport {
     }
     return paragraph(
       content,
-      properties: heading ? '<w:pStyle w:val="Heading${e.tag[1]}"/>' : '',
+      properties:
+          (e.attributes['orbit-text-align'] == null
+              ? ''
+              : '<w:jc w:val="${e.attributes['orbit-text-align'] == 'justify' ? 'both' : e.attributes['orbit-text-align']}"/>') +
+          (heading
+              ? '<w:pStyle w:val="Heading${e.tag[1]}"/>${(e.attributes['orbit-pageBreakBefore'] == 'true' || e.attributes['orbit-h1-pagebreak'] == 'true') ? '<w:pageBreakBefore/>' : ''}'
+              : ''),
     );
   }
 
@@ -1139,7 +1412,7 @@ class _WordExport {
     final font = s.serif ? 'Georgia' : 'Arial';
     file(
       'word/styles.xml',
-      '<w:styles $ns><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="$font" w:hAnsi="$font"/><w:sz w:val="${(s.fontSize * 2).round()}"/></w:rPr></w:rPrDefault></w:docDefaults><w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:rPr><w:b/><w:sz w:val="56"/></w:rPr></w:style>${List.generate(6, (i) => '<w:style w:type="paragraph" w:styleId="Heading${i + 1}"><w:name w:val="heading ${i + 1}"/><w:pPr><w:keepNext/><w:outlineLvl w:val="$i"/></w:pPr><w:rPr><w:b/><w:sz w:val="${36 - i * 2}"/></w:rPr></w:style>').join()}</w:styles>',
+      '<w:styles $ns><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="$font" w:hAnsi="$font"/><w:sz w:val="${(s.fontSize * 2).round()}"/></w:rPr></w:rPrDefault></w:docDefaults><w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:rPr><w:b/><w:sz w:val="${((s.headingSize(1) + 5) * 2).round()}"/></w:rPr></w:style>${List.generate(6, (i) => '<w:style w:type="paragraph" w:styleId="Heading${i + 1}"><w:name w:val="heading ${i + 1}"/><w:pPr><w:keepNext/><w:outlineLvl w:val="$i"/></w:pPr><w:rPr><w:b/><w:sz w:val="${(s.headingSize(i + 1) * 2).round()}"/></w:rPr></w:style>').join()}</w:styles>',
     );
     for (final pair in {
       'styles': 'styles',

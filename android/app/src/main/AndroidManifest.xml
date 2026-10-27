@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application
         android:allowBackup="false"
         android:label="${orbitAppLabel}"
@@ -29,6 +30,9 @@
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+        <service android:name="org.orbitnote.app.OrbitSyncJobService"
+            android:process=":orbit_sync" android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

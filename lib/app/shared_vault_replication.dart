@@ -157,6 +157,7 @@ extension SharedVaultReplication on CollaborationController {
   bool _safeSharedApply(int generation, String id, UniversalObject? expected) {
     if (!_current(generation) ||
         workspace.loading ||
+        workspace.financeSaving ||
         workspace.dirty.contains(id) ||
         workspace.failures.containsKey(id) ||
         workspace.editorDraftConflicts.values.any((d) => d.objectId == id)) {
@@ -471,7 +472,10 @@ extension SharedVaultReplication on CollaborationController {
         conflicts[record.objectId] = e.toString();
       }
     }
-    for (final object in workspace.objects.toList()) {
+    for (final object in [
+      ...workspace.objects,
+      ...workspace.repository.preferenceRecords,
+    ]) {
       if (!_current(generation)) return;
       if (object.isReadOnly ||
           _documents.containsKey(object.id) ||

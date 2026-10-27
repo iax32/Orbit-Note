@@ -1,5 +1,151 @@
 # Spatial boards
 
+## Workshop and heavy-board reliability — 2026-10-26
+
+Countdown updates are isolated from the idea list; ticking does not rebuild or
+re-sort sticky rows. Rapid vote actions read current scores rather than a captured
+frame value. Ranked rows keep their placement keys and keyboard identity. Draft
+guards protect bulk text and unapplied scores from barrier/Escape/Close loss.
+A stale workshop save retains the visible tally and explains why it cannot apply.
+
+Color clustering checks unselected visible solid content, including locked items,
+and relocates the batch into clear space when its proposed bounds would overlap.
+Frames, section headers and connector paths are not treated as filled obstacles.
+An already-clustered selection adds no empty Undo command.
+
+CSV is a read action: locked/grouped/column-owned visible stickies are included,
+and it remains available on read-only boards. Hidden notes remain excluded.
+Mutation tools keep their existing eligibility guards and 200-note limits. CSV
+uses UTF-8 BOM for spreadsheet Unicode detection and rejects more than 10,000
+notes/two million text characters before saving, with no partial file.
+
+
+## Brainstorming and facilitated workshops — 2026-10-26
+
+The Canvas toolbar lightbulb opens Brainstorming & workshops. Bulk sticky notes
+accept one idea per line or blank-paragraph-separated multiline ideas, with 1–8
+columns and current Canvas color. Up to 200 notes/60,000 input characters/2,000
+characters per idea are accepted; limits reject the request rather than truncate
+knowledge. Taller text gets more placement height. New ordinary editable sticky
+placements are added beside existing content and undo as one batch.
+
+Color clustering rearranges selected eligible stickies, or all eligible stickies
+when selection is empty, preserving IDs, content, references, unknown fields and
+connector endpoints. Locked, hidden, grouped and column-owned items are excluded.
+Clusters have separate space; one Undo restores all positions. This is geometric
+color sorting, not semantic/AI clustering or persistent cluster membership.
+
+Workshop tools provide a monotonic local countdown with pause/reset and duration
+presets. It stops when the panel closes and is not synchronized across clients.
+The facilitator can adjust sticky vote tallies, rank by score and locate ideas.
+Save vote tallies commits changed counts in one history operation; closing without
+saving cancels. Optional element field workshopVotes is an integer 0–999, retained
+in ordinary Canvas JSON; older readers preserve unknown data. Counts are manual,
+not participant identities, anonymous ballots or authenticated voting sessions.
+
+Both dialogs reject stale/read-only/switched-board mutations. CSV exports editable
+sticky IDs, complete quoted text, color and tally; spreadsheet formula-leading
+values are prefixed with an apostrophe in the CSV only. No source content changes,
+cloud calls, user Vault migration or Miro integration is required.
+
+
+## High-degree actor fans — 2026-10-25
+
+Actors with seven or more automatic relationships allocate distinct attachment
+points across both sides and reserve individual escape stems before routing.
+Short direct associations are allowed when endpoint normals face the path and
+nodes/other lines remain clear. No stems are bundled into a shared trunk.
+Nearby use cases use adaptive padding, and narrow fan channels get finer search
+coordinates; the actual node interiors remain forbidden. Large mixed boards use
+the shared spatial index with a bounded neighbor-search budget for margins;
+unexamined crowded neighborhoods retain conservative padding.
+
+Small existing diagrams keep their established port strategy. Manual routes,
+authored positions, IDs, labels and references are not rewritten. Direct lines
+follow their actor immediately during dragging; safe projected label placements
+are reused and canonical workers still finalize geometry after release.
+Numbers use less empty padding and avoid nodes/other labels where space permits.
+Crowding can move a label further along its own branch. Truly unresolved routes
+retain a selectable warning with enough height for both text lines.
+
+Validated with the coffee-machine geometry and 12/24/48/64-link fans. This is not
+a guarantee of planarity, pixel separation or constant latency for arbitrary
+graphs; extreme label-heavy fans still cost more than ordinary diagrams.
+[Evidence and limits](../tasks/high-degree-routing-2026-10-25.md).
+
+## Readable use-case organization — 2026-10-25
+
+The **Organize use-case diagram** toolbar button arranges selected connected
+actor/use-case components, or all such components when nothing is selected.
+Cases use a spaced column with directly related cases adjacent; two actors flank
+it to reduce same-side fan-out. The camera fits the result. One Undo restores
+all placement changes. Locked items, identities, relationships, manual routing,
+unknown metadata and unrelated board content remain; containing unlocked system
+boundaries expand rather than clipping relocated contents.
+
+Automatic routes score simple paths across endpoint sides before bounded grid
+search, preferring short paths and fewer bends. The old emergency path that
+ignored other relationships is removed. Independent connections never share a
+trunk as a fallback. Where no separated path can be found, the existing selectable
+route warning stays visible instead of a false connection. During dragging,
+valid continuations are reused and invalid ones get a cheap separated repair;
+unresolved previews are finalized by the canonical worker after release.
+
+This is a deterministic arrangement heuristic, not a guarantee of the global
+optimum or a planar drawing for nonplanar graphs/locked overlapping nodes. Manual
+paths stay manual. Canvas, Markdown and SVG share the same canonical geometry.
+[Evidence and limits](../tasks/readable-use-case-layout-2026-10-25.md).
+
+## Large-scene preparation and release — 2026-10-25
+
+Larger use-case scenes show an accessible preparation state while canonical
+routes/bounds are computed locally off the native UI thread. After dragging,
+validated paths remain visible until the same canonical solver completes.
+Results apply only to the matching current geometry; newer drags, Canvas changes
+and disposal reject stale work. Styling and authored/unknown data are preserved.
+Exports and reopened scenes retain canonical routing; no preview cache is saved.
+Ordinary/unsupported cases keep the existing synchronous fallback. This does not
+guarantee zero latency for arbitrary graphs or web worker execution.
+[ADR-0034](../adr/0034-derived-routing-workers.md),
+[measurements and acceptance](../tasks/large-workspace-performance-2026-10-25.md).
+
+## Use-case interaction performance — 2026-10-24
+
+Routing caches compare exact geometry inputs; recoloring, locking, stacking and
+attached-edge fallback writes retain paths and endpoint labels. Related moves and
+history replay coalesce index refreshes while in-batch queries remain current.
+Spatial collision filtering and memoized grid-edge checks accelerate full searches.
+
+Dragging/resizing uses validated continuation of existing paths and falls back to
+full search when necessary. Releasing/cancelling restores canonical routing and
+hit bounds; transient interaction state is not stored. Captured final routes and
+labels retain the accepted presentation. Existing fallback paths can still have
+minimal crossings; this performance update does not replace their behavior.
+[Measured improvements, focused checks and remaining spikes](../tasks/use-case-performance-2026-10-24.md).
+
+## Separated use-case routing — 2026-10-24
+
+Automatic use-case relationships avoid visible node interiors and reserve separate
+line corridors. Another connection is a hard exclusion, including touch points
+and shared segments; it is not merely a penalty to trade against a shorter path.
+Distributed ports, alternate endpoint sides and bounded ordering retries retain
+independent relationships. System/fragment frames and hidden items are excluded
+as solid obstacles. Manual curves/orthogonal paths and fixed anchors remain
+manual; class and sequence tools retain their existing behavior.
+
+Multiplicities are inline on their own line in a small outlined background,
+with placement avoiding nodes, other routes and previously placed labels where
+space permits. From/To guidance and direction swapping remain. Shared Canvas,
+Markdown previews, publication snapshots and SVG use the same geometry and
+bounds. Stored data is not migrated or silently disconnected.
+
+Some layouts are topologically impossible, contain overlapping nodes, or exhaust
+the bounded search. Such a connection shows a selectable 'Move items to route
+this connection' indicator instead of drawing a false crossing/merged route.
+Moving nodes or choosing a manual route can resolve it. This is not an assurance
+that every arbitrary graph has a planar drawing. Tests were explicitly skipped
+for this owner-requested revision; earlier test counts do not validate it.
+
 ## Use-case and sequence diagrams — 2026-10-23
 
 The shared Canvas now offers actors, named use cases/extension points, system
@@ -90,9 +236,33 @@ they do not contain a self-contained diagram snapshot.
 
 Mermaid remains the existing flowchart exporter: its UI warns that it does not
 preserve class compartments or UML notation. UML classDiagram import/export,
-self-associations, automatic obstacle avoidance, code generation and semantic
+automatic obstacle avoidance, code generation and semantic
 validation of free-form signatures/multiplicities are not part of this task.
 Evidence and build results are recorded in the current task.
+
+### Class exercises and reviewed sequence drafts — 2026-10-25
+
+The Use-case & sequence diagrams popup also exposes class creation, class links
+and Class diagram from sequence. Associations support unspecified, forward,
+reverse or bidirectional navigability and the same class at both endpoints.
+Self-associations use distinct ports and an exterior loop, following class
+movement/resizing in the shared Canvas/SVG renderer. Editing labels preserves
+existing routing and relationship markers. Existing JSON stays compatible.
+
+Class diagram from sequence derives an independent reviewed draft from typed
+Canvas lifelines (instance:Class) and synchronous/asynchronous messages. Selection
+scopes lifelines or message endpoints; no selection uses visible lifelines.
+Equal class names merge. Operations retain explicit parameter types or types of
+simple literal arguments; unknown parameter types remain ?. Unambiguous named
+literal replies may supply return types. Overloads remain distinct. Opposite
+observed calls merge into bidirectional associations; calls between distinct
+instances of the same class produce self-associations, whereas a self-call alone
+does not. The review lists operations, directions and warnings before insertion.
+Cancel writes nothing; insertion is one undo step and refuses changed scenes.
+Source sequences remain unchanged; fresh placements retain source IDs as metadata.
+This does not interpret screenshots/PDFs, infer attributes/visibility/multiplicities
+or prove UML semantic correctness. Unsupported signatures require manual review.
+Drafts are bounded to 50 lifelines, 500 messages and 100 operations per class.
 
 ## Linked model assets — 2026-10-11
 

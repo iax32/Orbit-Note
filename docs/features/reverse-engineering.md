@@ -1,5 +1,9 @@
 # Reverse engineering knowledge preset
 
+2026-10-27: [Research dossiers](research-dossiers.md), owner-approved REV-06–15,
+adds structured notes, recorded layouts/instructions, build-aware evidence,
+manual maps, templates and live summaries. No process tools.
+
 ## Recorded function-map comparison — 2026-10-13
 
 Compare builds in research dashboards and Function tables opens a scoped comparison.

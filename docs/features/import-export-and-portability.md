@@ -1,5 +1,117 @@
 # Import, export and portability
 
+## Everyday publishing controls — 2026-10-27
+
+Publishing shows generated page/notice counts next to export actions and retains
+its existing missing-resource/layout warnings. Successful file export can remember
+settings with the note; cancel/failure does not. The optional editor-design toggle
+is retained in the existing extensible publication style record. Keyboard/compact
+layouts scroll the action area instead of crowding out page/style controls.
+See [workflow polish](everyday-workflows.md) for behavior and validation boundaries.
+
+## Alignment parsing boundary repair — 2026-10-26
+
+Alignment comments decorate the next standard Markdown paragraph or heading. The
+export parser consumes only the marker and lets the standard parser retain block
+boundaries, including blank lines inside fences. Consecutive markers resolve in a
+linear pass instead of recursively reparsing the remaining input. No authored
+source is changed. Existing image/table layout matching, footnotes and themes
+retain their export behavior.
+
+
+## Chapter rule and paragraph alignment — 2026-10-26
+
+Start every Heading 1 on a new page is an optional document-wide setting, off
+for older notes. It applies to future H1 headings as well as existing ones, without
+changing H2–H6. Existing explicit/manual breaks remain; PDF avoids redundant
+breaks at an existing page boundary or fresh first chapter. Preview changes only
+become portable note settings through Save settings to note. Style presets
+preserve the rule; Reset style clears it. HTML and Word export the chapter rule.
+
+Exact orbit:align markers now retain left/center/right/justify paragraph or heading
+alignment in PDF/HTML/Word. Inline links and formatting stay intact, and fenced
+code markers remain literal. HTML combines alignment and break rules in one style
+attribute; Word uses paragraph justification. Rendering does not rewrite Markdown.
+
+
+## Publication profiles and scalable type — 2026-10-26
+
+Document style presets include Report, Academic and Design brief plus Compact
+handout (10 pt, 36 pt margins, no contents), Large-print reading (16 pt, 48 pt
+margins, contents) and Technical report (12 pt, 48 pt margins, numbered headings,
+contents). Menu entries explain their purpose; a matching profile description or
+Custom layout appears beside the controls. Profiles preserve author, running
+header, A4/Letter, Canvas inventory choice, per-block layouts and the device-local
+PDF theme. Selection changes only the preview draft until explicitly saved through
+the existing guarded settings command. No preset identifier or migration is needed.
+
+Heading sizes now scale with body text in PDF, HTML and Word; all six levels remain
+larger than body text. PDF title/contents and Word title sizes scale as well. This
+fixes small headings in enlarged-text exports without dropping text or changing
+source content. As before, browser and Word pagination can differ from PDF.
+
+
+## PDF structure and page navigation — 2026-10-25
+
+Publication outline rows offer Start chapter on a new page. Changes remain a
+preview draft until Save settings to note; the existing publication block settings
+store the break without changing prose. Identical heading content is ambiguous
+and cannot receive an unsafe override. PDF, HTML print and Word honor these breaks.
+PDF reserves estimated room for headings and following prose/standalone images;
+normal contents rows use a separate right-aligned page-number column. Very long
+contents entries retain spanning text. Tables use palette-aware headers and subtle
+alternating rows; repeated headers and tall-row record fallbacks remain. Empty
+running headers consume no extra padding; footers separate title and page count.
+
+Readable multi-page Canvas appendices default to a whole-board overview, with an
+explicit opt-out, then numbered detail tiles with row/column coordinates and PDF
+bookmarks. The overview counts toward the 100-page Canvas and 500-page document
+limits. Small boards are not enlarged in readable mode; fitted single-page mode
+remains available. Bundle generation owns its pagination/warning state so opening
+a combined preview cannot overwrite the note preview. Surface rasters use a
+four-entry cache per theme snapshot; private images remain device-local.
+
+
+## Editor-design PDF snapshots — 2026-10-25
+
+Publish document defaults to Use editor design in PDF. The opening snapshot
+includes the current effective Orbit palette, per-note writing design, plain/
+ruled/grid/dot paper and details/high-contrast settings. The existing shared
+WritingSurfacePainter supplies each page's bounded 216-dpi surface; body text,
+headings, tables, links, rules, running text and rendered math use the matching
+ink/accent palette. Bundled Tiny5, Crimson Text and Space Mono design fonts embed
+as searchable PDF text rather than rasterized viewport text. Plain-document
+opt-out restores the existing neutral PDF style. Pagination and print margins
+can change line breaks compared with the scrollable editor; this is not a
+viewport screenshot or a change to Markdown. Framed designs reserve at least
+40 pt content margins to avoid book bindings and desktop title bars.
+
+Personal photo backgrounds use their existing position/fit/opacity/readability
+recipe and optional reading sheet. Input is capped at 2 MiB/16 million source
+pixels/12,000 per source edge, decoded at up to 1,800 pixels and loaded once per
+snapshot with a ten-second deadline. Missing photos retain the paper design and
+a visible warning; high contrast omits photos. No remote fetch, private recipe
+serialization, object change or theme synchronization occurs. PDF equations are
+recolored independently; HTML/Word retain the original neutral resource cache.
+Canvas appendix page surfaces and labels also retain the captured palette.
+
+## Combined note and Canvas PDF pages — 2026-10-25
+
+Publishing offers Combine with Canvases: the current note's immutable export
+snapshot remains first, followed by selected Canvas snapshots in chosen order.
+Canvas export also offers PDF pages independently of Markdown. Each Canvas starts
+a new page with auto/portrait/landscape orientation, A4/A3 and complete fitted
+single-page or overlapping readable tile regions. Preview preparation precedes
+saving; failures retain the preview/settings and never save a partial PDF.
+Limits: 20 Canvases, 100 pages per Canvas and 500 PDF pages total. Titles/page-grid
+coordinates identify continuation tiles. Canvas images retain the existing
+attachment budgets and explicit missing-resource warnings. Rendering uses the
+existing spatial painter at bounded raster resolution, not vector PDF elements.
+The app palette is captured when export opens, preserving warm Paper and other
+themes in embedded and appended Canvas pages. Export does not edit source objects.
+Markdown diagram selections retain selected text, frames, ink and free connectors
+beside UML nodes; attached relationships between selected nodes remain live.
+
 ## Connected publishing snapshots — 2026-10-22
 
 Recognized live-object blocks resolve against the immutable object/path snapshot

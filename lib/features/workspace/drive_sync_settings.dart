@@ -47,6 +47,34 @@ class _DriveSyncSettingsState extends ConsumerState<DriveSyncSettings> {
     }
   }
 
+  Future<void> _cleanup(DriveSyncController c) async {
+    try {
+      final preview = await c.maintainHistory();
+      if (!mounted || preview == null) return;
+      if (preview.files == 0) {
+        _message(
+          'No eligible old payloads. Recent versions and current content are protected.',
+        );
+        return;
+      }
+      if (!await _confirm(
+        'Clean old Drive payloads?',
+        'Remove ${preview.files} obsolete payloads (${(preview.bytes / (1024 * 1024)).toStringAsFixed(1)} MiB) from this cloud Vault. Keeps at least 20 versions per object, every object changed in the last 90 days, current versions, revision metadata and local history.\n\nExpired cloud payloads cannot be recovered through sync. This upgrades the cloud Vault: older Orbit builds will need updating before they can sync it. A durable cleanup receipt is saved first. Interrupted cleanup can be resumed with this button.',
+      )) {
+        return;
+      }
+      if (!mounted) return;
+      await c.maintainHistory(reviewed: preview);
+      _message(
+        'Drive cleanup completed. Current content and local history were preserved.',
+      );
+    } on Object {
+      _message(
+        'Cleanup stopped safely. Reconnect Drive and review a fresh preview to retry.',
+      );
+    }
+  }
+
   Future<void> _enable(
     DriveSyncController c, {
     GoogleRemoteVault? target,
@@ -408,8 +436,13 @@ class _DriveSyncSettingsState extends ConsumerState<DriveSyncSettings> {
             ),
             const SizedBox(height: 6),
             const DriveScheduleSettings(),
+            TextButton.icon(
+              onPressed: c.busy || c.loading ? null : () => _cleanup(c),
+              icon: const Icon(Icons.cleaning_services_outlined),
+              label: const Text('Review old Drive payload cleanup'),
+            ),
             const Text(
-              'Retained versions use Drive storage. History, caches, device settings and empty folders stay local. No background service runs after Orbit closes.',
+              'Retained versions use Drive storage. History, caches, device settings and empty folders stay local. Optional background checks require separate enablement above.',
               style: TextStyle(fontSize: 12),
             ),
             for (final entry in entries.take(_limit)) ...[

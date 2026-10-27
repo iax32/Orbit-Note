@@ -21,7 +21,8 @@ class _Controller extends fixtures.SearchController {
   }
   String? openedId;
   @override
-  void openObject(String id, {bool secondary = false}) => openedId = id;
+  void openObject(String id, {bool secondary = false, bool reveal = false}) =>
+      openedId = id;
 }
 
 void main() {

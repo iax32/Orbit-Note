@@ -8,6 +8,7 @@ import '../domain/vault_candidate.dart';
 import '../domain/workspace_failure.dart';
 import '../infrastructure/storage/device_secret_store.dart';
 import '../platform/vault_discovery.dart';
+import '../platform/background_sync.dart';
 import 'drive_sync_controller.dart';
 import 'google_cloud_controller.dart';
 import 'workspace_controller.dart';
@@ -99,6 +100,61 @@ class DriveVaultScheduler extends ChangeNotifier {
   DateTime? nextCheck, lastCheck;
   List<VaultCandidate> vaults = [];
   List<VaultTransferJob> jobs = [];
+  bool get backgroundEnabled => _extra['backgroundEnabled'] == true;
+  String? backgroundStatus;
+  bool get backgroundSupported => backgroundSyncSupported;
+  Future<void> setBackgroundEnabled(bool value) async {
+    if (loading ||
+        busy ||
+        configurationBlocked ||
+        _disposed ||
+        (value &&
+            (!enabled ||
+                vaults.isEmpty ||
+                cloud.account?.subject != subject ||
+                sharedActive()))) {
+      return;
+    }
+    loading = true;
+    error = '';
+    final wasEnabled = backgroundEnabled;
+    _notify();
+    try {
+      if (!value) {
+        _extra['backgroundEnabled'] = false;
+        await _save(); // Revoke transfers even if OS task removal fails.
+      }
+      await configureBackgroundSync(value);
+      _extra['backgroundEnabled'] = value;
+      await _save();
+      status = value
+          ? 'Background checks enabled · approximately every 15 minutes when the OS allows'
+          : 'Background checks disabled';
+    } on Object {
+      _extra['backgroundEnabled'] = false;
+      var stopped = false, saved = false;
+      try {
+        await configureBackgroundSync(false);
+        stopped = true;
+      } on Object {
+        /* Saved enrollment can still revoke future requests. */
+      }
+      try {
+        await _save();
+        saved = true;
+      } on Object {
+        /* Preserve actionable error below. */
+      }
+      if (!stopped && !saved) _extra['backgroundEnabled'] = wasEnabled;
+      error = !stopped && !saved
+          ? 'Background checks could not be confirmed as disabled. Retry or disable the OrbitNote-Sync task in your OS settings.'
+          : 'Background setup could not finish. Transfers were paused; retry setup when ready.';
+    } finally {
+      loading = false;
+      _notify();
+    }
+  }
+
   void _notify() {
     if (!_disposed) notifyListeners();
   }
@@ -120,6 +176,8 @@ class DriveVaultScheduler extends ChangeNotifier {
       if (value['format'] != 'orbit-drive-schedule' ||
           value['version'] != 1 ||
           value['enabled'] is! bool ||
+          (value['backgroundEnabled'] != null &&
+              value['backgroundEnabled'] is! bool) ||
           value['subject'] is! String ||
           ![1, 5, 15].contains(value['minutes']) ||
           value['vaults'] is! List ||
@@ -153,6 +211,7 @@ class DriveVaultScheduler extends ChangeNotifier {
       subject = value['subject'] as String;
       enabled = value['enabled'] as bool;
       minutes = value['minutes'] as int;
+      backgroundStatus = await backgroundSyncLastRun();
       nextCheck = _now();
       status = enabled
           ? 'Scheduled checks enabled while Orbit is open'
@@ -275,6 +334,7 @@ class DriveVaultScheduler extends ChangeNotifier {
 
   Future<void> forget() async {
     if (loading) return;
+    final hadBackground = backgroundEnabled;
     loading = true;
     enabled = false;
     _generation++;
@@ -290,6 +350,14 @@ class DriveVaultScheduler extends ChangeNotifier {
       _extra = {};
       error = '';
       status = 'Schedule removed · local and Drive files retained';
+      if (hadBackground) {
+        try {
+          await configureBackgroundSync(false);
+        } on Object {
+          error =
+              'Transfers are disabled; the OS background task could not be removed. Retry removing it in OS settings.';
+        }
+      }
     } catch (_) {
       error = 'Could not remove the saved schedule. Retry before restarting.';
     }

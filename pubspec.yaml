@@ -1,7 +1,7 @@
 name: orbit_note
 description: "Orbit Note, an open-source local-first personal knowledge operating system."
 publish_to: 'none'
-version: 1.0.2+3
+version: 1.0.3+4
 
 environment:
   sdk: ^3.12.2
@@ -29,7 +29,8 @@ dependencies:
   path_provider: ^2.1.6
   pdf: ^3.13.1
   pdfium_dart: ^0.2.5
-  pdfrx: ^2.4.8
+  pdfrx:
+    path: third_party/pdfrx
   sqlite3: ^3.5.2
   url_launcher: ^6.3.2
   uuid: ^4.6.0
@@ -38,7 +39,12 @@ dependencies:
   yaml: ^3.1.4
   yaml_edit: ^2.2.4
 
+dependency_overrides:
+  pdfrx_engine:
+    path: third_party/pdfrx_engine
+
 dev_dependencies:
+  pdfrx_engine: ^0.4.7
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0

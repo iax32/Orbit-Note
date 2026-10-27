@@ -207,3 +207,15 @@ recorded reference. A line number alone is a fragile anchor; retain revision and
 path plus an optional excerpt. Acceptance: exact code-copy round-trip, missing
 repository fallback, and references to two revisions remaining distinguishable.
 Private source excerpts obey the same export, sharing and AI permissions as notes.
+
+## University code tools — 2026-10-26
+
+Code workspace adds Java/Dafny snippets, configurable optional JDTLS/Dafny language
+servers, explicit Java 21 source execution and Dafny verify. Saved profiles add
+Java, Maven/JUnit, Gradle/JUnit and Dafny commands with editable executables and
+argument arrays. University assignment warnings are optional local tool settings;
+they identify pom.xml, .GitLab, src/test and src/main/resources before a save,
+retaining drafts when cancelled. They are warnings for the supplied assignment,
+not a claim that all courses use the same protected paths/build system.
+See [University Lab](university-modeling-lab.md) for JUnit report import, SMQP,
+Dafny transport and external-tool acceptance boundaries.

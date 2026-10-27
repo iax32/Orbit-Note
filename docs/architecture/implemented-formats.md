@@ -1,5 +1,42 @@
 # Implemented open formats — v1 subset
 
+## Closed tab groups and reader options — 2026-10-27
+
+Device-local `closedTabGroups` settings use `version: 1`, with at most ten `groups`.
+Each group records `ids`, original `order`, `active` and `secondary` references.
+Existing positions/cameras/noteViews continue to hold each document's state;
+objects and their bodies are not copied into recovery groups. Unavailable objects
+are skipped. Future versions and unknown group/root fields are preserved.
+
+Local `noteViews['pdf-options:<objectId>']` optionally records `pageMode`,
+`showMarkup`, `showNotes`, `paperTone`, `comfort`, `textOnly`, `highlightColor`.
+Only explicit changed known fields merge back; future values in other fields
+remain untouched. No portable preference allowlist or sync protocol is extended.
+
+## Retained forms and image dimensions — 2026-10-27
+
+Additive device-local settings key `retainedForms` has `version: 1` and `entries`
+keyed by form kind plus stable owner/placement/block identity. Entries contain a
+SHA-256 source `base`, UTC `savedAt`, and JSON `values`. Explicit keep/discard uses
+the existing device-settings save boundary, bounded to 25 forms and 96 KiB each.
+Records are never automatically applied or selected as portable preferences.
+Unknown versions/fields remain intact; stale owner/record writes are rejected.
+Successfully applying through the normal editor/save boundary clears its old form.
+
+New ordinary image imports may add `imageWidth` and `imageHeight` to orbit.file
+properties, derived from bounded PNG/GIF/JPEG header reads. No original bytes,
+identity, checksum or ownership change. Existing metadata needs no migration.
+Duplicate copies can explicitly create a new object sharing verified attachment
+bytes; default repository import deduplication remains compatible.
+
+Research dossier notes (2026-10-27): additive properties.researchDossier v1 on
+orbit.note retains kind, parent UUID, build/state/confidence, recorded fields,
+rows, typed source links/version fingerprints and bounded review history.
+Markdown summary between orbit:dossier-summary:start/end comments is regenerated
+by explicit structured edits; surrounding authored bytes remain intact. Unknown
+metadata is retained, future schemas remain readable, and no migration is needed.
+See [field/editor boundaries](../features/research-dossiers.md).
+
 ## Use-case and sequence notation — 2026-10-23
 
 Existing Canvas schema 1 primitives carry optional `umlNode` maps. `kind` is
@@ -1196,3 +1233,52 @@ default true. `focusTyping/readingSpotlight/readingProgress` default false.
 OS cap still control effective timing. No durable content metadata stores replay
 position, laser samples or animation frames. Ordinary Canvas JSON and Markdown
 remain byte/content compatible; export painters default to complete content.
+
+## University model v1 — 2026-10-26
+
+Notes embed `<!-- orbit:university {JSON} -->`, generated ordinary Markdown,
+then `<!-- /orbit:university -->`. JSON keys: version=1, kind (state/activity/uml/
+testing/distributed/protocol/contracts), title, optional course/source and model.
+Model fields and bounds are documented in the University Lab spec. Unknown keys
+survive; unsupported versions refuse editing and retain original bytes. Known
+metadata is hidden only in presentation/export; literal fenced examples survive.
+A note supports one model. Canvas stores the same JSON on an ordinary frame's
+universityModel, tracks generated members and preserves native placement identity.
+No new durable store/schema migration or changed universal object identity.
+## Portable Vault preferences — 2026-10-26
+
+`Objects/<writer-uuid>.object.json` uses the ordinary universal envelope with
+`typeId: orbit.preferences`, schema 1, and data `{version:1, fields:{key:{clock,
+value}}}`. Values use the explicit `PortablePreferences.keys` allowlist. Records
+retain unknown fields, use ordinary CAS/history, and are excluded from knowledge
+navigation/search while participating in existing Drive/live replication.
+Counters are positive safe integers; greatest counter then writer UUID wins each
+field. Lists/maps are single fields. Data is bounded to 500,000 UTF-16 units;
+future/malformed data is preserved and reported, not silently replaced.
+
+Device settings additionally retain `portablePreferenceRecordId` and
+`pendingPortablePreferences` (recoverable unsaved portable choices). Neither is
+uploaded. Appearance/editor defaults, folder colors/collapse, sorting, dictionary
+and focus durations travel with the Vault; zoom, local paths/secrets, tabs, panes,
+Spaces, dashboards and view positions stay local. This is Vault-scoped, including
+its shared participants. See [ADR 0035](../adr/0035-portable-vault-preferences.md).
+## Finance note metadata — 2026-10-26
+
+Ordinary `orbit.note` frontmatter `properties.finance` (version 1) is authoritative;
+the Markdown body is a memo. `kind` is account/transaction/budget/bill/goal and
+`currency` is EUR/USD/GBP/CHF/CAD/AUD/JPY. Account: signed `openingMinor`, optional
+`archived`. Transaction: positive `amountMinor`, `direction` income/expense/transfer,
+`date`, `accountId`, transfer `toAccountId`, optional `category,payee,cleared,
+receiptId,sourceId,billId,occurrence,importKey`. Budget: `month,category,limitMinor`.
+Bill: `startDate,frequency,amountMinor,direction,accountId`, optional category/payee.
+Goal: `targetMinor,savedMinor`, optional `dueDate`. Known money fields are integers,
+per-record absolute maximum 9,000,000,000,000 minor units. Metadata is capped at
+32,000 UTF-16 units; unknown fields survive valid edits and future versions remain
+visible issues without rewrite. Account currency and recorded bill schedule changes
+are guarded. Transfers are single owning notes referencing both accounts.
+
+Payment UUID v5 uses workspace namespace and `finance-bill:<billId>:<date>`;
+CSV import UUID v5 uses `finance-csv:<normalized row SHA-256>:<occurrence ordinal>`.
+`billId/occurrence/importKey` identities cannot change through the Finance editor.
+Existing CAS/before-images/history/Trash and Drive/shared replication apply. No
+new database schema or authored Vault migration. [Full behavior](../features/finance.md).

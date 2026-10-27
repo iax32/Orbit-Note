@@ -499,6 +499,7 @@ extension ConnectedProjects on WorkspaceController {
     String name,
     Uint8List bytes, {
     String? folder,
+    bool reuseExisting = true,
   }) async {
     final workspace = repository.workspaceId, generation = workspaceGeneration;
     final props = projectCreationProperties({'folder': ?folder});
@@ -506,6 +507,7 @@ extension ConnectedProjects on WorkspaceController {
       name: name,
       bytes: bytes,
       folder: folder,
+      reuseExisting: reuseExisting,
     );
     if (repository.workspaceId != workspace ||
         workspaceGeneration != generation) {

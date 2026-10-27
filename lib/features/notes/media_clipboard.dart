@@ -10,12 +10,12 @@ const canvasClipboardPrefix = 'orbit-canvas/1\n';
 /// Complete image blocks become placements; images in code examples stay text.
 List<Map<String, dynamic>> markdownCanvasItems(String source) {
   final result = <Map<String, dynamic>>[];
-  var text = '';
+  final text = StringBuffer();
   void flush() {
-    if (text.trim().isNotEmpty) {
-      result.add({'type': 'sticky', 'text': text.trim()});
+    if (text.toString().trim().isNotEmpty) {
+      result.add({'type': 'sticky', 'text': text.toString().trim()});
     }
-    text = '';
+    text.clear();
   }
 
   for (final block in MarkdownDocument.parse(source).blocks) {
@@ -58,7 +58,7 @@ List<Map<String, dynamic>> markdownCanvasItems(String source) {
         'text': media.alt,
         'contentRef': media.image,
       });
-      text = media.body;
+      text.write(media.body);
       flush();
       continue;
     }
@@ -68,7 +68,7 @@ List<Map<String, dynamic>> markdownCanvasItems(String source) {
           ).firstMatch(block.content)
         : null;
     if (match == null) {
-      text += block.source;
+      text.write(block.source);
     } else {
       flush();
       result.add({

@@ -80,6 +80,7 @@ class PublicationObjectSnapshots {
     String ownerId = '',
     Map<String, String> paths = const {},
     DateTime? now,
+    bool includeCanvasDetails = false,
   }) {
     final owners = objects
         .where((o) => o.id == ownerId && !o.isDeleted)
@@ -147,31 +148,35 @@ class PublicationObjectSnapshots {
           canvases[key] = canvas;
           warnings.addAll(canvas.warnings);
           body =
-              '**Canvas: ${escape(target.title)}**\n\n![${escape(target.title)}]($key)\n\nSource: ${escape(reference)} · revision ${target.revision}\n\n';
-          body += '**Canvas contents (text snapshot)**\n\n';
-          final entries = scene.elementsInOrder.toList();
-          for (final element in entries.take(200)) {
-            final targets = byId[element.objectId] ?? [];
-            final card = targets.length == 1 ? targets.single : null;
-            var text = isUmlClass(element)
-                ? UmlClass(element).searchableText
-                : element.text;
-            if (text.trim().isEmpty) text = card?.title ?? element.type;
-            if (text.length > 4000) {
-              text = String.fromCharCodes(text.runes.take(4000));
+              '**Canvas: ${escape(target.title)}**\n\n![${escape(target.title)}]($key)\n\n';
+          if (includeCanvasDetails) {
+            body +=
+                'Source: ${escape(reference)} · revision ${target.revision}\n\n';
+            body += '**Canvas contents (text snapshot)**\n\n';
+            final entries = scene.elementsInOrder.toList();
+            for (final element in entries.take(200)) {
+              final targets = byId[element.objectId] ?? [];
+              final card = targets.length == 1 ? targets.single : null;
+              var text = isUmlClass(element)
+                  ? UmlClass(element).searchableText
+                  : element.text;
+              if (text.trim().isEmpty) text = card?.title ?? element.type;
+              if (text.length > 4000) {
+                text = String.fromCharCodes(text.runes.take(4000));
+                warnings.add(
+                  'Long Canvas text snapshot shortened; original source retained: ${target.title}',
+                );
+              }
+              body +=
+                  '- ${escape(text).replaceAll(RegExp(r'\r\n|\n|\r'), ' · ')}${card == null ? '' : ' · ${escape('orbit-object:${card.id}')}'}\n';
+            }
+            if (entries.length > 200) {
+              body +=
+                  '\n[First 200 text entries shown; full rendered overview and source retained]\n';
               warnings.add(
-                'Long Canvas text snapshot shortened; original source retained: ${target.title}',
+                'Canvas text inventory limited to 200 of ${entries.length} placements: ${target.title}',
               );
             }
-            body +=
-                '- ${escape(text).replaceAll(RegExp(r'\r\n|\n|\r'), ' · ')}${card == null ? '' : ' · ${escape('orbit-object:${card.id}')}'}\n';
-          }
-          if (entries.length > 200) {
-            body +=
-                '\n[First 200 text entries shown; full rendered overview and source retained]\n';
-            warnings.add(
-              'Canvas text inventory limited to 200 of ${entries.length} placements: ${target.title}',
-            );
           }
         } catch (error) {
           warnings.add('Canvas preview unavailable: ${target.title}. $error');

@@ -124,6 +124,26 @@ enum UmlRelationship {
       values.firstWhere((v) => v.name == name, orElse: () => association);
 }
 
+enum UmlNavigation {
+  unspecified('Unspecified', false, false),
+  fromTo('From → To', false, true),
+  toFrom('To → From', true, false),
+  both('Both directions', true, true);
+
+  const UmlNavigation(this.label, this.from, this.to);
+  final String label;
+  final bool from, to;
+  Map<String, dynamic> get style => {
+    'umlNavigation': name,
+    'startMarker': from ? 'arrow' : 'none',
+    'endMarker': to ? 'arrow' : 'none',
+  };
+  static UmlNavigation of(CanvasElement e) {
+    final from = e.startMarker == 'arrow', to = e.endMarker == 'arrow';
+    return values.firstWhere((v) => v.from == from && v.to == to);
+  }
+}
+
 CanvasElement newUmlClass(
   String id,
   CanvasPoint at, {

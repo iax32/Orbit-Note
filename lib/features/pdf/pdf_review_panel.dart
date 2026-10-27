@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../app/orbit_draft_guard.dart';
+import '../../app/retained_form.dart';
 import 'package:flutter/services.dart';
 import '../../app/orbit_components.dart';
 import '../../app/orbit_theme.dart';
@@ -1133,6 +1134,35 @@ class PdfReviewEditor extends StatefulWidget {
 }
 
 class _PdfReviewEditorState extends State<PdfReviewEditor> {
+  RetainedForm? _draft;
+  bool _draftChecked = false, _recovered = false;
+  Map<String, dynamic> get _values => {
+    'body': body.text,
+    'color': color,
+    'style': style,
+    'resolved': resolved,
+  };
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_draftChecked) return;
+    _draftChecked = true;
+    _draft = RetainedForm.capture(
+      context,
+      'pdf-review:${widget.annotation.object.id}',
+      _values,
+    );
+    final saved = _draft?.recovered;
+    if (saved == null) return;
+    if (saved['body'] is String) body.text = saved['body'] as String;
+    if (saved['color'] is int) color = saved['color'] as int;
+    if (['highlight', 'underline', 'strikeout'].contains(saved['style'])) {
+      style = saved['style'] as String;
+    }
+    if (saved['resolved'] is bool) resolved = saved['resolved'] as bool;
+    _recovered = true;
+  }
+
   late final body = TextEditingController(text: widget.annotation.object.body);
   late int color = widget.annotation.color;
   late String style = widget.annotation.style;
@@ -1165,6 +1195,8 @@ class _PdfReviewEditorState extends State<PdfReviewEditor> {
     }
     if (!mounted) return;
     if (saved) {
+      await _draft?.complete();
+      if (!mounted) return;
       Navigator.pop(context);
       return;
     }
@@ -1177,8 +1209,17 @@ class _PdfReviewEditorState extends State<PdfReviewEditor> {
 
   @override
   Widget build(BuildContext context) => OrbitDraftGuard(
+    onKeepDraft: _draft == null ? null : () => _draft!.keep(_values),
+    onDiscardDraft: _recovered ? _draft!.discard : null,
     busy: saving,
+    hasChanges: () =>
+        _recovered ||
+        body.text != widget.annotation.object.body ||
+        color != widget.annotation.color ||
+        style != widget.annotation.style ||
+        resolved != widget.annotation.resolved,
     dirty:
+        _recovered ||
         body.text != widget.annotation.object.body ||
         color != widget.annotation.color ||
         style != widget.annotation.style ||
@@ -1192,6 +1233,7 @@ class _PdfReviewEditorState extends State<PdfReviewEditor> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (_recovered) _draft!.notice(),
               TextField(
                 controller: body,
                 onChanged: (_) => setState(() {}),

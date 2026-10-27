@@ -9,6 +9,7 @@ import '../../domain/object_reference.dart';
 import '../../domain/reverse_engineering.dart';
 import '../../app/orbit_components.dart';
 import '../../app/orbit_theme.dart';
+import '../../app/orbit_drag_scroll.dart';
 import '../../platform/open_attachment.dart';
 import '../../domain/object_sort.dart';
 import '../../domain/explorer_group.dart';
@@ -306,6 +307,9 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
   final Set<String> _selectedNoteIds = {};
   String? _anchorNoteId;
   final FocusNode _focusNode = FocusNode();
+  final _scroll = ScrollController();
+  final _viewportKey = GlobalKey();
+  late final _dragScroll = OrbitDragScroll(_scroll, _viewportKey);
   int _focusedIndex = 0;
   bool _showArchived = false;
   bool _batchBusy = false;
@@ -329,6 +333,8 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
 
   @override
   void dispose() {
+    _dragScroll.stop();
+    _scroll.dispose();
     _focusNode.dispose();
     super.dispose();
   }
@@ -336,6 +342,9 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
   Widget _drag(String path, String? noteId, Widget child) =>
       Draggable<({String path, String? noteId})>(
         data: (path: path, noteId: noteId),
+        onDragUpdate: (details) => _dragScroll.update(details.globalPosition),
+        onDragEnd: (_) => _dragScroll.stop(),
+        onDraggableCanceled: (_, _) => _dragScroll.stop(),
         maxSimultaneousDrags:
             widget.controller.repository.readOnly || path == 'Notes' ? 0 : 1,
         feedback: Material(
@@ -348,35 +357,107 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         child: child,
       );
 
-  Widget _drop(String folder, Widget child) =>
-      DragTarget<({String path, String? noteId})>(
-        onWillAcceptWithDetails: (details) {
-          final source = details.data;
-          return !widget.controller.repository.readOnly &&
-              source.path != folder &&
-              p.posix.dirname(source.path) != folder &&
-              !folder.startsWith('${source.path}/');
-        },
-        onAcceptWithDetails: (details) async {
-          if (details.data.noteId == null) {
-            await widget.controller.moveFolder(
-              details.data.path,
-              '$folder/${p.posix.basename(details.data.path)}',
-            );
-          } else {
-            await widget.controller.moveObjectToFolder(
-              details.data.noteId!,
-              folder,
-            );
-          }
-        },
-        builder: (context, candidates, rejected) => ColoredBox(
-          color: candidates.isEmpty
-              ? Colors.transparent
-              : Theme.of(context).colorScheme.primary.withValues(alpha: .12),
-          child: child,
+  Widget _drop(
+    String folder,
+    Widget child,
+  ) => DragTarget<({String path, String? noteId})>(
+    onWillAcceptWithDetails: (details) {
+      final source = details.data;
+      return !widget.controller.repository.readOnly &&
+          source.path != folder &&
+          (source.noteId == null
+                  ? p.posix.dirname(source.path)
+                  : widget.controller.repository.objectFolder(
+                      source.noteId!,
+                    )) !=
+              folder &&
+          !folder.startsWith('${source.path}/');
+    },
+    onAcceptWithDetails: (details) async {
+      _dragScroll.stop();
+      final owner = _capture();
+      final originalPath = details.data.path;
+      final id = details.data.noteId;
+      final originalFolder = id == null
+          ? p.posix.dirname(originalPath)
+          : owner.$2.objectFolder(id);
+      bool moved;
+      if (details.data.noteId == null) {
+        moved = await widget.controller.moveFolder(
+          details.data.path,
+          '$folder/${p.posix.basename(details.data.path)}',
+        );
+      } else {
+        moved = await widget.controller.moveObjectToFolder(
+          details.data.noteId!,
+          folder,
+        );
+      }
+      if (!mounted || !moved || !_owns(owner)) return;
+      final movedPath = id == null
+          ? '$folder/${p.posix.basename(originalPath)}'
+          : owner.$1.repository.objectPath(id);
+      final version = id == null ? null : owner.$1.find(id);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Moved to $folder'),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () async {
+              if (!_owns(owner)) return;
+              if (id == null) {
+                await owner.$1.moveFolder(movedPath!, originalPath);
+              } else if (identical(owner.$1.find(id), version) &&
+                  owner.$1.repository.objectPath(id) == movedPath) {
+                await owner.$1.moveObjectToFolder(id, originalFolder);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'This item changed after moving. Use Move to choose its folder.',
+                    ),
+                  ),
+                );
+              }
+            },
+          ),
         ),
       );
+    },
+    builder: (context, candidates, rejected) => Tooltip(
+      message: 'Move to $folder',
+      child: ColoredBox(
+        color: candidates.isEmpty
+            ? Colors.transparent
+            : Theme.of(context).colorScheme.primary.withValues(alpha: .12),
+        child: candidates.isEmpty
+            ? child
+            : Stack(
+                children: [
+                  child,
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: IgnorePointer(
+                      child: Material(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Text(
+                            'Move to $folder',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    ),
+  );
 
   Future<String?> _name(
     BuildContext context,
@@ -1022,14 +1103,111 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
     try {
       final target = await _destination(context);
       if (target == null || !_owns(owner)) return;
-      final moved = await owner.$1.moveObjectsToFolder(selection, target);
+      final versions = {for (final id in selection) id: owner.$1.find(id)};
+      if (await _reviewBatch('Move items', target, selection) != true ||
+          !_owns(owner) ||
+          selection.any((id) => !identical(versions[id], owner.$1.find(id)))) {
+        return;
+      }
+      final moved = await _moveItems(selection, target);
       if (_owns(owner) && moved && _sameSelection(selection)) {
-        setState(() => _selectedNoteIds.clear());
+        setState(() {});
       }
     } finally {
       if (_owns(owner)) _batchBusy = false;
     }
   }
+
+  Future<bool> _moveItems(Iterable<String> ids, String target) async {
+    final owner = _capture(), selection = ids.toSet();
+    final originals = {
+      for (final id in selection) id: owner.$2.objectFolder(id),
+    };
+    final moved = await owner.$1.moveObjectsToFolder(selection, target);
+    if (!mounted || !moved || !_owns(owner)) return moved;
+    final versions = {for (final id in selection) id: owner.$1.find(id)};
+    final paths = {for (final id in selection) id: owner.$2.objectPath(id)};
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Moved ${selection.length} ${selection.length == 1 ? 'item' : 'items'} to $target',
+        ),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () async {
+            if (!_owns(owner)) return;
+            if (selection.any(
+              (id) =>
+                  originals[id] == null ||
+                  !identical(owner.$1.find(id), versions[id]) ||
+                  owner.$2.objectPath(id) != paths[id],
+            )) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Items changed after moving. Use Move to choose their folders.',
+                  ),
+                ),
+              );
+              return;
+            }
+            await owner.$1.organize(() async {
+              for (final id in selection) {
+                await owner.$2.moveObjectsToFolder([id], originals[id]!);
+              }
+            });
+          },
+        ),
+      ),
+    );
+    return true;
+  }
+
+  Future<bool?> _reviewBatch(
+    String title,
+    String destination,
+    Iterable<String> ids,
+  ) => showDialog<bool>(
+    context: context,
+    builder: (context) => OrbitDialog(
+      title: Text('$title · ${ids.length} items'),
+      content: SizedBox(
+        width: 440,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 320),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Destination: $destination'),
+                const SizedBox(height: 12),
+                for (final id in ids.take(100))
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      '${widget.controller.find(id)?.title ?? id}\n${widget.controller.repository.objectFolder(id)}',
+                    ),
+                  ),
+                if (ids.length > 100)
+                  Text('And ${ids.length - 100} more items'),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: Text(title),
+        ),
+      ],
+    ),
+  );
 
   Future<void> _batchCopyReferences() async {
     if (_selectedNoteIds.isEmpty) return;
@@ -1061,22 +1239,10 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
     if (count == 0) return;
     _batchBusy = true;
     try {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => OrbitDialog(
-          title: const Text('Move to Trash'),
-          content: Text('Move $count items to Trash?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Move to Trash'),
-            ),
-          ],
-        ),
+      final confirmed = await _reviewBatch(
+        'Move to Trash',
+        'Trash (recoverable)',
+        selection,
       );
       if (confirmed != true || !_owns(owner)) return;
       final moved = <String>{};
@@ -1278,6 +1444,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
               null,
               OrbitExplorerRow(
                 key: ValueKey('folder:$folder'),
+                fullDescription: folder,
                 accentColor: folderAccent,
                 leading: Icon(
                   collapsed ? Icons.chevron_right : Icons.expand_more,
@@ -1726,6 +1893,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                 ),
                 selected: widget.controller.session.activeId == note.id,
                 multiSelected: isMulti,
+                fullDescription: '${note.title}\n${repo.objectFolder(note.id)}',
                 accentColor: noteAccent,
                 leading: leadingWidget,
                 title: Text(
@@ -1777,11 +1945,8 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                     } else if (action == 'move') {
                       if (!context.mounted) return;
                       final target = await _destination(context);
-                      if (target != null && target != folder) {
-                        await widget.controller.moveObjectToFolder(
-                          note.id,
-                          target,
-                        );
+                      if (_owns(owner) && target != null && target != folder) {
+                        await _moveItems([note.id], target);
                       }
                     } else if (action == 'set_note_color') {
                       await showFolderColorDialog(
@@ -1969,6 +2134,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
               padding: const EdgeInsets.only(left: 12.0),
               child: OrbitExplorerRow(
                 key: ValueKey('archived-folder:$archFolder'),
+                fullDescription: archFolder,
                 leading: const Icon(Icons.archive_outlined, size: 16),
                 title: Text(
                   p.posix.basename(archFolder),
@@ -2280,6 +2446,8 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
             ),
           Expanded(
             child: ListView(
+              key: _viewportKey,
+              controller: _scroll,
               padding: const EdgeInsets.symmetric(horizontal: 4),
               children: rows,
             ),

@@ -1,5 +1,15 @@
 # Feature specifications
 
+Everyday interaction refinement: [Workflow polish](everyday-workflows.md) connects
+clipboard feedback, PDF text choices, view return, recovery, drawing tools,
+reference previews and publishing settings through existing application boundaries.
+
+Reverse engineering authoring: [Research dossiers](research-dossiers.md),
+REV-06–15, connects recorded layouts/functions, evidence, journals and glossary.
+
+Personal finance: [Finance workspace](finance.md), FIN-01–08, connects an exact
+manual ledger, budgets, bills, savings goals, CSV and reports to ordinary notes.
+
 Technical writing workflow: [Technical articles, research diagrams and CMS handoff](technical-article-publishing.md)
 documents the local EDT/REV/CAN/PORT subset and its export/SEO boundaries.
 
@@ -67,3 +77,6 @@ retire a requirement with a reason rather than silently reusing its number.
 The [single backlog](../planning/feature-backlog.md) classifies every requirement.
 S10 also expands earlier specs; their older source lists indicate original
 provenance rather than excluding the later brief. See the source map for coverage.
+
+University modeling tools: [University Lab](university-modeling-lab.md) specifies
+owner-approved STUDY-06–12 operational modeling, code/test and protocol subsets.

@@ -68,6 +68,7 @@ class PublicationSettings {
         'titlePage',
         'contents',
         'pageNumbers',
+        'canvasDetails',
       ]) {
         if (style.containsKey(field) && style[field] is! bool) return null;
       }
@@ -159,6 +160,11 @@ bool publicationLayoutTarget(md.Node node) =>
             node.children?.length == 1 &&
             node.children!.single is md.Element &&
             (node.children!.single as md.Element).tag == 'img'));
+
+bool publicationHeadingTarget(md.Node node) =>
+    node is md.Element &&
+    RegExp(r'^h[1-6]$').hasMatch(node.tag) &&
+    node.textContent.trim().isNotEmpty;
 
 String publicationLayoutKey(md.Node node) {
   Object encode(md.Node n) => n is md.Text

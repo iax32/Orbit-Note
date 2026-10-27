@@ -74,6 +74,11 @@ void main() {
       await t.tap(folder, buttons: kSecondaryMouseButton);
       await t.pumpAndSettle();
       await t.tap(find.text('Import files here…'));
+      await t.pumpAndSettle();
+      expect(find.text('Import 2 files'), findsOneWidget);
+      expect(find.text('Destination: Notes/Course/Week 1'), findsOneWidget);
+      expect(c.objects.where((o) => o.typeId == 'orbit.file'), isEmpty);
+      await t.tap(find.widgetWithText(FilledButton, 'Import files'));
       for (
         var i = 0;
         i < 40 && c.objects.where((o) => o.typeId == 'orbit.file').length < 2;

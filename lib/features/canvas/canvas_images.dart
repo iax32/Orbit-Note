@@ -40,6 +40,7 @@ class CanvasImageCache {
   }
 
   Map<String, ui.Image> get images => Map.unmodifiable(_images);
+  Set<String> get failedReferences => Set.unmodifiable(_failed);
 
   Future<void> ensure(String reference) async {
     if (_disposed ||
@@ -57,6 +58,9 @@ class CanvasImageCache {
     _pending.add(reference);
     final generation = _generations[reference] ?? 0;
     var stale = false;
+    ui.ImmutableBuffer? buffer;
+    ui.ImageDescriptor? descriptor;
+    ui.Codec? codec;
     try {
       final bytes = await loader(reference);
       stale = generation != (_generations[reference] ?? 0);
@@ -66,14 +70,14 @@ class CanvasImageCache {
         _failed.add(reference);
         return;
       }
-      final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
-      final descriptor = await ui.ImageDescriptor.encoded(buffer);
+      buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+      descriptor = await ui.ImageDescriptor.encoded(buffer);
       final factor =
           1024 /
           (descriptor.width > descriptor.height
               ? descriptor.width
               : descriptor.height);
-      final codec = await descriptor.instantiateCodec(
+      codec = await descriptor.instantiateCodec(
         targetWidth: factor < 1
             ? (descriptor.width * factor).round().clamp(1, 1024)
             : descriptor.width,
@@ -82,9 +86,6 @@ class CanvasImageCache {
             : descriptor.height,
       );
       final frame = await codec.getNextFrame();
-      codec.dispose();
-      descriptor.dispose();
-      buffer.dispose();
       stale = generation != (_generations[reference] ?? 0);
       if (_disposed || !_wanted.contains(reference) || stale) {
         frame.image.dispose();
@@ -96,8 +97,12 @@ class CanvasImageCache {
       }
     } catch (_) {
       // Missing/unsupported images retain their ordinary attachment reference.
-      if (!_disposed) _failed.add(reference);
+      stale = generation != (_generations[reference] ?? 0);
+      if (!_disposed && !stale) _failed.add(reference);
     } finally {
+      codec?.dispose();
+      descriptor?.dispose();
+      buffer?.dispose();
       _pending.remove(reference);
       if (stale && !_disposed && _wanted.contains(reference)) {
         // A replacement landed while the old decode was in flight. Schedule

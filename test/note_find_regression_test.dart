@@ -6,6 +6,31 @@ import 'package:orbit_note/features/notes/note_find_index.dart';
 import 'package:orbit_note/features/notes/rich/markdown_document.dart';
 
 void main() {
+  test('cached Unicode queries retain exact ranges after cache eviction', () {
+    final source = List.generate(
+      9000,
+      (i) => '**Straße $i 😀**\r\n\r\n',
+    ).join();
+    final index = NoteFindIndex(source, rich: true);
+    for (var pass = 0; pass < 2; pass++) {
+      final matches = index.matches('strasse');
+      expect(matches, hasLength(9000));
+      expect(
+        matches.every((m) => source.substring(m.start, m.end) == 'Straße'),
+        isTrue,
+      );
+      expect(index.matches('s'), hasLength(9000)); // never half of ß
+      expect(index.matches('😀'), hasLength(9000));
+    }
+    final replaced = index.replace(
+      index.matches('strasse').take(1).toList(),
+      'Road',
+    );
+    expect(replaced.startsWith('**Road 0 😀**'), isTrue);
+    final updated = NoteFindIndex(replaced, rich: true);
+    expect(updated.matches('strasse'), hasLength(8999));
+    expect(updated.matches('road'), hasLength(1));
+  });
   test(
     'reference label replacement preserves multiline destination and title',
     () {

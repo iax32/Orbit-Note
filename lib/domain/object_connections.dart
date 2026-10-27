@@ -1,4 +1,6 @@
 import 'life_workspace.dart';
+import 'finance.dart';
+import 'research_dossier.dart';
 import 'dart:convert';
 import 'package:path/path.dart' as p;
 import 'universal_object.dart';
@@ -301,6 +303,18 @@ class ObjectConnectionResolver {
     }
     for (final id in lifeReferences(source)) {
       add(ObjectReference(id), 'Life link');
+    }
+    for (final id in financeReferences(source)) {
+      add(ObjectReference(id), 'Finance link');
+    }
+    if (isDossierRecord(source)) {
+      final dossier = dossierData(source);
+      if (dossier['dossierId'] is String) {
+        add(ObjectReference(dossier['dossierId']), 'Research dossier');
+      }
+      for (final link in dossierRows(dossier, 'links')) {
+        add(ObjectReference(link['id']), 'Research ${link['role']}');
+      }
     }
     for (final id in calendarResources(source)) {
       add(ObjectReference(id), 'Planning resource');

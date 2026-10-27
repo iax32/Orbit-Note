@@ -124,6 +124,7 @@ class PdfAnnotationIndex {
           ? cached!
           : incoming;
       _decoded[annotation.object.id] = annotation;
+      _paintOrder[annotation.object.id] = _paintOrder.length;
       if (annotation.isPageComment) {
         for (final page
             in annotation.regions.map((r) => r.data['page'] as int).toSet()) {
@@ -149,6 +150,7 @@ class PdfAnnotationIndex {
   final String? checksum;
   final List<PdfAnnotation> _sources;
   final _decoded = <String, PdfAnnotation>{};
+  final _paintOrder = <String, int>{};
   final _markup = <int, List<PdfMarkupRegion>>{};
   final _comments = <int, List<PdfAnnotation>>{};
   // Build only for dense pages actually clicked, retaining at most 16 pages.
@@ -164,9 +166,30 @@ class PdfAnnotationIndex {
         annotations.length,
       ).every((i) => identical(annotations[i].object, _sources[i].object));
   PdfAnnotation? hitTest(int page, double x, double y) {
+    return _hits(page, x, y, firstOnly: true).firstOrNull;
+  }
+
+  List<PdfAnnotation> hitTests(
+    int page,
+    double x,
+    double y, {
+    double toleranceX = 0,
+    double toleranceY = 0,
+  }) => _hits(page, x, y, toleranceX: toleranceX, toleranceY: toleranceY);
+
+  List<PdfAnnotation> _hits(
+    int page,
+    double x,
+    double y, {
+    double toleranceX = 0,
+    double toleranceY = 0,
+    bool firstOnly = false,
+  }) {
     if (!x.isFinite || !y.isFinite || x < 0 || x > 1 || y < 0 || y > 1) {
-      return null;
+      return [];
     }
+    final tx = toleranceX.isFinite ? toleranceX.clamp(0.0, .1) : 0.0;
+    final ty = toleranceY.isFinite ? toleranceY.clamp(0.0, .1) : 0.0;
     var candidates = markupForPage(page);
     if (candidates.length > 128) {
       var bands = _hitBands.remove(page);
@@ -184,15 +207,41 @@ class PdfAnnotationIndex {
       }
       _hitBands[page] = bands;
       if (_hitBands.length > 16) _hitBands.remove(_hitBands.keys.first);
-      candidates = bands[(y * 32).floor().clamp(0, 31)];
+      candidates = firstOnly
+          ? bands[(y * 32).floor().clamp(0, 31)]
+          : bands
+                .sublist(
+                  ((y - ty) * 32).floor().clamp(0, 31),
+                  ((y + ty) * 32).floor().clamp(0, 31) + 1,
+                )
+                .expand((band) => band)
+                .toSet()
+                .toList();
     }
+    final exact = <PdfAnnotation>[], nearby = <PdfAnnotation>[];
+    final seen = <String>{};
     for (final entry in candidates.reversed) {
       final r = entry.region;
       if (x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height) {
-        return entry.annotation;
+        if (seen.add(entry.annotation.object.id)) exact.add(entry.annotation);
+        if (firstOnly) return exact;
+      } else if (x >= r.x - tx &&
+          x <= r.x + r.width + tx &&
+          y >= r.y - ty &&
+          y <= r.y + r.height + ty) {
+        nearby.add(entry.annotation);
       }
     }
-    return null;
+    int paintOrder(PdfAnnotation a, PdfAnnotation b) =>
+        (_paintOrder[b.object.id] ?? 0).compareTo(
+          _paintOrder[a.object.id] ?? 0,
+        );
+    exact.sort(paintOrder);
+    nearby.sort(paintOrder);
+    for (final a in nearby) {
+      if (seen.add(a.object.id)) exact.add(a);
+    }
+    return exact;
   }
 }
 

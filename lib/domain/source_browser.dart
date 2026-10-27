@@ -76,6 +76,7 @@ String? sourceLanguage(String path) {
     'rs': 'rust',
     'go': 'go',
     'java': 'java',
+    'dfy': '',
     'kt': 'kotlin',
     'swift': 'swift',
     'sh': 'bash',

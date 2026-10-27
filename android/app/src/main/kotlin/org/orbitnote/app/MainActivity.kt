@@ -3,13 +3,36 @@ package org.orbitnote.app
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        OrbitBackgroundJobs.pause(this)
+        super.onCreate(savedInstanceState)
+    }
+    override fun onStart() {
+        OrbitBackgroundJobs.pause(this)
+        super.onStart()
+    }
+    override fun onStop() {
+        super.onStop()
+        try { OrbitBackgroundJobs.schedule(this) } catch (_: Exception) { /* Settings can retry. */ }
+    }
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "orbit_note/background_sync")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "configure") result.notImplemented()
+                else try {
+                    OrbitBackgroundJobs.configure(this, call.argument<Boolean>("enabled") == true)
+                    result.success(null)
+                } catch (_: Exception) {
+                    result.error("scheduler", "Android did not allow the background job.", null)
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "orbit_note/clipboard")
             .setMethodCallHandler { call, result ->
                 if (call.method != "setRichText") {

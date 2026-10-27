@@ -100,6 +100,43 @@ class _CodeLaunchProfilesState extends State<CodeLaunchProfiles> {
   }
 
   void create(String kind) {
+    if (['java', 'maven', 'gradle', 'dafny'].contains(kind)) {
+      final file = kind == 'java' && !widget.file.endsWith('.java')
+          ? 'Main.java'
+          : kind == 'dafny' && !widget.file.endsWith('.dfy')
+          ? 'model.dfy'
+          : widget.file;
+      edit(
+        CodeRunProfile.parse({
+          'id': const Uuid().v4(),
+          'name': switch (kind) {
+            'java' => 'Java source · Java 21',
+            'maven' => 'Maven JUnit tests',
+            'gradle' => 'Gradle JUnit tests',
+            _ => 'Dafny verify',
+          },
+          'cwd': '.',
+          'steps': [
+            {
+              'tool': 'custom',
+              'executable': switch (kind) {
+                'java' => 'java',
+                'maven' => 'mvn',
+                'gradle' => 'gradle',
+                _ => 'dafny',
+              },
+              'arguments': switch (kind) {
+                'java' => ['--source', '21', file],
+                'maven' => ['test'],
+                'gradle' => ['test'],
+                _ => ['verify', file],
+              },
+            },
+          ],
+        }),
+      );
+      return;
+    }
     final file =
         kind == 'cpp' && !RegExp(r'\.(c|cc|cpp|cxx)$').hasMatch(widget.file)
         ? 'main.cpp'
@@ -258,6 +295,10 @@ class _CodeLaunchProfilesState extends State<CodeLaunchProfiles> {
                             for (final (kind, label) in [
                               ('python', 'Add Python'),
                               ('cpp', 'Add C++'),
+                              ('java', 'Add Java 21'),
+                              ('maven', 'Add Maven / JUnit'),
+                              ('gradle', 'Add Gradle / JUnit'),
+                              ('dafny', 'Add Dafny verify'),
                               ('custom', 'Add custom'),
                             ])
                               OutlinedButton(

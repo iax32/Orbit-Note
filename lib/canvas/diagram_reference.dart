@@ -67,7 +67,19 @@ List<String> diagramExportSelection(
   bool node(CanvasElement e) =>
       !e.hidden &&
       e.renderable &&
-      ['rectangle', 'ellipse', 'diamond', 'text'].contains(e.type);
+      (!isConnectorElement(e) || e.startId == null && e.endId == null) &&
+      [
+        'rectangle',
+        'ellipse',
+        'diamond',
+        'text',
+        'line',
+        'arrow',
+        'connector',
+        'ink',
+        'frame',
+        'section',
+      ].contains(e.type);
   for (final e in scene.elementsInOrder) {
     if (node(e) && (selected.isEmpty || selected.contains(e.id))) {
       result.add(e.id);

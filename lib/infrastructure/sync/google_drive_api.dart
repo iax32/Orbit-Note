@@ -14,6 +14,7 @@ import '../storage/workspace_store.dart';
 part 'google_drive_backups.dart';
 part 'google_drive_replica.dart';
 part 'google_drive_changes.dart';
+part 'google_drive_retention.dart';
 
 class GoogleRemoteVault {
   const GoogleRemoteVault({

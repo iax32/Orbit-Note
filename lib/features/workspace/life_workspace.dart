@@ -1,4 +1,5 @@
 import 'life_pack_dialog.dart';
+import 'finance_workspace.dart';
 import '../../domain/event_recurrence.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:async';
@@ -422,6 +423,11 @@ class _LifeWorkspaceState extends ConsumerState<LifeWorkspace> {
                     onPressed: () => Navigator.pop(context),
                     icon: const Icon(Icons.close),
                   ),
+                  IconButton(
+                    tooltip: 'Open Finance',
+                    onPressed: () => showFinanceWorkspace(context, c),
+                    icon: const Icon(Icons.account_balance_wallet_outlined),
+                  ),
                 ],
               ),
             ),
@@ -531,6 +537,11 @@ class _LifeWorkspaceState extends ConsumerState<LifeWorkspace> {
                                 () => showCourseHub(context, c),
                                 icon: Icons.school_outlined,
                               ),
+                            _button(
+                              'Finance',
+                              () => showFinanceWorkspace(context, c),
+                              icon: Icons.account_balance_wallet_outlined,
+                            ),
                           ],
                         ),
                         const SizedBox(height: 16),

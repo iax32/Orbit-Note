@@ -1,5 +1,22 @@
 # Attachments, media and research
 
+## PDF rendering recovery and bounded work — 2026-10-24
+
+FILE-04/05/11/12/13: Windows memory-backed reads synchronize completion/wakeup
+under one predicate lock, including spurious notifications. Equal-key viewer
+rebuilds continue initialization; late document/text/image results are retired.
+Rendering begins at the restored viewport, prioritizes visible pages and
+coalesces pending preview/high-resolution work. Off-screen images stay cached
+within budget; source/viewport invalidation still cancels obsolete work.
+Original PDF bytes, final raster scales, forms, selection, annotations and export
+paths remain unchanged. No screenshot conversion or quality reduction.
+
+Preview failures retry at most three times. Terminal page failures offer
+**Retry page** without closing the document or clearing selection, zoom or
+annotations. Other pages remain usable. Open/password/source failures keep their
+existing reload/recovery behavior. These fixes ship as tracked compatibility
+patches of the existing PDF packages; see [provenance and upgrade conditions](../../third_party/README.md).
+
 ## Folder imports and unified Explorer — 2026-10-24
 
 FILE-01 / ORG-05 / NAV-02: desktop folder menus offer **Import PDFs here…** and

@@ -13,6 +13,8 @@ import '../domain/calendar_event.dart';
 import '../domain/calendar_planning.dart';
 import '../domain/event_recurrence.dart';
 import '../domain/universal_object.dart';
+import '../domain/portable_preferences.dart';
+import '../domain/workspace_failure.dart';
 import '../domain/object_reference.dart';
 import '../domain/orbit_search.dart';
 import '../domain/document_anchors.dart';
@@ -53,8 +55,11 @@ import '../domain/object_connections.dart';
 import '../domain/note_composition.dart';
 import '../domain/life_workspace.dart';
 import '../domain/life_templates.dart';
+import '../domain/finance.dart';
+import '../domain/research_dossier.dart';
 
 part 'workspace_productivity.dart';
+part 'workspace_tab_recovery.dart';
 part 'workspace_courses.dart';
 part 'workspace_editor_drafts.dart';
 part 'workspace_reference_bridges.dart';
@@ -71,6 +76,8 @@ part 'workspace_technical.dart';
 part 'workspace_pdf_review.dart';
 part 'workspace_life.dart';
 part 'workspace_life_packs.dart';
+part 'workspace_finance.dart';
+part 'workspace_dossier.dart';
 
 final repositoryProvider = Provider<WorkspaceRepository>(
   (ref) => WorkspaceRepository(),
@@ -81,6 +88,9 @@ final workspaceProvider = NotifierProvider<WorkspaceController, int>(
 
 /// Coordinates drafts and serialized durable commands. UI never writes files.
 class WorkspaceController extends Notifier<int> {
+  bool _financeBusy = false;
+  bool get financeSaving => _financeBusy;
+  Completer<void>? _financeWork;
   final _lifeOperations = <String, Future<UniversalObject?>>{};
   final _connectionResolver = ObjectConnectionResolver();
   List<UniversalObject>? _connectionSnapshot;
@@ -159,6 +169,9 @@ class WorkspaceController extends Notifier<int> {
       {};
   ({UniversalObject before, UniversalObject after})? _planningUndo;
   List<UniversalObject> objects = [];
+  List<UniversalObject> _financeSnapshot = const [];
+  FinanceIndex? _cachedFinanceIndex;
+  int _financeIndexGeneration = -1;
   bool loading = true;
   String? error;
   final Set<String> dirty = {};
@@ -173,6 +186,7 @@ class WorkspaceController extends Notifier<int> {
   Future<void>? _settingsSave;
   bool _settingsSaveRequested = false;
   bool _settingsSaveFailed = false;
+  bool get sessionSaveFailed => _settingsSaveFailed;
   bool hasWorkspace = false;
 
   WorkSessionRecord? _activeWorkSession;
@@ -246,6 +260,7 @@ class WorkspaceController extends Notifier<int> {
         isCurrent: isCurrent,
         canApply: () =>
             _alive &&
+            !_financeBusy &&
             hasWorkspace &&
             !loading &&
             dirty.isEmpty &&
@@ -267,6 +282,7 @@ class WorkspaceController extends Notifier<int> {
   final Set<String> _changedPaths = {};
   final Set<String> _changedAttachments = {};
   int attachmentRevision = 0;
+  int preferenceRevision = 0;
 
   @override
   int build() {
@@ -315,6 +331,43 @@ class WorkspaceController extends Notifier<int> {
       for (final o in drafts.values)
         if (!present.contains(o.id)) o,
     ];
+    if (!loading && hasWorkspace) _applyPortablePreferences();
+  }
+
+  Map<String, dynamic> _portableBaseline = {};
+
+  void _applyPortablePreferences({bool opening = false}) {
+    if (opening) {
+      _portableBaseline = PortablePreferences.select(session.toJson());
+    }
+    try {
+      final remote = PortablePreferences.merge(
+        repository.preferenceRecords,
+      ).values;
+      final current = PortablePreferences.select(session.toJson());
+      final apply = <String, dynamic>{
+        for (final entry in remote.entries)
+          if (opening ||
+              PortablePreferences.equal(
+                current[entry.key],
+                _portableBaseline[entry.key],
+              ))
+            entry.key: entry.value,
+      };
+      if (apply.isNotEmpty) {
+        session = SessionState.fromJson({...session.toJson(), ...apply});
+      }
+      final normalized = PortablePreferences.select(session.toJson());
+      if (opening) {
+        _portableBaseline = normalized;
+      } else {
+        for (final key in apply.keys) {
+          _portableBaseline[key] = normalized[key];
+        }
+      }
+    } catch (e) {
+      error = 'Could not apply synchronized preferences: $e';
+    }
   }
 
   List<UniversalObject> get activeObjects =>
@@ -326,7 +379,7 @@ class WorkspaceController extends Notifier<int> {
     for (final object in objects) {
       if (object.id == id) return object;
     }
-    return null;
+    return repository.preferenceRecords.where((o) => o.id == id).firstOrNull;
   }
 
   String objectFolder(String id) => repository.objectFolder(id);
@@ -518,6 +571,7 @@ class WorkspaceController extends Notifier<int> {
     int? offset,
     int length = 0,
   }) {
+    rememberNavigationLocation();
     pdfSearchRequests.remove(reference.id);
     _pdfOpenRequest++;
     locationRequests[reference.id] = (
@@ -1220,9 +1274,36 @@ class WorkspaceController extends Notifier<int> {
       await repository.initialize(path: path);
       _planningUndo = null;
       _querySnapshot = null;
+      _financeSnapshot = const [];
+      _cachedFinanceIndex = null;
       _viewQueryCache.clear();
       mergeRepositoryObjects();
       session = SessionState.fromJson(await repository.readDeviceSettings());
+      final pendingPreferences = session.extra['pendingPortablePreferences'];
+      _applyPortablePreferences(opening: true);
+      if (pendingPreferences is Map) {
+        final ownRecord = repository.preferenceRecords
+            .where((r) => r.id == session.extra['portablePreferenceRecordId'])
+            .firstOrNull;
+        Map<String, dynamic> committed = {};
+        try {
+          if (ownRecord != null) {
+            committed = PortablePreferences.fields(ownRecord);
+          }
+        } catch (_) {
+          /* Preserve and report through the normal save boundary. */
+        }
+        session = SessionState.fromJson({
+          ...session.toJson(),
+          for (final entry in pendingPreferences.entries)
+            if (PortablePreferences.keys.contains(entry.key) &&
+                !PortablePreferences.equal(
+                  (committed[entry.key] as Map?)?['value'],
+                  entry.value,
+                ))
+              entry.key as String: entry.value,
+        });
+      }
       _activeWorkSession = session.activeWorkSession != null
           ? WorkSessionRecord.fromJson(session.activeWorkSession!)
           : null;
@@ -1331,6 +1412,8 @@ class WorkspaceController extends Notifier<int> {
     objects = [];
     _planningUndo = null;
     _querySnapshot = null;
+    _financeSnapshot = const [];
+    _cachedFinanceIndex = null;
     _viewQueryCache.clear();
     session = SessionState();
     error = null;
@@ -1390,16 +1473,106 @@ class WorkspaceController extends Notifier<int> {
   }
 
   final List<String> _navHistory = [];
+  final List<Map<String, dynamic>> _navReturns = [];
+  int _navGeneration = -1;
+  int navigationRestoreSerial = 0;
+  String? navigationRestoreTargetId;
+  final Map<String, int> _navRequests = {};
   int _navIndex = -1;
   bool _navigatingHistory = false;
 
-  bool get canNavigateBack => _navIndex > 0;
-  bool get canNavigateForward =>
-      _navIndex >= 0 && _navIndex < _navHistory.length - 1;
+  int _historyTarget(int direction) {
+    if (_navGeneration != workspaceGeneration) return -1;
+    for (
+      var i = _navIndex + direction;
+      i >= 0 && i < _navHistory.length;
+      i += direction
+    ) {
+      final object = find(_navHistory[i]);
+      if (object != null && !object.isDeleted) return i;
+    }
+    return -1;
+  }
+
+  bool get canNavigateBack => _historyTarget(-1) >= 0;
+  void rememberNavigationLocation() {
+    if (_navGeneration != workspaceGeneration) {
+      _navGeneration = workspaceGeneration;
+      _navHistory.clear();
+      _navReturns.clear();
+      _navRequests.clear();
+      _navIndex = -1;
+    }
+    if (_navIndex < 0) {
+      // The first link after reopening a Vault must return to its restored tab,
+      // even though that tab has not been opened through this runtime's history.
+      final origin = find(session.activeId);
+      if (origin == null || origin.isDeleted) return;
+      _navHistory.add(origin.id);
+      _navReturns.add({});
+      _navIndex = 0;
+    }
+    if (_navIndex >= _navReturns.length) {
+      return;
+    }
+    final id = _navHistory[_navIndex];
+    if (session.activeId != id) return;
+    _navReturns[_navIndex] =
+        jsonDecode(
+              jsonEncode({
+                'position': session.positions['primary:$id'] ?? 0.0,
+                'view': {
+                  'mode': session.defaultNoteMode,
+                  ...?session.noteViews['primary:$id'],
+                },
+                'pdf': session.noteViews['pdf:primary:$id'] ?? {'page': 1},
+                'camera':
+                    session.cameras[id] ?? {'x': 0.0, 'y': 0.0, 'zoom': 1.0},
+              }),
+            )
+            as Map<String, dynamic>;
+  }
+
+  void _restoreNavigationLocation() {
+    if (_navIndex < 0 || _navIndex >= _navReturns.length) return;
+    final id = _navHistory[_navIndex], saved = _navReturns[_navIndex];
+    if (saved.isEmpty) return;
+    final position = saved['position'];
+    if (position is num) {
+      session.positions = {
+        ...session.positions,
+        'primary:$id': position.toDouble(),
+      };
+    }
+    for (final entry in [('view', 'primary:$id'), ('pdf', 'pdf:primary:$id')]) {
+      final value = saved[entry.$1];
+      if (value is Map) {
+        session.noteViews = {
+          ...session.noteViews,
+          entry.$2: Map<String, dynamic>.from(value),
+        };
+      }
+    }
+    final camera = saved['camera'];
+    if (camera is Map) {
+      session.cameras = {
+        ...session.cameras,
+        id: Map<String, dynamic>.from(camera),
+      };
+    }
+    locationRequests.remove(id);
+    pdfSearchRequests.remove(id);
+    navigationRestoreTargetId = id;
+    navigationRestoreSerial++;
+  }
+
+  bool get canNavigateForward => _historyTarget(1) >= 0;
 
   void navigateBack() {
     if (!canNavigateBack) return;
-    _navIndex--;
+    rememberNavigationLocation();
+    _navIndex = _historyTarget(-1);
+    _restoreNavigationLocation();
     _navigatingHistory = true;
     openObject(_navHistory[_navIndex]);
     _navigatingHistory = false;
@@ -1408,7 +1581,9 @@ class WorkspaceController extends Notifier<int> {
 
   void navigateForward() {
     if (!canNavigateForward) return;
-    _navIndex++;
+    rememberNavigationLocation();
+    _navIndex = _historyTarget(1);
+    _restoreNavigationLocation();
     _navigatingHistory = true;
     openObject(_navHistory[_navIndex]);
     _navigatingHistory = false;
@@ -1417,7 +1592,7 @@ class WorkspaceController extends Notifier<int> {
 
   /// Chronological backward navigation history (most recent first, deduplicated, up to 12).
   List<UniversalObject> get backHistory {
-    if (_navIndex <= 0) return const [];
+    if (!canNavigateBack) return const [];
     final result = <UniversalObject>[];
     final seen = <String>{};
     for (var i = _navIndex - 1; i >= 0 && result.length < 12; i--) {
@@ -1434,7 +1609,7 @@ class WorkspaceController extends Notifier<int> {
 
   /// Chronological forward navigation history (next immediate first, deduplicated, up to 12).
   List<UniversalObject> get forwardHistory {
-    if (_navIndex < 0 || _navIndex >= _navHistory.length - 1) return const [];
+    if (!canNavigateForward) return const [];
     final result = <UniversalObject>[];
     final seen = <String>{};
     for (
@@ -1455,7 +1630,7 @@ class WorkspaceController extends Notifier<int> {
 
   /// Jump directly to an object in the navigation history.
   void jumpToHistoryObject(String id) {
-    if (_navHistory.isEmpty) return;
+    if (_navGeneration != workspaceGeneration || _navHistory.isEmpty) return;
     int? bestIndex;
     var bestDistance = 999999;
     for (var i = 0; i < _navHistory.length; i++) {
@@ -1468,7 +1643,9 @@ class WorkspaceController extends Notifier<int> {
       }
     }
     if (bestIndex != null) {
+      rememberNavigationLocation();
       _navIndex = bestIndex;
+      _restoreNavigationLocation();
       _navigatingHistory = true;
       openObject(_navHistory[_navIndex]);
       _navigatingHistory = false;
@@ -1476,10 +1653,18 @@ class WorkspaceController extends Notifier<int> {
     }
   }
 
-  void openObject(String id, {bool secondary = false}) {
+  void openObject(String id, {bool secondary = false, bool reveal = false}) {
     _pdfOpenRequest++;
     final object = find(id);
     if (object == null || object.isDeleted) return;
+    if (_navGeneration != workspaceGeneration) {
+      _navGeneration = workspaceGeneration;
+      _navHistory.clear();
+      _navReturns.clear();
+      _navRequests.clear();
+      _navIndex = -1;
+    }
+    if (!secondary && !_navigatingHistory) rememberNavigationLocation();
     final path = repository.objectPath(id);
     final folderProp = object.properties['folder'] as String?;
     final targetPaths = <String>[
@@ -1489,7 +1674,8 @@ class WorkspaceController extends Notifier<int> {
         if (!folderProp.startsWith('Notes/')) 'Notes/$folderProp',
       ],
     ];
-    if (targetPaths.isNotEmpty) {
+    // Tab navigation must not undo an explicit folder collapse.
+    if (reveal && targetPaths.isNotEmpty) {
       session.collapsedFolders = session.collapsedFolders
           .where(
             (folder) => !targetPaths.any(
@@ -1513,11 +1699,25 @@ class WorkspaceController extends Notifier<int> {
       if (!_navigatingHistory) {
         if (_navIndex >= 0 && _navIndex < _navHistory.length - 1) {
           _navHistory.removeRange(_navIndex + 1, _navHistory.length);
+          _navReturns.removeRange(_navIndex + 1, _navReturns.length);
         }
-        if (_navHistory.isEmpty || _navHistory.last != id) {
+        final request = locationRequests[id];
+        final precise =
+            request != null &&
+            (request.reference.isPrecise || request.offset != null);
+        if (_navHistory.isEmpty ||
+            _navHistory.last != id ||
+            (precise && _navRequests[id] != request.serial)) {
           _navHistory.add(id);
-          if (_navHistory.length > 50) _navHistory.removeAt(0);
+          _navReturns.add({});
+          if (_navHistory.length > 50) {
+            _navHistory.removeAt(0);
+            _navReturns.removeAt(0);
+          }
           _navIndex = _navHistory.length - 1;
+          if (request != null) _navRequests[id] = request.serial;
+          final retained = _navHistory.toSet();
+          _navRequests.removeWhere((key, _) => !retained.contains(key));
         }
       }
     }
@@ -1642,6 +1842,7 @@ class WorkspaceController extends Notifier<int> {
     final toClose = session.tabs
         .where((t) => t != id && !session.pinnedTabs.contains(t))
         .toList();
+    rememberClosedTabGroup(toClose);
     for (final closing in toClose) {
       if (dirty.contains(closing)) {
         flush(closing);
@@ -1672,6 +1873,7 @@ class WorkspaceController extends Notifier<int> {
         .sublist(index + 1)
         .where((t) => !session.pinnedTabs.contains(t))
         .toList();
+    rememberClosedTabGroup(toClose);
     for (final closing in toClose) {
       if (dirty.contains(closing)) {
         flush(closing);
@@ -5443,6 +5645,13 @@ ${links(against)}
       }
     }
     session.folderColors = updatedColors;
+    session.collapsedFolders = [
+      for (final folder in session.collapsedFolders)
+        if (folder == source || folder.startsWith('$source/'))
+          '$target${folder.substring(source.length)}'
+        else
+          folder,
+    ];
     persistSession();
   });
 
@@ -6536,6 +6745,8 @@ ${links(against)}
   }
 
   Future<bool> flushAll() async {
+    final finance = _financeWork;
+    if (finance != null) await finance.future;
     final productivity = _productivityOperation;
     if (productivity != null) await productivity.future;
     for (final id in List.of(dirty)) {
@@ -6811,6 +7022,9 @@ ${links(against)}
     session.archivedFolders.removeWhere(
       (f) => f == folder || f.startsWith('$folder/'),
     );
+    session.collapsedFolders.removeWhere(
+      (f) => f == folder || f.startsWith('$folder/'),
+    );
     session.folderColors = {
       for (final entry in session.folderColors.entries)
         if (entry.key != folder && !entry.key.startsWith('$folder/'))
@@ -7021,9 +7235,61 @@ ${links(against)}
     try {
       while (_settingsSaveRequested) {
         _settingsSaveRequested = false;
+        final owner = repository.workspaceId;
+        final generation = _workspaceGeneration;
+        if (session.extra['portablePreferenceRecordId'] is! String) {
+          session = SessionState.fromJson({
+            ...session.toJson(),
+            'portablePreferenceRecordId': const Uuid().v4(),
+          });
+        }
+        final recordId = session.extra['portablePreferenceRecordId'] as String;
+        final portable = PortablePreferences.select(session.toJson());
+        final seed = repository.preferenceRecords.isEmpty;
+        final defaults = seed
+            ? PortablePreferences.select(SessionState().toJson())
+            : const <String, dynamic>{};
+        final changes = <String, dynamic>{
+          for (final entry in portable.entries)
+            if ((seed &&
+                    !PortablePreferences.equal(
+                      entry.value,
+                      defaults[entry.key],
+                    )) ||
+                !PortablePreferences.equal(
+                  entry.value,
+                  _portableBaseline[entry.key],
+                ))
+              entry.key: entry.value,
+        };
+        session = SessionState.fromJson({
+          ...session.toJson(),
+          'pendingPortablePreferences': changes,
+        });
         await repository.writeDeviceSettings(session.toJson());
+        if (generation != _workspaceGeneration ||
+            owner != repository.workspaceId) {
+          throw const WorkspaceConflict(
+            'The Vault changed while saving preferences.',
+          );
+        }
+        if (changes.isNotEmpty) {
+          await repository.writePortablePreferences(recordId, changes);
+          preferenceRevision++;
+          for (final key in changes.keys) {
+            _portableBaseline[key] = portable[key];
+          }
+          // The device outbox survives a crash between local and portable saves.
+          // Leave it on disk until the portable command has durably succeeded.
+          session = SessionState.fromJson({
+            ...session.toJson(),
+            'pendingPortablePreferences': <String, dynamic>{},
+          });
+          await repository.writeDeviceSettings(session.toJson());
+        }
       }
       _settingsSaveFailed = false;
+      notify();
     } catch (e) {
       _settingsSaveFailed = true;
       error = 'Could not save workspace layout: $e';

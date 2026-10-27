@@ -24,7 +24,7 @@ import '../../../app/orbit_components.dart';
 import '../../../app/orbit_theme.dart';
 import '../orbit_internal_link.dart';
 import '../markdown_editing.dart';
-import '../markdown_clipboard.dart';
+import '../paste_feedback.dart';
 import '../note_format_toolbar.dart';
 import '../note_link_dialog.dart';
 import 'markdown_document.dart';
@@ -49,6 +49,8 @@ import '../../../domain/note_composition.dart';
 import '../note_composition.dart';
 import 'media_section.dart';
 import 'figure_details_dialog.dart';
+import '../../../app/retained_form.dart';
+import '../../../app/orbit_scroll_anchor.dart';
 import '../../../domain/grammar/spell_grammar_engine.dart';
 import '../../../domain/grammar/text_issue_cursor.dart';
 
@@ -223,6 +225,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
   );
   final keys = <MarkdownBlock, GlobalKey<_RichTextBlockState>>{};
   final anchors = <MarkdownBlock, GlobalKey>{};
+  late final _scrollAnchor = OrbitScrollAnchorCoordinator(scroll);
   final cache = <MarkdownBlock, Widget>{};
   late int active = (widget.initialState['block'] as int? ?? 0).clamp(
     0,
@@ -539,10 +542,17 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
     final selection = currentDocumentSelection,
         request = ++_documentPasteRequest,
         epoch = _documentClipboardEpoch;
-    final text = await readMarkdownClipboard(
-      preferHtml: !plain,
-      interpretOrbitData: !plain,
-    );
+    String? text;
+    try {
+      text = await readEditorClipboard(
+        context,
+        plain: plain,
+        preferHtml: !plain,
+        interpretOrbitData: !plain,
+      );
+    } on EditorPasteCancelled {
+      return;
+    }
     if (!mounted ||
         !_editorFocusNode.hasFocus ||
         widget.noteId != note ||
@@ -563,6 +573,17 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
     } else if (hasMultiBlockSelection) {
       replaceSelectedBlocksWithText(replacement);
     }
+    final after = _positions.source;
+    showPasteFeedback(
+      context,
+      replacement,
+      isCurrent: () =>
+          mounted &&
+          widget.noteId == note &&
+          epoch == _documentClipboardEpoch &&
+          _positions.source == after,
+      undo: widget.onUndo,
+    );
   }
 
   bool _insertingAttachment = false;
@@ -1281,6 +1302,55 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
     });
   }
 
+  /// Navigation restores view state without replacing content or clearing Undo.
+  void restoreView(Map<String, dynamic> state) {
+    final owner = widget.noteId,
+        epoch = _documentClipboardEpoch,
+        source = _positions.source;
+    final collapsed = state['collapsed'];
+    if (collapsed is List) {
+      _collapsedHeadings
+        ..clear()
+        ..addAll(collapsed.whereType<String>());
+      cache.clear();
+    }
+    final selection = state['selection'];
+    if (selection is Map &&
+        selection['base'] is int &&
+        selection['extent'] is int) {
+      final base = (selection['base'] as int).clamp(
+        0,
+        _positions.source.length,
+      );
+      final extent = (selection['extent'] as int).clamp(
+        0,
+        _positions.source.length,
+      );
+      jumpTo(math.min(base, extent), length: (extent - base).abs());
+      if (base != extent) {
+        _crossDocumentSelection = TextSelection(
+          baseOffset: base,
+          extentOffset: extent,
+        );
+      }
+    }
+    final offset = state['scroll'];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted &&
+          widget.noteId == owner &&
+          _documentClipboardEpoch == epoch &&
+          _positions.source == source &&
+          scroll.hasClients &&
+          offset is num &&
+          offset.isFinite) {
+        scroll.jumpTo(
+          offset.toDouble().clamp(0, scroll.position.maxScrollExtent),
+        );
+        record();
+      }
+    });
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) _endPointerSelection();
@@ -1288,6 +1358,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
 
   @override
   void dispose() {
+    _scrollAnchor.reset();
     WidgetsBinding.instance.removeObserver(this);
     _selectionScrollTicker.dispose();
     _editorFocusNode.dispose();
@@ -1299,6 +1370,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
   void didUpdateWidget(RichMarkdownEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.noteId != oldWidget.noteId) {
+      _scrollAnchor.reset();
       _documentClipboardEpoch++;
       _documentPasteRequest++;
       _crossDocumentSelection = null;
@@ -1455,9 +1527,10 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
       }
     }
     document = next;
-    _columnKeys.removeWhere((key, _) => !next.blocks.contains(key.$1));
-    _continuousMath.removeWhere((b) => !next.blocks.contains(b));
-    _inheritedMarks.removeWhere((b, _) => !next.blocks.contains(b));
+    final retained = next.blocks.toSet();
+    _columnKeys.removeWhere((key, _) => !retained.contains(key.$1));
+    _continuousMath.removeWhere((b) => !retained.contains(b));
+    _inheritedMarks.removeWhere((b, _) => !retained.contains(b));
     _inlineSource = null;
     _inlineProjection = null;
     _invalidatePositions();
@@ -1470,7 +1543,6 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
           ? null
           : TextSelection(baseOffset: base, extentOffset: extent);
     }
-    final retained = document.blocks.toSet();
     keys.removeWhere((k, _) => !retained.contains(k));
     anchors.removeWhere((k, _) => !retained.contains(k));
     cache.removeWhere((k, _) => !retained.contains(k));
@@ -1508,6 +1580,11 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
           ...widget.inheritedDefinitions,
         });
     if (structural || referenceDefinitionsChanged) {
+      // A structural paste can retain this empty paragraph as the document's
+      // trailing editing target. Its controller already contains the pasted
+      // text; rebuild its widget even when its authored source remains empty.
+      // Otherwise undo/redo can focus that stale controller and paste twice.
+      cache.remove(block);
       _load(body);
     } else {
       block.source = source;
@@ -1778,6 +1855,18 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
         return;
       }
       insertMarkdown(content);
+      if (content.contains('![')) {
+        final after = _positions.source;
+        showPasteFeedback(
+          context,
+          content,
+          isCurrent: () =>
+              mounted &&
+              widget.noteId == originalNote &&
+              _positions.source == after,
+          undo: widget.onUndo,
+        );
+      }
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
@@ -1888,6 +1977,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
       case NoteFormatAction.alignLeft:
       case NoteFormatAction.alignCenter:
       case NoteFormatAction.alignRight:
+      case NoteFormatAction.alignJustify:
         if (!current.canAlign) {
           ScaffoldMessenger.maybeOf(context)?.showSnackBar(
             const SnackBar(
@@ -1899,6 +1989,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
         final alignment = switch (action) {
           NoteFormatAction.alignCenter => 'center',
           NoteFormatAction.alignRight => 'right',
+          NoteFormatAction.alignJustify => 'justify',
           _ => 'left',
         };
         final source = current.withAlignment(
@@ -2760,6 +2851,24 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
   }
 
   Widget blockView(MarkdownBlock block) {
+    if (block.source.trimLeft().startsWith('<!-- orbit:university ')) {
+      return Card(
+        child: ListTile(
+          leading: const Icon(Icons.school_outlined),
+          title: const Text('University Lab · editable model'),
+          subtitle: const Text(
+            'Open the model, replay its steps and regenerate the report below.',
+          ),
+          trailing: const Icon(Icons.open_in_new),
+          onTap: widget.onCompositionCommand == null
+              ? null
+              : () => widget.onCompositionCommand!('University Lab'),
+        ),
+      );
+    }
+    if (block.source.trim() == '<!-- /orbit:university -->') {
+      return const SizedBox.shrink();
+    }
     final linked = LinkedSection.parse(block.source);
     if (linked != null) {
       return LinkedSectionCard(
@@ -3116,10 +3225,16 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
                 TextButton(
                   onPressed: () async {
                     final before = block.source, note = widget.noteId;
+                    final retained = RetainedForm.capture(
+                      context,
+                      'figure:$note:${_positions.indexOf(block)}',
+                      section.figure?.original ?? '',
+                    );
                     final value = await showFigureDetails(
                       context,
                       section.figure,
                       widget.linkTargets,
+                      draftKey: '$note:${_positions.indexOf(block)}',
                     );
                     if (value == null || !mounted) return;
                     if (widget.noteId != note ||
@@ -3139,6 +3254,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
                       section.withFigure(value),
                       structural: true,
                     );
+                    unawaited(retained?.complete() ?? Future<void>.value());
                   },
                   child: const Text('Caption and sources'),
                 ),
@@ -3395,6 +3511,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
       textAlign: switch (block.alignment) {
         'center' => TextAlign.center,
         'right' => TextAlign.right,
+        'justify' => TextAlign.justify,
         _ => TextAlign.left,
       },
       style: raw
@@ -4655,7 +4772,8 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
   }
 
   Widget _buildBlockEntry(BuildContext context, MarkdownBlock block) {
-    return Container(
+    return OrbitScrollAnchor(
+      coordinator: _scrollAnchor,
       key: anchors.putIfAbsent(block, () => GlobalKey()),
       child: () {
         final isFrontmatter =
@@ -5803,12 +5921,23 @@ class _RichTextBlockState extends State<_RichTextBlock> {
     final revision = _editRevision, request = ++_pasteRequest;
     final epoch = widget.clipboardEpoch?.call();
     ClipboardData? data;
+    String? plainClipboard;
     try {
-      final pasted = await readMarkdownClipboard(
+      try {
+        plainClipboard = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+      } catch (_) {
+        /* Rich format remains independently readable. */
+      }
+      if (!mounted) return;
+      final pasted = await readEditorClipboard(
+        context,
+        plain: plain || widget.raw,
         preferHtml: !plain && !widget.raw,
         interpretOrbitData: !plain && !widget.raw,
       );
       data = pasted == null ? null : ClipboardData(text: pasted);
+    } on EditorPasteCancelled {
+      return;
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
@@ -5865,6 +5994,43 @@ class _RichTextBlockState extends State<_RichTextBlock> {
       // Use the typing path so inherited/pending marks and deliberate formatting
       // exits behave identically for typing and paste.
       _changed(controller.text);
+      final after = source, feedbackRevision = _editRevision;
+      showPasteFeedback(
+        context,
+        pasted,
+        isCurrent: () =>
+            mounted &&
+            widget.clipboardEpoch?.call() == epoch &&
+            _editRevision == feedbackRevision &&
+            source == after,
+        undo: widget.onUndo,
+        pastePlain:
+            !plain &&
+                !widget.raw &&
+                plainClipboard != null &&
+                plainClipboard != text
+            ? () {
+                final raw = plainClipboard!.replaceAll(
+                  RegExp(r'\r\n|[\r\n]'),
+                  widget.lineEnding,
+                );
+                controller.value = TextEditingValue(
+                  text: value.text.replaceRange(range.start, range.end, raw),
+                  selection: TextSelection.collapsed(
+                    offset:
+                        range.start +
+                        InlineProjection(
+                          raw,
+                          referenceDefinitions: widget.referenceDefinitions,
+                        ).text.length,
+                  ),
+                );
+                _beforeSelection = value.selection;
+                _changed(controller.text);
+                focus.requestFocus();
+              }
+            : null,
+      );
     } else {
       widget.onPasteImage?.call();
     }

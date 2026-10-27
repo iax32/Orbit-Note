@@ -10,9 +10,15 @@ class OrbitDraftGuard extends StatefulWidget {
     required this.dirty,
     required this.builder,
     this.busy = false,
+    this.onKeepDraft,
+    this.onDiscardDraft,
+    this.hasChanges,
   });
 
   final bool dirty, busy;
+  final Future<bool> Function()? onKeepDraft;
+  final Future<bool> Function()? onDiscardDraft;
+  final bool Function()? hasChanges;
   final Widget Function(BuildContext context, VoidCallback requestClose)
   builder;
 
@@ -22,12 +28,23 @@ class OrbitDraftGuard extends StatefulWidget {
 
 class _OrbitDraftGuardState extends State<OrbitDraftGuard> {
   bool confirming = false;
+  bool persisting = false;
+
+  Future<bool> _persist(Future<bool> Function() action) async {
+    setState(() => persisting = true);
+    FocusScope.of(context).unfocus();
+    try {
+      return await action();
+    } finally {
+      if (mounted) setState(() => persisting = false);
+    }
+  }
 
   Future<void> requestClose() async {
     if (widget.busy || confirming) return;
-    if (widget.dirty) {
+    if (widget.hasChanges?.call() ?? widget.dirty) {
       confirming = true;
-      final discard = await showDialog<bool>(
+      final decision = await showDialog<String>(
         context: context,
         barrierDismissible: false,
         builder: (context) => OrbitDialog(
@@ -39,28 +56,78 @@ class _OrbitDraftGuardState extends State<OrbitDraftGuard> {
           actions: [
             TextButton(
               autofocus: true,
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(context, 'edit'),
               child: const Text('Keep editing'),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () => Navigator.pop(context, 'discard'),
               child: const Text('Discard changes'),
             ),
+            if (widget.onKeepDraft != null)
+              FilledButton(
+                onPressed: () => Navigator.pop(context, 'keep'),
+                child: const Text('Keep draft and close'),
+              ),
           ],
         ),
       );
+      if (!mounted) return;
+      if (decision == 'keep' && !widget.busy) {
+        try {
+          if (await _persist(widget.onKeepDraft!) != true) {
+            confirming = false;
+            return;
+          }
+        } catch (error) {
+          confirming = false;
+          if (mounted) {
+            ScaffoldMessenger.maybeOf(
+              context,
+            )?.showSnackBar(SnackBar(content: Text('$error')));
+          }
+          return;
+        }
+      } else if (decision == 'discard' && widget.onDiscardDraft != null) {
+        try {
+          if (await _persist(widget.onDiscardDraft!) != true) {
+            confirming = false;
+            return;
+          }
+        } catch (error) {
+          confirming = false;
+          if (mounted) {
+            ScaffoldMessenger.maybeOf(
+              context,
+            )?.showSnackBar(SnackBar(content: Text('$error')));
+          }
+          return;
+        }
+      } else if (decision != 'discard') {
+        confirming = false;
+        return;
+      }
       confirming = false;
-      if (!mounted || widget.busy || discard != true) return;
+      if (!mounted || widget.busy) return;
     }
     if (mounted && !widget.busy) Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) => PopScope<Object?>(
-    canPop: !widget.busy && !widget.dirty,
+    canPop:
+        widget.hasChanges == null &&
+        !widget.busy &&
+        !widget.dirty &&
+        !persisting,
     onPopInvokedWithResult: (didPop, _) {
       if (!didPop) requestClose();
     },
-    child: widget.builder(context, requestClose),
+    child: AbsorbPointer(
+      absorbing: persisting,
+      child: ExcludeFocus(
+        excluding: persisting,
+        child: widget.builder(context, requestClose),
+      ),
+    ),
   );
 }

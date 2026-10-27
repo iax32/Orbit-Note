@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import '../domain/writing_photo.dart';
+import '../domain/attachment_identity.dart';
 
 import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
@@ -14,6 +15,9 @@ import '../domain/smart_view_query.dart';
 import '../domain/task_planning.dart';
 import '../domain/object_tombstone.dart';
 import '../domain/universal_object.dart';
+import '../domain/portable_preferences.dart';
+import '../domain/finance.dart';
+import '../domain/research_dossier.dart';
 import '../domain/wiki_links.dart';
 import '../domain/note_path_links.dart';
 import '../domain/search_text.dart';
@@ -222,7 +226,64 @@ class WorkspaceRepository {
 
   Future<void> moveFolder(String source, String target) =>
       _ownedOrganization(() => _changeFolder(source, target));
-  List<UniversalObject> get objects => List.unmodifiable(_objects.values);
+  List<UniversalObject> get objects => List.unmodifiable(
+    _objects.values.where((o) => o.typeId != PortablePreferences.typeId),
+  );
+  List<UniversalObject> get preferenceRecords => List.unmodifiable(
+    _objects.values.where((o) => o.typeId == PortablePreferences.typeId),
+  );
+
+  Future<void> writePortablePreferences(
+    String id,
+    Map<String, dynamic> changes,
+  ) {
+    final generation = _syncGeneration, owner = workspaceId;
+    final snapshot = Map<String, dynamic>.from(
+      jsonDecode(jsonEncode(changes)) as Map,
+    );
+    return _serial(() async {
+      _requireWritable();
+      if (generation != _syncGeneration || owner != workspaceId) {
+        throw const WorkspaceConflict(
+          'Preferences belong to another Vault opening.',
+        );
+      }
+      final merged = PortablePreferences.merge(preferenceRecords);
+      final previous = _objects[id];
+      if (previous != null &&
+          (previous.typeId != PortablePreferences.typeId ||
+              previous.isDeleted)) {
+        throw const WorkspaceConflict('Preference identity is unavailable.');
+      }
+      final fields = previous == null
+          ? <String, dynamic>{}
+          : PortablePreferences.fields(previous);
+      for (final entry in snapshot.entries) {
+        if (!PortablePreferences.keys.contains(entry.key)) {
+          throw const WorkspaceFailure('Nonportable preference was refused.');
+        }
+        fields[entry.key] = {'clock': merged.clock + 1, 'value': entry.value};
+      }
+      final now = DateTime.now().toUtc();
+      final next =
+          (previous ??
+                  UniversalObject(
+                    id: id,
+                    workspaceId: owner,
+                    typeId: PortablePreferences.typeId,
+                    title: 'Workspace preferences',
+                    createdAt: now,
+                    updatedAt: now,
+                    revision: 0,
+                  ))
+              .copyWith(
+                data: {...?previous?.data, 'version': 1, 'fields': fields},
+              );
+      PortablePreferences.fields(next);
+      await _save(next);
+    });
+  }
+
   Future<SyncInventory> syncInventory() => _serial(() async {
     _requireWritable();
     await _verifyManifest();
@@ -521,6 +582,9 @@ class WorkspaceRepository {
     final sources = <String, String>{};
     final hashes = <String, String>{};
     final tombstones = <String>{};
+    final previousIds = {
+      for (final entry in _paths.entries) entry.value: entry.key,
+    };
     for (final path in await _store.listFiles()) {
       if (WorkspaceDeletions.isJournal(path)) {
         _readOnly = true;
@@ -574,8 +638,21 @@ class WorkspaceRepository {
       try {
         final bytes = await _store.read(path);
         if (bytes == null) continue;
-        final source = utf8.decode(bytes);
-        final object = _codec.decode(source, workspaceId, markdown: markdown);
+        final hash = sha256.convert(bytes).toString();
+        final previousId = previousIds[path];
+        // Preserve immutable snapshots for byte-identical owning files. A sync
+        // refresh of one note must not invalidate every PDF/Canvas/editor cache.
+        final retained =
+            previousId != null &&
+                _hashes[previousId] == hash &&
+                _sources.containsKey(previousId)
+            ? _objects[previousId]
+            : null;
+        final source = retained == null
+            ? utf8.decode(bytes)
+            : _sources[previousId]!;
+        final object =
+            retained ?? _codec.decode(source, workspaceId, markdown: markdown);
         if (objects.containsKey(object.id)) {
           _readOnly = true;
           _addIssue(
@@ -586,7 +663,7 @@ class WorkspaceRepository {
         objects[object.id] = object;
         paths[object.id] = path;
         sources[object.id] = source;
-        hashes[object.id] = sha256.convert(bytes).toString();
+        hashes[object.id] = hash;
       } on Object catch (error) {
         _addIssue(
           'Could not open $path; its original file is preserved. $error',
@@ -599,6 +676,10 @@ class WorkspaceRepository {
         'An object and its permanent deletion record both exist. Both are preserved for review.',
       );
     }
+    final replaceIndex = _objects.keys.any((id) => !objects.containsKey(id));
+    final changedObjects = objects.values
+        .where((object) => _hashes[object.id] != hashes[object.id])
+        .toList();
     _objects
       ..clear()
       ..addAll(objects);
@@ -613,7 +694,14 @@ class WorkspaceRepository {
       ..addAll(hashes);
     if (_indexReady) {
       try {
-        await _index.replaceAll(this.objects);
+        if (replaceIndex) {
+          await _index.replaceAll(this.objects);
+        } else {
+          for (final object in changedObjects) {
+            if (object.typeId == PortablePreferences.typeId) continue;
+            await _index.upsert(object);
+          }
+        }
       } on Object catch (error) {
         _indexReady = false;
         _addIssue('The index needs rebuilding; local content is safe. $error');
@@ -664,6 +752,74 @@ class WorkspaceRepository {
     await _verifyManifest();
     _validate(object);
     final existing = _objects[object.id];
+    if (object.properties['researchDossier'] != null &&
+        jsonEncode(object.properties['researchDossier']) !=
+            jsonEncode(existing?.properties['researchDossier'])) {
+      if (object.typeId != 'orbit.note' ||
+          object.properties['researchDossier'] is! Map) {
+        throw const FormatException(
+          'Research dossier records must be ordinary notes.',
+        );
+      }
+      validateDossier(dossierData(object));
+      if (existing?.properties['researchDossier'] != null) {
+        final previous = dossierData(existing!);
+        if (previous['version'] != 1 ||
+            previous['kind'] != dossierData(object)['kind'] ||
+            previous['dossierId'] != dossierData(object)['dossierId']) {
+          throw const FormatException(
+            'Preserve research record version, kind and dossier identity.',
+          );
+        }
+      }
+    }
+    if (object.properties['finance'] != null &&
+        jsonEncode(object.properties['finance']) !=
+            jsonEncode(existing?.properties['finance'])) {
+      if (object.typeId != 'orbit.note' ||
+          object.properties['finance'] is! Map) {
+        throw const FormatException('Finance records must be ordinary notes.');
+      }
+      validateFinance(
+        Map<String, dynamic>.from(object.properties['finance'] as Map),
+      );
+      final nextFinance = financeData(object);
+      final oldFinance = existing == null
+          ? <String, dynamic>{}
+          : financeData(existing);
+      if (oldFinance['version'] == 1 &&
+          oldFinance['kind'] != nextFinance['kind']) {
+        throw const FormatException(
+          'Keep the finance record kind intact. Create a new record instead.',
+        );
+      }
+      if (oldFinance['kind'] == 'account' &&
+          nextFinance['currency'] != oldFinance['currency'] &&
+          _objects.values.any(
+            (o) =>
+                financeData(o)['kind'] == 'transaction' &&
+                (financeData(o)['accountId'] == object.id ||
+                    financeData(o)['toAccountId'] == object.id),
+          )) {
+        throw const FormatException(
+          'An account with transactions cannot change currency.',
+        );
+      }
+      if (oldFinance['kind'] == 'bill' &&
+          [
+            'startDate',
+            'frequency',
+          ].any((k) => nextFinance[k] != oldFinance[k]) &&
+          _objects.values.any(
+            (o) =>
+                financeData(o)['kind'] == 'transaction' &&
+                financeData(o)['billId'] == object.id,
+          )) {
+        throw const FormatException(
+          'Keep a recorded bill schedule intact. Archive it and create a new schedule.',
+        );
+      }
+    }
     validateEventRecurrence(object, previous: existing);
     if (object.properties['calendarPlan'] != null &&
         jsonEncode(object.properties['calendarPlan']) !=
@@ -782,7 +938,7 @@ class WorkspaceRepository {
     _paths[object.id] = path;
     _sources[object.id] = source;
     _hashes[object.id] = sha256.convert(bytes).toString();
-    if (_indexReady) {
+    if (_indexReady && saved.typeId != PortablePreferences.typeId) {
       try {
         await _index.upsert(saved);
       } on Object catch (error) {
@@ -1013,6 +1169,7 @@ class WorkspaceRepository {
     required String name,
     required Uint8List bytes,
     String? folder,
+    bool reuseExisting = true,
   }) {
     if (bytes.length > 100 * 1024 * 1024) {
       return Future.error(
@@ -1048,7 +1205,7 @@ class WorkspaceRepository {
             (targetFolder == null || objectFolder(o.id) == targetFolder) &&
             !o.isDeleted,
       );
-      if (matches.isNotEmpty) return matches.first;
+      if (reuseExisting && matches.isNotEmpty) return matches.first;
       final safeName = _safeName(name);
       final path = 'Attachments/$checksum/$safeName';
       final old = await _store.read(path);
@@ -1062,6 +1219,7 @@ class WorkspaceRepository {
       // An interruption before metadata is written leaves recoverable ordinary
       // bytes, never a metadata record referencing a not-yet-written attachment.
       final now = DateTime.now().toUtc();
+      final dimensions = attachmentImageSize(snapshot);
       return _save(
         UniversalObject(
           id: const Uuid().v4(),
@@ -1077,6 +1235,8 @@ class WorkspaceRepository {
             'originalName': name,
             'mimeType': _mime(safeName),
             'byteLength': snapshot.length,
+            if (dimensions != null) 'imageWidth': dimensions.width,
+            if (dimensions != null) 'imageHeight': dimensions.height,
             'checksum': checksum,
           },
         ),

@@ -709,10 +709,11 @@ class OrbitControl extends StatefulWidget {
     this.label,
     this.icon,
     this.tooltip,
+    this.disabledReason,
     this.selected = false,
     required this.onPressed,
   });
-  final String? label, tooltip;
+  final String? label, tooltip, disabledReason;
   final IconData? icon;
   final bool selected;
   final VoidCallback? onPressed;
@@ -726,13 +727,16 @@ class _OrbitControlState extends State<OrbitControl> {
   Widget build(BuildContext context) {
     final c = OrbitColors.of(context);
     final enabled = widget.onPressed != null;
+    final hint = enabled
+        ? widget.tooltip
+        : '${widget.tooltip ?? widget.label ?? "Action"} · ${widget.disabledReason ?? "Unavailable in the current context"}';
     final iconOnly = widget.icon != null && widget.label == null;
     final text = enabled ? (widget.selected ? c.text : c.subtle) : c.muted;
     Widget control = Semantics(
       button: true,
       selected: widget.selected,
       enabled: enabled,
-      label: widget.tooltip ?? widget.label,
+      label: hint ?? widget.label,
       child: FocusableActionDetector(
         enabled: enabled,
         mouseCursor: enabled
@@ -853,8 +857,8 @@ class _OrbitControlState extends State<OrbitControl> {
         ),
       ),
     );
-    if (widget.tooltip != null) {
-      control = Tooltip(message: widget.tooltip!, child: control);
+    if (hint != null) {
+      control = Tooltip(message: hint, child: control);
     }
     return control;
   }

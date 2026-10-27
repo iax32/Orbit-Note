@@ -45,6 +45,7 @@ class ReadAttachmentImage extends StatefulWidget {
     required this.builder,
     required this.label,
     this.revision = 0,
+    this.aspectRatio,
     this.showReplacementStatus = false,
     this.retryableBuilder,
     this.title,
@@ -65,6 +66,7 @@ class ReadAttachmentImage extends StatefulWidget {
   retryableBuilder;
   final String label;
   final int revision;
+  final double? aspectRatio;
   final bool showReplacementStatus;
   final String? title, mimeType;
 
@@ -117,7 +119,21 @@ class _ReadAttachmentImageState extends State<ReadAttachmentImage> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          preview,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              // Reserve the same geometry while fetching, decoding and retrying.
+              // Contain keeps the complete image visible without reducing quality.
+              if (!constraints.hasBoundedWidth) return preview;
+              final ratio = widget.aspectRatio;
+              final height =
+                  (constraints.maxWidth /
+                          (ratio != null && ratio.isFinite && ratio > 0
+                              ? ratio
+                              : 1.5))
+                      .clamp(96.0, 600.0);
+              return SizedBox(height: height, child: preview);
+            },
+          ),
           if (widget.title != null ||
               widget.onOpenOriginal != null ||
               widget.onReveal != null ||
