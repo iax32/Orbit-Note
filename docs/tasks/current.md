@@ -1,8 +1,20 @@
-# In progress — publish 1.0.3, 2026-10-27
+# Delivered — publish 1.0.3, 2026-10-27
 
 User requests source, Windows setup and Android APK on GitHub. Explicitly skip
 tests and GitHub workflows. Use local builds and existing preview signing identity.
 Scope/status: docs/tasks/publish-1.0.3-2026-10-27.md.
+
+Current source pushed to main: 1151e7f ([skip ci]). Public release:
+https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.3-2026-10-27
+Contains complete Windows setup EXE and universal Android Preview APK, version
+1.0.3+4, checksums and manifests. Android package/signing identity preserved and
+verified. Both asset sizes confirmed after publishing. No tests, analysis/format
+gates or GitHub workflows run for this publication, as explicitly requested.
+README links updated. Original Vaults/private PDFs/keys remain untouched.
+
+Android Google sign-in still needs distributor registration; local-only Google
+mode and existing preview identity retained. Suggested next task: configure that
+registration without changing the signing key. Stop before implementing it.
 
 ## Previous task
 # Delivered — quiet details, 2026-10-27

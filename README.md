@@ -17,13 +17,13 @@ An open-source, local-first personal knowledge operating system combining linked
 
 ## 📥 Downloads
 
-The current **1.0.1 preview** is available on the [release page](https://github.com/iax32/Orbit-Note/releases/tag/preview-2026-10-20).
+The current **1.0.3 preview** is available on the [release page](https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.3-2026-10-27).
 Older stable releases remain available in the [release archive](https://github.com/iax32/Orbit-Note/releases).
 
 | Platform | Download Link | Notes |
 | :--- | :--- | :--- |
-| **🪟 Windows (x64)** | [**Download `OrbitNote-Windows-x64-Setup.exe`**](https://github.com/iax32/Orbit-Note/releases/download/preview-2026-10-20/OrbitNote-Windows-x64-Setup.exe) | Per-user setup EXE with the complete runtime; no ZIP extraction or administrator account required. Unsigned. |
-| **📱 Android preview** | [**Download `OrbitNote-Android-Preview.apk`**](https://github.com/iax32/Orbit-Note/releases/download/preview-2026-10-20/OrbitNote-Android-Preview.apk) | Release-mode APK, existing preview signing key and package identity; version code 2 updates the previous preview. |
+| **🪟 Windows (x64)** | [**Download `OrbitNote-Windows-x64-Setup.exe`**](https://github.com/iax32/Orbit-Note/releases/download/preview-1.0.3-2026-10-27/OrbitNote-Windows-x64-Setup.exe) | Per-user setup EXE with the complete runtime; no ZIP extraction or administrator account required. Unsigned. |
+| **📱 Android preview** | [**Download `OrbitNote-Android-Preview.apk`**](https://github.com/iax32/Orbit-Note/releases/download/preview-1.0.3-2026-10-27/OrbitNote-Android-Preview.apk) | Release-mode APK, existing preview signing key and package identity; version code 4 updates the previous preview. |
 
 Verify downloads with the release's `SHA256SUMS.txt`. These packages support offline
 core features. The Windows preview includes the registered Google desktop client;
@@ -31,7 +31,7 @@ Google's testing-account restrictions still apply. Android remains local-only
 with Google sign-in unconfigured. Android device acceptance is still pending.
 
 ### 🚀 Running on Windows
-1. Download [**`OrbitNote-Windows-x64-Setup.exe`**](https://github.com/iax32/Orbit-Note/releases/download/preview-2026-10-20/OrbitNote-Windows-x64-Setup.exe).
+1. Download [**`OrbitNote-Windows-x64-Setup.exe`**](https://github.com/iax32/Orbit-Note/releases/download/preview-1.0.3-2026-10-27/OrbitNote-Windows-x64-Setup.exe).
 2. Run setup to install for your Windows account.
 3. Open **Orbit Note** from the Start menu, or run **`orbit_note.exe`** in the installation folder.
 > Source builds still run directly from `build/windows/x64/runner/Release/orbit_note.exe`.
@@ -103,9 +103,10 @@ flutter analyze
 flutter test
 ```
 
-Tagged releases run the same checks in CI before packaging, then publish the
-Windows artifact with a `SHA256SUMS` manifest. Android and Web remain validation
-targets until their acceptance gates are complete.
+Standard `v*` release tags run these checks in CI before packaging. The 1.0.3
+preview was built and uploaded locally, without rerunning tests or GitHub Actions,
+as requested. Download checksums accompany the installers. Android and Web remain
+validation targets until their acceptance gates are complete.
 
 ---
 
