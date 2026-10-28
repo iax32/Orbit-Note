@@ -25,6 +25,8 @@ share on launch, or persist the temporary endpoint as a stable hosted service.
 
 Reachability is checked before exposing an invitation. Leaving the dialog keeps
 sharing active for homework; Stop and normal app exit stop the helper and host.
+A Windows kernel job with kill-on-close also ends the helper on app crash, so it
+cannot keep forwarding a loopback port later reused by another application.
 Temporary addresses change after restarting, so users must send a new invitation.
 No knowledge is deleted on stop. Existing 1.0.4 clients can join using the same
 protocol; do not weaken TLS validation or allow remote plaintext HTTP.

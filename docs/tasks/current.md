@@ -1,8 +1,27 @@
-# In progress — easy live sharing buttons, 2026-10-28
+# Delivered — easy live sharing buttons, 2026-10-28
 
 Owner requests a fast in-app Start → Copy tablet invitation → Join flow, without
 scripts/domains/router configuration. Scope: docs/tasks/easy-live-host-2026-10-28.md.
 Preserve Advanced manual hosting and existing Android 1.0.4 compatibility.
+
+Implemented Start live sharing → Copy tablet invitation → Join, with reviewed
+temporary HTTPS and no scripts/domain/router setup. Native collaboration DNS
+fallback preserves TLS after this network returned NXDOMAIN for new relay names;
+install Android 1.0.5 for that fix. Manual self-hosting stays under Advanced.
+Normal exit/Stop and a Windows kernel job terminate the helper; new sessions do
+not reload prior grants. No personal Vault was used in external acceptance.
+
+Source 6ae4803 pushed. Published Windows setup + Android 1.0.5+6, six verified assets:
+https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.5-2026-10-28
+37 focused checks pass; final five host checks including real HTTPS join, Canvas
+change and attachment bytes pass. UI/old-grant isolation covered. Analyzer clean
+(7.8 s); strict format 860 files/zero changes. Android built in 124.2 s, final
+Windows in 95.7 s, setup in 15.1 s. APK signature, version and Google/DNS AOT
+strings checked. No workflow runs for source commit. Private tmp remains untouched.
+
+Next required step: owner installs 1.0.5 on tablet and tests Start/Copy/Join from
+the usual updated PC build, then a short drawing/image round trip. Physical
+acceptance is pending; initial Vault download remains necessary once per device.
 
 ## Previous task
 # Implemented/published — mobile Google and live Canvas, 2026-10-28

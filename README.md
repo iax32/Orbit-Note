@@ -17,22 +17,22 @@ An open-source, local-first personal knowledge operating system combining linked
 
 ## 📥 Downloads
 
-The current **1.0.4 preview** is available on the [release page](https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.4-2026-10-28).
+The current **1.0.5 preview** is available on the [release page](https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.5-2026-10-28).
 Older stable releases remain available in the [release archive](https://github.com/iax32/Orbit-Note/releases).
 
 | Platform | Download Link | Notes |
 | :--- | :--- | :--- |
-| **🪟 Windows (x64)** | [**Download `OrbitNote-Windows-x64-Setup.exe`**](https://github.com/iax32/Orbit-Note/releases/download/preview-1.0.4-2026-10-28/OrbitNote-Windows-x64-Setup.exe) | Per-user setup EXE with the complete runtime and updated live host; no ZIP extraction or administrator account required. Unsigned. |
-| **📱 Android preview** | [**Download `OrbitNote-Android-preview.apk`**](https://github.com/iax32/Orbit-Note/releases/download/preview-1.0.4-2026-10-28/OrbitNote-Android-preview.apk) | Google sign-in configured; existing preview signing key and package identity; version code 5 updates the previous preview. |
+| **🪟 Windows (x64)** | [**Download `OrbitNote-Windows-x64-Setup.exe`**](https://github.com/iax32/Orbit-Note/releases/download/preview-1.0.5-2026-10-28/OrbitNote-Windows-x64-Setup.exe) | Per-user setup EXE with the complete runtime and updated live host; no ZIP extraction or administrator account required. Unsigned. |
+| **📱 Android preview** | [**Download `OrbitNote-Android-preview.apk`**](https://github.com/iax32/Orbit-Note/releases/download/preview-1.0.5-2026-10-28/OrbitNote-Android-preview.apk) | Google sign-in configured; existing preview signing key and package identity; version code 6 updates the previous preview. |
 
 Verify downloads with the release's `SHA256SUMS.txt`. These packages support offline
 core features. Windows and Android include their registered Google app clients;
 Google's testing-account restrictions still apply. Android physical-device
-acceptance is pending. Live ink needs a reachable, updated Shared Vault host;
+acceptance is pending. Shared Vault now offers Start live sharing → Copy tablet invitation → Join using a reviewed temporary HTTPS relay; Advanced manual hosting remains available.
 Google Drive provides file sync rather than the live ink relay.
 
 ### 🚀 Running on Windows
-1. Download [**`OrbitNote-Windows-x64-Setup.exe`**](https://github.com/iax32/Orbit-Note/releases/download/preview-1.0.4-2026-10-28/OrbitNote-Windows-x64-Setup.exe).
+1. Download [**`OrbitNote-Windows-x64-Setup.exe`**](https://github.com/iax32/Orbit-Note/releases/download/preview-1.0.5-2026-10-28/OrbitNote-Windows-x64-Setup.exe).
 2. Run setup to install for your Windows account.
 3. Open **Orbit Note** from the Start menu, or run **`orbit_note.exe`** in the installation folder.
 > Source builds still run directly from `build/windows/x64/runner/Release/orbit_note.exe`.
@@ -104,7 +104,7 @@ flutter analyze
 flutter test
 ```
 
-Standard `v*` release tags run these checks in CI before packaging. The 1.0.4
+Standard `v*` release tags run these checks in CI before packaging. The 1.0.5
 preview was built and uploaded locally after focused sync tests and analysis;
 no GitHub Actions workflow was dispatched. Download checksums accompany the installers. Android and Web remain
 validation targets until their acceptance gates are complete.
