@@ -1,7 +1,22 @@
-# In progress — Canvas input performance, 2026-10-28
+# Delivered — Canvas input performance, 2026-10-28
 
 Owner reports severe pen and pan lag on PC/tablet. Preserve features/visuals.
 Scope/evidence: docs/tasks/canvas-input-performance-2026-10-28.md.
+
+Active strokes now repaint independently of the full editor/saved scene. Stable
+visible-ink caching removes cyclic display-list eviction and repeated saturation
+scans. Same vector renderer and all pressure/time samples retained. Dense CPU
+benchmark: 1500 strokes/20 paints 1.247 s → .402 s; recordings 30000 → 1024.
+All seven nib/highlighter styles pixel-identical at zoom. 22 focused tests plus
+two stylus/undo/cancellation checks pass. Analyzer clean (23.6 s); strict format
+862 files unchanged. Physical tablet frame times remain unmeasured.
+
+Built Android 1.0.6+7 (final 122.5 s, package/signature checked) and Windows
+(final 114.2 s) with complete setup (13.9 s). Usual Windows release updated.
+Source 1958458 and both installers published, six asset sizes verified:
+https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.6-2026-10-28
+No GitHub workflow runs; private tmp untouched. Next: real tablet stylus/pan
+acceptance on the same dense board with live sharing enabled.
 
 ## Previous task
 # Delivered — easy live sharing buttons, 2026-10-28

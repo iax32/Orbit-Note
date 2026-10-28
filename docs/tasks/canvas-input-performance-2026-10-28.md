@@ -31,3 +31,12 @@ No samples, pen styles, sync functions or exported visuals removed.
 Analyzer clean (7.0 s); format 862 files unchanged. Android 1.0.6+7 and Windows
 builds are being finalized with the last cache improvement. Physical tablet
 acceptance remains separate. No physical-device frame-rate claim is made.
+
+Delivered 1.0.6+7, source 195845829ed0adfdb03e891aa4818f532a60195d:
+https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.6-2026-10-28
+Final Android build 122.5 s and Windows 114.2 s, setup 13.9 s. Uploaded APK
+139724610 bytes; setup 27314221 bytes; six assets checked by size, checksums and
+manifests attached. Existing package/signature and Google configuration retained.
+Analyzer clean (23.6 s), strict format 862 files unchanged. Source pushed without
+workflow runs. Only original private tmp remains untracked. Physical acceptance
+on the user's PC/tablet is the next step; don't infer full-app FPS from CPU tests.
