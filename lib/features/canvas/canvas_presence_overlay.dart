@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../canvas/geometry.dart';
 import '../../canvas/scene.dart';
 import '../../domain/collaboration.dart';
+import 'canvas_painter.dart';
 
 /// View-only awareness in world coordinates. It never mutates or locks a scene.
 class CanvasPresenceOverlay extends StatelessWidget {
@@ -57,6 +58,19 @@ class CanvasPresenceOverlay extends StatelessWidget {
                     (n, c) => (n * 31 + c) & 0xffff,
                   ) %
                   palette.length];
+          final ink = collaborationInkPreview(peer['ink']);
+          if (ink != null && peer['role'] != 'viewer') {
+            children.add(
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    key: ValueKey('peer-ink-$identity'),
+                    painter: _PeerInkPainter(CanvasElement(ink), camera),
+                  ),
+                ),
+              ),
+            );
+          }
           for (final id in collaborationSelectionIds(peer['selection'])) {
             final element = scene[id];
             if (element == null ||
@@ -120,4 +134,33 @@ class CanvasPresenceOverlay extends StatelessWidget {
       },
     ),
   );
+}
+
+class _PeerInkPainter extends CustomPainter {
+  _PeerInkPainter(this.stroke, CanvasCamera camera)
+    : x = camera.x,
+      y = camera.y,
+      zoom = camera.zoom;
+  final CanvasElement stroke;
+  final double x, y, zoom;
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
+    canvas.scale(zoom);
+    canvas.translate(-x, -y);
+    OrbitCanvasPainter.paintInk(
+      canvas,
+      stroke,
+      Color(stroke.data['color'] as int),
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_PeerInkPainter oldDelegate) =>
+      x != oldDelegate.x ||
+      y != oldDelegate.y ||
+      zoom != oldDelegate.zoom ||
+      !collaborationEqual(stroke.data, oldDelegate.stroke.data);
 }

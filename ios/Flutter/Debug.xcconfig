@@ -1,1 +1,3 @@
 #include "Generated.xcconfig"
+ORBIT_GOOGLE_IOS_REVERSED_CLIENT_ID=org.orbitnote.google-unconfigured
+#include? "GoogleAuth.xcconfig"

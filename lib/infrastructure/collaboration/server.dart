@@ -728,6 +728,8 @@ class CollaborationServer {
                     ).where(knownIds.contains).toList()
                   : <String>[],
               'seen': DateTime.now().toUtc().toIso8601String(),
+              if (body['space'] == 'canvas' && access.grant['role'] != 'viewer')
+                'ink': collaborationInkPreview(body['ink']),
               ...textRange,
             };
             _awareness[room] = (_awareness[room] ?? 0) + 1;

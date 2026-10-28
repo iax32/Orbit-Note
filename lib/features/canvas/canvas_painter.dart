@@ -1465,7 +1465,7 @@ class OrbitCanvasPainter extends CustomPainter {
         : fallback;
   }
 
-  void _paintInk(Canvas canvas, CanvasElement element, Color accent) {
+  static void paintInk(Canvas canvas, CanvasElement element, Color accent) {
     final isHighlighter = element.data['isHighlighter'] == true;
     final penStyle =
         (element.data['penStyle'] is String
@@ -2020,11 +2020,11 @@ class OrbitCanvasPainter extends CustomPainter {
             canvas,
             element,
             accent,
-            (target) => _paintInk(target, element, accent),
+            (target) => paintInk(target, element, accent),
             pixelScale: camera.zoom * devicePixelRatio,
           );
         } else {
-          _paintInk(canvas, element, accent);
+          paintInk(canvas, element, accent);
         }
       case 'connector':
       case 'arrow':

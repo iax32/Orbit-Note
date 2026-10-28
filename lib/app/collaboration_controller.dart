@@ -157,6 +157,8 @@ class CollaborationController extends ChangeNotifier {
   bool get liveReplication => _liveReplication;
   int _watchGeneration = 0, _awarenessSequence = 0;
   Timer? _localDebounce;
+  Timer? _presenceTimer;
+  bool _sendingPresence = false;
   final _newPlans = <String, Map<String, dynamic>>{};
   Map<String, Map<String, dynamic>> _localAttachments = {};
   int _attachmentRevision = -1;
@@ -199,6 +201,13 @@ class CollaborationController extends ChangeNotifier {
   void _notify() {
     if (!_disposed) {
       viewerChanges.value = viewer;
+      _notifyPresence();
+      notifyListeners();
+    }
+  }
+
+  void _notifyPresence() {
+    if (!_disposed) {
       final visiblePeers = [
         for (final peer in peers)
           Map<String, dynamic>.unmodifiable({...peer}..remove('seen')),
@@ -206,7 +215,6 @@ class CollaborationController extends ChangeNotifier {
       if (!collaborationEqual(presenceChanges.value, visiblePeers)) {
         presenceChanges.value = List.unmodifiable(visiblePeers);
       }
-      notifyListeners();
     }
   }
 
@@ -629,6 +637,8 @@ class CollaborationController extends ChangeNotifier {
     _generation++;
     _timer?.cancel();
     _timer = null;
+    _presenceTimer?.cancel();
+    _presenceTimer = null;
     room = null;
     endpoint = null;
     _token = null;
@@ -665,12 +675,14 @@ class CollaborationController extends ChangeNotifier {
       'x': x,
       'y': y,
       'space': space,
+      if (space == 'canvas' && _cursor?['objectId'] == id)
+        'ink': _cursor?['ink'],
       if (space == 'canvas')
         'selection': _cursor?['objectId'] == id
             ? collaborationSelectionIds(_cursor?['selection'])
             : <String>[],
     };
-    localChanged();
+    _schedulePresence();
   }
 
   void selectCanvas(String id, List<String> ids) {
@@ -678,13 +690,35 @@ class CollaborationController extends ChangeNotifier {
     final selection = collaborationSelectionIds(ids);
     if (listEquals(selection, _cursor?['selection'] as List?)) return;
     _cursor = {..._cursor!, 'selection': selection};
-    localChanged();
+    _schedulePresence();
+  }
+
+  void previewCanvasInk(String id, Map<String, dynamic>? stroke) {
+    if (!shares(id) || viewer || !connected) return;
+    final ink = collaborationInkPreview(stroke);
+    final last = ink == null ? null : (ink['points'] as List).last as Map;
+    if (_cursor?['objectId'] != id || _cursor?['space'] != 'canvas') {
+      if (last == null) return;
+      cursor(
+        id,
+        (last['x'] as num).toDouble(),
+        (last['y'] as num).toDouble(),
+        space: 'canvas',
+      );
+    }
+    _cursor = {..._cursor!, 'ink': ink};
+    _schedulePresence();
   }
 
   void clearCursor(String id) {
     if (_cursor?['objectId'] != id) return;
-    _cursor = {..._cursor!, 'active': false, 'selection': <String>[]};
-    localChanged();
+    _cursor = {
+      ..._cursor!,
+      'active': false,
+      'selection': <String>[],
+      'ink': null,
+    };
+    _schedulePresence();
   }
 
   void textSelection(String id, String source, TextSelection selection) {
@@ -704,7 +738,59 @@ class CollaborationController extends ChangeNotifier {
       'textExtent': selection.extentOffset,
       'textHash': sha256.convert(utf8.encode(source)).toString(),
     };
-    localChanged();
+    _schedulePresence();
+  }
+
+  void _schedulePresence() {
+    if (!automaticPolling ||
+        !connected ||
+        accessBlocked ||
+        !_validWorkspace ||
+        _presenceTimer?.isActive == true) {
+      return;
+    }
+    _presenceTimer = Timer(const Duration(milliseconds: 80), () async {
+      try {
+        await _publishPresence();
+      } catch (_) {
+        // Awareness is disposable; the durable pump handles access/retry state.
+      }
+    });
+  }
+
+  Future<void> _publishPresence() async {
+    if (_sendingPresence || !connected || accessBlocked || !_validWorkspace) {
+      return;
+    }
+    final cursor = _cursor;
+    if (cursor == null ||
+        (collaborationEqual(cursor, _sentCursor) &&
+            _now().difference(_lastCursor) <
+                const Duration(milliseconds: 400))) {
+      return;
+    }
+    final generation = _generation;
+    _sendingPresence = true;
+    try {
+      await request(
+        endpoint!,
+        _token!,
+        'POST',
+        '/v1/rooms/$room/presence',
+        cursor,
+      );
+      if (!_current(generation)) return;
+      _lastCursor = _now();
+      _sentCursor = cursor;
+      if (cursor['active'] == false && identical(_cursor, cursor)) {
+        _cursor = null;
+      }
+    } finally {
+      _sendingPresence = false;
+      if (_current(generation) && !identical(_cursor, cursor)) {
+        _schedulePresence();
+      }
+    }
   }
 
   Future<void>? _runningPump;
@@ -924,20 +1010,7 @@ class CollaborationController extends ChangeNotifier {
           }
         }
       }
-      final cursor = _cursor;
-      if (cursor != null &&
-          (cursor['active'] == false ||
-              !collaborationEqual(cursor, _sentCursor) ||
-              _now().difference(_lastCursor) >=
-                  const Duration(milliseconds: 400))) {
-        await request(server, token, 'POST', '/v1/rooms/$id/presence', cursor);
-        if (!_current(generation)) return;
-        _lastCursor = _now();
-        _sentCursor = cursor;
-        if (cursor['active'] == false && identical(_cursor, cursor)) {
-          _cursor = null;
-        }
-      }
+      await _publishPresence();
       if (!_current(generation)) return;
       _failures = 0;
       if (_liveReplication) await _checkpointShared();

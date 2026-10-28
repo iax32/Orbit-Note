@@ -260,3 +260,22 @@ Host-incarnation guards also travel with edit proposals: a restart between the
 state check and publication returns a typed conflict before any journal mutation.
 Canvas comparisons reject changed hosts before applying choices; existing conflict
 bases are invalidated on restart instead of reused across uncertain ancestry.
+
+## Mobile live ink awareness — 2026-10-28
+
+Shared Canvas sessions send sampled in-progress ink through bounded ephemeral
+presence (maximum 128 pressure points), coalesced at 80 ms intervals. Completed
+strokes retain all normal samples and use existing durable Canvas commands,
+outbox, verified attachment transfer and conflict handling. Preview traffic never
+becomes a saved placement or bypasses history. The existing Canvas ink renderer
+paints the remote preview, retaining pen/highlighter styles and pressure handling.
+
+Presence sends no longer wait for large attachment/document pumps. Updated host
+event replies include peer awareness, allowing pointer/preview-only changes to
+update the overlay without scanning attachments or saving a recovery checkpoint.
+Old event replies fall back to the existing pump. Input is bounded/validated at
+both host and renderer, Viewer strokes are excluded, leaving/cancelling clears
+the preview, and disconnect uses existing presence expiry. Update the standalone
+host as well as clients. Google Drive remains file synchronization; live strokes
+require a reachable Shared Vault server. Physical tablet latency is not inferred
+from local-client benchmarks.

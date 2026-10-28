@@ -46,30 +46,33 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
       context: context,
       builder: (dialogContext) => OrbitDialog(
         title: const Text('Activate Google sign-in'),
-        content: const SingleChildScrollView(
+        content: SingleChildScrollView(
           child: Text(
-            'This preview was built without Google app registration. Normal releases include it so you can simply sign in.\n\nFor this desktop preview, import the JSON downloaded from Google Cloud → Google Auth Platform → Clients → Desktop app. It is stored on this device, outside your Vault. Do not enter a Google password or account token.',
+            setup?.canConfigureDesktop != true
+                ? 'Google sign-in is not configured in this mobile build. Install a release with mobile Google registration. Signing into Google Cloud in a browser does not connect your Orbit account. You can still use a Shared Vault for live Canvas sharing without Google.'
+                : 'This preview was built without Google app registration. Normal releases include it so you can simply sign in.\n\nFor this desktop preview, import the JSON downloaded from Google Cloud → Google Auth Platform → Clients → Desktop app. It is stored on this device, outside your Vault. Do not enter a Google password or account token.',
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () async {
-              final opened = await launchUrl(
-                Uri.parse('https://console.cloud.google.com/auth/clients'),
-                mode: LaunchMode.externalApplication,
-              );
-              if (!opened && dialogContext.mounted) {
-                ScaffoldMessenger.maybeOf(dialogContext)?.showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Could not open Google Cloud. Try opening its console in your browser.',
-                    ),
-                  ),
+          if (setup?.canConfigureDesktop == true)
+            TextButton(
+              onPressed: () async {
+                final opened = await launchUrl(
+                  Uri.parse('https://console.cloud.google.com/auth/clients'),
+                  mode: LaunchMode.externalApplication,
                 );
-              }
-            },
-            child: const Text('Open Google setup'),
-          ),
+                if (!opened && dialogContext.mounted) {
+                  ScaffoldMessenger.maybeOf(dialogContext)?.showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Could not open Google Cloud. Try opening its console in your browser.',
+                      ),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Open Google setup'),
+            ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Close'),
@@ -316,7 +319,11 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
                     width: 20,
                     height: 20,
                   ),
-                  label: const Text('Continue with Google'),
+                  label: Text(
+                    cloud.auth.configured
+                        ? 'Continue with Google'
+                        : 'Google sign-in unavailable',
+                  ),
                 ),
                 if (!cloud.auth.configured)
                   const Padding(

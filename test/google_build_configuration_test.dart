@@ -9,6 +9,7 @@ void main() {
     'ORBIT_GOOGLE_DESKTOP_CLIENT_ID': desktop,
     'ORBIT_GOOGLE_DESKTOP_CLIENT_SECRET': 'native-client-value',
     'ORBIT_GOOGLE_ANDROID_SERVER_CLIENT_ID': android,
+    'ORBIT_GOOGLE_IOS_CLIENT_ID': '123456-ios.apps.googleusercontent.com',
     'GOOGLE_REFRESH_TOKEN': 'must-not-be-embedded',
     'GOOGLE_ACCESS_TOKEN': 'must-not-be-embedded',
     'UNRELATED_CI_SECRET': 'must-not-be-embedded',
@@ -20,6 +21,9 @@ void main() {
     });
     expect(googleBuildConfiguration('android', configured), {
       'ORBIT_GOOGLE_ANDROID_SERVER_CLIENT_ID': android,
+    });
+    expect(googleBuildConfiguration('ios', configured), {
+      'ORBIT_GOOGLE_IOS_CLIENT_ID': '123456-ios.apps.googleusercontent.com',
     });
   });
   test('local-only mode never embeds available credentials', () {
@@ -33,7 +37,7 @@ void main() {
     );
   });
   test('missing and example identifiers fail before preview builds', () {
-    for (final platform in ['windows', 'android']) {
+    for (final platform in ['windows', 'android', 'ios']) {
       for (final invalid in [
         '',
         'YOUR_CLIENT_ID.apps.googleusercontent.com',
@@ -44,6 +48,7 @@ void main() {
             'ORBIT_GOOGLE_BUILD_MODE': 'google-account-preview',
             'ORBIT_GOOGLE_DESKTOP_CLIENT_ID': invalid,
             'ORBIT_GOOGLE_ANDROID_SERVER_CLIENT_ID': invalid,
+            'ORBIT_GOOGLE_IOS_CLIENT_ID': invalid,
           }),
           throwsFormatException,
         );
@@ -52,7 +57,7 @@ void main() {
   });
   test('unknown mode or platform cannot silently produce a release', () {
     expect(
-      () => googleBuildConfiguration('ios', configured),
+      () => googleBuildConfiguration('linux', configured),
       throwsFormatException,
     );
     expect(

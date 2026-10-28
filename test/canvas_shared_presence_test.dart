@@ -16,8 +16,10 @@ class SharedTransport extends http.BaseClient {
   bool loseNextCreation = false, loseNextChunk = false;
   final chunkOffsets = <int>[];
   final presence = <Map>[];
+  int stateRequests = 0;
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (request.url.path.endsWith('/state')) stateRequests++;
     if (request is http.Request && request.url.path.endsWith('/presence')) {
       presence.add(jsonDecode(request.body) as Map);
     }
@@ -64,7 +66,7 @@ class CanvasSessions {
     64,
     (i) => '00000000-0000-4000-8000-${i.toString().padLeft(12, '0')}',
   );
-  Future<void> open() async {
+  Future<void> open({bool automaticPolling = false}) async {
     HttpOverrides.global = null;
     final store = firstStore = MemoryStore();
     firstRepo = WorkspaceRepository(store: store, index: MemoryObjectIndex());
@@ -111,13 +113,13 @@ class CanvasSessions {
     first = CollaborationController(
       firstWorkspace,
       transport,
-      automaticPolling: false,
+      automaticPolling: automaticPolling,
       now: () => now,
     );
     second = CollaborationController(
       secondWorkspace,
       http.Client(),
-      automaticPolling: false,
+      automaticPolling: automaticPolling,
       now: () => now,
     );
     directory = await Directory.systemTemp.createTemp('orbit-canvas-presence-');

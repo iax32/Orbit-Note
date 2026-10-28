@@ -137,8 +137,15 @@ extension SharedVaultReplication on CollaborationController {
         _awarenessSequence = event['awareness'] as int;
         if (event['sequence'] != _sequence ||
             event['epoch'] != _serverEpoch ||
-            _awarenessSequence > 0) {
+            event['peers'] is! List) {
           await pump();
+        } else {
+          peers = (event['peers'] as List)
+              .whereType<Map>()
+              .map((v) => Map<String, dynamic>.from(v))
+              .where((v) => v['session'] != session)
+              .toList();
+          _notifyPresence();
         }
       } on CollaborationAccessDenied {
         if (watch == _watchGeneration) {

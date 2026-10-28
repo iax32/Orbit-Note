@@ -63,5 +63,6 @@ app.*.map.json
 /config/client_secret*.json
 /android/app/google-services.json
 /android/key.properties
+/ios/Flutter/GoogleAuth.xcconfig
 # Keep pubspec.lock, .metadata and platform source. Test fixtures are not
 # broadly ignored by extension: JSON, Markdown and database fixtures can be tracked.

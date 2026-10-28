@@ -1,5 +1,35 @@
 # Google Drive activation — Windows account preview
 
+## Mobile registration — 2026-10-28
+
+Owner approved creating the Android Preview and Mobile SDK Web OAuth clients in
+the existing `orbit-note-511512` project. Both are visibly registered. Android
+Preview is bound to package `org.orbitnote.app.preview` and the existing APK
+signing SHA-1 `46:03:84:64:B3:4B:EB:C5:24:07:78:7E:E5:DC:D6:09:28:C8:3A:4D`.
+The Mobile SDK Web client has no browser origins/redirect URIs. Its **public ID**
+is the Android SDK server client ID; its confidential secret is not downloaded,
+stored in build configuration or embedded in the APK. Existing Desktop registration
+and `drive.file` scope are unchanged. The audience remains Testing; use an already
+allowed account. No public-rollout or physical mobile acceptance is implied.
+
+`tool/build_android.ps1` now requires valid Google build configuration unless
+`-LocalOnly` is explicitly selected. Set normal Android signing/JDK/SDK environment
+variables and `ORBIT_ANDROID_PREVIEW=true` for the registered preview identity.
+The existing signing key must be retained for upgrades and OAuth registration.
+The production package `org.orbitnote.app` needs its own matching registration.
+
+Mobile authentication now uses native SDK identity/Drive authorization, retries
+failed SDK initialization, and rejects stale/cancelled account results. Secure
+account writes/disconnect are serialized; no access or refresh token enters Vault
+data. Unconfigured mobile builds explain the missing registration instead of
+offering Google Cloud as an end-user sign-in destination.
+
+iOS has the native adapter and build-time callback scheme wiring. Prepare with
+`tool/prepare_google_build.dart --platform=ios` and a registered
+`ORBIT_GOOGLE_IOS_CLIENT_ID`, then use the same generated defines for the Flutter
+build. This writes ignored `ios/Flutter/GoogleAuth.xcconfig`. iOS registration,
+macOS/Xcode compilation and physical acceptance are still outstanding.
+
 2026-10-15: a native automatic-sync preview is now available after explicit
 per-Vault opt-in. The existing registration/scopes below are unchanged. Real
 account transfers passed with two isolated native clients on one PC, including

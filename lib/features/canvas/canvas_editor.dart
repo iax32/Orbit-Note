@@ -167,6 +167,7 @@ class CanvasEditor extends StatefulWidget {
     this.remotePresence,
     this.onPresence,
     this.onPresenceSelection,
+    this.onInkPreview,
     this.onPresenceLeave,
   });
   final Future<ObjectReference?> Function()? onPickReference;
@@ -179,6 +180,7 @@ class CanvasEditor extends StatefulWidget {
   final ValueListenable<List<Map<String, dynamic>>>? remotePresence;
   final void Function(double x, double y)? onPresence;
   final ValueChanged<List<String>>? onPresenceSelection;
+  final ValueChanged<Map<String, dynamic>?>? onInkPreview;
   final VoidCallback? onPresenceLeave;
   final String? focusElementId;
   final List<String> focusElementIds;
@@ -339,6 +341,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
   List<CanvasPoint>? _lassoPoints;
   CanvasElement? _preview;
   bool _inkPreviewDirty = false;
+  DateTime? _lastInkBroadcast;
   final List<Map<String, dynamic>> _ink = [];
   String? _editingId;
   int? _pointer;
@@ -1550,6 +1553,27 @@ class _CanvasEditorState extends State<CanvasEditor> {
       });
     }
     _inkPreviewDirty = true;
+    if (widget.onInkPreview != null &&
+        (_lastInkBroadcast == null ||
+            DateTime.now().difference(_lastInkBroadcast!) >=
+                const Duration(milliseconds: 80))) {
+      _lastInkBroadcast = DateTime.now();
+      // Sample only the ephemeral preview. Full pressure/time samples are saved
+      // unchanged through the normal Canvas command on pointer-up.
+      final count = _ink.length.clamp(1, 128);
+      widget.onInkPreview!({
+        'points': [
+          for (var i = 0; i < count; i++)
+            _ink[count == 1
+                ? 0
+                : (i * (_ink.length - 1) / (count - 1)).round()],
+        ],
+        'color': _color,
+        'strokeWidth': _tool == _Tool.highlighter ? 22.0 : _penStrokeWidth,
+        'penStyle': _tool == _Tool.highlighter ? 'highlighter' : _penStyle,
+        'isHighlighter': _tool == _Tool.highlighter,
+      });
+    }
   }
 
   CanvasElement? get _framePreview {
@@ -1985,6 +2009,8 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   void _clearGesture() {
+    if (_lastInkBroadcast != null) widget.onInkPreview?.call(null);
+    _lastInkBroadcast = null;
     _stopEdgePan();
     if (_edgePanned) {
       _edgePanned = false;

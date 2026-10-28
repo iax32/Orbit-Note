@@ -7,8 +7,8 @@ Map<String, String> googleBuildConfiguration(
   String platform,
   Map<String, String> environment,
 ) {
-  if (platform != 'windows' && platform != 'android') {
-    throw const FormatException('Choose windows or android.');
+  if (!{'windows', 'android', 'ios'}.contains(platform)) {
+    throw const FormatException('Choose windows, android or ios.');
   }
   final mode = environment['ORBIT_GOOGLE_BUILD_MODE'] ?? 'local-only';
   if (mode == 'local-only') return const {};
@@ -17,9 +17,11 @@ Map<String, String> googleBuildConfiguration(
       'Choose local-only or google-account-preview. Full Google sync is not released yet.',
     );
   }
-  final key = platform == 'windows'
-      ? 'ORBIT_GOOGLE_DESKTOP_CLIENT_ID'
-      : 'ORBIT_GOOGLE_ANDROID_SERVER_CLIENT_ID';
+  final key = switch (platform) {
+    'windows' => 'ORBIT_GOOGLE_DESKTOP_CLIENT_ID',
+    'ios' => 'ORBIT_GOOGLE_IOS_CLIENT_ID',
+    _ => 'ORBIT_GOOGLE_ANDROID_SERVER_CLIENT_ID',
+  };
   final clientId = environment[key]?.trim() ?? '';
   if (!RegExp(
     r'^\d+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$',
@@ -44,7 +46,7 @@ Future<void> main(List<String> arguments) async {
       final split = argument.indexOf('=');
       if (split < 0 || !argument.startsWith('--')) {
         throw const FormatException(
-          'Use --platform=windows|android and --output=PATH.',
+          'Use --platform=windows|android|ios and --output=PATH.',
         );
       }
       final key = argument.substring(2, split);
@@ -80,6 +82,7 @@ Future<void> main(List<String> arguments) async {
         'ORBIT_GOOGLE_DESKTOP_CLIENT_ID',
         'ORBIT_GOOGLE_DESKTOP_CLIENT_SECRET',
         'ORBIT_GOOGLE_ANDROID_SERVER_CLIENT_ID',
+        'ORBIT_GOOGLE_IOS_CLIENT_ID',
       ]) {
         if (decoded.containsKey(key)) environment[key] = decoded[key] as String;
       }
@@ -93,6 +96,17 @@ Future<void> main(List<String> arguments) async {
     await file.writeAsString(
       '${const JsonEncoder.withIndent('  ').convert(configuration)}\n',
     );
+    if (options['platform'] == 'ios') {
+      // Xcode must register the same callback as the SDK client ID. A Dart
+      // define alone does not register an iOS URL scheme.
+      final client = configuration['ORBIT_GOOGLE_IOS_CLIENT_ID'];
+      final scheme = client == null
+          ? 'org.orbitnote.google-unconfigured'
+          : client.split('.').reversed.join('.');
+      await File(
+        'ios/Flutter/GoogleAuth.xcconfig',
+      ).writeAsString('ORBIT_GOOGLE_IOS_REVERSED_CLIENT_ID=$scheme\n');
+    }
     stdout.writeln(
       configuration.isEmpty
           ? 'Local-only build: Google sign-in is disabled.'

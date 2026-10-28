@@ -3,6 +3,72 @@ import 'dart:typed_data';
 
 part 'canvas_conflict_review.dart';
 
+/// Bounded, view-only ink awareness. Never accepted as a durable placement.
+/// Reject malformed payloads rather than feeding arbitrary peer JSON to paint.
+Map<String, dynamic>? collaborationInkPreview(Object? value) {
+  if (value is! Map) return null;
+  final points = value['points'];
+  final width = value['strokeWidth'], color = value['color'];
+  if (points is! List ||
+      points.isEmpty ||
+      points.length > 128 ||
+      width is! num ||
+      !width.isFinite ||
+      width <= 0 ||
+      width > 100 ||
+      color is! int ||
+      color < 0 ||
+      color > 0xffffffff) {
+    return null;
+  }
+  final clean = <Map<String, dynamic>>[];
+  for (final point in points) {
+    if (point is! Map) return null;
+    final x = point['x'], y = point['y'], pressure = point['pressure'];
+    if (x is! num ||
+        y is! num ||
+        !x.isFinite ||
+        !y.isFinite ||
+        x.abs() > 100000000 ||
+        y.abs() > 100000000 ||
+        pressure is! num ||
+        !pressure.isFinite ||
+        pressure < 0 ||
+        pressure > 1) {
+      return null;
+    }
+    clean.add({
+      'x': x.toDouble(),
+      'y': y.toDouble(),
+      'pressure': pressure.toDouble(),
+    });
+  }
+  return {
+    'id': 'peer-preview',
+    'type': 'ink',
+    'x': 0.0,
+    'y': 0.0,
+    'width': 0.0,
+    'height': 0.0,
+    'points': clean,
+    'strokeWidth': width.toDouble(),
+    'color': color,
+    'isHighlighter': value['isHighlighter'] == true,
+    'penStyle':
+        const {
+          'ballpoint',
+          'fountain',
+          'marker',
+          'pencil',
+          'calligraphy',
+          'brush',
+          'highlighter',
+        }.contains(value['penStyle'])
+        ? value['penStyle']
+        : 'ballpoint',
+  };
+}
+
 /// Ephemeral selected placement IDs; never a lock or durable document state.
 List<String> collaborationSelectionIds(Object? value) => value is List
     ? value

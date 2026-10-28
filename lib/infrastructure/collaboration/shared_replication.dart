@@ -102,6 +102,7 @@ extension _SharedReplication on CollaborationServer {
               'epoch': _epoch,
               'sequence': current.state['sequence'],
               'awareness': _awareness[room] ?? 0,
+              'peers': _peers(room),
             }),
           );
         } finally {

@@ -1,3 +1,12 @@
+# In progress — mobile Google and live Canvas, 2026-10-28
+
+User requests phone Google sign-in repair and live image/ink sharing between
+computer and tablet. Scope/evidence: docs/tasks/mobile-live-sync-2026-10-28.md.
+Lenovo tablet is now available (2026-10-28). PC is on Ethernet 192.168.1.163/24,
+gateway 192.168.1.1. Tablet IPv4/gateway requested; routing and physical acceptance
+are not yet verified. Finish isolated-client checks before device acceptance.
+
+## Previous task
 # Delivered — publish 1.0.3, 2026-10-27
 
 User requests source, Windows setup and Android APK on GitHub. Explicitly skip

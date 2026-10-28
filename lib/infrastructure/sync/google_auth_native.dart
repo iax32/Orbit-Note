@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:convert';
+import '../../application/sync/google_mobile_auth.dart';
 import 'dart:io';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
@@ -10,7 +10,23 @@ import 'google_credential_store.dart';
 import 'google_auth_stub.dart' as stub;
 
 GoogleAccountAuth createGoogleAuth() {
-  if (Platform.isAndroid) return GoogleAndroidAuth();
+  if (Platform.isAndroid || Platform.isIOS) {
+    const androidId = String.fromEnvironment(
+      'ORBIT_GOOGLE_ANDROID_SERVER_CLIENT_ID',
+    );
+    const iosId = String.fromEnvironment('ORBIT_GOOGLE_IOS_CLIENT_ID');
+    final ios = Platform.isIOS;
+    return GoogleMobileAuth(
+      configured: (ios ? iosId : androidId).isNotEmpty,
+      bridge: NativeMobileGoogleBridge(
+        clientId: ios ? iosId : null,
+        serverClientId: ios ? null : androidId,
+      ),
+      credentials: SecureGoogleCredentials(
+        ios ? 'orbit.google.ios.v1' : 'orbit.google.android.v1',
+      ),
+    );
+  }
   if (!Platform.isWindows) return stub.createGoogleAuth();
   return GoogleDesktopAuth(
     clientId: const String.fromEnvironment('ORBIT_GOOGLE_DESKTOP_CLIENT_ID'),
@@ -78,147 +94,80 @@ class LoopbackGoogleReceiver implements GoogleAuthorizationReceiver {
   }
 }
 
-/// Credential Manager identity and Google authorization are separate SDK calls.
-/// Android's Google services own refresh credentials; Orbit never exports them.
-class GoogleAndroidAuth implements GoogleAccountAuth {
-  static const serverClientId = String.fromEnvironment(
-    'ORBIT_GOOGLE_ANDROID_SERVER_CLIENT_ID',
-  );
-  static Future<void>? _initialized;
+/// Google SDK handles the native activity/URL callback and token refresh.
+class NativeMobileGoogleBridge implements MobileGoogleBridge {
+  NativeMobileGoogleBridge({this.clientId, this.serverClientId});
+  final String? clientId, serverClientId;
   final GoogleSignIn sdk = GoogleSignIn.instance;
-  final GoogleCredentialStore credentials = const SecureGoogleCredentials(
-    'orbit.google.android.v1',
+  Future<T> _guard<T>(Future<T> Function() action) async {
+    try {
+      return await action();
+    } on GoogleSignInException catch (error) {
+      throw switch (error.code) {
+        GoogleSignInExceptionCode.canceled => const GoogleCloudError(
+          'cancelled',
+          'Sign-in was cancelled.',
+        ),
+        GoogleSignInExceptionCode.clientConfigurationError =>
+          const GoogleCloudError(
+            'configuration',
+            'Google app registration does not match this build. The distributor must check the OAuth client, package name, signing certificate and iOS callback scheme.',
+          ),
+        _ => const GoogleCloudError(
+          'reauth',
+          'Google could not finish sign-in. Check your connection and try again.',
+        ),
+      };
+    }
+  }
+
+  @override
+  Future<void> initialize() => _guard(
+    () => sdk.initialize(clientId: clientId, serverClientId: serverClientId),
   );
-  GoogleSignInAccount? _user;
-  GoogleAccount? _account;
+  @override
+  Future<MobileGoogleUser?> authenticate({required bool interactive}) =>
+      _guard(() async {
+        final user = interactive
+            ? await sdk.authenticate()
+            : await sdk.attemptLightweightAuthentication();
+        return user == null ? null : _NativeGoogleUser(user, this);
+      });
+  @override
+  Future<void> signOut() => _guard(sdk.signOut);
+}
+
+class _NativeGoogleUser implements MobileGoogleUser {
+  _NativeGoogleUser(this.user, this.bridge);
+  final GoogleSignInAccount user;
+  final NativeMobileGoogleBridge bridge;
   String? _token;
-  int _generation = 0;
   @override
-  bool get configured => serverClientId.isNotEmpty;
+  GoogleAccount get account => GoogleAccount(
+    subject: user.id,
+    name: user.displayName ?? '',
+    email: user.email,
+    avatar: user.photoUrl,
+  );
   @override
-  GoogleAccount? get account => _account;
-  Future<void> _init() =>
-      _initialized ??= sdk.initialize(serverClientId: serverClientId);
-  GoogleCloudError _error(Object error) =>
-      error is GoogleSignInException &&
-          error.code == GoogleSignInExceptionCode.canceled
-      ? const GoogleCloudError('cancelled', 'Sign-in was cancelled.')
-      : const GoogleCloudError(
-          'reauth',
-          'Google Drive needs to be connected again.',
-        );
-  @override
-  Future<GoogleAccount> signIn({String? expectedSubject}) async {
-    if (!configured) {
-      throw const GoogleCloudError(
-        'configuration',
-        'Google sign-in is not configured in this build.',
-      );
-    }
-    final generation = ++_generation;
-    try {
-      await _init();
-      final user = await sdk.authenticate();
-      if (expectedSubject != null && user.id != expectedSubject) {
-        await sdk.signOut();
-        throw const GoogleCloudError(
-          'accountMismatch',
-          'Choose the previously connected Google account, or use Change account first.',
-        );
-      }
-      final grant = await user.authorizationClient.authorizeScopes(
-        googleScopes,
-      );
-      if (generation != _generation) {
-        throw const GoogleCloudError('cancelled', 'Sign-in was cancelled.');
-      }
-      _user = user;
-      _token = grant.accessToken;
-      _account = GoogleAccount(
-        subject: user.id,
-        name: user.displayName ?? '',
-        email: user.email,
-        avatar: user.photoUrl,
-      );
-      await credentials.write(jsonEncode(_account!.toJson()));
-      return _account!;
-    } on GoogleCloudError {
-      rethrow;
-    } on Object catch (e) {
-      throw _error(e);
-    }
-  }
-
-  @override
-  Future<GoogleAccount?> restore() async {
-    if (!configured) return null;
-    final raw = await credentials.read();
-    if (raw == null) return null;
-    try {
-      _account = GoogleAccount.fromJson(
-        jsonDecode(raw) as Map<String, dynamic>,
-      );
-      await _init();
-      _user = await sdk.attemptLightweightAuthentication();
-      if (_user == null || _user!.id != _account!.subject) {
-        throw const GoogleCloudError(
-          'reauth',
-          'Reconnect the same Google account to continue.',
-        );
-      }
-      await accessToken();
-      return _account;
-    } on GoogleCloudError {
-      rethrow;
-    } on Object catch (e) {
-      throw _error(e);
-    }
-  }
-
-  @override
-  Future<String> accessToken({bool refresh = false}) async {
-    if (_user == null) {
-      throw const GoogleCloudError(
-        'reauth',
-        'Connect Google Drive to continue.',
-      );
-    }
-    try {
-      if (refresh && _token != null) {
-        await _user!.authorizationClient.clearAuthorizationToken(
-          accessToken: _token!,
-        );
-      }
-      final grant = await _user!.authorizationClient.authorizationForScopes(
-        googleScopes,
-      );
-      if (grant == null) {
-        throw const GoogleCloudError(
-          'reauth',
-          'Reconnect Google Drive to allow access to Orbit files.',
-        );
-      }
-      return _token = grant.accessToken;
-    } on GoogleCloudError {
-      rethrow;
-    } on Object catch (e) {
-      throw _error(e);
-    }
-  }
-
-  @override
-  void cancel() {
-    _generation++;
-  }
-
-  @override
-  Future<void> signOut() async {
-    cancel();
-    await _init();
-    await sdk.signOut();
-    await credentials.delete();
-    _account = null;
-    _user = null;
-    _token = null;
-  }
+  Future<String> authorize({required bool interactive, bool refresh = false}) =>
+      bridge._guard(() async {
+        if (refresh && _token != null) {
+          await user.authorizationClient.clearAuthorizationToken(
+            accessToken: _token!,
+          );
+        }
+        final grant = interactive
+            ? await user.authorizationClient.authorizeScopes(googleScopes)
+            : await user.authorizationClient.authorizationForScopes(
+                googleScopes,
+              );
+        if (grant == null) {
+          throw const GoogleCloudError(
+            'reauth',
+            'Reconnect Google Drive to allow access to Orbit files.',
+          );
+        }
+        return _token = grant.accessToken;
+      });
 }

@@ -4540,6 +4540,8 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
               collaboration.cursor(object.id, x, y, space: 'canvas'),
           onPresenceSelection: (ids) =>
               collaboration.selectCanvas(object.id, ids),
+          onInkPreview: (stroke) =>
+              collaboration.previewCanvasInk(object.id, stroke),
           onPresenceLeave: () => collaboration.clearCursor(object.id),
           captureController: _canvasCaptures.putIfAbsent(
             object.id,
