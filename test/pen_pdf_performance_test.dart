@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+import 'package:orbit_note/features/canvas/canvas_live_ink.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -294,9 +295,13 @@ void main() async {
         ),
       );
       await tester.pump();
+      final live = find.byWidgetPredicate(
+        (w) => w is CustomPaint && w.painter is CanvasLiveInkPainter,
+      );
       final firstPreview =
-          (tester.widget<CustomPaint>(surface).painter as OrbitCanvasPainter)
-              .preview!;
+          (tester.widget<CustomPaint>(live).painter as CanvasLiveInkPainter)
+              .stroke()!;
+      final savedScenePainter = tester.widget<CustomPaint>(surface).painter;
       // Two palm contacts must not cancel a captured stylus.
       for (final pointer in [98, 99]) {
         await tester.sendEventToBinding(
@@ -328,6 +333,14 @@ void main() async {
       expect(saves, 0);
       expect(firstPreview.points, hasLength(1));
       await tester.pump();
+      expect(
+        identical(
+          tester.widget<CustomPaint>(surface).painter,
+          savedScenePainter,
+        ),
+        true,
+        reason: 'Live pen samples must not rebuild the saved-scene painter',
+      );
       await tester.sendEventToBinding(
         const PointerUpEvent(
           pointer: 11,

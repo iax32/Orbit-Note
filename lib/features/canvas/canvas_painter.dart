@@ -155,7 +155,7 @@ class _InkRasterRequest {
 /// preview is ready. Exports and source samples never depend on these images.
 class CanvasInkCache extends ChangeNotifier {
   CanvasInkCache({
-    this.maxEntries = 256,
+    this.maxEntries = 1024,
     this.maxSamples = 200000,
     this.rasterizeSavedInk = false,
     this.maxRasterPixels = 16 * 1024 * 1024,
@@ -174,6 +174,7 @@ class CanvasInkCache extends ChangeNotifier {
   final _pending = <_InkDisplayEntry, _InkRasterRequest>{};
   final _active = <_InkRasterRequest>{};
   Set<CanvasElement> _visible = {};
+  bool _allEntriesVisible = false;
   Completer<void>? _idle;
   int _samples = 0, _pixels = 0, _reserved = 0;
   int _recordingCount = 0, _rasterHits = 0;
@@ -187,7 +188,7 @@ class CanvasInkCache extends ChangeNotifier {
   Future<void> get rasterizationIdle => _idle?.future ?? Future.value();
 
   void retainVisible(Iterable<CanvasElement> elements) {
-    if (!rasterizeSavedInk) return;
+    _allEntriesVisible = false;
     _visible = {
       for (final element in elements)
         if (element.type == 'ink') element,
@@ -236,6 +237,26 @@ class CanvasInkCache extends ChangeNotifier {
           ? (element.data['points'] as List).length
           : 0;
       if (count > maxSamples) {
+        paint(canvas);
+        return;
+      }
+      // Admit a stable working set. Cycling through N > capacity visible
+      // strokes must not evict every display list on every camera frame.
+      while (_entries.isNotEmpty &&
+          !_allEntriesVisible &&
+          (_entries.length >= maxEntries || _samples + count > maxSamples)) {
+        final victims = _entries.keys.where(
+          (key) => !_visible.contains(key.$1),
+        );
+        if (victims.isEmpty) {
+          _allEntriesVisible = true;
+          break;
+        }
+        final victim = _entries.remove(victims.first)!;
+        _retire(victim);
+        _samples -= victim.samples;
+      }
+      if (_entries.length >= maxEntries || _samples + count > maxSamples) {
         paint(canvas);
         return;
       }

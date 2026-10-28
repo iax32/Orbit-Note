@@ -1,3 +1,9 @@
+# In progress — Canvas input performance, 2026-10-28
+
+Owner reports severe pen and pan lag on PC/tablet. Preserve features/visuals.
+Scope/evidence: docs/tasks/canvas-input-performance-2026-10-28.md.
+
+## Previous task
 # Delivered — easy live sharing buttons, 2026-10-28
 
 Owner requests a fast in-app Start → Copy tablet invitation → Join flow, without

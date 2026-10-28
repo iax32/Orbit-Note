@@ -16,6 +16,7 @@ import '../../canvas/math_plot_elements.dart';
 import '../../app/orbit_components.dart';
 import '../../app/orbit_theme.dart';
 import 'dart:async';
+import 'canvas_live_ink.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -341,6 +342,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
   List<CanvasPoint>? _lassoPoints;
   CanvasElement? _preview;
   bool _inkPreviewDirty = false;
+  final _liveInkChanges = ValueNotifier<int>(0);
   DateTime? _lastInkBroadcast;
   final List<Map<String, dynamic>> _ink = [];
   String? _editingId;
@@ -821,6 +823,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _images?.dispose();
     _textCache.dispose();
     _inkCache.dispose();
+    _liveInkChanges.dispose();
     _minimapCache.dispose();
     _focus.dispose();
     _text.dispose();
@@ -1461,6 +1464,8 @@ class _CanvasEditorState extends State<CanvasEditor> {
       }
     } else if (_tool == _Tool.pen || _tool == _Tool.highlighter) {
       _sample(event.localPosition, event.pressure, event.timeStamp);
+      _liveInkChanges.value++;
+      return;
     } else if (_tool == _Tool.eraser) {
       _erase(point);
     } else {
@@ -6461,7 +6466,12 @@ class _CanvasEditorState extends State<CanvasEditor> {
                                               ).colorScheme,
                                               region: _region,
                                               lassoPoints: _lassoPoints,
-                                              preview: _framePreview,
+                                              preview:
+                                                  (_tool == _Tool.pen ||
+                                                      _tool ==
+                                                          _Tool.highlighter)
+                                                  ? null
+                                                  : _framePreview,
                                               inkCache: _inkCache,
                                               devicePixelRatio:
                                                   MediaQuery.devicePixelRatioOf(
@@ -6493,6 +6503,28 @@ class _CanvasEditorState extends State<CanvasEditor> {
                                             child: Stack(
                                               children: [
                                                 const SizedBox.expand(),
+                                                Positioned.fill(
+                                                  child: IgnorePointer(
+                                                    child: RepaintBoundary(
+                                                      child: CustomPaint(
+                                                        painter: CanvasLiveInkPainter(
+                                                          changes:
+                                                              _liveInkChanges,
+                                                          stroke: () =>
+                                                              (_tool ==
+                                                                      _Tool
+                                                                          .pen ||
+                                                                  _tool ==
+                                                                      _Tool
+                                                                          .highlighter)
+                                                              ? _framePreview
+                                                              : null,
+                                                          camera: () => _camera,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
                                                 Positioned.fill(
                                                   child:
                                                       widget.remotePresence ==
