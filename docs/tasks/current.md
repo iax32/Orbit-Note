@@ -1,3 +1,10 @@
+# In progress — easy live sharing buttons, 2026-10-28
+
+Owner requests a fast in-app Start → Copy tablet invitation → Join flow, without
+scripts/domains/router configuration. Scope: docs/tasks/easy-live-host-2026-10-28.md.
+Preserve Advanced manual hosting and existing Android 1.0.4 compatibility.
+
+## Previous task
 # Implemented/published — mobile Google and live Canvas, 2026-10-28
 
 User requests phone Google sign-in repair and live image/ink sharing between
@@ -5,7 +12,8 @@ computer and tablet. Scope/evidence: docs/tasks/mobile-live-sync-2026-10-28.md.
 Lenovo tablet is now available (2026-10-28). PC is on Ethernet 192.168.1.163/24,
 gateway 192.168.1.1. Tablet is 192.168.0.45/24, gateway 192.168.0.1. PC→tablet
 ping/route succeeds; reverse direction is untested. Drive needs internet, not a
-shared subnet. Physical Google sign-in/Drive/live acceptance remains pending.
+shared subnet. Owner reports real Google sign-in on Lenovo now displays the
+connected account (1.0.4 APK). Physical Drive/live acceptance remains pending.
 
 Both owner-approved Google clients now exist in orbit-note-511512. New Android
 1.0.4+5 embeds the public SDK client ID, retains package/signature, and is published
@@ -18,9 +26,9 @@ Android build 224.1 s; Windows retry 44.9 s plus host; setup 13.7 s. Original
 Windows build was blocked by the running app; owner closed it before successful
 retry. No GitHub workflow dispatched; no personal Vault/key/config published.
 
-Owner asked to install APK and report real Google sign-in on Lenovo. Do not mark
-that acceptance passed before observing the result. Next required step: physical
-Lenovo sign-in, then a synthetic Drive Vault transfer/restart/conflict check.
+Owner confirmed Lenovo Google account connected. This is user-reported physical
+sign-in acceptance, not proof of data synchronization. Next required step: a
+synthetic Drive Vault transfer PC→tablet→PC, then restart/conflict checks.
 
 ## Previous task
 # Delivered — publish 1.0.3, 2026-10-27

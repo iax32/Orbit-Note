@@ -3,6 +3,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../app/live_host_provider.dart';
 import 'package:file_selector/file_selector.dart';
 import '../../app/collaboration_controller.dart';
 import 'canvas_conflict_dialog.dart';
@@ -23,14 +25,16 @@ Future<void> showCollaborationSettings(
   await route.completed;
 }
 
-class _CollaborationSettings extends StatefulWidget {
+class _CollaborationSettings extends ConsumerStatefulWidget {
   const _CollaborationSettings(this.controller);
   final CollaborationController controller;
   @override
-  State<_CollaborationSettings> createState() => _CollaborationSettingsState();
+  ConsumerState<_CollaborationSettings> createState() =>
+      _CollaborationSettingsState();
 }
 
-class _CollaborationSettingsState extends State<_CollaborationSettings> {
+class _CollaborationSettingsState
+    extends ConsumerState<_CollaborationSettings> {
   final server = TextEditingController(text: 'http://127.0.0.1:47831');
   final ownerKey = TextEditingController(),
       name = TextEditingController(),
@@ -38,6 +42,8 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
   String inviteRole = 'editor';
   String? error;
   bool busy = false;
+  bool advanced = false;
+  String? _tabletInvitation, _tabletRoom;
   String? serverStatus;
   CollaborationController get c => widget.controller;
   @override
@@ -69,7 +75,9 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
     } on Object catch (e) {
       if (mounted) {
         setState(
-          () => error = e is StateError
+          () => error = e is FormatException
+              ? e.message
+              : e is StateError
               ? e.message
               : 'The connection could not complete. Check the server address, invitation and access permissions. Your local files are safe.',
         );
@@ -92,6 +100,92 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
       result['token'] as String,
     );
   });
+  Future<void> startEasy() async {
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Start live sharing?'),
+        content: const Text(
+          'This shares the current Vault, including attachments, Archive and Trash, with devices you invite. A temporary HTTPS connection uses Cloudflare to reach this PC; traffic passes through Cloudflare and is not end-to-end encrypted. No account or domain is needed. Keep Orbit open on this PC. Stopping or restarting needs a new invitation. A verified connection helper is downloaded on first use.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Start live sharing'),
+          ),
+        ],
+      ),
+    );
+    if (accepted != true || !mounted) return;
+    await run(() async {
+      final opening = c.workspace.workspaceGeneration;
+      final live = ref.read(liveHostProvider);
+      if (!await c.workspace.flushAll()) {
+        throw StateError(
+          'Save your current work before starting live sharing.',
+        );
+      }
+      c.disconnect();
+      try {
+        await live.start();
+        if (!mounted || c.workspace.workspaceGeneration != opening) {
+          throw StateError(
+            'Vault changed. Start sharing again in the current Vault.',
+          );
+        }
+        final result = await c.createRoom(
+          live.localEndpoint!,
+          live.ownerToken!,
+          name.text.trim().isEmpty ? 'My PC' : name.text.trim(),
+        );
+        if (!mounted || c.workspace.workspaceGeneration != opening) {
+          throw StateError('Vault changed. Start sharing again.');
+        }
+        await c.connect(
+          live.localEndpoint!,
+          result['room'] as String,
+          result['token'] as String,
+        );
+        c.invitationEndpoint = live.endpoint;
+        _tabletInvitation = _tabletRoom = null;
+      } catch (_) {
+        await live.stop();
+        rethrow;
+      }
+    });
+  }
+
+  Future<void> copyTabletInvitation() => run(() async {
+    final room = c.room, address = c.invitationServer;
+    if (room == null || address == null) {
+      throw StateError('Start live sharing first.');
+    }
+    if (_tabletInvitation == null || _tabletRoom != room) {
+      final token = await c.invite('My tablet', 'editor');
+      if (!mounted || c.room != room || c.invitationServer != address) return;
+      _tabletInvitation = jsonEncode({
+        'version': 1,
+        'server': '$address',
+        'room': room,
+        'token': token,
+      });
+      _tabletRoom = room;
+    }
+    await Clipboard.setData(ClipboardData(text: _tabletInvitation!));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Invitation copied. Paste it into Join shared Vault on your tablet.',
+          ),
+        ),
+      );
+    }
+  });
   Future<void> join() => run(() async {
     final opening = c.workspace.workspaceGeneration;
     bool owns() => mounted && c.workspace.workspaceGeneration == opening;
@@ -99,6 +193,12 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
     final endpoint = CollaborationController.validateEndpoint(
       data['server'] as String,
     );
+    if (!advanced &&
+        ['localhost', '127.0.0.1', '::1'].contains(endpoint.host)) {
+      throw StateError(
+        'This invitation points to the device itself. On your PC choose Start live sharing, then Copy tablet invitation. Paste that new invitation here.',
+      );
+    }
     final room = data['room'] as String, token = data['token'] as String;
     final state = await c.inspectRoom(endpoint, room, token);
     if (!owns()) return;
@@ -156,7 +256,7 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
       ClipboardData(
         text: jsonEncode({
           'version': 1,
-          'server': '${c.endpoint}',
+          'server': '${c.invitationServer}',
           'room': c.room,
           'token': token,
         }),
@@ -172,7 +272,7 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
   });
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: c,
+    listenable: Listenable.merge([c, ref.watch(liveHostProvider)]),
     builder: (context, _) => OrbitDialog(
       title: const Text('Shared Vault'),
       content: SizedBox(
@@ -183,9 +283,47 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Share this Vault with your self-hosted server. Updated hosts transfer new objects, verified attachments, Trash and permanent deletions, and send live change notifications. Notes show source-checked collaborator cursors and selections. Conflicting edits remain recoverable. Keep invitations private.',
+                'Edit the same Vault on your PC and tablet. Start sharing on the PC, then paste its private invitation on the tablet. Both apps need to stay open. Keep invitations private.',
               ),
               const SizedBox(height: 16),
+              if (ref.read(liveHostProvider).supported) ...[
+                FilledButton.icon(
+                  onPressed:
+                      busy ||
+                          ref.read(liveHostProvider).busy ||
+                          ref.read(liveHostProvider).endpoint != null
+                      ? null
+                      : startEasy,
+                  icon: const Icon(Icons.devices),
+                  label: const Text('Start live sharing'),
+                ),
+                const SizedBox(height: 8),
+                Text(ref.read(liveHostProvider).status),
+                if (ref.read(liveHostProvider).busy)
+                  const LinearProgressIndicator(),
+                if (ref.read(liveHostProvider).endpoint != null && c.connected)
+                  FilledButton.icon(
+                    onPressed: busy ? null : copyTabletInvitation,
+                    icon: const Icon(Icons.copy),
+                    label: const Text('Copy tablet invitation'),
+                  ),
+                if (ref.read(liveHostProvider).endpoint != null ||
+                    ref.read(liveHostProvider).busy)
+                  TextButton(
+                    onPressed: () async {
+                      c.disconnect();
+                      await ref.read(liveHostProvider).stop();
+                    },
+                    child: const Text('Stop live sharing'),
+                  ),
+                const Divider(height: 24),
+              ] else
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    'On your Windows PC choose Start live sharing → Copy tablet invitation. Paste it below and join.',
+                  ),
+                ),
               if (c.hasSavedConnection) ...[
                 Text('Saved on this device: ${c.savedServer}'),
                 const Text(
@@ -212,77 +350,87 @@ class _CollaborationSettingsState extends State<_CollaborationSettings> {
                 const Divider(height: 24),
               ],
               if (!c.connected) ...[
-                SharedServerSetup(
-                  onUseAddress: (value) {
-                    server.text = value;
-                    setState(() => serverStatus = null);
-                  },
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Advanced: use my own server'),
+                  value: advanced,
+                  onChanged: busy ? null : (v) => setState(() => advanced = v),
                 ),
-                TextField(
-                  controller: server,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  onChanged: (_) => setState(() => serverStatus = null),
-                  decoration: const InputDecoration(
-                    labelText: 'Server address',
-                    helperText: 'HTTPS remotely · HTTP for localhost',
+                if (advanced) ...[
+                  SharedServerSetup(
+                    onUseAddress: (value) {
+                      server.text = value;
+                      setState(() => serverStatus = null);
+                    },
                   ),
-                ),
-                TextField(
-                  controller: ownerKey,
-                  onChanged: (_) => setState(() => serverStatus = null),
-                  obscureText: true,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  decoration: const InputDecoration(
-                    labelText: 'Server owner key',
+                  TextField(
+                    controller: server,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    onChanged: (_) => setState(() => serverStatus = null),
+                    decoration: const InputDecoration(
+                      labelText: 'Server address',
+                      helperText: 'HTTPS remotely · HTTP for localhost',
+                    ),
                   ),
-                ),
-                TextField(
-                  controller: name,
-                  maxLength: 80,
-                  decoration: const InputDecoration(
-                    labelText: 'Your display name',
+                  TextField(
+                    controller: ownerKey,
+                    onChanged: (_) => setState(() => serverStatus = null),
+                    obscureText: true,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    decoration: const InputDecoration(
+                      labelText: 'Server owner key',
+                    ),
                   ),
-                ),
-                OutlinedButton(
-                  onPressed: busy || c.connecting
-                      ? null
-                      : () => run(() async {
-                          final address = server.text,
-                              key = ownerKey.text.trim();
-                          setState(() => serverStatus = null);
-                          final endpoint =
-                              CollaborationController.validateEndpoint(address);
-                          final info = await c.testServer(endpoint, key);
-                          if (mounted &&
-                              server.text == address &&
-                              ownerKey.text.trim() == key) {
-                            setState(
-                              () => serverStatus =
-                                  'Server ready · protocol ${info['protocol']} · ${info['rooms']} shared Vault(s). No Vault uploaded.',
-                            );
-                          }
-                        }),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.network_check),
-                      SizedBox(width: 8),
-                      Flexible(child: Text('Test server connection')),
-                    ],
+                  TextField(
+                    controller: name,
+                    maxLength: 80,
+                    decoration: const InputDecoration(
+                      labelText: 'Your display name',
+                    ),
                   ),
-                ),
-                if (serverStatus != null) Text(serverStatus!),
-                const Text(
-                  'Run collaboration/Start Orbit Server.cmd on the host, then enter the private owner key from its data folder. Other devices need an HTTPS address that reaches that host; localhost refers to this device.',
-                ),
-                FilledButton(
-                  onPressed: busy || c.connecting || !c.workspace.hasWorkspace
-                      ? null
-                      : host,
-                  child: const Text('Share this Vault'),
-                ),
+                  OutlinedButton(
+                    onPressed: busy || c.connecting
+                        ? null
+                        : () => run(() async {
+                            final address = server.text,
+                                key = ownerKey.text.trim();
+                            setState(() => serverStatus = null);
+                            final endpoint =
+                                CollaborationController.validateEndpoint(
+                                  address,
+                                );
+                            final info = await c.testServer(endpoint, key);
+                            if (mounted &&
+                                server.text == address &&
+                                ownerKey.text.trim() == key) {
+                              setState(
+                                () => serverStatus =
+                                    'Server ready · protocol ${info['protocol']} · ${info['rooms']} shared Vault(s). No Vault uploaded.',
+                              );
+                            }
+                          }),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.network_check),
+                        SizedBox(width: 8),
+                        Flexible(child: Text('Test server connection')),
+                      ],
+                    ),
+                  ),
+                  if (serverStatus != null) Text(serverStatus!),
+                  const Text(
+                    'Run collaboration/Start Orbit Server.cmd on the host, then enter the private owner key from its data folder. Other devices need an HTTPS address that reaches that host; localhost refers to this device.',
+                  ),
+                  FilledButton(
+                    onPressed: busy || c.connecting || !c.workspace.hasWorkspace
+                        ? null
+                        : host,
+                    child: const Text('Share this Vault'),
+                  ),
+                ],
                 const Divider(height: 32),
                 TextField(
                   controller: invitation,

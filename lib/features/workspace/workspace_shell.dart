@@ -19,6 +19,7 @@ import 'dart:async';
 import '../../canvas/scene.dart';
 import 'dart:convert';
 import 'dart:ui' show AppExitResponse;
+import '../../app/live_host_provider.dart';
 import 'dart:ui' as ui;
 
 import '../../canvas/diagram_import.dart';
@@ -208,8 +209,11 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     lifecycle = AppLifecycleListener(
       onResume: () => unawaited(c.checkExternalChanges()),
       onInactive: () => unawaited(c.flushAll()),
-      onExitRequested: () async =>
-          await c.flushAll() ? AppExitResponse.exit : AppExitResponse.cancel,
+      onExitRequested: () async {
+        if (!await c.flushAll()) return AppExitResponse.cancel;
+        await ref.read(liveHostProvider).stop();
+        return AppExitResponse.exit;
+      },
     );
   }
 

@@ -47,3 +47,9 @@ tmp/PDF/Vault/build/key/config included. Main push and preview publication
 completed. Commit uses [skip ci], preview tag is outside v*; no workflow requested.
 Pending human check: Lenovo install → Google account connected → synthetic Drive
 Vault transfer with desktop. Live sharing separately needs reachable HTTPS host.
+
+Physical check update: owner installed the APK and reports "Mein Konto wird als
+verbunden angezeigt" on the Lenovo. Native Google sign-in is now user-confirmed.
+No physical Vault transfer, restart recovery or live ink acceptance yet. Next:
+separate synthetic Test-Vault, enable Drive on PC, browse/open the same cloud Vault
+on Lenovo, check a note in both directions without touching original work.

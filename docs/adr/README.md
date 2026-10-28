@@ -1,5 +1,7 @@
 # Architecture decisions
 
+- [0036 — Managed temporary live host](0036-managed-temporary-live-host.md): explicit reviewed temporary HTTPS sharing, pinned vendor helper, loopback owner credentials and existing grant/command boundaries.
+
 - [0017 — Local sync safety foundation](0017-sync-foundation-safety.md): accepted
   native ownership, deletion recovery, exact-byte reconciliation and device state;
   does not claim a complete cloud provider.

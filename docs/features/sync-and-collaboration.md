@@ -1,5 +1,26 @@
 # Optional sync and collaboration
 
+## Simple temporary live sharing — 2026-10-28
+
+Windows Shared Vault settings offer **Start live sharing**, **Copy tablet
+invitation** and **Stop live sharing**. A reviewed opt-in starts an isolated
+loopback host and a checksum-verified official Cloudflare helper. The temporary
+HTTPS invitation works across routers without a domain, scripts or inbound
+firewall changes. Tablet users paste it into **Join shared Vault**. Manual host,
+owner key and proxy setup remain under Advanced. Old localhost invitations receive
+an actionable explanation in the simple flow instead of a generic failure.
+
+The review discloses Vault upload scope and Cloudflare transit (not end-to-end
+encryption). Keep the PC app open. Stop/normal app exit ends sharing; restarting
+needs a new invitation and old session grants are not loaded into the new host.
+Temporary relays have no uptime guarantee and are intended for preview/testing;
+stable manual hosting remains available. Original Vault data is never deleted.
+The collaboration transport has a narrow authenticated DNS fallback for temporary
+relay names that this network's DNS could not resolve; TLS still validates the
+original hostname. New Android/Windows builds include it. Actual synthetic HTTPS
+join, Canvas update and attachment transfer passed; physical tablet remains a
+separate acceptance step. See [ADR 0036](../adr/0036-managed-temporary-live-host.md).
+
 ## Background personal Drive checks and retention — 2026-10-25
 
 Drive scheduled-Vault settings offer explicit background enrollment on Windows

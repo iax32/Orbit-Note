@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:crypto/crypto.dart';
 import '../application/device_secret_store.dart';
+import '../platform/collaboration_http.dart';
 import '../infrastructure/storage/device_secret_store.dart';
 import '../domain/collaboration.dart';
 import '../domain/object_tombstone.dart';
@@ -41,7 +42,7 @@ final collaborationStartupProvider = Provider<void>((ref) {
 final collaborationProvider = Provider<CollaborationController>((ref) {
   final controller = CollaborationController(
     ref.read(workspaceProvider.notifier),
-    http.Client(),
+    createCollaborationHttpClient(),
     secrets: (id) => SecureDeviceSecrets(
       'orbit.shared.connection.v1.${sha256.convert(utf8.encode(id))}',
     ),
@@ -188,9 +189,11 @@ class CollaborationController extends ChangeNotifier {
       _canvasConflictBases.containsKey(id) &&
       workspace.find(id)?.typeId == 'orbit.canvas';
   bool get viewer => connected && role == 'viewer';
+  Uri? invitationEndpoint;
+  Uri? get invitationServer => invitationEndpoint ?? endpoint;
   String get connectionInvitation => jsonEncode({
     'version': 1,
-    'server': '$endpoint',
+    'server': '$invitationServer',
     'room': room,
     'token': _token,
   });
@@ -641,6 +644,7 @@ class CollaborationController extends ChangeNotifier {
     _presenceTimer = null;
     room = null;
     endpoint = null;
+    invitationEndpoint = null;
     _token = null;
     _workspaceId = null;
     _workspaceGeneration = null;
