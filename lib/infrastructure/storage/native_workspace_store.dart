@@ -14,6 +14,7 @@ import 'path_safety.dart';
 import 'native_path_moves.dart';
 import 'native_folder_commands.dart';
 import 'native_vault_lock.dart';
+import 'native_history_retention.dart';
 import 'workspace_store.dart';
 import 'object_encoding_execution.dart';
 
@@ -661,60 +662,20 @@ class NativeWorkspaceStore
     if (await journal.exists()) await journal.delete();
   }
 
-  Future<void> _pruneHistory(String area) async {
-    final folder = Directory(p.join(_root.path, area, 'history'));
-    if (!await folder.exists()) return;
-    final entries =
-        <
-          ({File metadata, File before, String target, DateTime time, int size})
-        >[];
-    await for (final entity in folder.list(followLinks: false)) {
-      if (entity is! File || !entity.path.endsWith('.json')) continue;
-      try {
-        final record = jsonDecode(await entity.readAsString()) as Map;
-        if (record['format'] != 'orbit-note-file-save' ||
-            record['version'] != 1 ||
-            record['completedAt'] is! String ||
-            record['beforePath'] is! String) {
-          continue;
-        }
-        final before = await _file(record['beforePath'] as String);
-        if (!p.isWithin(folder.path, before.path) || !await before.exists()) {
-          continue;
-        }
-        entries.add((
-          metadata: entity,
-          before: before,
-          target: record['target'] as String,
-          time: DateTime.parse(record['completedAt'] as String),
-          size: await before.length(),
-        ));
-      } on Object {
-        /* Unknown recovery/history remains untouched. */
-      }
-    }
-    entries.sort((a, b) => b.time.compareTo(a.time));
-    final keptTargets = <String>{};
-    var count = 0, bytes = 0;
-    final cutoff = DateTime.now().toUtc().subtract(historyMaxAge);
-    for (final entry in entries) {
-      final preserveLast = keptTargets.add(entry.target);
-      if (!preserveLast &&
-          (count >= historyMaxEntries ||
-              bytes + entry.size > historyMaxBytes ||
-              entry.time.isBefore(cutoff))) {
-        // Never prune a version still referenced by an unresolved save journal.
-        final journal = File(
-          p.join(_root.path, area, 'recovery', p.basename(entry.metadata.path)),
-        );
-        if (await journal.exists()) continue;
-        await entry.before.delete();
-        await entry.metadata.delete();
-      } else {
-        count++;
-        bytes += entry.size;
-      }
-    }
+  Future<void> _historyMaintenance = Future.value();
+  Future<void> _pruneHistory(String area) {
+    final root = _root.path;
+    final work = _historyMaintenance.then(
+      (_) => pruneNativeHistory(
+        root: root,
+        area: area,
+        maxEntries: historyMaxEntries,
+        maxBytes: historyMaxBytes,
+        maxAge: historyMaxAge,
+      ),
+    );
+    _historyMaintenance = work.catchError((Object _) {});
+    return work;
   }
 
   Future<void> _recoverPendingWrites() async {
@@ -821,6 +782,8 @@ class NativeWorkspaceStore
 
   @override
   Future<void> close() async {
+    // Keep the old Vault's OS lease until its queued maintenance has finished.
+    await _historyMaintenance;
     final subscription = _linuxWatchSubscription;
     final events = _linuxEvents;
     _linuxWatchSubscription = null;

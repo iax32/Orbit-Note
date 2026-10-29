@@ -1,5 +1,22 @@
 # Implemented open formats — v1 subset
 
+## Android folder imports — 2026-10-29
+
+Android's Import Vault folder reads the explicitly selected document tree through
+Storage Access Framework streams and publishes a unique app-owned local copy
+only after all files are copied and flushed. It does not edit the selected
+folder in place. Original workspace/object identities, unknown files and history
+remain; app build numbers are not a compatibility gate. Repository storage-version
+rules still open unsupported future manifests read-only.
+
+Other-device `.orbit/device/`, derived `.orbit/cache/` and `workspace.sqlite*`
+files are excluded. Foreign `.orbit/recovery/` files are retained under
+`.orbit/imported-recovery/<import-id>/` for review rather than executed. Invalid
+manifests, unsafe/colliding paths, cycles, failed/changed files and size/depth
+limits abort publication. This adds no new durable Vault schema or permission
+to access other folders. Drive/live sharing must be enabled separately to keep
+the local copy connected; ordinary backup/export remains available.
+
 ## Closed tab groups and reader options — 2026-10-27
 
 Device-local `closedTabGroups` settings use `version: 1`, with at most ten `groups`.

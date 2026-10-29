@@ -2,13 +2,33 @@
 
 Latest owner steering: publish the current improvement for immediate use, then
 continue diagnosing remaining drawing pauses (owner reports roughly 70/30).
+Published source 82dfb98 and both installers with all six asset sizes/SHA256
+digests verified: https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.8-2026-10-29
+Zero workflow runs for that commit. The release is renderer 11; subsequent local
+renderer-12 work below is not included in those uploaded installers.
+
+Follow-up completed locally: recovery-history enumeration/decoding/path checks
+now run on a native worker rather than sharing the UI heap/event loop. Requests
+are serialized; Vault close awaits maintenance before releasing its OS lease.
+Latest version per target and unresolved-journal images remain protected;
+malformed/oversized/foreign references stay untouched. 25 retention/recovery/
+staging/Canvas checks pass; analyzer clean (29.1 s), strict format 884 files
+unchanged (9.08 s). Normal Windows renderer-12 release rebuilt in 92.2 s and AOT
+freshness verified; owner's running profiling copy was not replaced or closed.
+Native 200-revision scan: foreground 138.986 ms wall, worker cold 108.513 ms,
+repeat 143.882 ms. Coarse timer gaps all near idle ~16 ms: this does not establish
+180-Hz smoothness or a general wall-time win. Owner replay after restarting via
+the normal shortcut is still required. Do not mark drawing performance complete.
+The owner drawing also overlapped release compilation, so its frame outliers
+need a clean replay with no build/test load before further attribution.
+
 Windows 1.0.8+9 normal release built in 125.7 s, Android in 184.6 s; Windows AOT
 freshness and Android package/version/original signing certificate verified.
-Source/release publication is being prepared; no GitHub workflow requested.
+No GitHub build workflow was run.
 Analyzer clean (20.1 s), 3 Android adapter/UI checks pass plus 29 rendering/pen/
 theme checks in the preceding batch. All 8 native import safety tests pass
 (0.299 s test execution, 76 s Gradle preparation). Strict format: 882 lib/test
-files unchanged (9.3 s). Physical Android acceptance and PC pause diagnosis remain.
+files unchanged (8.86 s). Physical Android acceptance and PC pause diagnosis remain.
 
 Renderer 11 reuses completed active-ink widget subtrees as well as pictures;
 ink-only hover avoids unnecessary whole-stroke hit tests while nearby cards and

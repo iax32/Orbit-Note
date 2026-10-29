@@ -44,12 +44,17 @@ Future<void> main(List<String> args) async {
       for (final f in cpu.functions ?? [])
         {
           'name': (f.toJson()['function'] as Map?)?['name'] ?? '',
+          'owner':
+              ((f.toJson()['function'] as Map?)?['owner'] as Map?)?['name'] ??
+              '',
           'script': f.resolvedUrl ?? '',
           'kind': f.kind ?? '',
           'self': f.exclusiveTicks ?? 0,
           'total': f.inclusiveTicks ?? 0,
         },
     ]..sort((a, b) => (b['self'] as int).compareTo(a['self'] as int));
+    final inclusive = [...functions]
+      ..sort((a, b) => (b['total'] as int).compareTo(a['total'] as int));
     final timeline = await service.getVMTimeline(
       timeOriginMicros: start,
       timeExtentMicros: end - start,
@@ -86,6 +91,7 @@ Future<void> main(List<String> args) async {
         'samplePeriodUs': cpu.samplePeriod,
         'durationUs': end - start,
         'functions': functions.take(80).toList(),
+        'inclusiveFunctions': inclusive.take(120).toList(),
         'longEvents': spans.take(80).toList(),
       }),
     );

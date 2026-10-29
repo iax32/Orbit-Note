@@ -349,3 +349,42 @@ package/launcher/version/original signing certificate verified. Normal Windows
 release 125.7 s, AOT newer than all lib sources. Owner now requests immediate
 source + both release uploads, then continued diagnosis. Native copy tests and
 publication verification are in progress. Physical Android acceptance pending.
+
+## Published checkpoint and continued history work
+
+Published 1.0.8+9 source 82dfb98390f7954d39f3308c5999258c2c5c494c:
+https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.8-2026-10-29
+Windows setup 14.547 s. All six uploaded assets match local sizes and GitHub
+SHA256 digests. GitHub API confirms zero workflow runs for the source commit.
+Android native importer tests: 8 passed / no skips, 0.299 s execution, Gradle
+preparation 76 s. Strict 882 files unchanged in 8.86 s. Only unrelated tmp/ was
+left untracked at the published checkpoint. Release artifacts remain pinned to
+that source and renderer 11; subsequent local work is a separate checkpoint.
+
+Continued per owner request: real capture self/inclusive samples identify native
+history scanning/path validation as UI-isolate work. Move history enumeration,
+record decode, safety checks and retention maintenance to a native worker with
+small argument transfer; serialize requests and retain the Vault lease through
+maintenance on close. Preserve last before-image per target, pending journal
+protection and original count/byte/age policy. Unknown/oversized metadata and
+mismatched before-image names are preserved, not eligible for pruning. No owning
+file format or save-commit/recovery authority changes.
+
+25 focused checks pass, including large save/reopen, retention, unresolved
+journals, malformed/cross-entry/traversal records and native staging. Analyzer
+clean 29.1 s, strict 884 files unchanged 9.08 s. Synthetic 200-revision native
+AOT scan: previous foreground 138.986 ms wall, worker cold 108.513 ms, repeat
+143.882 ms. Idle max timer gap 16.065 ms, foreground 16.062 ms, worker 16.280 /
+15.836 ms. These coarse Windows timers cannot establish 180-Hz frame behavior;
+no claim of an across-the-board wall-time or smoothness win. The benefit is
+moving history parsing/allocation and metadata callbacks off the drawing heap.
+Owner's drawing overlapped release builds, so the frame outliers from that
+period require a replay without compilation/test load before causal attribution.
+
+Renderer-12 normal Windows build succeeded in 92.2 s at lower process priority;
+AOT freshness verified. The running Profile copy remains renderer 11 and was
+not closed or replaced. Owner can save/close it and use the normal shortcut when
+convenient. Renderer 12 needs physical replay. Android APK at published 1.0.8
+includes folder import; physical Lenovo acceptance is still pending. Do not
+claim the remaining pauses fixed or confuse the local follow-up with uploaded
+renderer-11 assets.
