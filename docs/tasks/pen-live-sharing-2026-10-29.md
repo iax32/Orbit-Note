@@ -64,8 +64,16 @@ org.orbitnote.app.preview, code 11/name 1.0.10, existing certificate verified;
 APK 140,101,442 bytes, SHA-256
 0895590f898b4d5584afee20316d2f0810619cb4a9c1d05cfccc8b5b51896aaa.
 Owner explicitly requests GitHub publication for installation on Lenovo.
-Release preparation: preview-1.0.10-2026-10-29; skip CI commit marker, no build
-workflow dispatch. Publish complete installer/APK with provenance and checksums.
+Published: https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.10-2026-10-29
+App source/tag 3baad06; skip CI marker; zero workflow runs for the source commit.
+All six uploaded asset sizes/SHA-256 digests match local artifacts. Complete
+installer/APK with provenance and checksums, no personal Vault fixtures, logs,
+credentials or unrelated tmp PDFs included. Installer packages only explicit
+runtime/data/server inputs and is 27,363,679 bytes.
+
+Owner asked to install this APK over 1.0.8 and check UE2 drawing on both devices,
+PC image paste and tablet ink arriving at the PC. Physical result is pending;
+do not infer it from the automated or synthetic relay checks.
 
 Lenovo available on 1.0.8; prepare matched current builds
 before physical acceptance. No guarantee of zero latency, third-party uptime or

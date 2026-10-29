@@ -13,8 +13,12 @@ analyzer clean and 910 lib/test files format-clean. Large-fixture gzip is 92.0%
 smaller losslessly. Native stylus raster P95 1.340 ms; a 19.19-ms pan outlier and
 physical PC/Lenovo acceptance remain. Final Windows 1.0.10+11 built in 105.8 s
 and Android in 116.6 s; AOT freshness, package/version and original preview
-certificate verified. Owner requests GitHub publication of this update; package
-and upload locally built releases, with no GitHub build workflow.
+certificate verified. Published app source 3baad06 and all six verified assets:
+https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.10-2026-10-29
+Release tag/provenance matches app source; asset sizes/SHA-256 verified against
+GitHub metadata. Zero workflow runs for that commit. Owner is asked to install
+1.0.10 over Lenovo 1.0.8 and check UE2 pen input plus image/ink delivery both ways.
+Await physical acceptance; preserve the remaining pan outlier as unresolved.
 
 ## Preceding Gemini audit implementation, 2026-10-29
 
