@@ -1,3 +1,24 @@
+# Implemented — saved Canvas ink reliability/performance, 2026-10-29
+
+Owner confirms empty boards are smooth but drawing and viewing saved ink remain
+severely slow after 1.0.6. Preserve samples, styles, themes, undo and live sharing.
+Scope/evidence: docs/tasks/canvas-retained-ink-2026-10-29.md.
+
+Native GPU profiling now covers saved pressure ink, remote cursor updates,
+stylus input and a dense 1500-short-stroke board. Implement complete-stroke
+retained world layers, local invalidation, incremental live pressure geometry,
+and a larger entry allowance within the existing 200k-sample vector budget.
+Equivalent OrbitColors now compare by all 29 token values, preventing repeated
+saved-scene invalidation during theme recreation/interpolation. Native GPU P95:
+100k-sample pan 3.494 ms, remote cursor 3.500 ms, live stylus 7.496 ms. Dense-board
+steady-state P95 3.928 ms after the first 12 frames; cold/outlier stalls remain.
+80 focused acceptance checks pass, plus pressure/release/undo and export checks.
+Analyzer clean; strict format 864 files unchanged. Final Windows 112.8 s, signed
+Android 1.0.7+8 144.7 s; packaging/publication in progress. No personal Vault used.
+Next: physical Lenovo acceptance on the owner's drawing; don't claim hardware
+stylus latency or zero cold-load spikes from synthetic profile input.
+
+## Previous task
 # Delivered — Canvas input performance, 2026-10-28
 
 Owner reports severe pen and pan lag on PC/tablet. Preserve features/visuals.

@@ -155,7 +155,7 @@ class _InkRasterRequest {
 /// preview is ready. Exports and source samples never depend on these images.
 class CanvasInkCache extends ChangeNotifier {
   CanvasInkCache({
-    this.maxEntries = 1024,
+    this.maxEntries = 8192,
     this.maxSamples = 200000,
     this.rasterizeSavedInk = false,
     this.maxRasterPixels = 16 * 1024 * 1024,
@@ -561,6 +561,8 @@ class OrbitCanvasPainter extends CustomPainter {
     this.devicePixelRatio = 1,
     this.tracedConnectorId,
     this.failedImages = const {},
+    this.paintElements,
+    this.paintOverlays = true,
   }) : sceneRevision = scene.revision,
        super(repaint: inkCache);
   final CanvasTextCache textCache;
@@ -568,6 +570,10 @@ class OrbitCanvasPainter extends CustomPainter {
   final double devicePixelRatio;
   final String? tracedConnectorId;
   final Set<String> failedImages;
+
+  /// Immutable spatial working set supplied by a retained scene tile.
+  final List<CanvasElement>? paintElements;
+  final bool paintOverlays;
   final int sceneRevision;
   final CanvasScene scene;
   final CanvasCamera camera;
@@ -594,21 +600,26 @@ class OrbitCanvasPainter extends CustomPainter {
   final bool forceUmlDetails;
   final Map<String, double> revealProgress;
 
+  void paintBackground(Canvas canvas, Size size) {
+    canvas.drawColor(
+      semanticColors?.canvasBackground ?? colors.surface,
+      BlendMode.src,
+    );
+    _grid(canvas, size);
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     canvas.save();
     canvas.clipRect(Offset.zero & size);
     if (!transparentBackground) {
-      canvas.drawColor(
-        semanticColors?.canvasBackground ?? colors.surface,
-        BlendMode.src,
-      );
-      _grid(canvas, size);
+      paintBackground(canvas, size);
     }
     canvas.save();
     canvas.scale(camera.zoom);
     canvas.translate(-camera.x, -camera.y);
     final visible =
+        paintElements ??
         (exportElementIds != null
                 ? scene.elements.where((e) => exportElementIds!.contains(e.id))
                 : scene.query(
@@ -617,12 +628,17 @@ class OrbitCanvasPainter extends CustomPainter {
                         .inflate(80 / camera.zoom),
                   ))
             .toList(growable: false);
-    inkCache?.retainVisible(visible);
+    if (paintElements == null) inkCache?.retainVisible(visible);
     for (final element in visible.where((e) => e.type == 'column')) {
       _element(canvas, element);
     }
     for (final element in visible.where((e) => e.type != 'column')) {
       _element(canvas, element);
+    }
+    if (!paintOverlays) {
+      canvas.restore();
+      canvas.restore();
+      return;
     }
     if (preview != null) _element(canvas, preview!);
     // Paint the traced edge last so its markers and multiplicities stay readable.
@@ -1486,7 +1502,16 @@ class OrbitCanvasPainter extends CustomPainter {
         : fallback;
   }
 
-  static void paintInk(Canvas canvas, CanvasElement element, Color accent) {
+  static void paintInk(
+    Canvas canvas,
+    CanvasElement element,
+    Color accent, {
+    List<CanvasPoint>? inkPoints,
+    List<Map>? inkSamples,
+    bool? inkHasPressure,
+    int startSegment = 0,
+    int? endSegment,
+  }) {
     final isHighlighter = element.data['isHighlighter'] == true;
     final penStyle =
         (element.data['penStyle'] is String
@@ -1506,7 +1531,7 @@ class OrbitCanvasPainter extends CustomPainter {
         : (isMarker
               ? accent.withValues(alpha: 0.90)
               : (isPencil ? accent.withValues(alpha: 0.72) : accent));
-    final points = element.points;
+    final points = inkPoints ?? element.points;
     if (points.isEmpty) return;
     if (points.length == 1) {
       canvas.drawCircle(
@@ -1517,21 +1542,29 @@ class OrbitCanvasPainter extends CustomPainter {
       return;
     }
 
-    final rawPoints = element.data['points'] is List
-        ? (element.data['points'] as List).whereType<Map>().toList(
-            growable: false,
-          )
-        : null;
+    final rawPoints =
+        inkSamples ??
+        (element.data['points'] is List
+            ? (element.data['points'] as List).whereType<Map>().toList(
+                growable: false,
+              )
+            : null);
     final hasPressure =
-        isFountain ||
-        isBrush ||
-        isPencil ||
-        (rawPoints != null && rawPoints.any((p) => _inkPressure(p, 1) < 0.95));
+        inkHasPressure ??
+        (isFountain ||
+            isBrush ||
+            isPencil ||
+            (rawPoints != null &&
+                rawPoints.any((p) => _inkPressure(p, 1) < 0.95)));
+    final segmentEnd = math.min(
+      endSegment ?? points.length - 1,
+      points.length - 1,
+    );
 
     if (isCalligraphy) {
       // Chisel nib held at a constant 45-degree angle (pi / 4).
       const nibAngle = math.pi / 4;
-      for (var i = 0; i < points.length - 1; i++) {
+      for (var i = startSegment; i < segmentEnd; i++) {
         final p1 = points[i];
         final p2 = points[i + 1];
         final dx = p2.x - p1.x;
@@ -1567,7 +1600,7 @@ class OrbitCanvasPainter extends CustomPainter {
       }
     } else if (isPencil) {
       // Pencil: graphite texture with subtle jitter & paper tooth shading
-      for (var i = 0; i < points.length - 1; i++) {
+      for (var i = startSegment; i < segmentEnd; i++) {
         final p1 = points[i];
         final p2 = points[i + 1];
         var pressure = 0.7;
@@ -1612,7 +1645,7 @@ class OrbitCanvasPainter extends CustomPainter {
       }
     } else if (isBrush) {
       // Brush: wide dynamic pressure range and entry/exit tapering
-      for (var i = 0; i < points.length - 1; i++) {
+      for (var i = startSegment; i < segmentEnd; i++) {
         final p1 = points[i];
         final p2 = points[i + 1];
         var pressure1 = 0.7;
@@ -1648,7 +1681,7 @@ class OrbitCanvasPainter extends CustomPainter {
     } else if (hasPressure &&
         rawPoints != null &&
         rawPoints.length == points.length) {
-      for (var i = 0; i < points.length - 1; i++) {
+      for (var i = startSegment; i < segmentEnd; i++) {
         final p1 = points[i];
         final p2 = points[i + 1];
         final pressure1 = (rawPoints[i]['pressure'] is num)
@@ -3849,8 +3882,19 @@ class OrbitCanvasPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant OrbitCanvasPainter oldDelegate) =>
       !identical(scene, oldDelegate.scene) ||
-      sceneRevision != oldDelegate.sceneRevision ||
+      (paintElements == null || oldDelegate.paintElements == null
+          ? sceneRevision != oldDelegate.sceneRevision
+          : !listEquals(paintElements, oldDelegate.paintElements) ||
+                sceneRevision != oldDelegate.sceneRevision &&
+                    (paintOverlays &&
+                            (selection.isNotEmpty ||
+                                searchMatchIds.isNotEmpty ||
+                                tracedConnectorId != null) ||
+                        paintElements!.any(
+                          (e) => isConnectorElement(e) || e.type == 'column',
+                        ))) ||
       inkCache != oldDelegate.inkCache ||
+      paintOverlays != oldDelegate.paintOverlays ||
       devicePixelRatio != oldDelegate.devicePixelRatio ||
       tracedConnectorId != oldDelegate.tracedConnectorId ||
       camera.x != oldDelegate.camera.x ||

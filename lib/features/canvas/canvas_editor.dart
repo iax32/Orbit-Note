@@ -17,6 +17,7 @@ import '../../app/orbit_components.dart';
 import '../../app/orbit_theme.dart';
 import 'dart:async';
 import 'canvas_live_ink.dart';
+import 'canvas_scene_viewport.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -458,7 +459,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
   Duration _strokeStart = Duration.zero;
   CanvasImageCache? _images;
   final CanvasTextCache _textCache = CanvasTextCache();
-  final CanvasInkCache _inkCache = CanvasInkCache(rasterizeSavedInk: true);
+  // Retained world tiles provide engine-managed, device-density raster caching.
+  // Do not enqueue one GPU readback/image and full-scene repaint per stroke.
+  final CanvasInkCache _inkCache = CanvasInkCache();
+  final CanvasLiveInkCache _liveInkCache = CanvasLiveInkCache();
   final CanvasPictureCache _minimapCache = CanvasPictureCache();
   String? _hoveredCardId;
   String? _hoveredConnectorId;
@@ -823,6 +827,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _images?.dispose();
     _textCache.dispose();
     _inkCache.dispose();
+    _liveInkCache.dispose();
     _liveInkChanges.dispose();
     _minimapCache.dispose();
     _focus.dispose();
@@ -2014,6 +2019,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   void _clearGesture() {
+    _liveInkCache.clear();
     if (_lastInkBroadcast != null) widget.onInkPreview?.call(null);
     _lastInkBroadcast = null;
     _stopEdgePan();
@@ -6434,132 +6440,155 @@ class _CanvasEditorState extends State<CanvasEditor> {
                                             );
                                             if (hit != null) _edit(hit);
                                           },
-                                          child: CustomPaint(
-                                            key: _captureSurface,
-                                            painter: OrbitCanvasPainter(
-                                              semanticColors: OrbitColors.of(
-                                                context,
-                                              ),
-                                              textCache: _textCache,
-                                              images:
-                                                  _images?.images ?? const {},
-                                              scene: _scene,
-                                              camera: _camera,
-                                              selection: Set.of(_selection),
-                                              tracedConnectorId:
-                                                  _hoveredConnectorId ??
-                                                  (_selection.length == 1 &&
-                                                          const {
-                                                            'connector',
-                                                            'arrow',
-                                                            'line',
-                                                          }.contains(
-                                                            _scene[_selection
-                                                                    .first]
-                                                                ?.type,
-                                                          )
-                                                      ? _selection.first
-                                                      : null),
-                                              objects: _objects,
-                                              colors: Theme.of(
-                                                context,
-                                              ).colorScheme,
-                                              region: _region,
-                                              lassoPoints: _lassoPoints,
-                                              preview:
-                                                  (_tool == _Tool.pen ||
-                                                      _tool ==
-                                                          _Tool.highlighter)
-                                                  ? null
-                                                  : _framePreview,
-                                              inkCache: _inkCache,
-                                              devicePixelRatio:
-                                                  MediaQuery.devicePixelRatioOf(
-                                                    context,
-                                                  ),
-                                              editingId: _editingId,
-                                              guides: _activeGuides,
-                                              failedImages:
-                                                  _images?.failedReferences ??
-                                                  const {},
-                                              backgroundStyle: _backgroundStyle,
-                                              hoveredAnchorElementId:
-                                                  _hoveredAnchorElementId,
-                                              connectingStartElementId:
-                                                  _connectingStartId,
-                                              fontFamily: widget.fontFamily,
-                                              searchMatchIds: _searchResults
-                                                  .map((r) => r.elementId)
-                                                  .toSet(),
-                                              activeSearchMatchId:
-                                                  _searchResults.isNotEmpty &&
-                                                      _activeSearchIndex >= 0 &&
-                                                      _activeSearchIndex <
-                                                          _searchResults.length
-                                                  ? _searchResults[_activeSearchIndex]
-                                                        .elementId
-                                                  : null,
-                                            ),
-                                            child: Stack(
-                                              children: [
-                                                const SizedBox.expand(),
-                                                Positioned.fill(
-                                                  child: IgnorePointer(
-                                                    child: RepaintBoundary(
-                                                      child: CustomPaint(
-                                                        painter: CanvasLiveInkPainter(
-                                                          changes:
-                                                              _liveInkChanges,
-                                                          stroke: () =>
-                                                              (_tool ==
-                                                                      _Tool
-                                                                          .pen ||
-                                                                  _tool ==
-                                                                      _Tool
-                                                                          .highlighter)
-                                                              ? _framePreview
-                                                              : null,
-                                                          camera: () => _camera,
+                                          child: Stack(
+                                            children: [
+                                              Positioned.fill(
+                                                child: CanvasSceneViewport(
+                                                  key: _captureSurface,
+                                                  scene: _scene,
+                                                  camera: _camera,
+                                                  inkCache: _inkCache,
+                                                  builder: (tileCamera, tileElements) => OrbitCanvasPainter(
+                                                    paintElements: tileElements,
+                                                    transparentBackground: true,
+                                                    paintOverlays:
+                                                        tileElements.isEmpty,
+                                                    semanticColors:
+                                                        OrbitColors.of(context),
+                                                    textCache: _textCache,
+                                                    images:
+                                                        _images?.images ??
+                                                        const {},
+                                                    scene: _scene,
+                                                    camera: tileCamera,
+                                                    selection: Set.of(
+                                                      _selection,
+                                                    ),
+                                                    tracedConnectorId:
+                                                        _hoveredConnectorId ??
+                                                        (_selection.length ==
+                                                                    1 &&
+                                                                const {
+                                                                  'connector',
+                                                                  'arrow',
+                                                                  'line',
+                                                                }.contains(
+                                                                  _scene[_selection
+                                                                          .first]
+                                                                      ?.type,
+                                                                )
+                                                            ? _selection.first
+                                                            : null),
+                                                    objects: _objects,
+                                                    colors: Theme.of(
+                                                      context,
+                                                    ).colorScheme,
+                                                    region: _region,
+                                                    lassoPoints: _lassoPoints,
+                                                    preview:
+                                                        (_tool == _Tool.pen ||
+                                                            _tool ==
+                                                                _Tool
+                                                                    .highlighter)
+                                                        ? null
+                                                        : _framePreview,
+                                                    inkCache: _inkCache,
+                                                    devicePixelRatio:
+                                                        MediaQuery.devicePixelRatioOf(
+                                                          context,
                                                         ),
+                                                    editingId: _editingId,
+                                                    guides: _activeGuides,
+                                                    failedImages:
+                                                        _images
+                                                            ?.failedReferences ??
+                                                        const {},
+                                                    backgroundStyle:
+                                                        _backgroundStyle,
+                                                    hoveredAnchorElementId:
+                                                        _hoveredAnchorElementId,
+                                                    connectingStartElementId:
+                                                        _connectingStartId,
+                                                    fontFamily:
+                                                        widget.fontFamily,
+                                                    searchMatchIds:
+                                                        _searchResults
+                                                            .map(
+                                                              (r) =>
+                                                                  r.elementId,
+                                                            )
+                                                            .toSet(),
+                                                    activeSearchMatchId:
+                                                        _searchResults
+                                                                .isNotEmpty &&
+                                                            _activeSearchIndex >=
+                                                                0 &&
+                                                            _activeSearchIndex <
+                                                                _searchResults
+                                                                    .length
+                                                        ? _searchResults[_activeSearchIndex]
+                                                              .elementId
+                                                        : null,
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox.expand(),
+                                              Positioned.fill(
+                                                child: IgnorePointer(
+                                                  child: RepaintBoundary(
+                                                    child: CustomPaint(
+                                                      painter: CanvasLiveInkPainter(
+                                                        cache: _liveInkCache,
+                                                        changes:
+                                                            _liveInkChanges,
+                                                        stroke: () =>
+                                                            (_tool ==
+                                                                    _Tool.pen ||
+                                                                _tool ==
+                                                                    _Tool
+                                                                        .highlighter)
+                                                            ? _framePreview
+                                                            : null,
+                                                        camera: () => _camera,
                                                       ),
                                                     ),
                                                   ),
                                                 ),
-                                                Positioned.fill(
-                                                  child:
-                                                      widget.remotePresence ==
-                                                          null
-                                                      ? CanvasPresenceOverlay(
-                                                          scene: _scene,
-                                                          camera: _camera,
-                                                          peers: widget
-                                                              .remoteCursors,
-                                                        )
-                                                      : ValueListenableBuilder<
-                                                          List<
-                                                            Map<String, dynamic>
-                                                          >
-                                                        >(
-                                                          valueListenable: widget
-                                                              .remotePresence!,
-                                                          builder: (_, peers, _) =>
-                                                              CanvasPresenceOverlay(
-                                                                scene: _scene,
-                                                                camera: _camera,
-                                                                peers: peers
-                                                                    .where(
-                                                                      (p) =>
-                                                                          p['objectId'] ==
-                                                                              widget.canvasId &&
-                                                                          p['space'] ==
-                                                                              'canvas',
-                                                                    )
-                                                                    .toList(),
-                                                              ),
-                                                        ),
-                                                ),
-                                              ],
-                                            ),
+                                              ),
+                                              Positioned.fill(
+                                                child:
+                                                    widget.remotePresence ==
+                                                        null
+                                                    ? CanvasPresenceOverlay(
+                                                        scene: _scene,
+                                                        camera: _camera,
+                                                        peers: widget
+                                                            .remoteCursors,
+                                                      )
+                                                    : ValueListenableBuilder<
+                                                        List<
+                                                          Map<String, dynamic>
+                                                        >
+                                                      >(
+                                                        valueListenable: widget
+                                                            .remotePresence!,
+                                                        builder: (_, peers, _) =>
+                                                            CanvasPresenceOverlay(
+                                                              scene: _scene,
+                                                              camera: _camera,
+                                                              peers: peers
+                                                                  .where(
+                                                                    (p) =>
+                                                                        p['objectId'] ==
+                                                                            widget.canvasId &&
+                                                                        p['space'] ==
+                                                                            'canvas',
+                                                                  )
+                                                                  .toList(),
+                                                            ),
+                                                      ),
+                                              ),
+                                            ],
                                           ),
                                         ),
                                         if (_laserMode)

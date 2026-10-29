@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:orbit_note/features/canvas/canvas_live_ink.dart';
+import 'package:orbit_note/features/canvas/canvas_scene_viewport.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -282,10 +283,12 @@ void main() async {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Pen (P)'));
       await tester.pumpAndSettle();
-      final surface = find.byWidgetPredicate(
-        (w) => w is CustomPaint && w.painter is OrbitCanvasPainter,
-      );
-      final origin = tester.getTopLeft(surface);
+      final surface = find
+          .byWidgetPredicate(
+            (w) => w is CustomPaint && w.painter is OrbitCanvasPainter,
+          )
+          .first;
+      final origin = tester.getTopLeft(find.byType(CanvasSceneViewport));
       await tester.sendEventToBinding(
         const PointerDownEvent(
           pointer: 11,

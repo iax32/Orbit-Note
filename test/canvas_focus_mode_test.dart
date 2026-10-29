@@ -7,16 +7,14 @@ import 'package:orbit_note/app/orbit_theme.dart';
 import 'package:orbit_note/app/workspace_controller.dart';
 import 'package:orbit_note/application/workspace_repository.dart';
 import 'package:orbit_note/features/canvas/canvas_editor.dart';
-import 'package:orbit_note/features/canvas/canvas_painter.dart';
+import 'package:orbit_note/features/canvas/canvas_scene_viewport.dart';
 import 'package:orbit_note/features/workspace/workspace_shell.dart';
 import 'package:orbit_note/features/workspace/orbit_tab_strip.dart';
 import 'package:orbit_note/infrastructure/storage/memory_object_index.dart';
 import 'support/memory_store.dart';
 import 'support/capture_ui.dart';
 
-Finder surface() => find.byWidgetPredicate(
-  (w) => w is CustomPaint && w.painter is OrbitCanvasPainter,
-);
+Finder surface() => find.byType(CanvasSceneViewport);
 
 void main() {
   Future<(WorkspaceController, String)> mount(
@@ -106,9 +104,7 @@ void main() {
         final before = t.getSize(surface());
         final editor = t.state(find.byType(CanvasEditor));
         final tabs = List.of(c.session.tabs);
-        final camera =
-            (t.widget<CustomPaint>(surface()).painter as OrbitCanvasPainter)
-                .camera;
+        final camera = t.widget<CanvasSceneViewport>(surface()).camera;
         await t.tap(find.byTooltip('Show minimap'));
         await t.pumpAndSettle();
         expect(
@@ -124,9 +120,7 @@ void main() {
         expect(focused.width - before.width, greaterThan(40));
         expect(identical(editor, t.state(find.byType(CanvasEditor))), isTrue);
         expect(
-          (t.widget<CustomPaint>(surface()).painter as OrbitCanvasPainter)
-              .camera
-              .zoom,
+          t.widget<CanvasSceneViewport>(surface()).camera.zoom,
           camera.zoom,
         );
         expect(find.byType(OrbitTabStrip), findsNothing);

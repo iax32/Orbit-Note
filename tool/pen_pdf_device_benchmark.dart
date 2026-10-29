@@ -15,6 +15,9 @@ import 'package:orbit_note/domain/pdf_annotation.dart';
 import 'package:orbit_note/domain/universal_object.dart';
 import 'package:orbit_note/features/canvas/canvas_editor.dart';
 import 'package:orbit_note/features/canvas/canvas_painter.dart';
+import 'package:orbit_note/features/canvas/canvas_scene_viewport.dart';
+import 'package:orbit_note/canvas/scene.dart';
+import 'package:orbit_note/canvas/geometry.dart';
 import 'package:orbit_note/features/pdf/pdf_reader.dart';
 import '../test/support/pdf_fixture.dart' show largeResearchPdf;
 import 'performance/frame_statistics.dart';
@@ -38,6 +41,38 @@ class _DeviceBenchmarkState extends State<_DeviceBenchmark> {
   final _stages = <Map<String, dynamic>>[];
   final _errors = <String>[];
   final _latency = <int>[];
+  final _presence = ValueNotifier<List<Map<String, dynamic>>>(const []);
+  bool _comparison = false, _legacy = false;
+  CanvasCamera _comparisonCamera = const CanvasCamera();
+  final _comparisonText = CanvasTextCache();
+  final _comparisonInk = CanvasInkCache();
+  final _legacyInk = CanvasInkCache(maxEntries: 1024);
+  late final _denseScene = CanvasScene.fromJson({
+    'schemaVersion': 1,
+    'elements': [
+      for (var i = 0; i < 1500; i++)
+        {
+          'id': 'dense-$i',
+          'type': 'ink',
+          'x': (i % 10) * 95.0,
+          'y': (i ~/ 10) * 3.0,
+          'width': 90.0,
+          'height': 15.0,
+          'color': 0xff76c8aa,
+          'penStyle': 'ballpoint',
+          'strokeWidth': 3.0,
+          'points': [
+            for (var p = 0; p < 120; p++)
+              {
+                'x': p * .75,
+                'y': 5 + math.sin(p * .1) * 4,
+                'pressure': .2 + (p % 100) / 125,
+                'timeMs': p,
+              },
+          ],
+        },
+    ],
+  });
   late final Map<String, dynamic> _data = {
     'schemaVersion': 1,
     'elements': [
@@ -124,6 +159,10 @@ class _DeviceBenchmarkState extends State<_DeviceBenchmark> {
 
   @override
   void dispose() {
+    _presence.dispose();
+    _comparisonText.dispose();
+    _comparisonInk.dispose();
+    _legacyInk.dispose();
     SchedulerBinding.instance.removeTimingsCallback(_onTimings);
     FlutterError.onError = _oldErrorHandler;
     super.dispose();
@@ -162,8 +201,9 @@ class _DeviceBenchmarkState extends State<_DeviceBenchmark> {
   Offset _canvasCenter() {
     Offset? found;
     void visit(Element e) {
-      if (e.widget is CustomPaint &&
-          (e.widget as CustomPaint).painter is OrbitCanvasPainter) {
+      if (e.widget is CanvasSceneViewport ||
+          e.widget is CustomPaint &&
+              (e.widget as CustomPaint).painter is OrbitCanvasPainter) {
         final box = e.renderObject as RenderBox;
         found = box.localToGlobal(box.size.center(Offset.zero));
         return;
@@ -243,6 +283,22 @@ class _DeviceBenchmarkState extends State<_DeviceBenchmark> {
           await _frames(1);
         }
       });
+      await _stage('Canvas remote cursor — unchanged saved ink', () async {
+        for (var i = 0; i < 120; i++) {
+          _presence.value = [
+            {
+              'name': 'Synthetic peer',
+              'session': 'peer',
+              'x': 50 + i.toDouble(),
+              'y': 40.0,
+              'space': 'canvas',
+              'objectId': 'benchmark-canvas',
+            },
+          ];
+          await _frames(1);
+        }
+        _presence.value = const [];
+      });
       await _stage('Active synthetic stylus — 100000 saved samples', () async {
         const pointer = 7001;
         final start = center - const Offset(220, 80);
@@ -283,42 +339,66 @@ class _DeviceBenchmarkState extends State<_DeviceBenchmark> {
           throw StateError('Expected exactly one committed synthetic stroke');
         }
       });
-      await _stage('PDF cold open — 300 pages and 24000 regions', () async {
-        setState(() => _pdfMode = true);
-        final deadline = DateTime.now().add(const Duration(seconds: 30));
-        while (_pdfController()?.isReady != true) {
-          if (DateTime.now().isAfter(deadline)) {
-            throw StateError('Native PDF load timed out');
+      for (final legacy in [true, false]) {
+        setState(() {
+          _comparison = true;
+          _legacy = legacy;
+        });
+        await _frames(legacy ? 1 : 10);
+        await _stage(
+          'Dense 1500 short strokes — ${legacy ? 'legacy full repaint' : 'retained stroke layers'}',
+          () async {
+            final bounded = Stopwatch()..start();
+            for (var i = 0; i < (legacy ? 12 : 120); i++) {
+              setState(
+                () =>
+                    _comparisonCamera = CanvasCamera(x: math.sin(i * .03) * 60),
+              );
+              await _frames(1);
+              if (legacy && bounded.elapsed > const Duration(seconds: 8)) break;
+            }
+          },
+        );
+      }
+      _comparison = false;
+      if (!const bool.fromEnvironment('ORBIT_CANVAS_ONLY')) {
+        await _stage('PDF cold open — 300 pages and 24000 regions', () async {
+          setState(() => _pdfMode = true);
+          final deadline = DateTime.now().add(const Duration(seconds: 30));
+          while (_pdfController()?.isReady != true) {
+            if (DateTime.now().isAfter(deadline)) {
+              throw StateError('Native PDF load timed out');
+            }
+            await Future<void>.delayed(const Duration(milliseconds: 25));
+            await _frames(1);
           }
-          await Future<void>.delayed(const Duration(milliseconds: 25));
-          await _frames(1);
+          await _frames(30);
+        });
+        final pdf = _pdfController()!;
+        await _stage('PDF warm navigation — 300-page document', () async {
+          final origin = pdf.centerPosition;
+          for (var i = 0; i < 180; i++) {
+            await pdf.goTo(
+              pdf.calcMatrixFor(
+                origin + Offset(0, math.sin(i * .04) * 120),
+                zoom: pdf.currentZoom,
+              ),
+              duration: Duration.zero,
+            );
+            await _frames(1);
+          }
+        });
+        await _stage('PDF distant page jumps — 24 destinations', () async {
+          for (var i = 0; i < 24; i++) {
+            final page = i == 23 ? 300 : (i * 47) % 300 + 1;
+            await pdf.goToPage(pageNumber: page, duration: Duration.zero);
+            await _frames(6);
+          }
+          await _frames(10);
+        });
+        if (pdf.pageNumber != 300) {
+          throw StateError('Final PDF destination was lost');
         }
-        await _frames(30);
-      });
-      final pdf = _pdfController()!;
-      await _stage('PDF warm navigation — 300-page document', () async {
-        final origin = pdf.centerPosition;
-        for (var i = 0; i < 180; i++) {
-          await pdf.goTo(
-            pdf.calcMatrixFor(
-              origin + Offset(0, math.sin(i * .04) * 120),
-              zoom: pdf.currentZoom,
-            ),
-            duration: Duration.zero,
-          );
-          await _frames(1);
-        }
-      });
-      await _stage('PDF distant page jumps — 24 destinations', () async {
-        for (var i = 0; i < 24; i++) {
-          final page = i == 23 ? 300 : (i * 47) % 300 + 1;
-          await pdf.goToPage(pageNumber: page, duration: Duration.zero);
-          await _frames(6);
-        }
-        await _frames(10);
-      });
-      if (pdf.pageNumber != 300) {
-        throw StateError('Final PDF destination was lost');
       }
       setState(() => _status = 'Flushing native frame measurements');
       await _frames(2);
@@ -412,7 +492,9 @@ class _DeviceBenchmarkState extends State<_DeviceBenchmark> {
       ),
       body: SizedBox.expand(
         key: _surface,
-        child: _pdfMode
+        child: _comparison
+            ? _comparisonSurface()
+            : _pdfMode
             ? OrbitPdfReader(
                 objectId: 'benchmark-pdf',
                 title: 'Synthetic 300-page research',
@@ -426,6 +508,7 @@ class _DeviceBenchmarkState extends State<_DeviceBenchmark> {
                 onBookmarks: (_) {},
               )
             : CanvasEditor(
+                remotePresence: _presence,
                 canvasId: 'benchmark-canvas',
                 data: _data,
                 objects: const [],
@@ -438,4 +521,32 @@ class _DeviceBenchmarkState extends State<_DeviceBenchmark> {
       ),
     ),
   );
+
+  Widget _comparisonSurface() {
+    OrbitCanvasPainter painter(
+      CanvasCamera camera, [
+      List<CanvasElement>? elements,
+    ]) => OrbitCanvasPainter(
+      scene: _denseScene,
+      camera: camera,
+      selection: {},
+      objects: {},
+      colors: orbitDarkTheme().colorScheme,
+      textCache: _comparisonText,
+      inkCache: _legacy ? _legacyInk : _comparisonInk,
+      paintElements: elements,
+      transparentBackground: elements != null,
+    );
+    return _legacy
+        ? CustomPaint(
+            painter: painter(_comparisonCamera),
+            child: const SizedBox.expand(),
+          )
+        : CanvasSceneViewport(
+            scene: _denseScene,
+            camera: _comparisonCamera,
+            inkCache: _comparisonInk,
+            builder: painter,
+          );
+  }
 }

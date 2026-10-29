@@ -6,6 +6,7 @@ import 'package:orbit_note/canvas/geometry.dart';
 import 'package:orbit_note/canvas/scene.dart';
 import 'package:orbit_note/features/canvas/canvas_editor.dart';
 import 'package:orbit_note/features/canvas/canvas_painter.dart';
+import 'package:orbit_note/features/canvas/canvas_scene_viewport.dart';
 
 void main() {
   group('CanvasScene Stacking Order (CAN-08)', () {
@@ -530,9 +531,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final surface = find.byWidgetPredicate(
-        (w) => w is CustomPaint && w.painter is OrbitCanvasPainter,
-      );
+      final surface = find.byType(CanvasSceneViewport);
       final origin = tester.getTopLeft(surface);
 
       // Tap e1 to select it

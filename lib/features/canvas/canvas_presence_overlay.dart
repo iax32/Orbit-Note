@@ -18,120 +18,124 @@ class CanvasPresenceOverlay extends StatelessWidget {
   final List<Map<String, dynamic>> peers;
 
   @override
-  Widget build(BuildContext context) => IgnorePointer(
-    child: LayoutBuilder(
-      builder: (context, constraints) {
-        final colors = Theme.of(context).colorScheme;
-        final palette = [colors.primary, colors.secondary, colors.tertiary];
-        final viewport = camera.viewport(
-          constraints.maxWidth,
-          constraints.maxHeight,
-        );
-        final children = <Widget>[];
-        for (final peer in peers.take(128)) {
-          final x = peer['x'], y = peer['y'], name = peer['name'];
-          if (x is! num ||
-              y is! num ||
-              !x.isFinite ||
-              !y.isFinite ||
-              x.abs() > 100000000 ||
-              y.abs() > 100000000 ||
-              name is! String ||
-              name.trim().isEmpty ||
-              peer['active'] == false) {
-            continue;
-          }
-          final label = String.fromCharCodes(
-            name.runes
-                .take(80)
-                .map(
-                  (rune) => rune >= 0xd800 && rune <= 0xdfff ? 0xfffd : rune,
-                ),
+  Widget build(BuildContext context) => RepaintBoundary(
+    child: IgnorePointer(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final colors = Theme.of(context).colorScheme;
+          final palette = [colors.primary, colors.secondary, colors.tertiary];
+          final viewport = camera.viewport(
+            constraints.maxWidth,
+            constraints.maxHeight,
           );
-          final session = peer['session'];
-          final identity = session is String && session.length <= 80
-              ? session
-              : label;
-          final color =
-              palette[identity.codeUnits.fold(
-                    0,
-                    (n, c) => (n * 31 + c) & 0xffff,
-                  ) %
-                  palette.length];
-          final ink = collaborationInkPreview(peer['ink']);
-          if (ink != null && peer['role'] != 'viewer') {
-            children.add(
-              Positioned.fill(
-                child: RepaintBoundary(
-                  child: CustomPaint(
-                    key: ValueKey('peer-ink-$identity'),
-                    painter: _PeerInkPainter(CanvasElement(ink), camera),
-                  ),
-                ),
-              ),
-            );
-          }
-          for (final id in collaborationSelectionIds(peer['selection'])) {
-            final element = scene[id];
-            if (element == null ||
-                element.hidden ||
-                !element.renderable ||
-                !element.bounds.intersects(viewport)) {
+          final children = <Widget>[];
+          for (final peer in peers.take(128)) {
+            final x = peer['x'], y = peer['y'], name = peer['name'];
+            if (x is! num ||
+                y is! num ||
+                !x.isFinite ||
+                !y.isFinite ||
+                x.abs() > 100000000 ||
+                y.abs() > 100000000 ||
+                name is! String ||
+                name.trim().isEmpty ||
+                peer['active'] == false) {
               continue;
             }
-            final bounds = element.bounds;
-            final point = camera.toScreen(CanvasPoint(bounds.left, bounds.top));
-            children.add(
-              Positioned(
-                left: point.x - 3,
-                top: point.y - 3,
-                width: bounds.width * camera.zoom + 6,
-                height: bounds.height * camera.zoom + 6,
-                child: Semantics(
-                  label: '$label selected ${element.type}',
-                  child: DecoratedBox(
-                    key: ValueKey('peer-selection-$identity-$id'),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: color, width: 2),
-                      borderRadius: BorderRadius.circular(4),
+            final label = String.fromCharCodes(
+              name.runes
+                  .take(80)
+                  .map(
+                    (rune) => rune >= 0xd800 && rune <= 0xdfff ? 0xfffd : rune,
+                  ),
+            );
+            final session = peer['session'];
+            final identity = session is String && session.length <= 80
+                ? session
+                : label;
+            final color =
+                palette[identity.codeUnits.fold(
+                      0,
+                      (n, c) => (n * 31 + c) & 0xffff,
+                    ) %
+                    palette.length];
+            final ink = collaborationInkPreview(peer['ink']);
+            if (ink != null && peer['role'] != 'viewer') {
+              children.add(
+                Positioned.fill(
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      key: ValueKey('peer-ink-$identity'),
+                      painter: _PeerInkPainter(CanvasElement(ink), camera),
                     ),
                   ),
                 ),
-              ),
-            );
-          }
-          final point = camera.toScreen(
-            CanvasPoint(x.toDouble(), y.toDouble()),
-          );
-          children.add(
-            Positioned(
-              left: point.x,
-              top: point.y,
-              child: Semantics(
-                label: '$label cursor',
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: BorderRadius.circular(4),
+              );
+            }
+            for (final id in collaborationSelectionIds(peer['selection'])) {
+              final element = scene[id];
+              if (element == null ||
+                  element.hidden ||
+                  !element.renderable ||
+                  !element.bounds.intersects(viewport)) {
+                continue;
+              }
+              final bounds = element.bounds;
+              final point = camera.toScreen(
+                CanvasPoint(bounds.left, bounds.top),
+              );
+              children.add(
+                Positioned(
+                  left: point.x - 3,
+                  top: point.y - 3,
+                  width: bounds.width * camera.zoom + 6,
+                  height: bounds.height * camera.zoom + 6,
+                  child: Semantics(
+                    label: '$label selected ${element.type}',
+                    child: DecoratedBox(
+                      key: ValueKey('peer-selection-$identity-$id'),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: color, width: 2),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Text(
-                      '↖ $label',
-                      maxLines: 1,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: OrbitContrast.inkOn(color),
+                ),
+              );
+            }
+            final point = camera.toScreen(
+              CanvasPoint(x.toDouble(), y.toDouble()),
+            );
+            children.add(
+              Positioned(
+                left: point.x,
+                top: point.y,
+                child: Semantics(
+                  label: '$label cursor',
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Text(
+                        '↖ $label',
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: OrbitContrast.inkOn(color),
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-          );
-        }
-        return Stack(children: children);
-      },
+            );
+          }
+          return Stack(children: children);
+        },
+      ),
     ),
   );
 }

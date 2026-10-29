@@ -218,6 +218,47 @@ class OrbitColors extends ThemeExtension<OrbitColors> {
   final Color canvasGrid;
   final Color graphEdge;
 
+  // Theme interpolation/recreation frequently produces new equivalent token
+  // objects. Identity equality makes every Canvas layer repaint as though its
+  // palette changed, including on unrelated workspace/status updates.
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is OrbitColors &&
+          runtimeType == other.runtimeType &&
+          background == other.background &&
+          workspace == other.workspace &&
+          panel == other.panel &&
+          panelSecondary == other.panelSecondary &&
+          raised == other.raised &&
+          floating == other.floating &&
+          input == other.input &&
+          hover == other.hover &&
+          pressed == other.pressed &&
+          selected == other.selected &&
+          selectedMuted == other.selectedMuted &&
+          border == other.border &&
+          divider == other.divider &&
+          focus == other.focus &&
+          accent == other.accent &&
+          secondary == other.secondary &&
+          accentHover == other.accentHover &&
+          text == other.text &&
+          subtle == other.subtle &&
+          muted == other.muted &&
+          textDisabled == other.textDisabled &&
+          success == other.success &&
+          warning == other.warning &&
+          danger == other.danger &&
+          link == other.link &&
+          linkVisited == other.linkVisited &&
+          canvasBackground == other.canvasBackground &&
+          canvasGrid == other.canvasGrid &&
+          graphEdge == other.graphEdge;
+
+  @override
+  int get hashCode => Object.hash(runtimeType, Object.hashAll(roles.values));
+
   // Semantic convenience aliases
   Color get textPrimary => text;
   Color get textSecondary => subtle;
