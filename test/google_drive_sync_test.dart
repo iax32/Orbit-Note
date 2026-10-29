@@ -211,6 +211,30 @@ void main() {
     }
   });
   test(
+    'paused preflight cannot acknowledge an already published retry receipt',
+    () async {
+      final id = await seed();
+      final local = (await ra.inventory())[id]!;
+      final journal = await ra.createDriveJournalStore().load();
+      final operation = (journal!['operations'] as Map).entries.singleWhere(
+        (e) => (e.value as Map)['entry']['key'] == id,
+      );
+      await pa.inspect(id);
+      final requests = server.requests;
+      current = false;
+      await expectLater(
+        pa.upload(
+          local,
+          const Stream.empty(),
+          operationId: operation.key as String,
+          expectedVersion: null,
+        ),
+        throwsA(isA<WorkspaceConflict>()),
+      );
+      expect(server.requests, requests);
+    },
+  );
+  test(
     'opening a cloud Vault reads only its manifest history before import',
     () async {
       for (var i = 0; i < 12; i++) {

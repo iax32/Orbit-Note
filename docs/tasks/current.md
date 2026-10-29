@@ -22,6 +22,12 @@ Android version/package/original signing verified. Preparing GitHub release with
 locally built files, no GitHub build workflow. Physical tablet and full-snapshot
 bandwidth limits remain; next task is reviewed incremental large-Canvas payloads.
 
+Published throughput source ce99add / 1.0.11 assets with verified digests and zero
+workflow runs. One final cached-retry pause guard was then tightened at provider
+entry; application checkpoint guards already rejected a stale acknowledgement.
+Six focused checks pass. Final 1.0.12+13 builds are in progress to preserve the
+previous release's provenance rather than replacing a published tag/binary.
+
 ## Published pen responsiveness and easy device sharing, 2026-10-29
 
 Owner requests smooth PC/tablet pen input with preserved visuals/features and

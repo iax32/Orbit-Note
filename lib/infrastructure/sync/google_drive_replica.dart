@@ -616,6 +616,7 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
     String operation,
     List<String> parents,
   ) async {
+    _check();
     validateSyncEntries({entry.key: entry});
     if (operation.isEmpty ||
         operation.length > 80 ||

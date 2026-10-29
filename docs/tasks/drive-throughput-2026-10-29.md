@@ -74,3 +74,15 @@ Owner closed PC app for replacement. Prepare complete locally built installers
 for GitHub as in the preceding update, with source provenance/checksums and no
 build workflow. Retain full-snapshot wire-size and Google propagation limits;
 next possible task is a reviewed incremental payload design for very large Canvases.
+
+1.0.11 app source ce99add and six verified release assets were published at
+https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.11-2026-10-29;
+tag/source and all uploaded sizes/SHA-256 matched, zero workflow runs.
+Final boundary review then identified a cached retry receipt returning after a
+pause, before reaching a network/staging check. The application state-store guard
+already rejected stale checkpoint writes, but the provider now checks current
+ownership/account at publication entry too. Six focused tests pass, including a
+paused fresh-preflight retry that must fail without a network request, unchanged
+request budgets and lost-ack recovery. No Google re-consent or schema change is
+needed for this one-line guard. Shipping as 1.0.12+13 to preserve 1.0.11 tag and
+artifact provenance; new builds/verification pending.
