@@ -2,55 +2,104 @@ import 'package:flutter/material.dart';
 import '../../canvas/geometry.dart';
 import '../../canvas/scene.dart';
 import 'canvas_painter.dart';
+import '../../app/canvas_performance.dart';
 
 /// Retain complete strokes in small, ordered world layers. Never cut a pen
 /// segment at an internal tile edge: that changes pressure/antialias coverage.
 /// Camera movement translates saved ink; zoom rebuilds at full density.
-class CanvasSceneViewport extends StatelessWidget {
+class CanvasSceneViewport extends StatefulWidget {
   const CanvasSceneViewport({
     super.key,
     required this.scene,
     required this.camera,
     required this.builder,
     this.inkCache,
+    this.performanceSurface = 0,
   });
   final CanvasScene scene;
   final CanvasCamera camera;
   final CanvasInkCache? inkCache;
+  final int performanceSurface;
   final OrbitCanvasPainter Function(CanvasCamera, List<CanvasElement>) builder;
+
+  @override
+  State<CanvasSceneViewport> createState() => _CanvasSceneViewportState();
+}
+
+class _RetainedGroup {
+  _RetainedGroup(this.order, this.elements);
+  final int order;
+  final List<CanvasElement> elements;
+}
+
+class _CanvasSceneViewportState extends State<CanvasSceneViewport> {
+  CanvasScene get scene => widget.scene;
+  CanvasCamera get camera => widget.camera;
+  CanvasInkCache? get inkCache => widget.inkCache;
+  OrbitCanvasPainter Function(CanvasCamera, List<CanvasElement>) get builder =>
+      widget.builder;
+  CanvasScene? _plannedScene;
+  int? _plannedRevision;
+  final _membership = <String, _RetainedGroup>{};
+  double _layerPixels = 0, _maxLayerPixels = 0;
+
+  void _preparePlan() {
+    if (identical(scene, _plannedScene) && scene.revision == _plannedRevision) {
+      return;
+    }
+    _plannedScene = scene;
+    _plannedRevision = scene.revision;
+    _membership.clear();
+    final drawable = scene.elementsInOrder
+        .where((e) => e.renderable && !e.hidden)
+        .toList();
+    final ordered = [
+      ...drawable.where((e) => e.type == 'column'),
+      ...drawable.where((e) => e.type != 'column'),
+    ];
+    var samples = 0, serial = 0;
+    _RetainedGroup? group;
+    for (final element in ordered) {
+      final first = group?.elements.first;
+      if (first == null ||
+          (first.type == 'ink') != (element.type == 'ink') ||
+          (scene.orderOf(first.id) ?? 0) ~/ 32 !=
+              (scene.orderOf(element.id) ?? 0) ~/ 32 ||
+          (first.type == 'column') != (element.type == 'column') ||
+          element.type == 'ink' && samples >= 4096) {
+        group = _RetainedGroup(serial++, []);
+        samples = 0;
+      }
+      group!.elements.add(element);
+      _membership[element.id] = group;
+      if (element.data['points'] is List) {
+        samples += (element.data['points'] as List).length;
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
+      final perf = CanvasPerformance.instance;
+      final started = perf.begin();
+      _preparePlan();
+      _layerPixels = 0;
+      _maxLayerPixels = 0;
       final size = constraints.biggest;
       final visible = scene.query(
         camera.viewport(size.width, size.height).inflate(80 / camera.zoom),
       );
-      inkCache?.retainVisible(visible);
-      final drawable = visible.where((e) => e.renderable && !e.hidden);
-      final ordered = [
-        ...drawable.where((e) => e.type == 'column'),
-        ...drawable.where((e) => e.type != 'column'),
-      ];
-      final groups = <List<CanvasElement>>[];
-      var groupSamples = 0;
-      for (final element in ordered) {
-        final bucket = (scene.orderOf(element.id) ?? 0) ~/ 32;
-        if (groups.isEmpty ||
-            (groups.last.first.type == 'ink') != (element.type == 'ink') ||
-            ((scene.orderOf(groups.last.first.id) ?? 0) ~/ 32) != bucket ||
-            (groups.last.first.type == 'column') !=
-                (element.type == 'column') ||
-            element.type == 'ink' && groupSamples >= 4096) {
-          groups.add([]);
-          groupSamples = 0;
-        }
-        groups.last.add(element);
-        if (element.data['points'] is List) {
-          groupSamples += (element.data['points'] as List).length;
-        }
-      }
-      return ClipRect(
+      // Visibility chooses groups, never their membership or world origin.
+      // Otherwise each entering/leaving stroke invalidates its entire bitmap
+      // during a pan even when no authored content changed.
+      final active = <_RetainedGroup>{
+        for (final e in visible)
+          if (_membership[e.id] != null) _membership[e.id]!,
+      }.toList()..sort((a, b) => a.order.compareTo(b.order));
+      final groups = active.map((g) => g.elements).toList();
+      inkCache?.retainVisible(groups.expand((g) => g));
+      final result = ClipRect(
         child: Stack(
           children: [
             Positioned.fill(
@@ -78,6 +127,27 @@ class CanvasSceneViewport extends StatelessWidget {
           ],
         ),
       );
+      perf.duration(
+        CanvasPerfEvent.viewportBuild,
+        widget.performanceSurface,
+        started,
+        {
+          'groups': groups.length,
+          'visible': visible.length,
+          'layerPixels': _layerPixels,
+          'largestLayerPixels': _maxLayerPixels,
+        },
+      );
+      perf.gauge(widget.performanceSurface, {
+        'groups': groups.length,
+        'visible': visible.length,
+        'layerPixels': _layerPixels,
+        'largestLayerPixels': _maxLayerPixels,
+        'zoom': camera.zoom,
+        'density': MediaQuery.devicePixelRatioOf(context),
+        'hz': View.of(context).display.refreshRate,
+      });
+      return result;
     },
   );
 
@@ -126,6 +196,9 @@ class CanvasSceneViewport extends StatelessWidget {
       clipped.width,
       clipped.height,
     );
+    final pixels = bounds.width * bounds.height * scale * scale;
+    _layerPixels += pixels;
+    if (pixels > _maxLayerPixels) _maxLayerPixels = pixels;
     return Positioned(
       key: ValueKey(('ink', group.first.id, camera.zoom)),
       left: (bounds.left - camera.x) * camera.zoom,

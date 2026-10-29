@@ -15,6 +15,7 @@ import 'native_path_moves.dart';
 import 'native_folder_commands.dart';
 import 'native_vault_lock.dart';
 import 'workspace_store.dart';
+import 'object_encoding_execution.dart';
 
 part 'native_sync_staging.dart';
 
@@ -607,7 +608,10 @@ class NativeWorkspaceStore
       'target': relativePath,
       'temp': tempPath,
       'beforeHash': expectedHash,
-      'afterHash': sha256.convert(bytes).toString(),
+      'afterHash': await runObjectEncoding(
+        () => sha256.convert(bytes).toString(),
+        size: bytes.length,
+      ),
       'beforePath': before == null ? null : '$area/history/$commandId.before',
     };
     await journal.writeAsString(jsonEncode(record), flush: true);

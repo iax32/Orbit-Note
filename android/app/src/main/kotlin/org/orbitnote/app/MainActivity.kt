@@ -3,12 +3,19 @@ package org.orbitnote.app
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    private val vaultFolders by lazy { AndroidVaultFolderPicker(this) }
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (!vaultFolders.onResult(requestCode, resultCode, data)) {
+            super.onActivityResult(requestCode, resultCode, data)
+        }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         OrbitBackgroundJobs.pause(this)
         super.onCreate(savedInstanceState)
@@ -23,6 +30,11 @@ class MainActivity : FlutterActivity() {
     }
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "orbit_note/vault_folders")
+            .setMethodCallHandler { call, result ->
+                if (call.method == "importFolder") vaultFolders.open(result)
+                else result.notImplemented()
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "orbit_note/background_sync")
             .setMethodCallHandler { call, result ->
                 if (call.method != "configure") result.notImplemented()

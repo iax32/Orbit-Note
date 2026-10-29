@@ -40,6 +40,7 @@ import '../domain/search_text.dart';
 import '../domain/work_session.dart';
 import '../domain/project_context.dart';
 import 'session_state.dart';
+import 'canvas_performance.dart';
 import '../domain/smart_view_query.dart';
 import '../domain/task_planning.dart';
 import '../domain/gantt_planning.dart';
@@ -6453,13 +6454,19 @@ ${links(against)}
       notify();
       return;
     }
-    if ((title == null || title == object.title) &&
+    final perf = CanvasPerformance.instance;
+    final comparisonStarted = perf.begin();
+    final unchanged =
+        (title == null || title == object.title) &&
         (body == null || body == object.body) &&
         (properties == null ||
             jsonEncode(properties) == jsonEncode(object.properties)) &&
-        (data == null || jsonEncode(data) == jsonEncode(object.data))) {
+        (data == null || jsonValuesEqual(data, object.data));
+    perf.duration(CanvasPerfEvent.draftCompare, 0, comparisonStarted);
+    if (unchanged) {
       return;
     }
+    final snapshotStarted = perf.begin();
     final updated = object.copyWith(
       title: title,
       body: body,
@@ -6467,6 +6474,7 @@ ${links(against)}
       data: data,
       updatedAt: DateTime.now().toUtc(),
     );
+    perf.duration(CanvasPerfEvent.draftSnapshot, 0, snapshotStarted);
     if (properties != null &&
         properties['completed'] == true &&
         object.properties['completed'] != true) {
@@ -6490,7 +6498,9 @@ ${links(against)}
       final interval = session.autoSaveInterval.clamp(200, 10000);
       _timers[id] = Timer(Duration(milliseconds: interval), () => flush(id));
     }
+    final notifyStarted = perf.begin();
     notify();
+    perf.duration(CanvasPerfEvent.draftNotify, 0, notifyStarted);
   }
 
   Future<void> flush(String id) async {

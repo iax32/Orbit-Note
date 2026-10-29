@@ -1,5 +1,6 @@
 import '../../canvas/university_glyph.dart';
 import '../../canvas/presentation.dart';
+import '../../app/canvas_performance.dart';
 import 'dart:math' as math;
 import 'dart:async';
 import 'dart:collection';
@@ -563,6 +564,7 @@ class OrbitCanvasPainter extends CustomPainter {
     this.failedImages = const {},
     this.paintElements,
     this.paintOverlays = true,
+    this.performanceSurface = 0,
   }) : sceneRevision = scene.revision,
        super(repaint: inkCache);
   final CanvasTextCache textCache;
@@ -574,6 +576,15 @@ class OrbitCanvasPainter extends CustomPainter {
   /// Immutable spatial working set supplied by a retained scene tile.
   final List<CanvasElement>? paintElements;
   final bool paintOverlays;
+  late final bool _independentInk =
+      transparentBackground &&
+      !paintOverlays &&
+      paintElements != null &&
+      paintElements!.isNotEmpty &&
+      paintElements!.every(
+        (e) => e.type == 'ink' && !isInteractionItem(e) && !isUniversityItem(e),
+      );
+  final int performanceSurface;
   final int sceneRevision;
   final CanvasScene scene;
   final CanvasCamera camera;
@@ -610,6 +621,22 @@ class OrbitCanvasPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final perf = CanvasPerformance.instance;
+    final started = performanceSurface == 0 ? null : perf.begin();
+    try {
+      _paintScene(canvas, size);
+    } finally {
+      perf.duration(CanvasPerfEvent.scenePaint, performanceSurface, started, {
+        'elements': paintElements?.length ?? scene.length,
+        'cached': inkCache?.entryCount ?? 0,
+        'samples': inkCache?.retainedSamples ?? 0,
+        'recordings': inkCache?.recordingCount ?? 0,
+        'overlay': paintOverlays ? 1 : 0,
+      });
+    }
+  }
+
+  void _paintScene(Canvas canvas, Size size) {
     canvas.save();
     canvas.clipRect(Offset.zero & size);
     if (!transparentBackground) {
@@ -1509,6 +1536,7 @@ class OrbitCanvasPainter extends CustomPainter {
     List<CanvasPoint>? inkPoints,
     List<Map>? inkSamples,
     bool? inkHasPressure,
+    Path? inkPath,
     int startSegment = 0,
     int? endSegment,
   }) {
@@ -1705,11 +1733,13 @@ class OrbitCanvasPainter extends CustomPainter {
         );
       }
     } else {
-      final path = Path()
-        ..moveTo(element.x + points.first.x, element.y + points.first.y);
-      if (points.length == 2) {
+      final path =
+          inkPath ??
+          (Path()
+            ..moveTo(element.x + points.first.x, element.y + points.first.y));
+      if (inkPath == null && points.length == 2) {
         path.lineTo(element.x + points[1].x, element.y + points[1].y);
-      } else {
+      } else if (inkPath == null) {
         for (var i = 1; i < points.length - 1; i++) {
           final p1 = points[i];
           final p2 = points[i + 1];
@@ -3880,47 +3910,90 @@ class OrbitCanvasPainter extends CustomPainter {
   Rect _rect(CanvasBounds bounds) =>
       Rect.fromLTWH(bounds.left, bounds.top, bounds.width, bounds.height);
   @override
-  bool shouldRepaint(covariant OrbitCanvasPainter oldDelegate) =>
-      !identical(scene, oldDelegate.scene) ||
-      (paintElements == null || oldDelegate.paintElements == null
-          ? sceneRevision != oldDelegate.sceneRevision
-          : !listEquals(paintElements, oldDelegate.paintElements) ||
-                sceneRevision != oldDelegate.sceneRevision &&
-                    (paintOverlays &&
-                            (selection.isNotEmpty ||
-                                searchMatchIds.isNotEmpty ||
-                                tracedConnectorId != null) ||
-                        paintElements!.any(
-                          (e) => isConnectorElement(e) || e.type == 'column',
-                        ))) ||
-      inkCache != oldDelegate.inkCache ||
-      paintOverlays != oldDelegate.paintOverlays ||
-      devicePixelRatio != oldDelegate.devicePixelRatio ||
-      tracedConnectorId != oldDelegate.tracedConnectorId ||
-      camera.x != oldDelegate.camera.x ||
-      camera.y != oldDelegate.camera.y ||
-      camera.zoom != oldDelegate.camera.zoom ||
-      !mapEquals(revealProgress, oldDelegate.revealProgress) ||
-      forceUmlDetails != oldDelegate.forceUmlDetails ||
-      fontFamily != oldDelegate.fontFamily ||
-      !setEquals(selection, oldDelegate.selection) ||
-      !mapEquals(objects, oldDelegate.objects) ||
-      !mapEquals(images, oldDelegate.images) ||
-      !setEquals(failedImages, oldDelegate.failedImages) ||
-      colors != oldDelegate.colors ||
-      semanticColors != oldDelegate.semanticColors ||
-      region != oldDelegate.region ||
-      !listEquals(lassoPoints, oldDelegate.lassoPoints) ||
-      preview != oldDelegate.preview ||
-      editingId != oldDelegate.editingId ||
-      backgroundStyle != oldDelegate.backgroundStyle ||
-      hoveredAnchorElementId != oldDelegate.hoveredAnchorElementId ||
-      connectingStartElementId != oldDelegate.connectingStartElementId ||
-      transparentBackground != oldDelegate.transparentBackground ||
-      !setEquals(exportElementIds, oldDelegate.exportElementIds) ||
-      !setEquals(searchMatchIds, oldDelegate.searchMatchIds) ||
-      activeSearchMatchId != oldDelegate.activeSearchMatchId ||
-      !listEquals(guides, oldDelegate.guides);
+  bool shouldRepaint(covariant OrbitCanvasPainter oldDelegate) {
+    final result = _independentInk && oldDelegate._independentInk
+        ? !listEquals(paintElements, oldDelegate.paintElements) ||
+              inkCache != oldDelegate.inkCache ||
+              devicePixelRatio != oldDelegate.devicePixelRatio ||
+              camera.x != oldDelegate.camera.x ||
+              camera.y != oldDelegate.camera.y ||
+              camera.zoom != oldDelegate.camera.zoom ||
+              editingId != oldDelegate.editingId ||
+              !mapEquals(revealProgress, oldDelegate.revealProgress) ||
+              !setEquals(exportElementIds, oldDelegate.exportElementIds)
+        : !identical(scene, oldDelegate.scene) ||
+              (paintElements == null || oldDelegate.paintElements == null
+                  ? sceneRevision != oldDelegate.sceneRevision
+                  : !listEquals(paintElements, oldDelegate.paintElements) ||
+                        sceneRevision != oldDelegate.sceneRevision &&
+                            (paintOverlays &&
+                                    (selection.isNotEmpty ||
+                                        searchMatchIds.isNotEmpty ||
+                                        tracedConnectorId != null) ||
+                                paintElements!.any(
+                                  (e) =>
+                                      isConnectorElement(e) ||
+                                      e.type == 'column',
+                                ))) ||
+              inkCache != oldDelegate.inkCache ||
+              paintOverlays != oldDelegate.paintOverlays ||
+              devicePixelRatio != oldDelegate.devicePixelRatio ||
+              tracedConnectorId != oldDelegate.tracedConnectorId ||
+              camera.x != oldDelegate.camera.x ||
+              camera.y != oldDelegate.camera.y ||
+              camera.zoom != oldDelegate.camera.zoom ||
+              !mapEquals(revealProgress, oldDelegate.revealProgress) ||
+              forceUmlDetails != oldDelegate.forceUmlDetails ||
+              fontFamily != oldDelegate.fontFamily ||
+              !setEquals(selection, oldDelegate.selection) ||
+              !mapEquals(objects, oldDelegate.objects) ||
+              !mapEquals(images, oldDelegate.images) ||
+              !setEquals(failedImages, oldDelegate.failedImages) ||
+              colors != oldDelegate.colors ||
+              semanticColors != oldDelegate.semanticColors ||
+              region != oldDelegate.region ||
+              !listEquals(lassoPoints, oldDelegate.lassoPoints) ||
+              preview != oldDelegate.preview ||
+              editingId != oldDelegate.editingId ||
+              backgroundStyle != oldDelegate.backgroundStyle ||
+              hoveredAnchorElementId != oldDelegate.hoveredAnchorElementId ||
+              connectingStartElementId !=
+                  oldDelegate.connectingStartElementId ||
+              transparentBackground != oldDelegate.transparentBackground ||
+              !setEquals(exportElementIds, oldDelegate.exportElementIds) ||
+              !setEquals(searchMatchIds, oldDelegate.searchMatchIds) ||
+              activeSearchMatchId != oldDelegate.activeSearchMatchId ||
+              !listEquals(guides, oldDelegate.guides);
+    final perf = CanvasPerformance.instance;
+    if (result && performanceSurface != 0 && perf.enabled) {
+      var flags = 0;
+      if (!identical(scene, oldDelegate.scene) ||
+          sceneRevision != oldDelegate.sceneRevision) {
+        flags |= 1;
+      }
+      if (!listEquals(paintElements, oldDelegate.paintElements)) flags |= 2;
+      if (camera.x != oldDelegate.camera.x ||
+          camera.y != oldDelegate.camera.y ||
+          camera.zoom != oldDelegate.camera.zoom) {
+        flags |= 4;
+      }
+      if (colors != oldDelegate.colors ||
+          semanticColors != oldDelegate.semanticColors) {
+        flags |= 8;
+      }
+      if (!mapEquals(images, oldDelegate.images)) flags |= 16;
+      if (!mapEquals(objects, oldDelegate.objects)) flags |= 32;
+      if (!setEquals(selection, oldDelegate.selection) ||
+          preview != oldDelegate.preview ||
+          region != oldDelegate.region ||
+          tracedConnectorId != oldDelegate.tracedConnectorId) {
+        flags |= 64;
+      }
+      if (flags == 0) flags = 128;
+      perf.invalidation(performanceSurface, flags);
+    }
+    return result;
+  }
 }
 
 /// High-fidelity raster PNG export for a [CanvasScene].

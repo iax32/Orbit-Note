@@ -65,7 +65,11 @@ class WorkspaceSyncReplica implements SyncReplica {
   Future<SyncInventory> _inventory() async {
     _check();
     await repository._verifyManifest();
-    final result = await captureSyncInventory(repository._store, workspaceId);
+    final result = await captureSyncInventory(
+      repository._store,
+      workspaceId,
+      knownObjects: repository._inventoryObjects,
+    );
     _check();
     if (!result.ready) throw WorkspaceFailure(result.issues.join('\n'));
     return result;

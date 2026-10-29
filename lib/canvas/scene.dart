@@ -1,4 +1,6 @@
 import 'dart:math' as math;
+import '../domain/universal_object.dart'
+    show immutableObjectData, isImmutableObjectData;
 
 import 'connectors.dart';
 import 'use_case_routing.dart';
@@ -25,7 +27,8 @@ const canvasElementTypes = {
 };
 
 class CanvasElement {
-  CanvasElement(Map<String, dynamic> data) : data = Map.unmodifiable(data);
+  CanvasElement(Map<String, dynamic> data)
+    : data = isImmutableObjectData(data) ? data : Map.unmodifiable(data);
   final Map<String, dynamic> data;
   String get id => data['id'] is String ? data['id'] as String : '';
   String get type => data['type'] is String ? data['type'] as String : '';
@@ -262,7 +265,9 @@ class CanvasScene {
       for (var i = 0; i < items.length; i++) {
         final raw = items[i];
         if (raw is Map && raw.keys.every((key) => key is String)) {
-          final element = CanvasElement(Map<String, dynamic>.from(raw));
+          final element = CanvasElement(
+            raw is Map<String, dynamic> ? raw : Map<String, dynamic>.from(raw),
+          );
           if (element.id.isNotEmpty && !_elements.containsKey(element.id)) {
             _elements[element.id] = element;
             _order[element.id] = i;
@@ -560,10 +565,17 @@ class CanvasScene {
 
   int? orderOf(String id) => _order[id];
 
+  int _orderedRevision = -1;
+  List<CanvasElement> _orderedElements = const [];
   List<CanvasElement> get elementsInOrder {
-    final list = _elements.values.toList();
-    list.sort((a, b) => _order[a.id]!.compareTo(_order[b.id]!));
-    return list;
+    if (_orderedRevision != revision) {
+      final list = _elements.values.toList();
+      list.sort((a, b) => _order[a.id]!.compareTo(_order[b.id]!));
+      _orderedElements = List.unmodifiable(list);
+      _orderedRevision = revision;
+    }
+    // Keep the existing caller-owned, mutable list API; only the sort is shared.
+    return List.of(_orderedElements);
   }
 
   void bringToFront(String id) {
@@ -620,6 +632,23 @@ class CanvasScene {
       _order[prevId] = currentOrder;
     }
   }
+
+  /// Immutable command snapshot. Reuse owned records rather than copy/freeze
+  /// all unchanged element maps after every stroke. Unowned legacy input is
+  /// still detached on each call, so nested external aliases cannot mutate a
+  /// captured snapshot or be incorrectly hidden by an identity cache.
+  Map<String, dynamic> snapshotJson() => immutableObjectData(
+    readOnly
+        ? _root
+        : {
+            ..._root,
+            'schemaVersion': 1,
+            'elements': [
+              for (final element in elementsInOrder) element.data,
+              ..._opaque,
+            ],
+          },
+  );
 
   Map<String, dynamic> toJson() => readOnly
       ? Map.of(_root)
@@ -713,6 +742,7 @@ class CanvasHistory {
           scene.put(element);
           if (entry.value.order != null) {
             scene._order[entry.key] = entry.value.order!;
+            scene._orderedRevision = -1;
           }
         }
       }

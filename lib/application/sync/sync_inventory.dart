@@ -31,15 +31,19 @@ class SyncFootprint {
   final int files, bytes, largest;
 }
 
+typedef SyncInventoryObject = ({String hash, UniversalObject object});
+
 /// Invoked under the repository command queue. It never rewrites a file or index.
 /// Unknown authored files block complete-sync claims instead of being discarded.
 Future<SyncInventory> captureSyncInventory(
   WorkspaceStore store,
-  String workspaceId,
-) async {
+  String workspaceId, {
+  Map<String, SyncInventoryObject> knownObjects = const {},
+}) async {
   final entries = <String, SyncEntry>{}, sources = <String, String>{};
   final issues = <String>[];
-  final objects = <UniversalObject>[];
+  final objects = <SyncObjectHeader>[];
+  final codec = ObjectCodec();
   final attachmentHashes = <String, String>{};
   final paths = await store.listFiles();
   final deviceBytes = await store.read('.orbit/device/settings.json');
@@ -86,7 +90,7 @@ Future<SyncInventory> captureSyncInventory(
       } else {
         final bytes = await store.read(path);
         if (bytes == null) throw const WorkspaceConflict('File disappeared.');
-        hash = sha256.convert(bytes).toString();
+        hash = await codec.hashBytes(bytes);
         if (role == SyncPathRole.attachment) {
           key = 'blob:$path';
           attachmentHashes[path] = hash;
@@ -111,12 +115,18 @@ Future<SyncInventory> captureSyncInventory(
           logicalPath = record.path;
           deleted = true;
         } else {
-          final object = ObjectCodec().decode(
-            utf8.decode(bytes),
-            workspaceId,
-            markdown: path.endsWith('.md'),
-          );
-          if (object.isReadOnly) {
+          final known = knownObjects[path];
+          final object =
+              known != null &&
+                  known.hash == hash &&
+                  known.object.workspaceId == workspaceId
+              ? objectSyncHeader(known.object)
+              : await codec.inspectForSync(
+                  bytes,
+                  workspaceId,
+                  markdown: path.endsWith('.md'),
+                );
+          if (object.readOnly) {
             throw const WorkspaceReadOnly('Newer object format.');
           }
           objects.add(object);
@@ -141,10 +151,10 @@ Future<SyncInventory> captureSyncInventory(
     issues.add('A valid Vault manifest is required.');
   }
   for (final object in objects.where((o) => o.typeId == 'orbit.file')) {
-    final path = object.properties['contentRef'];
-    if (path is! String ||
+    final path = object.attachmentPath;
+    if (path == null ||
         !attachmentHashes.containsKey(path) ||
-        attachmentHashes[path] != object.properties['checksum']) {
+        attachmentHashes[path] != object.attachmentHash) {
       issues.add('Attachment is missing or changed for object ${object.id}.');
     }
   }

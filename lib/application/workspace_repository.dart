@@ -287,8 +287,18 @@ class WorkspaceRepository {
   Future<SyncInventory> syncInventory() => _serial(() async {
     _requireWritable();
     await _verifyManifest();
-    return captureSyncInventory(_store, workspaceId);
+    return captureSyncInventory(
+      _store,
+      workspaceId,
+      knownObjects: _inventoryObjects,
+    );
   });
+
+  Map<String, SyncInventoryObject> get _inventoryObjects => {
+    for (final entry in _paths.entries)
+      if (_hashes[entry.key] != null && _objects[entry.key] != null)
+        entry.value: (hash: _hashes[entry.key]!, object: _objects[entry.key]!),
+  };
 
   bool get supportsFileSync =>
       _store is WorkspaceStreamingStore &&
@@ -424,6 +434,7 @@ class WorkspaceRepository {
 
   Future<void> initialize({String? path}) => _serial(() async {
     _syncGeneration++;
+    await _codec.close();
     await _index.close();
     _indexReady = false;
     _initialized = false;
@@ -525,53 +536,53 @@ class WorkspaceRepository {
     }
   }
 
-  Future<bool> hasExternalChanges({
-    Set<String>? changedPaths,
-  }) => _serial(() async {
-    _requireOpen();
-    await _verifyManifest();
-    if (changedPaths != null && !changedPaths.contains('*')) {
-      final byPath = {
-        for (final entry in _paths.entries) entry.value: entry.key,
-      };
-      for (final path in changedPaths) {
-        if (path == 'workspace.json') continue;
-        final canonical =
-            (path.startsWith('Notes/') && path.endsWith('.md')) ||
-            (path.startsWith('Objects/') && path.endsWith('.object.json')) ||
-            (path.startsWith('Boards/') && path.endsWith('.board.json')) ||
-            (path.startsWith('Drawings/') && path.endsWith('.drawing.json'));
-        if (!canonical) continue;
-        final id = byPath[path];
-        if (id == null) return true;
-        final bytes = await _store.read(path);
-        if (bytes == null || sha256.convert(bytes).toString() != _hashes[id]) {
+  Future<bool> hasExternalChanges({Set<String>? changedPaths}) => _serial(
+    () async {
+      _requireOpen();
+      await _verifyManifest();
+      if (changedPaths != null && !changedPaths.contains('*')) {
+        final byPath = {
+          for (final entry in _paths.entries) entry.value: entry.key,
+        };
+        for (final path in changedPaths) {
+          if (path == 'workspace.json') continue;
+          final canonical =
+              (path.startsWith('Notes/') && path.endsWith('.md')) ||
+              (path.startsWith('Objects/') && path.endsWith('.object.json')) ||
+              (path.startsWith('Boards/') && path.endsWith('.board.json')) ||
+              (path.startsWith('Drawings/') && path.endsWith('.drawing.json'));
+          if (!canonical) continue;
+          final id = byPath[path];
+          if (id == null) return true;
+          final bytes = await _store.read(path);
+          if (bytes == null || await _codec.hashBytes(bytes) != _hashes[id]) {
+            return true;
+          }
+        }
+        return false;
+      }
+      final files = (await _store.listFiles())
+          .where(
+            (p) =>
+                (p.startsWith('Notes/') && p.endsWith('.md')) ||
+                (p.startsWith('Objects/') && p.endsWith('.object.json')) ||
+                (p.startsWith('Boards/') && p.endsWith('.board.json')) ||
+                (p.startsWith('Drawings/') && p.endsWith('.drawing.json')),
+          )
+          .toSet();
+      if (files.length != _paths.length || !files.containsAll(_paths.values)) {
+        return true;
+      }
+      for (final entry in _paths.entries) {
+        final bytes = await _store.read(entry.value);
+        if (bytes == null ||
+            await _codec.hashBytes(bytes) != _hashes[entry.key]) {
           return true;
         }
       }
       return false;
-    }
-    final files = (await _store.listFiles())
-        .where(
-          (p) =>
-              (p.startsWith('Notes/') && p.endsWith('.md')) ||
-              (p.startsWith('Objects/') && p.endsWith('.object.json')) ||
-              (p.startsWith('Boards/') && p.endsWith('.board.json')) ||
-              (p.startsWith('Drawings/') && p.endsWith('.drawing.json')),
-        )
-        .toSet();
-    if (files.length != _paths.length || !files.containsAll(_paths.values)) {
-      return true;
-    }
-    for (final entry in _paths.entries) {
-      final bytes = await _store.read(entry.value);
-      if (bytes == null ||
-          sha256.convert(bytes).toString() != _hashes[entry.key]) {
-        return true;
-      }
-    }
-    return false;
-  });
+    },
+  );
   Future<void> _refresh() async {
     _requireOpen();
     if (_store is WorkspaceFolderStore) {
@@ -638,7 +649,7 @@ class WorkspaceRepository {
       try {
         final bytes = await _store.read(path);
         if (bytes == null) continue;
-        final hash = sha256.convert(bytes).toString();
+        final hash = await _codec.hashBytes(bytes);
         final previousId = previousIds[path];
         // Preserve immutable snapshots for byte-identical owning files. A sync
         // refresh of one note must not invalidate every PDF/Canvas/editor cache.
@@ -648,11 +659,11 @@ class WorkspaceRepository {
                 _sources.containsKey(previousId)
             ? _objects[previousId]
             : null;
-        final source = retained == null
-            ? utf8.decode(bytes)
-            : _sources[previousId]!;
-        final object =
-            retained ?? _codec.decode(source, workspaceId, markdown: markdown);
+        final decoded = retained == null
+            ? await _codec.decodeForLoad(bytes, workspaceId, markdown: markdown)
+            : null;
+        final source = decoded?.source ?? _sources[previousId]!;
+        final object = retained ?? decoded!.object;
         if (objects.containsKey(object.id)) {
           _readOnly = true;
           _addIssue(
@@ -750,7 +761,7 @@ class WorkspaceRepository {
   }) async {
     _requireWritable();
     await _verifyManifest();
-    _validate(object);
+    _validate(object, checkJson: false);
     final existing = _objects[object.id];
     if (object.properties['researchDossier'] != null &&
         jsonEncode(object.properties['researchDossier']) !=
@@ -914,8 +925,13 @@ class WorkspaceRepository {
       updatedAt: DateTime.now().toUtc(),
     );
     final path = _paths[object.id] ?? _newPath(object);
-    final source = _codec.encode(saved, previousSource: _sources[object.id]);
-    final bytes = _bytes(source);
+    final encoded = await _codec.encodeForSave(
+      saved,
+      previousObject: existing,
+      previousSource: _sources[object.id],
+    );
+    final source = encoded.source;
+    final bytes = encoded.bytes;
     checkCurrent?.call();
     try {
       await _store.write(path, bytes, expectedHash: _hashes[object.id]);
@@ -937,7 +953,7 @@ class WorkspaceRepository {
     _objects[object.id] = saved;
     _paths[object.id] = path;
     _sources[object.id] = source;
-    _hashes[object.id] = sha256.convert(bytes).toString();
+    _hashes[object.id] = encoded.hash;
     if (_indexReady && saved.typeId != PortablePreferences.typeId) {
       try {
         await _index.upsert(saved);
@@ -1737,6 +1753,7 @@ class WorkspaceRepository {
 
   Future<void> close() => _serial(() async {
     _syncGeneration++;
+    await _codec.close();
     await _index.close();
     await _store.close();
     _initialized = false;
@@ -1758,7 +1775,7 @@ class WorkspaceRepository {
     }
   }
 
-  void _validate(UniversalObject object) {
+  void _validate(UniversalObject object, {bool checkJson = true}) {
     if (object.workspaceId != workspaceId) {
       throw const WorkspaceFailure('Object belongs to another workspace.');
     }
@@ -1816,8 +1833,9 @@ class WorkspaceRepository {
       }
       SmartViewQuery(Map<String, dynamic>.from(raw));
     }
-    // JSON rejects non-finite geometry and unsupported runtime objects.
-    jsonEncode({'object': object.toJson(), 'data': object.data});
+    // The save encoder validates portable JSON before any file is staged. Do
+    // not serialize a large drawing twice on the UI thread just to validate it.
+    if (checkJson) jsonEncode({'object': object.toJson(), 'data': object.data});
   }
 
   String _newPath(UniversalObject object) {

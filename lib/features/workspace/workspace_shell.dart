@@ -56,6 +56,7 @@ import '../../application/backup_bundle.dart';
 import '../../application/workspace_repository.dart';
 import '../../platform/import_backup.dart';
 import '../../platform/vault_folder.dart';
+import '../../platform/android_vault_folders.dart';
 import '../../platform/export_file.dart';
 import '../../platform/open_attachment.dart';
 import '../canvas/canvas_editor.dart';
@@ -259,11 +260,76 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       message('Resolve unsaved changes before opening another workspace.');
       return;
     }
+    if (!mounted) return;
     try {
-      final path = await getDirectoryPath(confirmButtonText: 'Open workspace');
-      if (path != null) await c.initialize(path: path);
+      String? path;
+      if (usesAndroidVaultFolders) {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => OrbitDialog(
+            title: const Text('Import a Vault folder'),
+            content: const Text(
+              'Choose the folder containing workspace.json. Orbit will copy its notes, drawings, attachments and history into local app storage. The original folder stays unchanged. Close the Vault in the other app before importing.\n\nCompatible Vaults from other Orbit versions work too. Newer storage formats keep their read-only protection. Use Drive or live sharing to keep devices connected afterward.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Choose Vault folder'),
+              ),
+            ],
+          ),
+        );
+        if (confirmed != true || !mounted) return;
+        path = await _importAndroidFolder();
+      } else {
+        path = await getDirectoryPath(confirmButtonText: 'Open workspace');
+      }
+      if (path == null) return;
+      await c.initialize(path: path);
+      if (c.error != null) message(c.error!);
     } catch (e) {
-      message('Could not open workspace: $e');
+      message(
+        e is PlatformException
+            ? e.message ?? 'Could not open the selected Vault folder.'
+            : 'Could not open workspace: $e',
+      );
+    }
+  }
+
+  Future<String?> _importAndroidFolder() async {
+    // Cover the entire picker/copy operation. A second tap must not start a
+    // concurrent import; Android streams large attachments off the UI thread.
+    final progress = DialogRoute<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const PopScope(
+        canPop: false,
+        child: OrbitDialog(
+          title: Text('Importing Vault'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Choose your folder in Android. Large Vaults can take a moment to copy. Your original files stay unchanged.',
+              ),
+              SizedBox(height: 20),
+              LinearProgressIndicator(),
+            ],
+          ),
+        ),
+      ),
+    );
+    final navigator = Navigator.of(context);
+    unawaited(navigator.push(progress));
+    try {
+      return await importAndroidVaultFolder();
+    } finally {
+      if (progress.isActive) navigator.removeRoute(progress);
     }
   }
 
@@ -314,11 +380,16 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       }
       final name = await vaultName();
       if (name == null) return;
-      final parent = await getDirectoryPath(
-        confirmButtonText: 'Create Vault here',
-      );
-      if (parent == null) return;
-      final path = await createVaultFolder(parent, name);
+      final String path;
+      if (usesAndroidVaultFolders) {
+        path = await createLocalVaultFolder(name);
+      } else {
+        final parent = await getDirectoryPath(
+          confirmButtonText: 'Create Vault here',
+        );
+        if (parent == null) return;
+        path = await createVaultFolder(parent, name);
+      }
       await c.initialize(path: path);
       if (c.hasWorkspace && c.repository.location == path) {
         await c.renameWorkspace(name);
@@ -373,9 +444,15 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                   ),
                   ListTile(
                     leading: const Icon(Icons.folder_open),
-                    title: const Text('Open Folder as Vault'),
-                    subtitle: const Text(
-                      'Open an existing directory on your device',
+                    title: Text(
+                      usesAndroidVaultFolders
+                          ? 'Import Vault folder'
+                          : 'Open Folder as Vault',
+                    ),
+                    subtitle: Text(
+                      usesAndroidVaultFolders
+                          ? 'Open a local copy; original folder stays unchanged'
+                          : 'Open an existing directory on your device',
                     ),
                     onTap: () {
                       Navigator.pop(dialogContext);
@@ -1916,7 +1993,11 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                       OutlinedButton.icon(
                         onPressed: openWorkspace,
                         icon: const Icon(Icons.folder_open),
-                        label: const Text('Open Folder'),
+                        label: Text(
+                          usesAndroidVaultFolders
+                              ? 'Import Vault folder'
+                              : 'Open Folder',
+                        ),
                       ),
                       TextButton(
                         onPressed: switchVault,

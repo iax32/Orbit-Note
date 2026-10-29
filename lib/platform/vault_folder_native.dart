@@ -1,5 +1,13 @@
 import 'dart:io';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+
+Future<String> createLocalVaultFolder(String name) async {
+  final parent = await Directory(
+    p.join((await getApplicationDocumentsDirectory()).path, 'Vaults'),
+  ).create(recursive: true);
+  return createVaultFolder(parent.path, name);
+}
 
 Future<String> createVaultFolder(String parent, String name) async {
   final label = name.trim();

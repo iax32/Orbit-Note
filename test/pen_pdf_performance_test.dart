@@ -298,12 +298,8 @@ void main() async {
         ),
       );
       await tester.pump();
-      final live = find.byWidgetPredicate(
-        (w) => w is CustomPaint && w.painter is CanvasLiveInkPainter,
-      );
-      final firstPreview =
-          (tester.widget<CustomPaint>(live).painter as CanvasLiveInkPainter)
-              .stroke()!;
+      final live = find.byType(CanvasLiveInkLayer);
+      final firstPreview = tester.widget<CanvasLiveInkLayer>(live).stroke()!;
       final savedScenePainter = tester.widget<CustomPaint>(surface).painter;
       // Two palm contacts must not cancel a captured stylus.
       for (final pointer in [98, 99]) {

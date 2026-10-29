@@ -608,7 +608,10 @@ void main() {
       );
       await tester.pump();
       final surface = find.byWidgetPredicate(
-        (w) => w is CustomPaint && w.painter is OrbitCanvasPainter,
+        (w) =>
+            w is CustomPaint &&
+            w.painter is OrbitCanvasPainter &&
+            (w.painter as OrbitCanvasPainter).paintOverlays,
       );
       final origin = tester.getTopLeft(surface);
       final gesture = await tester.startGesture(

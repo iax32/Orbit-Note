@@ -752,7 +752,7 @@ class OrbitColors extends ThemeExtension<OrbitColors> {
 
   @override
   OrbitColors lerp(covariant OrbitColors? other, double t) {
-    if (other == null) return this;
+    if (other == null || other == this) return this;
     return OrbitColors(
       background: Color.lerp(background, other.background, t)!,
       workspace: Color.lerp(workspace, other.workspace, t)!,

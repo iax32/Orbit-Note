@@ -18,6 +18,7 @@ import '../../app/orbit_theme.dart';
 import 'dart:async';
 import 'canvas_live_ink.dart';
 import 'canvas_scene_viewport.dart';
+import '../../app/canvas_performance.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -237,6 +238,28 @@ class _CanvasEditorState extends State<CanvasEditor> {
       widget.focusMode && widget.onToggleFocusMode != null;
   bool _laserMode = false;
   final _captureSurface = GlobalKey();
+  final _performanceSurface = CanvasPerformance.instance.attach();
+  int? _performanceRevision;
+  final _dataComparison = ImmutableJsonEqualityCache();
+  void _recordPerformanceContext() {
+    if (_performanceRevision == _scene.revision) return;
+    _performanceRevision = _scene.revision;
+    var ink = 0, points = 0;
+    for (final element in _scene.elements) {
+      if (element.type == 'ink') {
+        ink++;
+        final samples = element.data['points'];
+        if (samples is List) points += samples.length;
+      }
+    }
+    CanvasPerformance.instance.context(_performanceSurface, {
+      'elements': _scene.length,
+      'strokes': ink,
+      'samples': points,
+      'revision': _scene.revision,
+    });
+  }
+
   Future<void> _editReferenceDetails() async {
     if (_readOnly || _selection.length != 1) return;
     _finishText();
@@ -482,6 +505,16 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   void _onCanvasHover(PointerHoverEvent event) {
+    final perf = CanvasPerformance.instance;
+    final started = perf.begin();
+    try {
+      _updateCanvasHover(event);
+    } finally {
+      perf.duration(CanvasPerfEvent.hover, _performanceSurface, started);
+    }
+  }
+
+  void _updateCanvasHover(PointerHoverEvent event) {
     if (_panning || _pointer != null || _resizing || _editingId != null) {
       if (_hoveredConnectorId != null) {
         setState(() => _hoveredConnectorId = null);
@@ -490,7 +523,16 @@ class _CanvasEditorState extends State<CanvasEditor> {
       return;
     }
     final worldPos = _world(event.localPosition);
-    final hit = _scene.hit(worldPos, tolerance: 4 / _camera.zoom);
+    final tolerance = 4 / _camera.zoom;
+    // Hover feedback only targets cards/connectors. On an ink-only board there
+    // is no reason to walk every pressure segment just to produce no tooltip.
+    // If a target exists, keep the full hit test: overlaid ink still occludes it.
+    final nearby = _scene.query(
+      CanvasBounds(worldPos.x, worldPos.y, 0, 0).inflate(tolerance),
+    );
+    final hit = nearby.any((e) => e.type == 'card' || isConnectorElement(e))
+        ? _scene.hit(worldPos, tolerance: tolerance)
+        : null;
     final connector = hit != null && isConnectorElement(hit) ? hit.id : null;
     if (connector != _hoveredConnectorId) {
       setState(() => _hoveredConnectorId = connector);
@@ -669,6 +711,11 @@ class _CanvasEditorState extends State<CanvasEditor> {
       _images = CanvasImageCache(
         loader: loader,
         onChanged: () {
+          CanvasPerformance.instance.event(
+            CanvasPerfEvent.imageChange,
+            _performanceSurface,
+            {'decoded': _images?.images.length ?? 0},
+          );
           if (mounted) setState(() {});
         },
       );
@@ -726,6 +773,8 @@ class _CanvasEditorState extends State<CanvasEditor> {
 
   @override
   void didUpdateWidget(covariant CanvasEditor oldWidget) {
+    final perf = CanvasPerformance.instance;
+    final started = perf.begin();
     super.didUpdateWidget(oldWidget);
     if (oldWidget.restoreViewSerial != widget.restoreViewSerial &&
         oldWidget.canvasId == widget.canvasId) {
@@ -744,10 +793,18 @@ class _CanvasEditorState extends State<CanvasEditor> {
       _interactionEpoch++;
       _clipboardPasteRequest++;
     }
+    final matchesExpected = widget.retainConflictingDraft
+        ? false
+        : (widget.draftBaseData != null
+              ? _dataComparison.matches(
+                  widget.data,
+                  _lastEmitted ?? oldWidget.data,
+                )
+              : jsonValuesEqual(widget.data, _lastEmitted ?? oldWidget.data));
     final externalSceneChange =
         !widget.retainConflictingDraft &&
         !identical(widget.data, _lastEmitted) &&
-        !jsonValuesEqual(widget.data, _lastEmitted ?? oldWidget.data);
+        !matchesExpected;
     // Guarded editors retain a competing gesture until it can be published as
     // a recoverable draft. Unguarded editors must adopt the external revision.
     if ((widget.readOnly ||
@@ -779,6 +836,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
       }
     }
     if (oldWidget.canvasId != widget.canvasId) {
+      _performanceRevision = null;
       _hoveredConnectorId = null;
       _inkCache.clear();
       _history = CanvasHistory(_makeScene(widget.data));
@@ -802,19 +860,26 @@ class _CanvasEditorState extends State<CanvasEditor> {
         (oldWidget.retainConflictingDraft ||
             !identical(oldWidget.data, widget.data)) &&
         !identical(widget.data, _lastEmitted) &&
-        !jsonValuesEqual(widget.data, _lastEmitted ?? oldWidget.data) &&
+        !matchesExpected &&
         !_history.inCommand) {
       // A genuine external revision replaces the scene; stale undo must not overwrite it.
       _history = CanvasHistory(_makeScene(widget.data));
+      _lastEmitted = null;
+      _dataComparison.clear();
       _selection.removeWhere((id) => _scene[id] == null);
     }
     if (!widget.retainConflictingDraft && !_history.inCommand) {
       _acceptedData = widget.draftBaseData ?? widget.data;
     }
+    perf.duration(CanvasPerfEvent.editorUpdate, _performanceSurface, started, {
+      'dataIdentityChanged': identical(oldWidget.data, widget.data) ? 0 : 1,
+      'externalSceneChange': externalSceneChange ? 1 : 0,
+    });
   }
 
   @override
   void dispose() {
+    CanvasPerformance.instance.detach(_performanceSurface);
     _stopEdgePan();
     _requestedRoutingScene = null;
     _clearPresence();
@@ -877,19 +942,31 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   void _emit() {
-    _publishPresenceSelection();
-    if (_readOnly) return;
-    final data = {
-      ..._scene.toJson(),
-      if (widget.data['canvasPreset'] != null) 'canvasPresetApplied': true,
-      'backgroundStyle': _backgroundStyle,
-    };
-    _lastEmitted = data;
-    final guarded = widget.onDraftChanged;
-    if (guarded == null) {
-      widget.onChanged(data);
-    } else if (guarded(_acceptedData, data)) {
-      _acceptedData = data;
+    final perf = CanvasPerformance.instance;
+    final started = perf.begin();
+    try {
+      _publishPresenceSelection();
+      if (_readOnly) return;
+      final snapshotStarted = perf.begin();
+      final data = {
+        ..._scene.snapshotJson(),
+        if (widget.data['canvasPreset'] != null) 'canvasPresetApplied': true,
+        'backgroundStyle': _backgroundStyle,
+      };
+      perf.duration(
+        CanvasPerfEvent.sceneSnapshot,
+        _performanceSurface,
+        snapshotStarted,
+      );
+      _lastEmitted = data;
+      final guarded = widget.onDraftChanged;
+      if (guarded == null) {
+        widget.onChanged(data);
+      } else if (guarded(_acceptedData, data)) {
+        _acceptedData = data;
+      }
+    } finally {
+      perf.duration(CanvasPerfEvent.save, _performanceSurface, started);
     }
   }
 
@@ -1588,6 +1665,8 @@ class _CanvasEditorState extends State<CanvasEditor> {
 
   CanvasElement? get _framePreview {
     if (!_inkPreviewDirty) return _preview;
+    final perf = CanvasPerformance.instance;
+    final started = perf.begin();
     _inkPreviewDirty = false;
     if (_ink.isEmpty) return _preview;
     final isHighlighter = _tool == _Tool.highlighter;
@@ -1605,6 +1684,9 @@ class _CanvasEditorState extends State<CanvasEditor> {
       'strokeWidth': strokeWidth,
       'penStyle': penStyle,
       'isHighlighter': isHighlighter,
+    });
+    perf.duration(CanvasPerfEvent.previewBuild, _performanceSurface, started, {
+      'samples': _ink.length,
     });
     return _preview;
   }
@@ -1729,27 +1811,29 @@ class _CanvasEditorState extends State<CanvasEditor> {
         maxX = math.max(maxX, x);
         maxY = math.max(maxY, y);
       }
-      final rawInkElement = CanvasElement({
-        'id': _id(),
-        'type': 'ink',
-        'x': minX,
-        'y': minY,
-        'width': math.max(1.0, maxX - minX),
-        'height': math.max(1.0, maxY - minY),
-        'color': _color,
-        'strokeWidth': strokeWidth,
-        'penStyle': penStyle,
-        'isHighlighter': isHighlighter,
-        'points': _ink
-            .map(
-              (p) => {
-                ...p,
-                'x': (p['x'] as double) - minX,
-                'y': (p['y'] as double) - minY,
-              },
-            )
-            .toList(),
-      });
+      final rawInkElement = CanvasElement(
+        immutableObjectData({
+          'id': _id(),
+          'type': 'ink',
+          'x': minX,
+          'y': minY,
+          'width': math.max(1.0, maxX - minX),
+          'height': math.max(1.0, maxY - minY),
+          'color': _color,
+          'strokeWidth': strokeWidth,
+          'penStyle': penStyle,
+          'isHighlighter': isHighlighter,
+          'points': _ink
+              .map(
+                (p) => {
+                  ...p,
+                  'x': (p['x'] as double) - minX,
+                  'y': (p['y'] as double) - minY,
+                },
+              )
+              .toList(),
+        }),
+      );
 
       if (_autoRecognizeInk && !isHighlighter) {
         final currentStrokePoints = _ink
@@ -6186,7 +6270,21 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   @override
-  Widget build(BuildContext context) => _initialRoutingLoading
+  Widget build(BuildContext context) {
+    final perf = CanvasPerformance.instance;
+    final started = perf.begin();
+    _recordPerformanceContext();
+    try {
+      return _buildEditor(context);
+    } finally {
+      perf.duration(CanvasPerfEvent.editorBuild, _performanceSurface, started, {
+        'revision': _scene.revision,
+        'elements': _scene.length,
+      });
+    }
+  }
+
+  Widget _buildEditor(BuildContext context) => _initialRoutingLoading
       ? Stack(
           children: [
             Center(
@@ -6350,16 +6448,49 @@ class _CanvasEditorState extends State<CanvasEditor> {
                                   child: Listener(
                                     behavior: HitTestBehavior.opaque,
                                     onPointerDown: (event) {
-                                      _down(event);
-                                      _sendPresence(event.localPosition);
+                                      final perf = CanvasPerformance.instance;
+                                      final started = perf.begin();
+                                      try {
+                                        _down(event);
+                                        _sendPresence(event.localPosition);
+                                      } finally {
+                                        perf.duration(
+                                          CanvasPerfEvent.inputStart,
+                                          _performanceSurface,
+                                          started,
+                                          {'kind': event.kind.index},
+                                        );
+                                      }
                                     },
                                     onPointerMove: (event) {
-                                      _move(event);
-                                      _sendPresence(event.localPosition);
+                                      final perf = CanvasPerformance.instance;
+                                      final started = perf.begin();
+                                      try {
+                                        _move(event);
+                                        _sendPresence(event.localPosition);
+                                      } finally {
+                                        perf.duration(
+                                          CanvasPerfEvent.input,
+                                          _performanceSurface,
+                                          started,
+                                          {'kind': event.kind.index},
+                                        );
+                                      }
                                     },
                                     onPointerUp: (event) {
-                                      _up(event);
-                                      _sendPresence(event.localPosition);
+                                      final perf = CanvasPerformance.instance;
+                                      final started = perf.begin();
+                                      try {
+                                        _up(event);
+                                        _sendPresence(event.localPosition);
+                                      } finally {
+                                        perf.duration(
+                                          CanvasPerfEvent.inputEnd,
+                                          _performanceSurface,
+                                          started,
+                                          {'kind': event.kind.index},
+                                        );
+                                      }
                                     },
                                     onPointerCancel: (event) {
                                       _touchPointers.remove(event.pointer);
@@ -6445,11 +6576,15 @@ class _CanvasEditorState extends State<CanvasEditor> {
                                               Positioned.fill(
                                                 child: CanvasSceneViewport(
                                                   key: _captureSurface,
+                                                  performanceSurface:
+                                                      _performanceSurface,
                                                   scene: _scene,
                                                   camera: _camera,
                                                   inkCache: _inkCache,
                                                   builder: (tileCamera, tileElements) => OrbitCanvasPainter(
                                                     paintElements: tileElements,
+                                                    performanceSurface:
+                                                        _performanceSurface,
                                                     transparentBackground: true,
                                                     paintOverlays:
                                                         tileElements.isEmpty,
@@ -6536,21 +6671,19 @@ class _CanvasEditorState extends State<CanvasEditor> {
                                               Positioned.fill(
                                                 child: IgnorePointer(
                                                   child: RepaintBoundary(
-                                                    child: CustomPaint(
-                                                      painter: CanvasLiveInkPainter(
-                                                        cache: _liveInkCache,
-                                                        changes:
-                                                            _liveInkChanges,
-                                                        stroke: () =>
-                                                            (_tool ==
-                                                                    _Tool.pen ||
-                                                                _tool ==
-                                                                    _Tool
-                                                                        .highlighter)
-                                                            ? _framePreview
-                                                            : null,
-                                                        camera: () => _camera,
-                                                      ),
+                                                    child: CanvasLiveInkLayer(
+                                                      performanceSurface:
+                                                          _performanceSurface,
+                                                      cache: _liveInkCache,
+                                                      changes: _liveInkChanges,
+                                                      stroke: () =>
+                                                          (_tool == _Tool.pen ||
+                                                              _tool ==
+                                                                  _Tool
+                                                                      .highlighter)
+                                                          ? _framePreview
+                                                          : null,
+                                                      camera: () => _camera,
                                                     ),
                                                   ),
                                                 ),

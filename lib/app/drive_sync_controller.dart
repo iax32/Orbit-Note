@@ -15,6 +15,7 @@ import '../application/sync/google_account.dart';
 import '../domain/workspace_failure.dart';
 import '../infrastructure/sync/google_drive_api.dart';
 import 'workspace_controller.dart';
+import 'canvas_performance.dart';
 import 'google_cloud_controller.dart';
 import 'collaboration_controller.dart';
 
@@ -129,8 +130,40 @@ class DriveSyncController extends ChangeNotifier {
   String? _activeSubject;
   bool _activeShared = false;
   bool _blocked = false, _wasReconnectRequired = false;
+  Object? _performanceState;
+  void _recordPerformanceState() {
+    final perf = CanvasPerformance.instance;
+    if (!perf.enabled) {
+      _performanceState = null;
+      return;
+    }
+    final state = (
+      enabled,
+      busy,
+      loading,
+      cloud.busy,
+      cloud.account != null,
+      cloud.reconnectRequired,
+      _sameOpening,
+    );
+    if (state == _performanceState) return;
+    _performanceState = state;
+    perf.event(CanvasPerfEvent.driveState, 0, {
+      'enabled': enabled ? 1 : 0,
+      'busy': busy ? 1 : 0,
+      'loading': loading ? 1 : 0,
+      'accountConnected': cloud.account != null ? 1 : 0,
+      'reconnectRequired': cloud.reconnectRequired ? 1 : 0,
+      'cloudBusy': cloud.busy ? 1 : 0,
+      'sameOpening': _sameOpening ? 1 : 0,
+    });
+  }
+
   void _notify() {
-    if (!_disposed) notifyListeners();
+    if (!_disposed) {
+      _recordPerformanceState();
+      notifyListeners();
+    }
   }
 
   bool get supported =>
@@ -602,10 +635,18 @@ class DriveSyncController extends ChangeNotifier {
   }
 
   Future<void> syncNow({bool force = false, bool remoteCheck = false}) async {
+    _recordPerformanceState();
     if (!_ready || busy || loading || cloud.busy) return;
     if (_blocked && !force) return;
     if (!force && retryAt != null && _now().isBefore(retryAt!)) return;
     final nonce = _nonce, serial = _changeSerial;
+    final perf = CanvasPerformance.instance;
+    final started = perf.begin();
+    perf.event(CanvasPerfEvent.driveSync, 0, {
+      'phase': 0,
+      'force': force ? 1 : 0,
+      'remoteCheck': remoteCheck ? 1 : 0,
+    });
     _debounce?.cancel();
     _debounce = null;
     _refreshPending = false;
@@ -643,6 +684,7 @@ class DriveSyncController extends ChangeNotifier {
           return;
         }
       }
+      perf.event(CanvasPerfEvent.driveSync, 0, {'phase': 1});
       final next = await _engine!.sync();
       if (!_ready || nonce != _nonce) return;
       final state = await _state!.load();
@@ -682,6 +724,13 @@ class DriveSyncController extends ChangeNotifier {
         }
       }
     } finally {
+      final ended = perf.begin();
+      if (started != null && ended != null) {
+        perf.event(CanvasPerfEvent.driveSync, 0, {
+          'phase': 2,
+          'wallUs': ended - started,
+        });
+      }
       busy = false;
       _notify();
       _continueAutomatic();

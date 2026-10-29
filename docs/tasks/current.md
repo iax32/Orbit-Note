@@ -1,3 +1,140 @@
+# In progress — PC Canvas stalls and local diagnostics, 2026-10-29
+
+Latest owner steering: publish the current improvement for immediate use, then
+continue diagnosing remaining drawing pauses (owner reports roughly 70/30).
+Windows 1.0.8+9 normal release built in 125.7 s, Android in 184.6 s; Windows AOT
+freshness and Android package/version/original signing certificate verified.
+Source/release publication is being prepared; no GitHub workflow requested.
+Analyzer clean (20.1 s), 3 Android adapter/UI checks pass plus 29 rendering/pen/
+theme checks in the preceding batch. All 8 native import safety tests pass
+(0.299 s test execution, 76 s Gradle preparation). Strict format: 882 lib/test
+files unchanged (9.3 s). Physical Android acceptance and PC pause diagnosis remain.
+
+Renderer 11 reuses completed active-ink widget subtrees as well as pictures;
+ink-only hover avoids unnecessary whole-stroke hit tests while nearby cards and
+connectors retain exact occlusion checks. Isolated latest-board 400%-zoom replay:
+long pressure GPU P95 1.968 ms, mouse 4.741 ms on the 100-Hz probe display.
+Owner's full app runs at 180 Hz and still pauses; do not infer acceptance from
+the probe. A local full-app CPU/frame/GC capture now runs without reading note
+contents. Recent capture contains a 13.658-ms root layout and 11.181-ms raster
+span; further attribution is required. Private endpoint and traces stay ignored.
+
+Correction to earlier Drive diagnosis: screenshots showed sync active, but the
+UE2 Vault's saved flag was later off, and renderer-10/11 drawing runs contain no
+Drive activity. The inventory fix remains relevant when enabled; it does not
+explain this latest residual. Numeric sync-state logging now records that fact.
+
+Owner also reports Android selecting another-version Vault folder silently
+returns to the welcome page. The existing picker returned an ordinary path
+without retaining SAF document access. Android now explicitly imports a local
+editable copy through document streams, with progress/errors/retry; source is
+unchanged, IDs/unknown files/history retained, device/cache/index files omitted
+and imported recovery journals quarantined. No app-build-number gate is added:
+repository storage-version read-only protections remain. Android New Vault uses
+local app storage too. Physical Lenovo folder-import acceptance remains pending.
+
+Owner reports intermittent severe viewing/drawing stalls after 1.0.7, requests
+PC-first diagnosis on the tablet-imported UE2 board and local app logging.
+Scope/evidence: docs/tasks/canvas-pc-diagnostics-2026-10-29.md.
+
+Latest confirmed cause: owner's screenshots show automatic Google Drive sync
+enabled and running. Its inventory loop still hashed/decoded entire boards on
+the UI thread. The current ~15-MB native fixture reproduced a 307.823-ms caller
+gap for that foreground work. Large sync inspection/hashing now runs natively
+off-thread and returns compact headers, not another full scene graph. Reuse
+repository-owned object metadata only after the current byte hash matches;
+changed bytes still get complete codec validation. Cached inventory max loop
+gap 16.095 ms, cold 18.087 ms, idle 16.460 ms in the native replay. Sync stays
+enabled with its existing cadence/conflict/staging checks. 49 Drive/inventory/
+replica checks pass plus 30 final inventory/validation/logging checks; stale
+cache, malformed tails, future versions and missing attachments remain blocked.
+Analyzer clean (18.8 s), strict format 880 files unchanged (7.79 s). Renderer-10
+Windows build is running with Orbit closed. Owner replay with Drive active is
+still needed before marking the PC drawing goal complete.
+
+Latest continuation: owner still notices pauses after renderer 7. The latest
+saved UE2 is ~15 MB / ~96k samples; the original ~7 MB replay hid the worker
+handoff cliff. Native AOT replay measured 87–91-ms caller gaps while sending the
+whole object graph to a fresh save isolate. Commands now share unchanged owned
+element records, and a repository-owned worker is seeded from existing source
+text and receives only changed element records/order. It still uses the normal
+full JSON encoder and repository atomic write/hash/history contract. Its cache
+is derived, single-board, pruned, workspace-qualified and closed on repository
+reopen/close; failure resets/reseeds it. Non-portable mutable toJson values are
+never trusted as cached immutable records. Native replay reduced repeated save
+handoff gaps to ~17–18 ms (idle baseline ~16 ms), first start ~19 ms. 39 targeted
+drawing/draft/logging checks and 31 final worker/native safety checks pass,
+including worker death/restart, cross-Vault queueing, exact bytes, invalid data,
+external writes and native reopen. Analyzer clean (15.4 s); strict format 879
+files unchanged (7.16 s). Renderer-9 Windows build succeeded (74.2 s); usual
+release and AOT freshness verified. Owner asked to replay UE2 for a minute;
+actual-owner acceptance is still required, so do not claim the lag fixed yet.
+
+Identified the imported board (initially 1539 ink elements / 42890 samples);
+profiled ignored in-memory copies without writing the original. Stable complete
+group membership fixes pan cache churn. Full-app logs then exposed redundant
+theme interpolation, repeated drawing comparisons and stale revision echoes;
+memoize real theme inputs and immutable revision pairs, clear obsolete echoes,
+and keep explicitly colored saved ink independent of changing UI chrome.
+Owner confirms viewing is now alright, but active drawing was still unusable.
+
+Active mouse curves now append geometry instead of rebuilding the whole path.
+Pressure sections use tight retained layers; only the unfinished tail changes,
+preserving all samples, nibs, taper, opacity, release endpoints and history.
+Matched 400%-zoom native long-stylus GPU P95 13.009 → 1.691 ms, worst
+16.407 → 2.123 ms; over-10-ms frames 96 → 0 / 312. Long mouse GPU P95 4.397 ms.
+Native probe uses the 100-Hz display; owner app is on 180 Hz. Physical input
+acceptance still needed. Cold/pan outliers remain; do not claim perfect FPS.
+
+Added bounded numeric-only input/paint/frame/cache/heartbeat logging outside
+Vaults, Windows-on default, persistent off and Settings → Tools export/location.
+48 focused checks pass, including release/undo; analyzer clean (15.5 s), strict
+format 873 files unchanged (7.33 s). Windows 1.0.8+9 rebuilt successfully in
+75.0 s; usual Desktop shortcut targets this release, AOT newer than lib sources.
+Renderer 5 adds active prepare/tail/input timings. Owner asked to reopen UE2
+and reported drawing still about 60% smooth / 40% laggy. Actual active
+prepare/paint/input are now sub-millisecond, but synchronous draft publication
+hit 158.648 ms. Follow-up: reuse owned immutable sample arrays, compare data
+structurally instead of encoding both entire boards, and encode/UTF-8/hash large
+saves on a native worker. Ordered writes, validation, conflicts and recovery
+remain. 26 follow-up checks pass (including large native reopen/invalid JSON/
+external edit rejection); 33 save/recovery checks passed in the preceding batch.
+60000 samples / 20 guarded app commits: 70–116 ms total in debug tests. Renderer
+6 Windows build succeeded (77.0 s), usual release/AOT freshness verified. Analyzer
+clean (17.1 s), strict format 877 files unchanged (7.72 s), another 25 drawing/
+theme/logging checks passed after the save changes. Owner replay requested;
+do not claim the real-app drawing goal complete until that acceptance.
+Owner renderer-6 replay improved to about 80% smooth / 20% intermittent pauses.
+Its log shows active paint/prepare/input sub-millisecond, but saves 12–26 ms and
+editor echo comparisons growing to 8 ms. Completed strokes now own frozen sample
+arrays immediately, so later commits and echo comparisons share them. Large
+external-change hashes (targeted and full scans), load decoding and freezing now
+run off the native UI isolate while byte-identical files retain object identity.
+Renderer 7 adds release/scene-snapshot/draft-phase timings. 53 targeted checks,
+then 31 checks covering the final scan paths, plus release/palm/undo pass. Native
+preflight/refresh tests prove input yields, unchanged identity and conflict guards.
+20 guarded commits including 4000 new samples take 67–68 ms in debug. Windows
+rebuild succeeded (75.0 s), AOT freshness verified; analyzer clean (15.7 s),
+strict format 877 files unchanged (7.55 s). Owner asked to replay UE2 with this
+renderer-7 build; acceptance pending.
+Owner still reports intermittent lag. Renderer-7 phases show scene serialization
+2–6 ms and draft snapshot up to 11.966 ms (active ink still <1 ms), with 1664
+strokes / 95732 samples. Preserve owned immutable CanvasElement records at scene
+load and use a separate immutable snapshotJson() command API; ordinary toJson()
+compatibility remains. Commands reuse unchanged complete element records, not
+just sample lists. Scene ordering sorts once per revision; returned lists retain
+their previous caller-owned mutable API and undo invalidates the cached order.
+48 focused checks pass, including legacy aliases, opaque data, reorder/undo,
+layer pixels and competing drafts. Debug guarded 20-stroke commits: 25–29 ms
+total (was 67–68 ms). Isolated native AOT probe on the original UE2 fixture:
+20 commits incl. 4000 new samples 27.320 ms; background encode/hash/decode keep
+the loop yielding (worst gap 17.337 ms with Windows' ~16-ms timer quantum).
+Analyzer clean (14.2 s), strict format 877 files unchanged. Renderer-8 Windows
+built (74.3 s) but was superseded before acceptance when the latest-fixture save
+handoff cliff was found. Renderer 9 is the version offered for owner replay.
+No Android work or publication is required for this PC-first continuation.
+
+## Previous task
 # Delivered — saved Canvas ink reliability/performance, 2026-10-29
 
 Owner confirms empty boards are smooth but drawing and viewing saved ink remain

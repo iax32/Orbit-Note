@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app/orbit_app.dart';
 import 'platform/background_sync.dart';
+import 'dart:async';
+import 'app/canvas_performance.dart';
 
 export 'app/orbit_app.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   if (await startBackgroundSync(args)) return;
+  unawaited(CanvasPerformance.instance.start());
   runApp(const ProviderScope(child: OrbitNoteApp()));
 }
 

@@ -2,15 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/workspace/workspace_shell.dart';
-import 'orbit_theme.dart';
+import 'orbit_theme_cache.dart';
 import 'app_zoom.dart';
 import 'orbit_components.dart';
 import 'workspace_controller.dart';
 
-class OrbitNoteApp extends ConsumerWidget {
+class OrbitNoteApp extends ConsumerStatefulWidget {
   const OrbitNoteApp({super.key});
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<OrbitNoteApp> createState() => _OrbitNoteAppState();
+}
+
+class _OrbitNoteAppState extends ConsumerState<OrbitNoteApp> {
+  final _theme = OrbitThemeCache();
+  @override
+  Widget build(BuildContext context) {
     ref.watch(
       workspaceProvider.select((_) {
         final c = ref.read(workspaceProvider.notifier);
@@ -38,7 +44,7 @@ class OrbitNoteApp extends ConsumerWidget {
     return MaterialApp(
       title: 'Orbit Note',
       debugShowCheckedModeBanner: false,
-      theme: orbitThemeForPreferences(
+      theme: _theme.resolve(
         controller.session.preferences,
         MediaQuery.platformBrightnessOf(context),
       ),

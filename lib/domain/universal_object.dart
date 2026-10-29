@@ -1,5 +1,16 @@
 import 'dart:collection';
 
+/// Own a portable immutable snapshot, reusing only data already frozen here.
+/// Completed gestures can retain this snapshot instead of re-freezing the same
+/// samples on each later command. Mutable caller aliases are always detached.
+Map<String, dynamic> immutableObjectData(Map<String, dynamic> data) =>
+    _freezeMap(data);
+
+/// True only for maps recursively owned by the immutable object boundary.
+/// An arbitrary unmodifiable view may still contain mutable nested aliases.
+bool isImmutableObjectData(Map<String, dynamic> data) =>
+    data is _FrozenMap && data.portable;
+
 /// One identity shared by every presentation of user knowledge.
 class UniversalObject {
   UniversalObject({
@@ -138,18 +149,45 @@ class UniversalObject {
 }
 
 class _FrozenMap extends UnmodifiableMapView<String, dynamic> {
-  _FrozenMap(super.map);
+  _FrozenMap(super.map) : portable = map.values.every(_isPortable);
+  final bool portable;
 }
+
+// Preserve ownership of already-frozen sample arrays when a Canvas adds one
+// stroke. Rewalking every old point on each immutable snapshot blocks input.
+class _FrozenList extends ListBase<dynamic> {
+  _FrozenList(Iterable<dynamic> values)
+    : _values = List<dynamic>.unmodifiable(values.map(_freeze));
+  final List<dynamic> _values;
+  late final bool portable = _values.every(_isPortable);
+  @override
+  int get length => _values.length;
+  @override
+  set length(int value) => throw UnsupportedError('Immutable object data.');
+  @override
+  dynamic operator [](int index) => _values[index];
+  @override
+  void operator []=(int index, dynamic value) =>
+      throw UnsupportedError('Immutable object data.');
+}
+
+bool _isPortable(dynamic value) =>
+    value == null ||
+    value is String ||
+    value is bool ||
+    value is num && value.isFinite ||
+    value is _FrozenMap && value.portable ||
+    value is _FrozenList && value.portable;
 
 Map<String, dynamic> _freezeMap(Map<String, dynamic> map) => map is _FrozenMap
     ? map
     : _FrozenMap(map.map((key, value) => MapEntry(key, _freeze(value))));
 
 dynamic _freeze(dynamic value) {
-  if (value is _FrozenMap) return value;
+  if (value is _FrozenMap || value is _FrozenList) return value;
   if (value is Map) {
     return _freezeMap(Map<String, dynamic>.from(value));
   }
-  if (value is List) return List<dynamic>.unmodifiable(value.map(_freeze));
+  if (value is List) return _FrozenList(value);
   return value;
 }

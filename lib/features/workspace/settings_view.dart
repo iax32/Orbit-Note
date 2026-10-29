@@ -15,6 +15,7 @@ import 'google_drive_settings.dart';
 import 'system_appearance_setting.dart';
 import 'theme_color_settings.dart';
 import 'theme_interchange_dialog.dart';
+import 'canvas_performance_card.dart';
 
 enum _Category {
   appearance('Appearance', 'Color, type and display', Icons.palette_outlined),
@@ -2055,6 +2056,14 @@ class _SettingsViewState extends State<SettingsView> {
           onChanged: (v) =>
               changeSession((s) => s.reverseEngineeringEnabled = v),
         ),
+      ),
+      _Entry(
+        "canvas-performance",
+        _Category.tools,
+        "Diagnostics",
+        "Canvas performance logging",
+        "lag slow drawing frame cache gpu logs diagnostic",
+        (context) => const CanvasPerformanceCard(),
       ),
       _Entry(
         "shortcuts",

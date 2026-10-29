@@ -99,5 +99,6 @@ flutter {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     implementation("com.google.android.gms:play-services-auth:21.6.0")
 }
