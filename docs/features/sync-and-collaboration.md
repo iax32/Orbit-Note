@@ -1,5 +1,31 @@
 # Optional sync and collaboration
 
+## Mobile join and setup feedback — 2026-10-29
+
+Android shared join, Drive open/restore and multi-Vault downloads publish each
+reviewed import into a unique writable app-local Vault folder automatically.
+They preserve the existing import validation/identity/recovery rules and do not
+depend on raw paths returned by a document-tree picker. Desktop destination choice
+is retained. Simple sharing displays connection/download/open phases and explains
+incomplete or localhost invitations before trying to connect. Joining offers a
+visible switch to remember the private connection securely and reconnect while
+Orbit is open. Stop cancels address negotiation promptly. Large native network
+JSON/backup validation avoids the UI thread; first join preserves the original
+backup envelope without an extra whole-Vault JSON round trip. Relay availability,
+closed-app sync and physical device acceptance retain the limits below.
+
+The managed server now runs its existing HTTP/merge/journal engine in a dedicated
+native isolate, independently of pen input. JSON responses negotiate lossless
+gzip on native clients. A response header advertises optional gzip requests;
+updated native clients compress saved content off-thread only after negotiation.
+Older hosts/clients keep plain requests. Both encoded and decoded request limits
+remain enforced, including highly compressible oversized input. A document may
+occupy up to 32 MiB (formerly 2 MiB), with
+up to 32 recent common bases within 64 MiB per-document history; the total room
+metadata budget remains 128 MiB. Old hosts retain their old limits until updated.
+Full snapshots still form the durable shared protocol; compression does not
+promise constant transfer cost for arbitrarily large boards.
+
 ## Simple temporary live sharing — 2026-10-28
 
 Windows Shared Vault settings offer **Start live sharing**, **Copy tablet

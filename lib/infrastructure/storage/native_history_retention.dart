@@ -4,7 +4,52 @@ import 'dart:isolate';
 import 'package:path/path.dart' as p;
 import '../../domain/workspace_failure.dart';
 import 'path_safety.dart';
+import '../workers/native_task_worker.dart';
 
+typedef _HistoryRequest = ({
+  String root,
+  String area,
+  int entries,
+  int bytes,
+  Duration age,
+});
+
+/// One lazy worker per open store. Every save still enforces retention before
+/// completing maintenance; no 60-second delay weakens the disk-space bound.
+class NativeHistoryMaintenance {
+  final _worker = NativeTaskWorker<_HistoryRequest, bool>(_runMaintenance);
+  Future<void> prune({
+    required String root,
+    required String area,
+    required int maxEntries,
+    required int maxBytes,
+    required Duration maxAge,
+  }) async {
+    await _worker.run((
+      root: root,
+      area: area,
+      entries: maxEntries,
+      bytes: maxBytes,
+      age: maxAge,
+    ));
+  }
+
+  Future<void> close() => _worker.close();
+}
+
+bool _runMaintenance(_HistoryRequest request) {
+  _prune(
+    request.root,
+    request.area,
+    request.entries,
+    request.bytes,
+    request.age,
+  );
+  return true;
+}
+
+/// One-shot helper for offline checks. Open stores own NativeHistoryMaintenance
+/// instead, so repeated autosaves reuse the same worker.
 /// Only small configuration strings cross the isolate boundary. History payloads
 /// and metadata stay on the worker; no decoded history graph enters the UI heap.
 Future<void> pruneNativeHistory({

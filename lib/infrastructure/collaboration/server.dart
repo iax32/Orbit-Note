@@ -78,7 +78,8 @@ class CollaborationServer {
   final _watchers = <String, int>{};
   final _documentBytes = <(String, String), int>{};
   final _roomDocumentBytes = <String, int>{};
-  static const maxDocumentBytes = 2 * 1024 * 1024;
+  static const maxDocumentBytes = 32 * 1024 * 1024;
+  static const maxHistoryBytes = 64 * 1024 * 1024;
   static const maxRoomBytes = 128 * 1024 * 1024;
 
   Future<int> start({InternetAddress? address, int port = 47831}) async {
@@ -114,6 +115,9 @@ class CollaborationServer {
         address ?? InternetAddress.loopbackIPv4,
         port,
       );
+      // Native clients negotiate gzip automatically. Compress JSON losslessly;
+      // decoded response limits still apply on the receiving client.
+      _server!.autoCompress = true;
       _server!.listen((request) => unawaited(_handle(request)));
       return _server!.port;
     } on Object {
@@ -178,7 +182,7 @@ class CollaborationServer {
       }
       doc['sequence'] = event['sequence'];
       while ((doc['history'] as Map).length > 32 ||
-          utf8.encode(jsonEncode(doc['history'])).length > 8 * 1024 * 1024) {
+          utf8.encode(jsonEncode(doc['history'])).length > maxHistoryBytes) {
         (doc['history'] as Map).remove((doc['history'] as Map).keys.first);
       }
       state['sequence'] = event['sequence'];
@@ -235,7 +239,7 @@ class CollaborationServer {
         final history = Map<String, dynamic>.from(old['history'] as Map)
           ..['${old['version']}'] = old['snapshot'];
         while (history.length > 32 ||
-            utf8.encode(jsonEncode(history)).length > 8 * 1024 * 1024) {
+            utf8.encode(jsonEncode(history)).length > maxHistoryBytes) {
           history.remove(history.keys.first);
         }
         next = {
@@ -309,7 +313,20 @@ class CollaborationServer {
 
   Future<Map<String, dynamic>> _body(HttpRequest request, int max) async {
     final bytes = BytesBuilder(copy: false);
-    await for (final chunk in request.timeout(const Duration(seconds: 30))) {
+    final encoding = request.headers.value(HttpHeaders.contentEncodingHeader);
+    if (encoding != null && encoding != 'identity' && encoding != 'gzip') {
+      throw const FormatException('Unsupported request encoding.');
+    }
+    var encodedBytes = 0;
+    Stream<List<int>> stream = request.map((chunk) {
+      encodedBytes += chunk.length;
+      if (encodedBytes > max + 65536) {
+        throw const FormatException('Request too large.');
+      }
+      return chunk;
+    });
+    if (encoding == 'gzip') stream = stream.transform(gzip.decoder);
+    await for (final chunk in stream.timeout(const Duration(seconds: 30))) {
       if (bytes.length + chunk.length > max) {
         throw const FormatException('Request too large.');
       }
@@ -358,6 +375,8 @@ class CollaborationServer {
   Future<void> _handle(HttpRequest request) async {
     request.response.headers.contentType = ContentType.json;
     request.response.headers.set('Cache-Control', 'no-store');
+    // Optional HTTP capability; older clients/hosts continue using plain JSON.
+    request.response.headers.set('X-Orbit-Accept-Encoding', 'gzip');
     try {
       if (request.headers.value('origin') != null) {
         throw const HttpException('Browser clients are not enabled.');
@@ -451,7 +470,7 @@ class CollaborationServer {
           final snapshot = collaborationSnapshot(object);
           if (utf8.encode(jsonEncode(snapshot)).length > maxDocumentBytes) {
             throw const FormatException(
-              'A shared note or Canvas exceeds 2 MiB.',
+              'A shared note or Canvas exceeds the 32 MiB document limit.',
             );
           }
           documents[object.id] = {
@@ -801,7 +820,7 @@ class CollaborationServer {
                 object.typeId,
               );
               if (utf8.encode(jsonEncode(merged)).length > maxDocumentBytes) {
-                throw const FormatException('Shared document exceeds 2 MiB.');
+                throw const FormatException('Shared document exceeds 32 MiB.');
               }
               await _commit({
                 'kind': 'edit',

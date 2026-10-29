@@ -657,11 +657,6 @@ class DriveSyncController extends ChangeNotifier {
     status = 'Syncing · local editing remains available';
     _notify();
     try {
-      if (!await workspace.flushAll() || !_ready || nonce != _nonce) {
-        throw const WorkspaceConflict(
-          'Save or recover local drafts before syncing.',
-        );
-      }
       _attach();
       // Cheap feed checks between full local inventories keep large Vaults from
       // rehashing every attachment every five seconds. External file edits still
@@ -669,6 +664,10 @@ class DriveSyncController extends ChangeNotifier {
       if (remoteCheck &&
           !force &&
           !_localChangesPending &&
+          workspace.dirty.isEmpty &&
+          workspace.failures.isEmpty &&
+          workspace.editorDraftConflicts.isEmpty &&
+          !workspace.sessionSaveFailed &&
           retryAt == null &&
           result?.upToDate == true &&
           _lastInventoryAt != null &&
@@ -683,6 +682,13 @@ class DriveSyncController extends ChangeNotifier {
           status = 'Up to date with Google Drive';
           return;
         }
+      }
+      // A head-only poll must not force a device-layout write and root rebuild.
+      // Real local/remote changes and manual passes retain the full save guard.
+      if (!await workspace.flushAll() || !_ready || nonce != _nonce) {
+        throw const WorkspaceConflict(
+          'Save or recover local drafts before syncing.',
+        );
       }
       perf.event(CanvasPerfEvent.driveSync, 0, {'phase': 1});
       final next = await _engine!.sync();

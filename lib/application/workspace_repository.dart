@@ -1156,27 +1156,41 @@ class WorkspaceRepository {
     _requireWritable();
     const path = '.orbit/device/settings.json';
     final before = await _store.read(path);
+    Map<String, dynamic> extensions = {};
     if (before != null) {
       try {
         final old = jsonDecode(utf8.decode(before)) as Map;
         if (old['version'] != 1) {
           throw const WorkspaceReadOnly('Newer device settings are preserved.');
         }
+        extensions = Map<String, dynamic>.from(old);
       } on FormatException {
         throw const WorkspaceFailure(
           'Corrupt device settings are preserved; restore them before changing settings.',
         );
       }
     }
+    final next = _bytes(
+      jsonEncode({
+        ...extensions,
+        'format': 'orbit-note-device-settings',
+        'version': 1,
+        'data': settings,
+      }),
+    );
+    if (before != null && before.length == next.length) {
+      var unchanged = true;
+      for (var i = 0; i < next.length; i++) {
+        if (before[i] != next[i]) {
+          unchanged = false;
+          break;
+        }
+      }
+      if (unchanged) return;
+    }
     await _store.write(
       path,
-      _bytes(
-        jsonEncode({
-          'format': 'orbit-note-device-settings',
-          'version': 1,
-          'data': settings,
-        }),
-      ),
+      next,
       expectedHash: before == null ? null : sha256.convert(before).toString(),
     );
   });

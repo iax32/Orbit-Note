@@ -18,7 +18,10 @@ import 'package:orbit_note/infrastructure/storage/native_workspace_store.dart';
 import 'support/capture_ui.dart';
 
 Finder get surface => find.byWidgetPredicate(
-  (w) => w is CustomPaint && w.painter is OrbitCanvasPainter,
+  (w) =>
+      w is CustomPaint &&
+      w.painter is OrbitCanvasPainter &&
+      (w.painter! as OrbitCanvasPainter).paintOverlays,
 );
 OrbitCanvasPainter painter(WidgetTester tester) =>
     tester.widget<CustomPaint>(surface).painter! as OrbitCanvasPainter;

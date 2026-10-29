@@ -36,6 +36,13 @@ class _ReadyWorkspace extends WorkspaceController {
 class _MetadataRepository extends WorkspaceRepository {
   _MetadataRepository()
     : super(store: NativeWorkspaceStore(), index: MemoryObjectIndex());
+  int settingsWrites = 0;
+  @override
+  Future<void> writeDeviceSettings(Map<String, dynamic> settings) {
+    settingsWrites++;
+    return super.writeDeviceSettings(settings);
+  }
+
   // Widget layout checks use deterministic size metadata. Native transfer tests
   // above/below still exercise real durable files and staging.
   @override
@@ -732,10 +739,17 @@ void main() {
       // Consume the initial local publication in the remote snapshot once.
       await sync.syncNow(remoteCheck: true);
       final completed = sync.lastSynced;
+      final settingsWrites = (repo as _MetadataRepository).settingsWrites;
       final lists = server.historyLists;
       clock = clock.add(const Duration(seconds: 5));
       await sync.syncNow(remoteCheck: true);
       expect(sync.lastChecked, clock);
+      expect(
+        (repo as _MetadataRepository).settingsWrites,
+        settingsWrites,
+        reason:
+            'An unchanged remote-head poll must not flush local layout settings.',
+      );
       expect(
         sync.lastSynced,
         completed,

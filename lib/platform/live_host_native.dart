@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../infrastructure/collaboration/server.dart';
+import '../infrastructure/collaboration/host_worker.dart';
 import 'collaboration_http.dart';
 import 'windows_child_lifetime.dart';
 
@@ -48,7 +49,7 @@ class OrbitLiveHost extends ChangeNotifier {
   Uri? endpoint, localEndpoint;
   String? ownerToken;
   String status = 'Start on this PC, then paste the invitation on your tablet.';
-  CollaborationServer? _server;
+  CollaborationHostWorker? _server;
   Process? _process;
   void Function()? _releaseProcess;
   http.Client? _transfer;
@@ -125,12 +126,15 @@ class OrbitLiveHost extends ChangeNotifier {
     }
   }
 
+  Completer<void>? _cancelStart;
+
   Future<void> start() async {
     if (!supported) {
       throw StateError('Start live sharing on a Windows PC, then join here.');
     }
     if (busy || endpoint != null) return;
     final generation = ++_generation;
+    final cancelled = _cancelStart = Completer<void>();
     busy = true;
     status = 'Preparing live sharing…';
     _notify();
@@ -142,20 +146,29 @@ class OrbitLiveHost extends ChangeNotifier {
       final helper = await _helper(root, generation);
       _check(generation);
       final owner = collaborationToken();
-      final server = CollaborationServer(
+      final server = await CollaborationHostWorker.start(
         // A new session never reloads old grants under a new public address.
         // Previous journals remain private for recovery; authored Vault data
         // continues to be stored through the normal local repository.
         Directory(p.join(root.path, 'rooms', collaborationToken())),
         owner,
       );
-      _server = server;
-      final port = await server.start(port: 0);
+      final port = server.port;
       if (generation != _generation || _disposed) {
         await server.close();
         _check(generation);
       }
+      _server = server;
       localEndpoint = Uri.parse('http://127.0.0.1:$port');
+      unawaited(
+        server.done.then((_) async {
+          if (generation != _generation || _disposed) return;
+          await stop();
+          status =
+              'The local sharing server stopped. Start live sharing again; local work is preserved.';
+          _notify();
+        }),
+      );
       status = 'Creating a secure invitation address…';
       _notify();
       await File(p.join(root.path, 'empty.yml')).writeAsString('{}\n');
@@ -216,8 +229,18 @@ class OrbitLiveHost extends ChangeNotifier {
           }
         }),
       );
-      final uri = await address.future.timeout(const Duration(seconds: 60));
+      final uri = await Future.any<Uri>([
+        address.future.timeout(const Duration(seconds: 60)),
+        cancelled.future.then<Uri>(
+          (_) => throw StateError('Live sharing was cancelled.'),
+        ),
+      ]);
       _check(generation);
+      if (exited) {
+        throw StateError(
+          'The secure connection stopped. Start live sharing again.',
+        );
+      }
       final probe = _client();
       var ready = false;
       try {
@@ -248,7 +271,7 @@ class OrbitLiveHost extends ChangeNotifier {
         probe.close();
       }
       _check(generation);
-      if (!ready) {
+      if (!ready || exited) {
         throw StateError(
           'The secure link is not reachable yet. Check internet access and retry.',
         );
@@ -272,6 +295,9 @@ class OrbitLiveHost extends ChangeNotifier {
 
   Future<void> stop() async {
     ++_generation;
+    final cancelled = _cancelStart;
+    _cancelStart = null;
+    if (cancelled != null && !cancelled.isCompleted) cancelled.complete();
     _transfer?.close();
     _transfer = null;
     final process = _process;

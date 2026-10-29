@@ -6,6 +6,7 @@ import 'shared_text_presence.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import 'package:flutter/rendering.dart';
+import 'grammar_analysis_cache.dart';
 import '../workspace/object_bridges.dart';
 import 'editor_draft_review.dart';
 import '../math/math_lab_dialog.dart';
@@ -50,7 +51,6 @@ import 'note_link_dialog.dart';
 import 'note_outline.dart';
 import 'note_text_index.dart';
 import 'note_find_index.dart';
-import '../../domain/grammar/text_issue_cursor.dart';
 import 'unresolved_link_dialog.dart';
 import 'rich/rich_markdown_editor.dart';
 import 'rich/document_history.dart';
@@ -260,12 +260,28 @@ class _GrammarAnnotatedController extends TextEditingController {
     required this.grammarEngine,
     required this.spellCheckEnabled,
     this.isLatex = false,
-  });
+  }) {
+    _analysis.addListener(_analysisReady);
+  }
   final EnglishSpellGrammarEngine grammarEngine;
   bool spellCheckEnabled;
   bool isLatex;
+  final _analysis = GrammarAnalysisCache();
+  LatexTextEditingController? _latex;
+  void _analysisReady() => notifyListeners();
+  List<TextIssue> get currentIssues => _analysis.issuesFor(text, grammarEngine);
 
-  void refresh() => notifyListeners();
+  void refresh() {
+    _analysis.invalidate();
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _analysis.dispose();
+    _latex?.dispose();
+    super.dispose();
+  }
 
   @override
   TextSpan buildTextSpan({
@@ -274,7 +290,9 @@ class _GrammarAnnotatedController extends TextEditingController {
     required bool withComposing,
   }) {
     if (isLatex) {
-      return LatexTextEditingController(text: text).buildTextSpan(
+      final latex = _latex ??= LatexTextEditingController();
+      latex.value = value;
+      return latex.buildTextSpan(
         context: context,
         style: style,
         withComposing: withComposing,
@@ -287,7 +305,7 @@ class _GrammarAnnotatedController extends TextEditingController {
         withComposing: withComposing,
       );
     }
-    final issues = grammarEngine.analyze(text);
+    final issues = currentIssues;
     if (issues.isEmpty) {
       return super.buildTextSpan(
         context: context,
@@ -296,32 +314,32 @@ class _GrammarAnnotatedController extends TextEditingController {
       );
     }
 
-    final issueCursor = TextIssueCursor(issues);
-
     final spans = <TextSpan>[];
     var start = 0;
-    while (start < text.length) {
-      final currentIssue = issueCursor.at(start);
-      var end = start + 1;
-      while (end < text.length && issueCursor.at(end) == currentIssue) {
-        end++;
+    for (final issue in issues) {
+      if (issue.start < start ||
+          issue.end > text.length ||
+          issue.end <= issue.start) {
+        continue;
+      }
+      if (issue.start > start) {
+        spans.add(TextSpan(text: text.substring(start, issue.start)));
       }
       spans.add(
         TextSpan(
-          text: text.substring(start, end),
-          style: currentIssue == null
-              ? null
-              : TextStyle(
-                  decoration: TextDecoration.underline,
-                  decorationStyle: TextDecorationStyle.wavy,
-                  decorationColor: currentIssue.type == IssueType.spelling
-                      ? OrbitColors.of(context).danger
-                      : OrbitColors.of(context).accent,
-                ),
+          text: text.substring(issue.start, issue.end),
+          style: TextStyle(
+            decoration: TextDecoration.underline,
+            decorationStyle: TextDecorationStyle.wavy,
+            decorationColor: issue.type == IssueType.spelling
+                ? OrbitColors.of(context).danger
+                : OrbitColors.of(context).accent,
+          ),
         ),
       );
-      start = end;
+      start = issue.end;
     }
+    if (start < text.length) spans.add(TextSpan(text: text.substring(start)));
     return TextSpan(style: style, children: spans);
   }
 }
@@ -1931,7 +1949,7 @@ class _NoteEditorState extends State<NoteEditor> {
       final value = editableTextState.textEditingValue;
       final sel = value.selection;
       final pos = sel.isCollapsed ? sel.baseOffset : sel.start;
-      final issues = _grammarEngine.analyze(controller.text);
+      final issues = controller.currentIssues;
 
       TextIssue? activeIssue;
       for (final issue in issues) {

@@ -2,6 +2,7 @@ import '../../../app/orbit_motion_effects.dart';
 import '../media_clipboard.dart';
 import '../shared_text_presence.dart';
 import 'dart:async';
+import '../grammar_analysis_cache.dart';
 import '../../../domain/linked_section.dart';
 import '../../../domain/document_review.dart';
 import '../../../domain/document_citations.dart';
@@ -5188,7 +5189,21 @@ class _StyledController extends TextEditingController {
                  source,
                  referenceDefinitions: referenceDefinitions,
                ).text,
-       );
+       ) {
+    _grammarAnalysis.addListener(_grammarReady);
+  }
+
+  final _grammarAnalysis = GrammarAnalysisCache();
+  void _grammarReady() => notifyListeners();
+  List<TextIssue> get currentIssues =>
+      spellCheckEnabled && grammarEngine != null
+      ? _grammarAnalysis.issuesFor(text, grammarEngine!)
+      : const [];
+  @override
+  void dispose() {
+    _grammarAnalysis.dispose();
+    super.dispose();
+  }
 
   InlineProjection projection;
   final bool raw;
@@ -5210,9 +5225,7 @@ class _StyledController extends TextEditingController {
       );
     }
 
-    final issues = (spellCheckEnabled && grammarEngine != null)
-        ? grammarEngine!.analyze(text)
-        : const <TextIssue>[];
+    final issues = currentIssues;
 
     final issueCursor = TextIssueCursor(issues);
 
@@ -6048,7 +6061,7 @@ class _RichTextBlockState extends State<_RichTextBlock> {
       final value = editableTextState.textEditingValue;
       final sel = value.selection;
       final pos = sel.isCollapsed ? sel.baseOffset : sel.start;
-      final issues = engine.analyze(controller.text);
+      final issues = controller.currentIssues;
 
       TextIssue? activeIssue;
       for (final issue in issues) {

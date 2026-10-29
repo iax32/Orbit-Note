@@ -9,6 +9,7 @@ import '../../domain/vault_candidate.dart';
 import '../../domain/workspace_failure.dart';
 import '../../infrastructure/sync/google_drive_api.dart';
 import '../../platform/import_backup.dart';
+import '../../platform/android_vault_folders.dart';
 import '../../platform/vault_discovery.dart';
 
 class DriveVaultBatchDialog extends StatefulWidget {
@@ -130,9 +131,11 @@ class _DriveVaultBatchDialogState extends State<DriveVaultBatchDialog> {
       return;
     }
     if (widget.download && _parent.isEmpty) {
-      final parent = await getDirectoryPath(
-        confirmButtonText: 'Download selected Vaults here',
-      );
+      final parent = usesAndroidVaultFolders
+          ? await localBackupImportParent()
+          : await getDirectoryPath(
+              confirmButtonText: 'Download selected Vaults here',
+            );
       if (parent == null || !_owns) return;
       _parent = parent;
     }
@@ -253,7 +256,7 @@ class _DriveVaultBatchDialogState extends State<DriveVaultBatchDialog> {
                 const SizedBox(height: 8),
                 Text(
                   widget.download
-                      ? 'Select cloud Vaults and choose one parent folder. Each download creates its own new local folder; your current Vault stays open.'
+                      ? 'Select cloud Vaults. ${usesAndroidVaultFolders ? 'Orbit saves them in local app storage automatically.' : 'Choose one parent folder.'} Each download creates its own new local folder; your current Vault stays open.'
                       : 'Select Vaults to upload and connect. Find Vaults in a folder checks that folder and its immediate children, such as Vaults saved on your Desktop.',
                 ),
                 const SizedBox(height: 8),

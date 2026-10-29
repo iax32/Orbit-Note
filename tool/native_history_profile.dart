@@ -54,7 +54,8 @@ Future<void> main() async {
       );
     }
 
-    Future<void> background() => pruneNativeHistory(
+    final maintenance = NativeHistoryMaintenance();
+    Future<void> background() => maintenance.prune(
       root: root.path,
       area: '.orbit',
       maxEntries: 1000,
@@ -94,6 +95,7 @@ Future<void> main() async {
       'workerCold': await measure(background),
       'workerRepeat': await measure(background),
     };
+    await maintenance.close();
     stdout.writeln(jsonEncode(result));
   } finally {
     await root.delete(recursive: true);

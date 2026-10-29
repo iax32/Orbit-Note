@@ -36,6 +36,45 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => HttpOverrides.global = null);
   test(
+    'stop interrupts address negotiation without waiting for its timeout',
+    () async {
+      if (!Platform.isWindows) return;
+      final directory = await Directory.systemTemp.createTemp(
+        'orbit-cancel-host-',
+      );
+      final launched = Completer<void>();
+      final process = _Tunnel();
+      final host = OrbitLiveHost(
+        directory: () async => directory,
+        helperDigest: sha256.convert([1, 2, 3]).toString(),
+        contain: (_) => () {},
+        client: () =>
+            MockClient((_) async => http.Response.bytes([1, 2, 3], 200)),
+        launch: (_, _) async {
+          launched.complete();
+          return process;
+        },
+      );
+      try {
+        final starting = host.start();
+        final failed = expectLater(starting, throwsA(isA<StateError>()));
+        await launched.future;
+        // Wait for Process.start to attach its streams, then cancel negotiation.
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        await host.stop();
+        await failed.timeout(const Duration(seconds: 2));
+        expect(process.killed, true);
+        expect(host.busy, false);
+        expect(host.endpoint, isNull);
+        expect(host.status, contains('stopped'));
+      } finally {
+        await host.stop();
+        host.dispose();
+        await directory.delete(recursive: true);
+      }
+    },
+  );
+  test(
     'only valid temporary HTTPS hostnames are accepted from helper logs',
     () {
       expect(

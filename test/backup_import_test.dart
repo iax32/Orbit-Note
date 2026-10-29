@@ -82,6 +82,36 @@ void main() {
       }
     },
   );
+  test(
+    'managed download storage creates separate writable Vault copies',
+    () async {
+      final parent = await localBackupImportParent(
+        documentsDirectory: () async => root,
+      );
+      expect(await Directory(parent).exists(), true);
+      final source = BackupBundle.parse(await repository.exportBundle());
+      final first = await importBackup(source, parent);
+      final second = await importBackup(source, parent);
+      expect(first, isNot(second));
+      expect(await File('$first/workspace.json').exists(), true);
+      expect(await File('$second/workspace.json').exists(), true);
+      final imported = WorkspaceRepository(
+        store: NativeWorkspaceStore(),
+        index: MemoryObjectIndex(),
+      );
+      try {
+        await imported.initialize(path: first);
+        expect(imported.workspaceId, repository.workspaceId);
+        await imported.create(
+          typeId: 'orbit.note',
+          title: 'Editable downloaded copy',
+        );
+      } finally {
+        await imported.close();
+      }
+      expect(repository.objects, isEmpty);
+    },
+  );
   test('unsafe and colliding paths are rejected before disk writes', () async {
     final source =
         jsonDecode(await repository.exportBundle()) as Map<String, dynamic>;

@@ -7,10 +7,11 @@ import '../../app/orbit_components.dart';
 import '../../app/orbit_theme.dart';
 import '../../app/workspace_controller.dart';
 import '../../application/sync/sync_inventory.dart';
-import '../../application/backup_bundle.dart';
 import '../../application/sync/google_account.dart';
 import '../../infrastructure/sync/google_drive_api.dart';
 import '../../platform/import_backup.dart';
+import '../../platform/android_vault_folders.dart';
+import '../../application/backup_execution.dart';
 import 'package:file_selector/file_selector.dart';
 import 'backup_import_dialog.dart';
 import '../../app/collaboration_controller.dart';
@@ -630,7 +631,8 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
     final source = await cloud.downloadBackup(backup);
     if (source == null || !mounted || !owns()) return;
     try {
-      final bundle = BackupBundle.parse(source);
+      final bundle = await parseBackupBundle(source);
+      if (!mounted || !owns()) return;
       if (await showDialog<bool>(
                 context: context,
                 builder: (_) => BackupImportDialog(bundle: bundle),
@@ -639,7 +641,9 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
           !owns()) {
         return;
       }
-      final parent = await getDirectoryPath(confirmButtonText: 'Restore here');
+      final parent = usesAndroidVaultFolders
+          ? await localBackupImportParent()
+          : await getDirectoryPath(confirmButtonText: 'Restore here');
       if (parent == null || !owns() || !await workspace.flushAll() || !owns()) {
         return;
       }

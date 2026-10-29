@@ -9,6 +9,7 @@ import '../../app/orbit_components.dart';
 import '../../application/sync/sync_provider.dart';
 import '../../infrastructure/sync/google_drive_api.dart';
 import '../../platform/import_backup.dart';
+import '../../platform/android_vault_folders.dart';
 import 'recovery_dialog.dart';
 import 'drive_vault_batch_dialog.dart';
 import 'drive_schedule_settings.dart';
@@ -110,7 +111,7 @@ class _DriveSyncSettingsState extends ConsumerState<DriveSyncSettings> {
         cloud.account?.subject == vault.accountSubject;
     if (!await _confirm(
           'Open ${vault.name} from Drive?',
-          'Create a separate local folder with this cloud Vault’s identity, then download its objects and attachments through automatic sync. Existing local Vaults remain intact. Choose a parent folder next.',
+          'Create a separate local Vault with this cloud Vault’s identity, then download its objects and attachments through automatic sync. Existing local Vaults remain intact. ${usesAndroidVaultFolders ? 'Orbit saves it in local app storage automatically.' : 'Choose a parent folder next.'}',
         ) ||
         !owns()) {
       return;
@@ -118,9 +119,9 @@ class _DriveSyncSettingsState extends ConsumerState<DriveSyncSettings> {
     try {
       final bundle = await c.prepareOpenVault(vault);
       if (!owns()) return;
-      final parent = await getDirectoryPath(
-        confirmButtonText: 'Open synced Vault here',
-      );
+      final parent = usesAndroidVaultFolders
+          ? await localBackupImportParent()
+          : await getDirectoryPath(confirmButtonText: 'Open synced Vault here');
       if (parent == null || !owns() || !await workspace.flushAll() || !owns()) {
         return;
       }

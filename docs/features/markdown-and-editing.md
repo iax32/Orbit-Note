@@ -1,5 +1,16 @@
 # Markdown and document editing
 
+## Writing performance — 2026-10-29
+
+Source/rich fields cache spell/grammar results by exact text and dictionary.
+Native fields longer than 2048 characters analyze complete snapshots on reusable
+workers after 300 ms inactivity, retaining one active/one latest request. Stale
+or disposed results cannot paint wrong offsets. Squiggles/context suggestions
+appear when matching analysis is ready; short fields stay immediate. IME guards,
+Markdown exclusions and custom dictionaries remain. Web uses asynchronous local
+execution without an off-main guarantee. Unchanged LaTeX source reuses lexical
+tokens; theme changes recolor them.
+
 ## Paragraph justification — 2026-10-26
 
 The formatting toolbar adds Justify · Blocksatz beside left/center/right alignment.

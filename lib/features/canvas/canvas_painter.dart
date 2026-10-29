@@ -1570,13 +1570,7 @@ class OrbitCanvasPainter extends CustomPainter {
       return;
     }
 
-    final rawPoints =
-        inkSamples ??
-        (element.data['points'] is List
-            ? (element.data['points'] as List).whereType<Map>().toList(
-                growable: false,
-              )
-            : null);
+    final rawPoints = inkSamples ?? element.inkSamples;
     final hasPressure =
         inkHasPressure ??
         (isFountain ||
@@ -1592,6 +1586,11 @@ class OrbitCanvasPainter extends CustomPainter {
     if (isCalligraphy) {
       // Chisel nib held at a constant 45-degree angle (pi / 4).
       const nibAngle = math.pi / 4;
+      final segPaint = Paint()
+        ..color = inkColor
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
       for (var i = startSegment; i < segmentEnd; i++) {
         final p1 = points[i];
         final p2 = points[i + 1];
@@ -1614,12 +1613,7 @@ class OrbitCanvasPainter extends CustomPainter {
           1.0,
           inkWidth * chiselFactor * pressureMultiplier,
         );
-        final segPaint = Paint()
-          ..color = inkColor
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = segWidth
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round;
+        segPaint.strokeWidth = segWidth;
         canvas.drawLine(
           Offset(element.x + p1.x, element.y + p1.y),
           Offset(element.x + p2.x, element.y + p2.y),
@@ -1628,6 +1622,13 @@ class OrbitCanvasPainter extends CustomPainter {
       }
     } else if (isPencil) {
       // Pencil: graphite texture with subtle jitter & paper tooth shading
+      final pPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+      final grainPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round;
       for (var i = startSegment; i < segmentEnd; i++) {
         final p1 = points[i];
         final p2 = points[i + 1];
@@ -1646,12 +1647,9 @@ class OrbitCanvasPainter extends CustomPainter {
           0.2,
           0.9,
         );
-        final pPaint = Paint()
+        pPaint
           ..color = accent.withValues(alpha: pencilAlpha)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = segWidth
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round;
+          ..strokeWidth = segWidth;
         canvas.drawLine(
           Offset(element.x + p1.x, element.y + p1.y),
           Offset(element.x + p2.x, element.y + p2.y),
@@ -1659,11 +1657,9 @@ class OrbitCanvasPainter extends CustomPainter {
         );
         // Subtle grain offset pass for graphite feel
         if (segWidth > 1.2) {
-          final grainPaint = Paint()
+          grainPaint
             ..color = accent.withValues(alpha: pencilAlpha * 0.3)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = segWidth * 0.6
-            ..strokeCap = StrokeCap.round;
+            ..strokeWidth = segWidth * 0.6;
           canvas.drawLine(
             Offset(element.x + p1.x + 0.35, element.y + p1.y + 0.35),
             Offset(element.x + p2.x + 0.35, element.y + p2.y + 0.35),
@@ -1673,6 +1669,11 @@ class OrbitCanvasPainter extends CustomPainter {
       }
     } else if (isBrush) {
       // Brush: wide dynamic pressure range and entry/exit tapering
+      final segPaint = Paint()
+        ..color = inkColor
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
       for (var i = startSegment; i < segmentEnd; i++) {
         final p1 = points[i];
         final p2 = points[i + 1];
@@ -1694,12 +1695,7 @@ class OrbitCanvasPainter extends CustomPainter {
           0.8,
           inkWidth * (0.25 + avgPressure * avgPressure * 1.8) * taper,
         );
-        final segPaint = Paint()
-          ..color = inkColor
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = segWidth
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round;
+        segPaint.strokeWidth = segWidth;
         canvas.drawLine(
           Offset(element.x + p1.x, element.y + p1.y),
           Offset(element.x + p2.x, element.y + p2.y),
@@ -1709,6 +1705,11 @@ class OrbitCanvasPainter extends CustomPainter {
     } else if (hasPressure &&
         rawPoints != null &&
         rawPoints.length == points.length) {
+      final segPaint = Paint()
+        ..color = inkColor
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
       for (var i = startSegment; i < segmentEnd; i++) {
         final p1 = points[i];
         final p2 = points[i + 1];
@@ -1720,12 +1721,7 @@ class OrbitCanvasPainter extends CustomPainter {
             : 0.7;
         final avgPressure = ((pressure1 + pressure2) / 2).clamp(0.1, 1.0);
         final segWidth = math.max(0.8, inkWidth * (0.35 + avgPressure * 0.9));
-        final segPaint = Paint()
-          ..color = inkColor
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = segWidth
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round;
+        segPaint.strokeWidth = segWidth;
         canvas.drawLine(
           Offset(element.x + p1.x, element.y + p1.y),
           Offset(element.x + p2.x, element.y + p2.y),

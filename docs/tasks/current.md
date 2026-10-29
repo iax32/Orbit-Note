@@ -1,4 +1,49 @@
-# In progress — PC Canvas stalls and local diagnostics, 2026-10-29
+# In progress — pen responsiveness and easy device sharing, 2026-10-29
+
+Owner requests smooth PC/tablet pen input with preserved visuals/features and
+simple fast server/sync setup. Scope and evidence:
+[pen/live-sharing task](pen-live-sharing-2026-10-29.md). Lenovo is available on
+1.0.8; use matched updated builds for physical acceptance. Implemented: bounded
+live preview allocation, pen/palm capture, Android managed import destinations,
+background payload processing, isolated HTTP/merge/journal host, visible setup/
+cancel/reconnect, negotiated lossless request/response compression and 32-MiB
+shared document limit (room/decoded-size protections retained). Preserve preceding
+audit changes. Final 35/37 focused batches pass, including real synthetic HTTPS;
+analyzer clean and 910 lib/test files format-clean. Large-fixture gzip is 92.0%
+smaller losslessly. Native stylus raster P95 1.340 ms; a 19.19-ms pan outlier and
+physical PC/Lenovo acceptance remain. Final Windows 1.0.10+11 built in 105.8 s
+and Android in 116.6 s; AOT freshness, package/version and original preview
+certificate verified. Owner requests GitHub publication of this update; package
+and upload locally built releases, with no GitHub build workflow.
+
+## Preceding Gemini audit implementation, 2026-10-29
+
+Owner supplied Gemini's report and authorizes supported performance changes.
+Scope/validation: docs/tasks/audit-performance-2026-10-29.md. Prioritize exact ink
+appearance, safe comparisons, indexed snapping, writing responsiveness, worker
+reuse and collaboration costs; inspect PDF/sync/root-notification claims before
+changing behavior. Do not assume the report's hypotheses are proven causes.
+
+Delivered local batch: indexed global snapping with exact old guide/tie behavior,
+per-stroke Paint reuse and immutable sample views, complete background grammar
+and per-field caches, LaTeX token/controller reuse, cached presence digests,
+persistent history worker, exact PDF layout memo and reduced settings/poll/root
+notification work. Preserve strict UML routes, vector appearance and full save/
+conflict guards. Detailed report dispositions are recorded in the task document.
+Native 2500-item/400-move alignment 180.406 -> .482 ms total (+4.697-ms index);
+100 large-document caret hashes 334.595 -> 3.803 ms. Seven-nib pre-change pixels
+match exactly. Focused batches of 12/54/20/60 checks pass (overlapping counts).
+Analyzer clean (40.0 s), strict format 900 files unchanged (8.01 s).
+
+Native isolated 100-Hz/400%-zoom replay: long-stylus GPU P95 1.807 ms, mouse
+4.666 ms; no drawing-stage budget misses. Pan has one 23.804-ms raster outlier.
+This is not a full-app/physical 180-Hz acceptance claim. Windows 1.0.9+10 rebuilt
+in 149.0 s, AOT freshness/version verified. Android built in 141.8 s; preview
+package/version/original signing certificate verified. No GitHub workflow run.
+Next: owner clean UE2 replay through usual shortcut; remaining pan outlier and
+physical mobile acceptance stay open. Do not claim the app free of all pauses.
+
+## Previous continuation — PC Canvas stalls and local diagnostics
 
 Latest owner steering: publish the current improvement for immediate use, then
 continue diagnosing remaining drawing pauses (owner reports roughly 70/30).

@@ -663,10 +663,11 @@ class NativeWorkspaceStore
   }
 
   Future<void> _historyMaintenance = Future.value();
+  NativeHistoryMaintenance? _historyWorker;
   Future<void> _pruneHistory(String area) {
     final root = _root.path;
     final work = _historyMaintenance.then(
-      (_) => pruneNativeHistory(
+      (_) => (_historyWorker ??= NativeHistoryMaintenance()).prune(
         root: root,
         area: area,
         maxEntries: historyMaxEntries,
@@ -784,6 +785,9 @@ class NativeWorkspaceStore
   Future<void> close() async {
     // Keep the old Vault's OS lease until its queued maintenance has finished.
     await _historyMaintenance;
+    final historyWorker = _historyWorker;
+    _historyWorker = null;
+    await historyWorker?.close();
     final subscription = _linuxWatchSubscription;
     final events = _linuxEvents;
     _linuxWatchSubscription = null;

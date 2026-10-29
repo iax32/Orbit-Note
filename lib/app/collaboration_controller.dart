@@ -1,14 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
+import '../domain/text_digest_cache.dart';
 import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
-import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/foundation.dart' show listEquals, compute;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:crypto/crypto.dart';
 import '../application/device_secret_store.dart';
 import '../platform/collaboration_http.dart';
+import '../platform/collaboration_payload.dart';
 import '../infrastructure/storage/device_secret_store.dart';
 import '../domain/collaboration.dart';
 import '../domain/object_tombstone.dart';
@@ -18,6 +20,10 @@ import '../application/sync/sync_provider.dart';
 import 'workspace_controller.dart';
 
 part 'shared_vault_replication.dart';
+
+String _decodeSharedText(Uint8List bytes) => utf8.decode(bytes);
+Map<String, dynamic> _decodeSharedJson(Uint8List bytes) =>
+    Map<String, dynamic>.from(jsonDecode(utf8.decode(bytes)) as Map);
 
 final collaborationStartupProvider = Provider<void>((ref) {
   var alive = true, opening = -1;
@@ -88,6 +94,7 @@ class CollaborationController extends ChangeNotifier {
   final DeviceSecretStore Function(String workspaceId)? secrets;
   final WorkspaceController workspace;
   final http.Client httpClient;
+  final _compressedServers = <Uri>{};
   Uri? endpoint;
   String? room, _token, _workspaceId;
   String role = '', status = 'Not connected';
@@ -243,6 +250,15 @@ class CollaborationController extends ChangeNotifier {
     String method,
     String path, [
     Map<String, dynamic>? body,
+  ]) async =>
+      _readResponse(await _requestResponse(server, token, method, path, body));
+
+  Future<http.Response> _requestResponse(
+    Uri server,
+    String token,
+    String method,
+    String path, [
+    Map<String, dynamic>? body,
   ]) async {
     final request = http.Request(method, Uri.parse('$server$path'))
       ..followRedirects = false;
@@ -250,11 +266,24 @@ class CollaborationController extends ChangeNotifier {
     request.headers['X-Orbit-Client'] = '2';
     if (body != null) {
       request.headers['Content-Type'] = 'application/json';
-      request.body = jsonEncode(body);
+      // Saved boards/initial Vaults may be many megabytes. Presence contains
+      // only bounded cursor/selection/preview data: keep it cheap rather than
+      // spawning a worker for every pen-awareness packet.
+      final presence = path.endsWith('/presence');
+      final compressed = !presence && _compressedServers.contains(server);
+      if (compressed) request.headers['Content-Encoding'] = 'gzip';
+      request.bodyBytes = presence
+          ? encodeCollaborationPayload((body, false))
+          : await compute(encodeCollaborationPayload, (body, compressed));
     }
     final incoming = await httpClient
         .send(request)
         .timeout(const Duration(seconds: 20));
+    if (supportsCollaborationCompression &&
+        incoming.headers['x-orbit-accept-encoding'] == 'gzip') {
+      if (_compressedServers.length >= 16) _compressedServers.clear();
+      _compressedServers.add(server);
+    }
     final bytes = BytesBuilder(copy: false);
     await for (final chunk in incoming.stream.timeout(
       const Duration(seconds: 20),
@@ -273,11 +302,15 @@ class CollaborationController extends ChangeNotifier {
     if (response.statusCode == 401 || response.statusCode == 403) {
       throw const CollaborationAccessDenied();
     }
+    return response;
+  }
+
+  Future<Map<String, dynamic>> _readResponse(http.Response response) async {
     Map<String, dynamic> value;
     try {
-      value = Map<String, dynamic>.from(
-        jsonDecode(utf8.decode(response.bodyBytes)) as Map,
-      );
+      value = response.bodyBytes.length > 64 * 1024
+          ? await compute(_decodeSharedJson, response.bodyBytes)
+          : _decodeSharedJson(response.bodyBytes);
     } on Object {
       throw StateError(
         'The server returned an unreadable response. Local files are safe.',
@@ -501,8 +534,21 @@ class CollaborationController extends ChangeNotifier {
     }
   }
 
-  Future<String> downloadRoom(Uri server, String id, String token) async =>
-      jsonEncode(await request(server, token, 'GET', '/v1/rooms/$id/backup'));
+  Future<String> downloadRoom(Uri server, String id, String token) async {
+    final response = await _requestResponse(
+      server,
+      token,
+      'GET',
+      '/v1/rooms/$id/backup',
+    );
+    if (response.statusCode != 200) await _readResponse(response);
+    // Preserve the original envelope. Decoding and re-encoding its whole file
+    // map before validation doubled initial-join work and peak allocation.
+    return response.bodyBytes.length > 64 * 1024
+        ? compute(_decodeSharedText, response.bodyBytes)
+        : _decodeSharedText(response.bodyBytes);
+  }
+
   Future<void> connect(Uri server, String id, String token) async {
     server = validateEndpoint('$server');
     final requestId = ++_connectionRequest;
@@ -624,6 +670,7 @@ class CollaborationController extends ChangeNotifier {
   }
 
   void disconnect({bool userInitiated = true}) {
+    _textDigest.clear();
     if (userInitiated) _manualDisconnectOpening = workspace.workspaceGeneration;
     _watchGeneration++;
     _localDebounce?.cancel();
@@ -725,6 +772,7 @@ class CollaborationController extends ChangeNotifier {
     _schedulePresence();
   }
 
+  final _textDigest = TextDigestCache();
   void textSelection(String id, String source, TextSelection selection) {
     if (!connected ||
         !_documents.containsKey(id) ||
@@ -740,7 +788,7 @@ class CollaborationController extends ChangeNotifier {
       'y': 0,
       'textBase': selection.baseOffset,
       'textExtent': selection.extentOffset,
-      'textHash': sha256.convert(utf8.encode(source)).toString(),
+      'textHash': _textDigest.hash(source),
     };
     _schedulePresence();
   }

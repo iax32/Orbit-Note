@@ -575,14 +575,20 @@ void main() {
     addTearDown(() {
       c.dispose();
     });
+    tester.view.physicalSize = const Size(390, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(
-      MaterialApp(
-        home: MediaQuery(
-          data: const MediaQueryData(
-            size: Size(390, 800),
-            textScaler: TextScaler.linear(2),
+      ProviderScope(
+        child: MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
           ),
-          child: Builder(
+          home: Builder(
             builder: (context) => TextButton(
               onPressed: () => showCollaborationSettings(context, c),
               child: const Text('Share'),
@@ -595,6 +601,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Join shared Vault'), findsOneWidget);
     expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
   testWidgets(
     'Canvas remote cursor uses world position through the shared engine',

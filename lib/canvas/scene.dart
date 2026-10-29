@@ -153,6 +153,21 @@ class CanvasElement {
                 data['height'],
               ].every((v) => v == null || v is num && v.isFinite && v >= 0)));
   CanvasBounds get bounds => CanvasBounds(x, y, width, height);
+  List<Map>? _ownedInkSamples;
+
+  /// Reuse the filtered sample view only for owned immutable records. Mutable
+  /// legacy/active lists retain the old fresh-view behavior on every access.
+  List<Map>? get inkSamples {
+    final samples = data['points'];
+    if (samples is! List) return null;
+    if (isImmutableObjectData(data)) {
+      return _ownedInkSamples ??= List<Map>.unmodifiable(
+        samples.whereType<Map>(),
+      );
+    }
+    return samples.whereType<Map>().toList(growable: false);
+  }
+
   late final List<CanvasPoint> points = data['points'] is List
       ? (data['points'] as List)
             .whereType<Map>()

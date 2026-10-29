@@ -86,7 +86,7 @@ class CanvasPerformance extends ChangeNotifier {
           event(CanvasPerfEvent.mainThreadStall, 0, {'delayUs': delay});
         }
       });
-      event(CanvasPerfEvent.session, 0, {'schemaVersion': 1, 'renderer': 12});
+      event(CanvasPerfEvent.session, 0, {'schemaVersion': 1, 'renderer': 14});
       _recordContexts();
       notifyListeners();
     } on Object {

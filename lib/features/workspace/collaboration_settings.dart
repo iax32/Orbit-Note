@@ -9,8 +9,9 @@ import 'package:file_selector/file_selector.dart';
 import '../../app/collaboration_controller.dart';
 import 'canvas_conflict_dialog.dart';
 import '../../app/orbit_components.dart';
-import '../../application/backup_bundle.dart';
+import '../../application/backup_execution.dart';
 import '../../platform/import_backup.dart';
+import '../../platform/android_vault_folders.dart';
 import 'backup_import_dialog.dart';
 
 Future<void> showCollaborationSettings(
@@ -43,8 +44,10 @@ class _CollaborationSettingsState
   String? error;
   bool busy = false;
   bool advanced = false;
+  bool rememberAfterJoin = true;
   String? _tabletInvitation, _tabletRoom;
   String? serverStatus;
+  String? progress;
   CollaborationController get c => widget.controller;
   @override
   void initState() {
@@ -69,6 +72,7 @@ class _CollaborationSettingsState
     setState(() {
       busy = true;
       error = null;
+      progress = null;
     });
     try {
       await action();
@@ -83,7 +87,12 @@ class _CollaborationSettingsState
         );
       }
     } finally {
-      if (mounted) setState(() => busy = false);
+      if (mounted) {
+        setState(() {
+          busy = false;
+          progress = null;
+        });
+      }
     }
   }
 
@@ -137,6 +146,9 @@ class _CollaborationSettingsState
             'Vault changed. Start sharing again in the current Vault.',
           );
         }
+        setState(
+          () => progress = 'Preparing this Vault for your other devices…',
+        );
         final result = await c.createRoom(
           live.localEndpoint!,
           live.ownerToken!,
@@ -152,6 +164,7 @@ class _CollaborationSettingsState
         );
         c.invitationEndpoint = live.endpoint;
         _tabletInvitation = _tabletRoom = null;
+        setState(() => progress = 'Ready. Copy the invitation to your tablet.');
       } catch (_) {
         await live.stop();
         rethrow;
@@ -189,7 +202,26 @@ class _CollaborationSettingsState
   Future<void> join() => run(() async {
     final opening = c.workspace.workspaceGeneration;
     bool owns() => mounted && c.workspace.workspaceGeneration == opening;
-    final data = jsonDecode(invitation.text) as Map;
+    Object? decoded;
+    try {
+      decoded = jsonDecode(invitation.text.trim());
+    } on FormatException {
+      throw const FormatException(
+        'Paste the entire private invitation copied from your PC.',
+      );
+    }
+    if (decoded is! Map ||
+        decoded['version'] != 1 ||
+        decoded['server'] is! String ||
+        decoded['room'] is! String ||
+        decoded['token'] is! String ||
+        !RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(decoded['room'] as String) ||
+        !RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(decoded['token'] as String)) {
+      throw const FormatException(
+        'This invitation is incomplete. Copy a new tablet invitation from your PC.',
+      );
+    }
+    final data = decoded;
     final endpoint = CollaborationController.validateEndpoint(
       data['server'] as String,
     );
@@ -200,6 +232,7 @@ class _CollaborationSettingsState
       );
     }
     final room = data['room'] as String, token = data['token'] as String;
+    setState(() => progress = 'Connecting to your PC…');
     final state = await c.inspectRoom(endpoint, room, token);
     if (!owns()) return;
     if (state['workspaceId'] != c.workspace.repository.workspaceId) {
@@ -208,7 +241,11 @@ class _CollaborationSettingsState
           'Import the shared Vault on desktop first. Browser collaboration is not enabled yet.',
         );
       }
-      final bundle = BackupBundle.parse(
+      setState(
+        () => progress =
+            'Downloading and checking your Vault. The first connection copies its files; later edits arrive live.',
+      );
+      final bundle = await parseBackupBundle(
         await c.downloadRoom(endpoint, room, token),
       );
       if (!mounted || !owns()) return;
@@ -220,9 +257,11 @@ class _CollaborationSettingsState
         return;
       }
       if (!owns()) return;
-      final parent = await getDirectoryPath(
-        confirmButtonText: 'Import shared Vault here',
-      );
+      final parent = usesAndroidVaultFolders
+          ? await localBackupImportParent()
+          : await getDirectoryPath(
+              confirmButtonText: 'Import shared Vault here',
+            );
       if (parent == null ||
           !owns() ||
           !await c.workspace.flushAll() ||
@@ -242,7 +281,23 @@ class _CollaborationSettingsState
         return;
       }
     }
+    if (mounted) setState(() => progress = 'Opening live editing…');
     await c.connect(endpoint, room, token);
+    if (rememberAfterJoin && c.canRememberConnection) {
+      try {
+        await c.rememberConnection(autoReconnect: true);
+      } on Object {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Connected. This device could not remember the connection; use Remember connection to retry.',
+              ),
+            ),
+          );
+        }
+      }
+    }
   });
   Future<void> invite() => run(() async {
     final room = c.room, opening = c.workspace.workspaceGeneration;
@@ -286,6 +341,12 @@ class _CollaborationSettingsState
                 'Edit the same Vault on your PC and tablet. Start sharing on the PC, then paste its private invitation on the tablet. Both apps need to stay open. Keep invitations private.',
               ),
               const SizedBox(height: 16),
+              if (busy) ...[
+                const LinearProgressIndicator(),
+                const SizedBox(height: 8),
+                Text(progress ?? 'Connecting…'),
+                const SizedBox(height: 12),
+              ],
               if (ref.read(liveHostProvider).supported) ...[
                 FilledButton.icon(
                   onPressed:
@@ -446,6 +507,18 @@ class _CollaborationSettingsState
                       : join,
                   child: const Text('Join shared Vault'),
                 ),
+                if (c.secrets != null)
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Remember and reconnect automatically'),
+                    subtitle: const Text(
+                      'Store this private connection securely on this device. The PC must remain on. You can disconnect or forget it anytime.',
+                    ),
+                    value: rememberAfterJoin,
+                    onChanged: busy
+                        ? null
+                        : (value) => setState(() => rememberAfterJoin = value),
+                  ),
               ] else ...[
                 Text(c.status),
                 Text('Host: ${c.endpoint}'),

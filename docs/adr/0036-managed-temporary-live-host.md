@@ -16,6 +16,13 @@ system service, firewall or router rule is made. A fresh loopback port/private
 application-data directory isolates it from manually launched servers and Vaults.
 Existing server persistence, grants and repository commands stay authoritative.
 
+2026-10-29 implementation refinement: the managed HTTP server and its existing
+merge/journal engine run in a dedicated native isolate. The UI receives only its
+loopback port and lifetime signal; no Vault repository or mutable scene is sent
+to the server worker. Stop drains the server journal and releases its lease.
+Unexpected worker exit stops the relay and offers restart. This preserves the
+protocol/security boundary while keeping host work off the pen-input isolate.
+
 Review before starting discloses that Vault snapshots include Archive/Trash and
 attachments; HTTPS terminates at Cloudflare and is not end-to-end encryption.
 The helper starts only on user action. Root owner credentials never go through

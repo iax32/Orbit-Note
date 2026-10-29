@@ -4,6 +4,18 @@ import '../../../app/orbit_theme.dart';
 /// Syntax highlighter and tokenizing controller for raw LaTeX code.
 class LatexTextEditingController extends TextEditingController {
   LatexTextEditingController({super.text});
+  String? _tokenSource;
+  List<RegExpMatch> _tokens = const [];
+  static final _tokenRegex = RegExp(
+    r'(%.*$)|'
+    r'(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])|'
+    r'(\$[^\$\n]+?\$|\\\(.*?\\\))|'
+    r'(\\(?:begin|end)\{[a-zA-Z0-9*]+\})|'
+    r'(\\[a-zA-Z@]+|\\.)|'
+    r'([\{\}\[\]])|'
+    r'([&_^\\])',
+    multiLine: true,
+  );
 
   @override
   TextSpan buildTextSpan({
@@ -50,18 +62,11 @@ class LatexTextEditingController extends TextEditingController {
     // 5: command \commandName
     // 6: brackets { } [ ]
     // 7: specials & \\ ^ _
-    final tokenRegex = RegExp(
-      r'(%.*$)|' // Group 1: comment
-      r'(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])|' // Group 2: display math
-      r'(\$[^\$\n]+?\$|\\\(.*?\\\))|' // Group 3: inline math
-      r'(\\(?:begin|end)\{[a-zA-Z0-9*]+\})|' // Group 4: environment
-      r'(\\[a-zA-Z@]+|\\.)|' // Group 5: command
-      r'([\{\}\[\]])|' // Group 6: brackets
-      r'([&_^\\])', // Group 7: specials
-      multiLine: true,
-    );
-
-    final matches = tokenRegex.allMatches(raw);
+    if (_tokenSource != raw) {
+      _tokenSource = raw;
+      _tokens = _tokenRegex.allMatches(raw).toList(growable: false);
+    }
+    final matches = _tokens;
 
     for (final m in matches) {
       if (m.start > index) {

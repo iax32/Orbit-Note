@@ -2,7 +2,7 @@ import '../../canvas/university_diagram.dart';
 import '../../domain/university/lab_document.dart';
 import '../../domain/edge_scroll.dart';
 import '../../app/retained_form.dart';
-import '../../canvas/equal_spacing.dart';
+import '../../canvas/snap_index.dart';
 import '../../domain/university/lab_presets.dart';
 import '../university/university_lab_dialog.dart';
 import '../../canvas/brainstorm.dart';
@@ -16,6 +16,7 @@ import '../../canvas/math_plot_elements.dart';
 import '../../app/orbit_components.dart';
 import '../../app/orbit_theme.dart';
 import 'dart:async';
+import 'dart:collection';
 import 'canvas_live_ink.dart';
 import 'canvas_scene_viewport.dart';
 import '../../app/canvas_performance.dart';
@@ -362,6 +363,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
   CanvasPoint? _lastScreen;
   CanvasCamera? _startCamera;
   final Map<String, CanvasElement> _original = {};
+  CanvasSnapIndex? _dragSnapIndex;
   CanvasBounds? _region;
   List<CanvasPoint>? _lassoPoints;
   CanvasElement? _preview;
@@ -1062,6 +1064,13 @@ class _CanvasEditorState extends State<CanvasEditor> {
       return;
     }
     if (_laserMode) return;
+    // A palm often lands before the pen. Let the pen take capture from touch,
+    // rolling back the provisional touch gesture rather than losing the stroke.
+    if ((event.kind == PointerDeviceKind.stylus ||
+            event.kind == PointerDeviceKind.invertedStylus) &&
+        (_pointerKind == PointerDeviceKind.touch || _inMultiTouch)) {
+      _rollbackGesture(restoreCamera: false);
+    }
     // A palm may generate multiple touch contacts while a pen is captured.
     // They must not promote to a pinch and roll back the pen transaction.
     if (event.kind == PointerDeviceKind.touch &&
@@ -1394,59 +1403,38 @@ class _CanvasEditorState extends State<CanvasEditor> {
             movingBounds.height,
           );
           final threshold = 6.0 / _camera.zoom;
-          final candidates = _scene.elements
-              .where((e) => e.renderable && !_original.containsKey(e.id))
-              .toList();
-
-          double? snapDx;
-          double? snapGuideX;
-          final movingX = [
-            currentBounds.left,
-            currentBounds.center.x,
-            currentBounds.right,
-          ];
-          for (final cand in candidates) {
-            final candX = [
-              cand.bounds.left,
-              cand.bounds.center.x,
-              cand.bounds.right,
-            ];
-            for (final mx in movingX) {
-              for (final cx in candX) {
-                final diff = cx - mx;
-                if (diff.abs() <= threshold &&
-                    (snapDx == null || diff.abs() < snapDx.abs())) {
-                  snapDx = diff;
-                  snapGuideX = cx;
-                }
-              }
-            }
-          }
-
-          double? snapDy;
-          double? snapGuideY;
-          final movingY = [
-            currentBounds.top,
-            currentBounds.center.y,
-            currentBounds.bottom,
-          ];
-          for (final cand in candidates) {
-            final candY = [
-              cand.bounds.top,
-              cand.bounds.center.y,
-              cand.bounds.bottom,
-            ];
-            for (final my in movingY) {
-              for (final cy in candY) {
-                final diff = cy - my;
-                if (diff.abs() <= threshold &&
-                    (snapDy == null || diff.abs() < snapDy.abs())) {
-                  snapDy = diff;
-                  snapGuideY = cy;
-                }
-              }
-            }
-          }
+          final index = _dragSnapIndex ??= CanvasSnapIndex([
+            for (final e in _scene.elements)
+              if (e.renderable && !_original.containsKey(e.id))
+                CanvasSnapTarget(
+                  e.id,
+                  e.bounds,
+                  spacing: !isConnectorElement(e),
+                  dynamic:
+                      isConnectorElement(e) &&
+                      (_original.containsKey(e.startId) ||
+                          _original.containsKey(e.endId)),
+                ),
+          ]);
+          final live = {
+            for (final id in index.dynamicIds)
+              if (_scene[id] != null) id: _scene[id]!.bounds,
+          };
+          final horizontal = index.alignment(
+            currentBounds,
+            vertical: false,
+            tolerance: threshold,
+            live: live,
+          );
+          final verticalSnap = index.alignment(
+            currentBounds,
+            vertical: true,
+            tolerance: threshold,
+            live: live,
+          );
+          final snapDx = horizontal?.delta, snapGuideX = horizontal?.position;
+          final snapDy = verticalSnap?.delta,
+              snapGuideY = verticalSnap?.position;
 
           if (snapDx != null) {
             delta = CanvasPoint(delta.x + snapDx, delta.y);
@@ -1468,13 +1456,11 @@ class _CanvasEditorState extends State<CanvasEditor> {
               movingBounds.width,
               movingBounds.height,
             );
-            final spacing = equalCanvasSpacing(
+            final spacing = index.spacing(
               moved,
-              candidates
-                  .where((e) => !isConnectorElement(e))
-                  .map((e) => e.bounds),
               vertical: vertical,
               tolerance: threshold,
+              live: live,
             );
             if (spacing == null) continue;
             delta = vertical
@@ -1627,8 +1613,12 @@ class _CanvasEditorState extends State<CanvasEditor> {
       if (_ink.isNotEmpty && !force) {
         final last = _ink.last;
         if ((CanvasPoint(last['x'] as double, last['y'] as double) - point)
-                .length <
-            .7 / _camera.zoom) {
+                    .length <
+                .7 / _camera.zoom &&
+            pressure.isFinite &&
+            ((last['pressure'] as num).toDouble() - pressure.clamp(0, 1))
+                    .abs() <
+                .01) {
           return;
         }
       }
@@ -1679,7 +1669,10 @@ class _CanvasEditorState extends State<CanvasEditor> {
       'y': 0.0,
       'width': 0.0,
       'height': 0.0,
-      'points': List.of(_ink),
+      // This preview is local and ephemeral, never a history/persistence value.
+      // Cache preparation reads only appended samples. Copying the full growing
+      // stroke here allocated O(n) on every frame, increasing GC pressure.
+      'points': UnmodifiableListView(_ink),
       'color': _color,
       'strokeWidth': strokeWidth,
       'penStyle': penStyle,
@@ -2103,6 +2096,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   void _clearGesture() {
+    _dragSnapIndex = null;
     _liveInkCache.clear();
     if (_lastInkBroadcast != null) widget.onInkPreview?.call(null);
     _lastInkBroadcast = null;

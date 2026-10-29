@@ -255,7 +255,7 @@ extension _SharedReplication on CollaborationServer {
           final snapshot = Map<String, dynamic>.from(body['snapshot'] as Map);
           if (utf8.encode(jsonEncode(snapshot)).length >
               CollaborationServer.maxDocumentBytes) {
-            throw const FormatException('Shared document exceeds 2 MiB.');
+            throw const FormatException('Shared document exceeds 32 MiB.');
           }
           final object = collaborationObject(snapshot, allowDeleted: true),
               path = body['path'] as String;

@@ -3,7 +3,19 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
+import 'package:path_provider/path_provider.dart';
 import '../application/backup_bundle.dart';
+
+/// Mobile downloads belong to the app's writable Vault storage. A document-tree
+/// picker does not grant dart:io access to an arbitrary Android folder.
+Future<String> localBackupImportParent({
+  Future<Directory> Function()? documentsDirectory,
+}) async => (await Directory(
+  p.join(
+    (await (documentsDirectory ?? getApplicationDocumentsDirectory)()).path,
+    'Vaults',
+  ),
+).create(recursive: true)).path;
 
 /// Publish a unique new folder only after all bytes have been flushed. Failure
 /// leaves an explicitly incomplete staging folder; no existing workspace is touched.

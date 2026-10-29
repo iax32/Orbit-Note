@@ -23,6 +23,7 @@ import '../../platform/pdf_forms.dart';
 import '../../platform/pdf_annotations.dart';
 import 'pdf_work_widgets.dart';
 import 'pdf_content_fit.dart';
+import 'pdf_layout_cache.dart';
 import 'pdf_review_panel.dart';
 import 'pdf_notes_panel.dart';
 import 'pdf_zoom_dialog.dart';
@@ -321,7 +322,16 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   int? _sessionSecondsRemaining;
   Timer? _sessionTimer;
 
-  PdfPageLayout _layoutPages(List<PdfPage> pages, PdfViewerParams params) {
+  final _pageLayoutCache = PdfPageLayoutCache();
+  PdfPageLayout _layoutPages(List<PdfPage> pages, PdfViewerParams params) =>
+      _pageLayoutCache.resolve(
+        pages,
+        mode: _pageMode,
+        margin: params.margin,
+        build: () => _buildPageLayout(pages, params),
+      );
+
+  PdfPageLayout _buildPageLayout(List<PdfPage> pages, PdfViewerParams params) {
     if (_pageMode == PdfPageMode.single) {
       final height =
           pages.fold(0.0, (prev, page) => math.max(prev, page.height)) +
@@ -503,6 +513,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   }
 
   void _resetViewer() {
+    _pageLayoutCache.clear();
     _navigationSerial++;
     _navigationTarget = null;
     _globalSearchRange = null;

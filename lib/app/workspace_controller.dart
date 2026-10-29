@@ -7242,6 +7242,7 @@ ${links(against)}
 
   Future<void> _saveSessionQueue() async {
     savingSettings = true;
+    var requiresNotification = _settingsSaveFailed;
     try {
       while (_settingsSaveRequested) {
         _settingsSaveRequested = false;
@@ -7284,6 +7285,7 @@ ${links(against)}
           );
         }
         if (changes.isNotEmpty) {
+          requiresNotification = true;
           await repository.writePortablePreferences(recordId, changes);
           preferenceRevision++;
           for (final key in changes.keys) {
@@ -7299,7 +7301,9 @@ ${links(against)}
         }
       }
       _settingsSaveFailed = false;
-      notify();
+      // Camera/scroll/device-only checkpoints do not change shell content.
+      // Preference publication and recovery still notify sync and status UI.
+      if (requiresNotification) notify();
     } catch (e) {
       _settingsSaveFailed = true;
       error = 'Could not save workspace layout: $e';

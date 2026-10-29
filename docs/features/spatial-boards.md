@@ -1,5 +1,21 @@
 # Spatial boards
 
+2026-10-29 pen input: the stylus takes priority over earlier provisional palm
+contacts, later palms cannot cancel the pen, and spatial filtering preserves
+pressure changes. The local preview borrows a read-only view of gesture-owned
+samples rather than allocating a whole-stroke copy per frame. Durable committed
+ink still owns independently frozen samples and uses the existing nib renderer,
+history and sync. Physical device latency acceptance is tracked separately.
+
+## Indexed drag alignment — 2026-10-29
+
+Each selection drag builds a derived coordinate/interval index, preserving global
+alignment (including distant objects), original tie order, equal-spacing row and
+column rules, Alt bypass and zoom-adjusted tolerance. Attached connectors supply
+live bounds. The index is discarded with the gesture; no source/history format,
+route-crossing rule or authored geometry changes. All ink nibs retain exact
+pressure, grain, overlap and partial-segment pixels while reusing Paint objects.
+
 ## Workshop and heavy-board reliability — 2026-10-26
 
 Countdown updates are isolated from the idea list; ticking does not rebuild or
