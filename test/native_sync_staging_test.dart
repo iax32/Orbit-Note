@@ -42,6 +42,26 @@ void main() {
       isEmpty,
     );
   });
+  test(
+    'validated native stages expose exact reusable checksum proof',
+    () async {
+      final stage = await store.stageWithChecksums(
+        Stream.value(bytes),
+        expectedHash: hash,
+        maxBytes: 100,
+      );
+      try {
+        expect(stage, isA<WorkspaceStageChecksums>());
+        expect(
+          (stage as WorkspaceStageChecksums).md5Hash,
+          md5.convert(bytes).toString(),
+        );
+        expect(await stage.openRead().expand((c) => c).toList(), bytes);
+      } finally {
+        await stage.close();
+      }
+    },
+  );
 
   test(
     'guard rejection removes automatic recovery intent before reopen',

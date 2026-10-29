@@ -1,8 +1,7 @@
 part of 'native_workspace_store.dart';
 
-Future<String?> _hashFile(File file) async => await file.exists()
-    ? (await sha256.bind(file.openRead()).first).toString()
-    : null;
+Future<String?> _hashFile(File file) async =>
+    (await nativeFileDigests(file))?.sha256;
 
 Future<WorkspaceStage> _stageSync(
   NativeWorkspaceStore store,
@@ -10,8 +9,9 @@ Future<WorkspaceStage> _stageSync(
   String expectedHash,
   int maxBytes,
   void Function(int bytesRead)? onProgress,
-  bool Function()? isCancelled,
-) async {
+  bool Function()? isCancelled, {
+  bool includeMd5 = false,
+}) async {
   store._requireOwnership();
   final ownership = store._ownership;
   final file = await store._file(
@@ -42,14 +42,23 @@ Future<WorkspaceStage> _stageSync(
     rethrow;
   }
   await output.close();
-  if (await _hashFile(file) != expectedHash || store._ownership != ownership) {
-    await file.delete();
+  final digests = await nativeFileDigests(file, includeMd5: includeMd5);
+  if (digests?.sha256 != expectedHash || store._ownership != ownership) {
+    if (await file.exists()) await file.delete();
     throw const WorkspaceConflict('Transferred bytes or Vault changed.');
   }
-  return _NativeSyncStage(store, ownership!, file, expectedHash, length);
+  return _NativeSyncStage(
+    store,
+    ownership!,
+    file,
+    expectedHash,
+    length,
+    null,
+    digests!.md5,
+  );
 }
 
-class _NativeSyncStage implements WorkspaceStage {
+class _NativeSyncStage implements WorkspaceStage, WorkspaceStageChecksums {
   _NativeSyncStage(
     this.store,
     this.ownership,
@@ -57,11 +66,14 @@ class _NativeSyncStage implements WorkspaceStage {
     this.hash,
     this.length, [
     this.cleanupManifest,
+    this.md5Hash,
   ]);
   final NativeWorkspaceStore store;
   final NativeVaultLock ownership;
   final File file;
   final File? cleanupManifest;
+  @override
+  final String? md5Hash;
   @override
   final String hash;
   @override

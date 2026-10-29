@@ -32,8 +32,16 @@ class WorkspaceSyncReplica implements SyncReplica {
     this,
     path: '.orbit/device/sync/drive-uploads-v1.json',
   );
-  Future<WorkspaceStage> stageTransfer(Stream<List<int>> bytes, String hash) =>
-      _staging.stage(bytes, expectedHash: hash, maxBytes: maxBlobBytes);
+  Future<WorkspaceStage> stageTransfer(Stream<List<int>> bytes, String hash) {
+    final staging = _staging;
+    return staging is WorkspaceChecksumStagingStore
+        ? staging.stageWithChecksums(
+            bytes,
+            expectedHash: hash,
+            maxBytes: maxBlobBytes,
+          )
+        : staging.stage(bytes, expectedHash: hash, maxBytes: maxBlobBytes);
+  }
 
   void _check({bool applying = false}) {
     repository._requireWritable();

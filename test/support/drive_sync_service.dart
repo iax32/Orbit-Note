@@ -47,6 +47,8 @@ class DriveSyncService {
   final sessions = <String, DriveTestFile>{};
   int sequence = 0, requests = 0, recordCreates = 0, blobCreates = 0;
   bool offline = false, loseBlobReply = false, loseRecordReply = false;
+  bool omitUploadMetadata = false, wrongUploadChecksum = false;
+  bool holdChanges = false, hideRevisionListings = false;
   bool partialList = false;
   bool failFolderCreateOnce = false;
   int? rejectStatus;
@@ -56,6 +58,9 @@ class DriveSyncService {
   final changes = <Map<String, dynamic>>[];
   final _observed = <String, String>{};
   int historyLists = 0, changeLists = 0, mediaReads = 0;
+  int activeMedia = 0, peakMedia = 0;
+  Duration mediaDelay = Duration.zero;
+  Future<void> Function()? beforeMediaRead;
   int changePageSize = 1000;
   bool expireCursorOnce = false,
       repeatChangePage = false,
@@ -68,6 +73,7 @@ class DriveSyncService {
   bool interruptChunkOnce = false;
   final uploadedOffsets = <int>[];
   void _observe() {
+    if (holdChanges) return;
     for (final entry in files.entries) {
       final json = entry.value.json;
       final encoded = jsonEncode(json);
@@ -165,7 +171,12 @@ class DriveSyncService {
       final result = matches.map((f) => f.json).toList();
       if (role == 'sync-revision') await afterHistoryList?.call();
       return http.Response(
-        jsonEncode({'files': result, 'incompleteSearch': partialList}),
+        jsonEncode({
+          'files': role == 'sync-revision' && hideRevisionListings
+              ? []
+              : result,
+          'incompleteSearch': partialList,
+        }),
         200,
       );
     }
@@ -174,10 +185,21 @@ class DriveSyncService {
       if (f == null || f.metadata['trashed'] == true) {
         return http.Response('{}', 404);
       }
-      if (r.url.queryParameters['alt'] == 'media') mediaReads++;
-      return r.url.queryParameters['alt'] == 'media'
-          ? http.Response.bytes(f.bytes, 200)
-          : http.Response(jsonEncode(f.json), 200);
+      if (r.url.queryParameters['alt'] == 'media') {
+        mediaReads++;
+        activeMedia++;
+        if (activeMedia > peakMedia) peakMedia = activeMedia;
+        try {
+          if (mediaDelay != Duration.zero) {
+            await Future<void>.delayed(mediaDelay);
+          }
+          await beforeMediaRead?.call();
+          return http.Response.bytes(f.bytes, 200);
+        } finally {
+          activeMedia--;
+        }
+      }
+      return http.Response(jsonEncode(f.json), 200);
     }
     if (path.startsWith('/drive/v3/files/') && r.method == 'PATCH') {
       final f = files[r.url.pathSegments.last];
@@ -248,7 +270,17 @@ class DriveSyncService {
         offline = true;
         throw http.ClientException('Lost record acknowledgement');
       }
-      return http.Response(jsonEncode({'id': id}), 200);
+      return http.Response(
+        jsonEncode(
+          r.url.queryParameters['fields'] == null || omitUploadMetadata
+              ? {'id': id}
+              : {
+                  ...files[id]!.json,
+                  if (wrongUploadChecksum) 'md5Checksum': 'invalid',
+                },
+        ),
+        200,
+      );
     }
     if (path == '/upload/drive/v3/files' && r.method == 'PUT') {
       final session = sessions['${r.url}'];

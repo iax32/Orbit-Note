@@ -6,6 +6,7 @@ part of 'google_drive_api.dart';
 /// snapshots so a crash between the two checkpoints cannot skip remote content.
 extension _DriveChangeFeed on GoogleDriveSyncProvider {
   Future<SyncDelta> _fetchChanges() async {
+    _inspected = null;
     await _load();
     final feed = _journal['changeFeed'];
     final now = _now().toUtc();
@@ -70,12 +71,13 @@ extension _DriveChangeFeed on GoogleDriveSyncProvider {
           'Incomplete Drive change feed.',
         );
       }
+      final revisions = <Map<String, dynamic>>[], observedIds = <String>{};
       for (final raw in changes) {
         if (raw is! Map || raw['fileId'] is! String) {
           throw const GoogleCloudError('listing', 'Unreadable Drive change.');
         }
         final id = raw['fileId'] as String;
-        final known = _cache.containsKey(id);
+        final known = _cache.containsKey(id) || observedIds.contains(id);
         final f = raw['file'];
         final candidate =
             f is Map &&
@@ -94,13 +96,10 @@ extension _DriveChangeFeed on GoogleDriveSyncProvider {
           );
         }
         if (!candidate) continue;
-        await _acceptRevision(Map<String, dynamic>.from(f));
-        if (_records.length > 10000) {
-          throw const WorkspaceFailure(
-            'Cloud revision inventory exceeds 10,000 records.',
-          );
-        }
+        revisions.add(Map<String, dynamic>.from(f));
+        observedIds.add(id);
       }
+      await _acceptRevisions(revisions);
       final next = response['nextPageToken'];
       if (next != null) {
         if (!_validToken(next) || !seen.add(next as String)) {

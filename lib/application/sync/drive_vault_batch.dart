@@ -275,16 +275,17 @@ Future<BackupBundle> prepareDriveVaultBundle(
     stage: (_, _) => throw StateError('Discovery cannot upload'),
     isCurrent: isCurrent,
   );
-  final delta = await provider.fetchChanges(null);
   final key = 'vault:${vault.workspaceId}';
-  final manifests = delta.entries.where((e) => e.entry.key == key).toList();
-  if (manifests.length != 1 || delta.forks.containsKey(key)) {
+  // Opening needs the verified manifest first, not every note's entire history.
+  // The imported replica performs the complete reconciliation after opening.
+  final manifest = await provider.inspect(key);
+  if (manifest == null) {
     throw const WorkspaceConflict(
-      'Resolve the cloud Vault manifest conflict on an existing device first.',
+      'The cloud Vault manifest is not available yet. Finish sync on the source device and try again.',
     );
   }
   final output = BytesBuilder(copy: false);
-  await for (final chunk in provider.download(manifests.single)) {
+  await for (final chunk in provider.download(manifest)) {
     if (output.length + chunk.length > 1024 * 1024) {
       throw const WorkspaceFailure(
         'Cloud Vault manifest exceeds the safe opening limit.',
@@ -293,8 +294,7 @@ Future<BackupBundle> prepareDriveVaultBundle(
     output.add(chunk);
   }
   final bytes = output.takeBytes();
-  if (!isCurrent() ||
-      sha256.convert(bytes).toString() != manifests.single.entry.hash) {
+  if (!isCurrent() || sha256.convert(bytes).toString() != manifest.entry.hash) {
     throw const WorkspaceConflict('Cloud manifest verification failed.');
   }
   return BackupBundle.parse(

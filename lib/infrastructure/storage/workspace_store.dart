@@ -20,6 +20,17 @@ abstract interface class WorkspaceStagingStore {
   });
 }
 
+/// Upload adapters can request both proofs in one disk pass. Ordinary staging
+/// retains SHA-256-only validation without paying for an unused second digest.
+abstract interface class WorkspaceChecksumStagingStore
+    implements WorkspaceStagingStore {
+  Future<WorkspaceStage> stageWithChecksums(
+    Stream<List<int>> bytes, {
+    required String expectedHash,
+    required int maxBytes,
+  });
+}
+
 /// Metadata retained for an attachment transfer that was interrupted while
 /// its bytes were being staged. The staged bytes are device-local and are
 /// never treated as authored workspace content until the guarded commit.
@@ -79,6 +90,12 @@ abstract interface class WorkspaceStage {
     required void Function() checkCurrent,
   });
   Future<void> close();
+}
+
+/// Optional proof computed from the exact validated stage bytes. Recovery
+/// stages may omit it; providers retain their streaming checksum fallback.
+abstract interface class WorkspaceStageChecksums {
+  String? get md5Hash;
 }
 
 abstract interface class WorkspaceSelectionStore {

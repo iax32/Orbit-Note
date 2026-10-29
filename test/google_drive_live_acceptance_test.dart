@@ -34,8 +34,10 @@ class _Connection extends http.BaseClient {
   final _client = http.Client();
   bool offline = false, interruptChunk = false, loseRecordReply = false;
   int interruptedChunks = 0, lostRecordReplies = 0, sessions = 0;
+  int requests = 0;
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    requests++;
     if (offline) throw const SocketException('Acceptance connection offline');
     final resumable =
         request.method == 'POST' &&
@@ -194,6 +196,38 @@ void main() {
               provider: provider(replica, api),
               stateStore: replica.createStateStore(),
             );
+        Future<void> receiveUntil(
+          SyncEngine reader,
+          bool Function() observed,
+          String label,
+        ) async {
+          final watch = Stopwatch()..start();
+          var checks = 0;
+          do {
+            await reader.sync();
+            checks++;
+            if (observed()) break;
+            await Future<void>.delayed(const Duration(seconds: 1));
+          } while (watch.elapsed < const Duration(seconds: 30));
+          final observations =
+              result.putIfAbsent(
+                    'propagationChecks',
+                    () => <Map<String, dynamic>>[],
+                  )
+                  as List;
+          observations.add({
+            'phase': label,
+            'checks': checks,
+            'wallMs': watch.elapsedMilliseconds,
+          });
+          expect(
+            observed(),
+            isTrue,
+            reason:
+                '$label must converge within the bounded real-Drive observation window.',
+          );
+        }
+
         final note = await a.create(
           typeId: 'orbit.note',
           title: 'Synthetic acceptance note',
@@ -218,13 +252,15 @@ void main() {
         await passed('real Drive upload of note, Canvas and multi-chunk file');
 
         // Bootstrap client B from the verified remote manifest, not a local copy.
-        final manifestRemote = (await provider(ra, apiB).fetchChanges(
-          null,
-        )).entries.singleWhere((e) => e.entry.path == 'workspace.json');
+        final manifestRemote = await provider(
+          ra,
+          apiB,
+        ).inspect('vault:${a.workspaceId}');
+        expect(manifestRemote, isNotNull);
         final manifest = await provider(
           ra,
           apiB,
-        ).download(manifestRemote).expand((chunk) => chunk).toList();
+        ).download(manifestRemote!).expand((chunk) => chunk).toList();
         expect(sha256.convert(manifest).toString(), manifestRemote.entry.hash);
         await Directory(pathB).create();
         await File('$pathB/workspace.json').writeAsBytes(manifest);
@@ -248,7 +284,11 @@ void main() {
           body: 'bidirectional',
         );
         await engine(rb, apiB).sync();
-        await engine(ra, apiA).sync();
+        await receiveUntil(
+          engine(ra, apiA),
+          () => a!.objects.any((o) => o.id == added.id),
+          'new object B to A',
+        );
         expect(a.objects.any((o) => o.id == added.id), isTrue);
         await passed('new objects transfer from B back to A');
 
@@ -348,7 +388,13 @@ void main() {
         ca.loseRecordReply = true;
         expect((await engine(ra, apiA).sync()).upToDate, isTrue);
         expect(ca.lostRecordReplies, 1);
-        await engine(rb, apiB).sync();
+        await receiveUntil(
+          engine(rb, apiB),
+          () =>
+              b!.objects.singleWhere((o) => o.id == note.id).body ==
+              'publication reply lost; recover same revision',
+          'lost-reply content A to B',
+        );
         expect(
           b.objects.singleWhere((o) => o.id == note.id).body,
           'publication reply lost; recover same revision',
@@ -359,10 +405,18 @@ void main() {
 
         await a.trash(added.id);
         await engine(ra, apiA).sync();
-        await engine(rb, apiB).sync();
+        await receiveUntil(
+          engine(rb, apiB),
+          () => b!.objects.any((o) => o.id == added.id && o.isDeleted),
+          'trash A to B',
+        );
         await a.deletePermanently(added.id);
         await engine(ra, apiA).sync();
-        await engine(rb, apiB).sync();
+        await receiveUntil(
+          engine(rb, apiB),
+          () => !b!.objects.any((o) => o.id == added.id),
+          'tombstone A to B',
+        );
         expect(b.objects.any((o) => o.id == added.id), isFalse);
         expect((await rb.inventory())[added.id]!.deleted, isTrue);
         await passed('trash and permanent-deletion tombstone propagate');
@@ -377,6 +431,7 @@ void main() {
           'both persisted replicas restart and reach a clean checkpoint',
         );
         result['status'] = 'passed';
+        result['networkRequests'] = ca.requests + cb.requests;
         await report(
           'complete; synthetic cloud fixtures retained for inspection',
         );
@@ -389,8 +444,10 @@ void main() {
         result['status'] = 'failed';
         await report('acceptance assertion failed; fixtures preserved');
         rethrow;
-      } on Object {
+      } on Object catch (error, stack) {
         result['status'] = 'failed';
+        result['failureType'] = error.runtimeType.toString();
+        result['failureFrames'] = stack.toString().split('\n').take(6).toList();
         await report(
           'acceptance stopped unexpectedly; no raw provider data logged',
         );

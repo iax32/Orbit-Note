@@ -45,6 +45,18 @@ checks and remaining limits.
 
 ## Discovery optimization — 2026-10-22
 
+2026-10-29 compatible optimization: acknowledged immutable publications and their
+verified cache bodies enter the local feed ID set atomically with the receipt,
+without advancing Google's token. This avoids hiding own publications while the
+remote change index catches up. Missing query results for retained identities
+must be verified directly by ID, never treated as deletion or silently forgotten.
+Publication may consume the engine's immediately preceding same-key inspection
+once within two seconds; another observation invalidates it. Parent/fork checks,
+create-only writes and replay identity remain authoritative. Complete Google
+create acknowledgements may prove stored revision bytes using exact returned
+identity/size/MD5; partial/inconsistent replies still require verified readback.
+These are transport/checkpoint refinements, with no cloud schema migration.
+
 The complete graph may also be reconstructed from a fully listed baseline plus
 validated Drive change-feed pages. The optional device-journal checkpoint binds
 complete membership and cursor; reset snapshots preserve independent engine crash

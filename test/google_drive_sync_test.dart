@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:orbit_note/application/workspace_repository.dart';
 import 'package:orbit_note/application/sync/sync_engine.dart';
+import 'package:orbit_note/application/sync/drive_vault_batch.dart';
 import 'package:orbit_note/application/sync/google_account.dart';
 import 'package:orbit_note/domain/sync_entry.dart';
 import 'package:orbit_note/domain/workspace_failure.dart';
@@ -62,6 +64,247 @@ void main() {
     return note.id;
   }
 
+  void appendHistory(String objectId, int count, String prefix) {
+    final base = server.revisions.lastWhere(
+      (f) => jsonDecode(utf8.decode(f.bytes))['entry']['key'] == objectId,
+    );
+    final source = jsonDecode(utf8.decode(base.bytes)) as Map<String, dynamic>;
+    var parent = base.metadata['id'] as String;
+    for (var i = 0; i < count; i++) {
+      final id = '$prefix-$i';
+      server.files[id] = DriveTestFile(
+        {
+          ...base.metadata,
+          'id': id,
+          'appProperties': {
+            ...base.metadata['appProperties'] as Map,
+            'orbitOp': id,
+          },
+        },
+        utf8.encode(
+          jsonEncode({
+            ...source,
+            'operation': id,
+            'parents': [parent],
+          }),
+        ),
+      );
+      parent = id;
+    }
+  }
+
+  test(
+    'catch-up reads independent revisions concurrently with a bounded working set',
+    () async {
+      final id = await seed();
+      appendHistory(id, 12, 'parallel');
+      server.mediaDelay = const Duration(milliseconds: 20);
+      server.peakMedia = 0;
+      final watch = Stopwatch()..start();
+      final delta = await provider(rb).fetchChanges(null);
+      watch.stop();
+      expect(
+        delta.entries.singleWhere((e) => e.entry.key == id).version,
+        'parallel-11',
+      );
+      expect(server.peakMedia, 4);
+      expect(server.activeMedia, 0);
+      final journal = await rb.createDriveJournalStore().load();
+      expect(
+        (journal!['changeFeed']['ids'] as List).length,
+        server.revisions.length,
+      );
+      debugPrint(
+        'DRIVE_CATCHUP: peakReads=${server.peakMedia} wallMs=${watch.elapsedMilliseconds} syntheticMediaLatencyMs=20',
+      );
+    },
+  );
+
+  test(
+    'cancelling parallel catch-up drains reads without advancing its checkpoint',
+    () async {
+      final id = await seed();
+      appendHistory(id, 8, 'cancel-catchup');
+      final before = await rb.createDriveJournalStore().load();
+      server.beforeMediaRead = () async {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        current = false;
+      };
+      await expectLater(
+        provider(rb).fetchChanges(null),
+        throwsA(isA<WorkspaceConflict>()),
+      );
+      expect(server.activeMedia, 0);
+      current = true;
+      expect(await rb.createDriveJournalStore().load(), before);
+    },
+  );
+
+  test(
+    'fast large-file uploads use fewer ranges and preserve every byte',
+    () async {
+      final bytes = Uint8List.fromList(
+        List.generate(14 * 1024 * 1024 + 37, (i) => i % 251),
+      );
+      final entry = SyncEntry(
+        key: 'blob:Attachments/range-budget.bin',
+        path: 'Attachments/range-budget.bin',
+        hash: sha256.convert(bytes).toString(),
+      );
+      final uploaded = await pa.upload(
+        entry,
+        Stream.value(bytes),
+        operationId: 'range-budget',
+        expectedVersion: null,
+      );
+      expect(
+        server.uploadedOffsets.length,
+        lessThanOrEqualTo(5),
+        reason: 'The previous fixed size needed 15 data requests.',
+      );
+      expect(server.uploadedOffsets.first, 0);
+      expect(
+        sha256
+            .convert(await pb.download(uploaded).expand((c) => c).toList())
+            .toString(),
+        entry.hash,
+      );
+      debugPrint(
+        'DRIVE_RANGES: bytes=${bytes.length} requests=${server.uploadedOffsets.length}',
+      );
+    },
+  );
+
+  test('small Vault sync request budget and exact two-client transfer', () async {
+    final notes = <String>[];
+    for (var i = 0; i < 10; i++) {
+      notes.add(
+        (await a.create(
+          typeId: 'orbit.note',
+          title: 'Latency $i',
+          body: 'Exact content $i\n' * 100,
+        )).id,
+      );
+    }
+    final publishStart = server.requests, publishLists = server.historyLists;
+    final published = await engine(ra, pa).sync();
+    final publishRequests = server.requests - publishStart;
+    final scans = server.historyLists - publishLists;
+    final receiveStart = server.requests, reads = server.mediaReads;
+    final received = await engine(rb, pb).sync();
+    final receiveRequests = server.requests - receiveStart;
+    debugPrint(
+      'DRIVE_THROUGHPUT: publishRequests=$publishRequests historyLists=$scans receiveRequests=$receiveRequests receiveMedia=${server.mediaReads - reads}',
+    );
+    expect(published.upToDate, true);
+    expect(received.upToDate, true);
+    // Round-trip budgets, including normal immutable publication verification.
+    // Baseline was 135/23/44; avoid reintroducing per-file duplicate preflights.
+    expect(publishRequests, lessThanOrEqualTo(85));
+    expect(scans, lessThanOrEqualTo(12));
+    expect(receiveRequests, lessThanOrEqualTo(36));
+    for (var i = 0; i < notes.length; i++) {
+      expect(
+        b.objects.singleWhere((n) => n.id == notes[i]).body,
+        'Exact content $i\n' * 100,
+      );
+    }
+  });
+  test(
+    'opening a cloud Vault reads only its manifest history before import',
+    () async {
+      for (var i = 0; i < 12; i++) {
+        await a.create(
+          typeId: 'orbit.note',
+          title: 'Open $i',
+          body: 'Content $i',
+        );
+      }
+      await engine(ra, pa).sync();
+      final reads = server.mediaReads;
+      final bundle = await prepareDriveVaultBundle(
+        GoogleDriveApi(
+          auth: auth,
+          client: server.client,
+          localMetadata: TestGoogleCredentials(),
+        ),
+        GoogleRemoteVault(
+          folderId: 'sync-vault',
+          workspaceId: a.workspaceId,
+          name: 'Synthetic',
+          accountSubject: 'subject-1',
+        ),
+        () => current,
+      );
+      expect(bundle.files.keys, ['workspace.json']);
+      expect(
+        bundle.files['workspace.json'],
+        await File('${a.location}/workspace.json').readAsBytes(),
+      );
+      expect(
+        server.mediaReads - reads,
+        lessThanOrEqualTo(2),
+        reason:
+            'Do not download every note revision twice during a new-device open.',
+      );
+    },
+  );
+  for (final incomplete in [true, false]) {
+    test(
+      'publication verifies readback when upload metadata is ${incomplete ? 'incomplete' : 'inconsistent'}',
+      () async {
+        server.omitUploadMetadata = incomplete;
+        server.wrongUploadChecksum = !incomplete;
+        final bytes = Uint8List.fromList([0, 1, 255, 128]);
+        final entry = SyncEntry(
+          key: 'blob:Attachments/ack.bin',
+          path: 'Attachments/ack.bin',
+          hash: sha256.convert(bytes).toString(),
+        );
+        final uploaded = await pa.upload(
+          entry,
+          Stream.value(bytes),
+          operationId: 'ack-fallback',
+          expectedVersion: null,
+        );
+        expect(
+          server.mediaReads,
+          greaterThan(0),
+          reason:
+              'An unproven acknowledgement must retain the validated readback path.',
+        );
+        expect(await pb.download(uploaded).expand((c) => c).toList(), bytes);
+        expect(server.recordCreates, 1);
+      },
+    );
+  }
+  test(
+    'verified publications stay visible while Drive query and feed indexes lag',
+    () async {
+      server.holdChanges = true;
+      server.hideRevisionListings = true;
+      final note = await a.create(
+        typeId: 'orbit.note',
+        title: 'Index lag',
+        body: 'Never hide a verified receipt.',
+      );
+      expect((await engine(ra, pa).sync()).upToDate, true);
+      final delta = await provider(ra).fetchChanges(null);
+      final published = delta.entries.singleWhere(
+        (e) => e.entry.key == note.id,
+      );
+      expect((await provider(ra).inspect(note.id))?.version, published.version);
+      final state = await ra.createDriveJournalStore().load();
+      expect(
+        (state!['changeFeed']['ids'] as List).length,
+        server.revisions.length,
+      );
+      server.holdChanges = false;
+      server.hideRevisionListings = false;
+      expect((await engine(rb, pb).sync()).upToDate, true);
+      expect(b.objects.singleWhere((o) => o.id == note.id).body, note.body);
+    },
+  );
   test(
     'Drive transfers loose root PDF and nested mixed-case media without importing objects',
     () async {
@@ -721,12 +964,16 @@ void main() {
         expectedVersion: null,
       );
       expect(server.blobCreates, sessions);
-      expect(server.uploadedOffsets, [
-        0,
+      expect(server.uploadedOffsets.first, 0);
+      expect(
+        server.uploadedOffsets[1],
         1024 * 1024,
-        2 * 1024 * 1024,
-        3 * 1024 * 1024,
-      ]);
+        reason: 'Resume only at the server-confirmed retained byte offset.',
+      );
+      expect(
+        server.uploadedOffsets.toSet().length,
+        server.uploadedOffsets.length,
+      );
       expect(
         sha256
             .convert(await pb.download(uploaded).expand((c) => c).toList())

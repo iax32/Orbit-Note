@@ -1,4 +1,28 @@
-# In progress — pen responsiveness and easy device sharing, 2026-10-29
+# In progress — Google Drive throughput, 2026-10-29
+
+Owner reports painfully slow cloud sync and requests a fix. Scope/evidence:
+[Drive throughput task](drive-throughput-2026-10-29.md). Measure actual requests
+and transfer stages; reduce latency without dropping bytes, weakening conflict
+checks or changing cloud format. Preserve published pen/live sharing fixes and
+private tmp PDFs. Focused sync/retry/performance checks, not the full test suite.
+
+Delivered local 1.0.11+12: manifest-only opening; four bounded revision reads;
+fresh same-key inspection reuse; verified acknowledgement/cache reuse; adaptive
+resumable ranges; gzip response negotiation; immediate publication receipts in
+local feed checkpoints; by-ID validation for indexed omissions; off-thread large
+hashes with combined digests only when needed for upload. Cloud format and exact
+file bytes unchanged. Ten-note request count: 135->80 upload / 44->34 receive;
+~14-MiB file: 15->4 ranges, exact received hash. Real Google acceptance passed all
+ten phases (two isolated native clients, one PC): changes observed in ~4.3–6.3 s
+including reconciliation, with conflicts/resume/lost replies/tombstones/restart
+verified. Earlier real failures are recorded in the task, not hidden.
+Focused 71/50/41/51-check batches pass (overlap); analyzer clean and 912 lib/test
+files format-clean. Final Windows built 118.3 s / Android 125.0 s; Windows AOT,
+Android version/package/original signing verified. Preparing GitHub release with
+locally built files, no GitHub build workflow. Physical tablet and full-snapshot
+bandwidth limits remain; next task is reviewed incremental large-Canvas payloads.
+
+## Published pen responsiveness and easy device sharing, 2026-10-29
 
 Owner requests smooth PC/tablet pen input with preserved visuals/features and
 simple fast server/sync setup. Scope and evidence:

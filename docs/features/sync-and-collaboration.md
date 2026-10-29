@@ -1,5 +1,34 @@
 # Optional sync and collaboration
 
+## Personal Drive throughput — 2026-10-29
+
+Cloud-Vault opening reads the verified manifest's history first, then the opened
+replica reconciles all remaining content. It no longer reads the entire Vault
+history twice before use. Independent revision reads use at most four concurrent
+requests, with complete graph/checkpoint validation and ordered duplicate IDs.
+Resumable ranges start at 1 MiB and adapt between 256 KiB and 8 MiB according to
+acknowledged transfer time. Retried sessions still probe Google's retained offset.
+
+An engine inspection may be reused once for the same key for up to two seconds;
+other observations clear it. Immutable parents/forks remain checked, and no write
+becomes an unsafe mutable overwrite. Full upload acknowledgements are validated
+against stored checksum/size/identity; incomplete or inconsistent responses use
+the original byte-readback path. Cached revision bodies are reused only after
+fresh identity/checksum metadata checks. Google response gzip is requested using
+its documented headers. Native large-file staging hashes run off the UI thread
+and compute SHA-256/MD5 together for upload staging. Ordinary saves/download
+staging retain SHA-256-only checks without an unused extra digest. All disk/
+ownership/apply checks remain.
+
+Verified publications join the same durable local feed checkpoint as their
+receipts without advancing Google's token. They stay visible while Google's
+indexes catch up. Unlisted previously observed records receive direct by-ID
+identity/checksum checks; actual disappearance, moves or mutation still stop.
+Cloud format and exact stored file bytes are unchanged. Real synthetic two-client
+acceptance passed; Google propagation in that run required one or two checks
+(roughly 4.3–6.3 seconds including reconciliation), not instantaneous delivery.
+See [measurements and limits](../tasks/drive-throughput-2026-10-29.md).
+
 ## Mobile join and setup feedback — 2026-10-29
 
 Android shared join, Drive open/restore and multi-Vault downloads publish each

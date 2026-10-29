@@ -60,6 +60,7 @@ extension GoogleDriveBackups on GoogleDriveApi {
         ..bodyBytes = request.bodyBytes;
       outgoing.headers['Authorization'] =
           'Bearer ${await auth.accessToken(refresh: attempt > 0)}';
+      GoogleDriveApi._compressionHeaders(outgoing);
       _account(subject);
       final response = await http.Response.fromStream(
         await client.send(outgoing).timeout(const Duration(seconds: 45)),

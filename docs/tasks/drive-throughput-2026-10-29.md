@@ -1,0 +1,76 @@
+# Drive sync throughput
+
+Owner reports automatic Google Drive sync takes too long. Scope: SYNC personal
+Drive publication/discovery throughput, preserved exact file bytes and existing
+append-only revisions, checkpointed retries, forks, staged applies and account/
+opening guards. No cloud schema migration or new credentials. Prior pen/live
+sharing work is published and separate; do not conflate Drive with live hosting.
+
+Inspect/measure then implement: redundant publication preflights, bounded parallel
+cold revision reads, resumable upload chunk sizing, verified immutable revision
+cache reuse and native staging checksum work. Use targeted two-client/failure
+tests and representative request counts/latency. No full multi-thousand-test run.
+Keep unrelated tmp PDFs private. Windows/Android deployment evidence and physical
+device results must be reported separately from simulation.
+
+Implemented: single-use same-key inspection tickets (2-second expiry), cached
+revision bodies only after fresh metadata/checksum verification, create-only
+fresh-ID uploads without a redundant existence probe, verified full create
+acknowledgements with strict readback fallback, four bounded revision reads,
+adaptive 256-KiB–8-MiB resumable ranges, documented gzip response headers,
+manifest-only discovery before import, native combined staging hashes, immediate
+durable publication receipt/feed membership and direct checks for indexed omissions.
+No cloud schema migration, generated-ID overwrite or weakened fork/draft guard.
+
+Measurements, production HTTP adapter against deterministic synthetic service:
+- Ten notes: publish 135 -> 80 requests, history scans 23 -> 12; receive 44 -> 34
+  requests / media reads 31 -> 21. Combined 179 -> 114 requests (36.3% fewer),
+  not an end-to-end network speed guarantee.
+- 14,680,101-byte file: 15 fixed-size ranges -> four adaptive requests; exact
+  SHA-256 after receiving. Interrupted resume still uses the retained offset.
+- Twelve catch-up revisions with synthetic 20-ms media latency: peak four reads,
+  108–109-ms pass. Cancellation drains started reads and preserves checkpoint.
+- Cloud opening with twelve notes: only two manifest media reads before import,
+  instead of a complete history pass followed by another after opening.
+- Native 14,365,022-byte fixture digests: old two-pass foreground 231.274 ms,
+  combined worker 201.214 ms, equal SHA-256/MD5. Caller timer maxima 16.848 vs
+  16.066 ms reflect Windows timer granularity; not proof of physical pen latency.
+
+Focused checks: 71 Drive/engine/retention/staging/digest checks passed (60 s), 50
+controller/batch/background/ink checks passed (43 s), plus final manifest/index-
+lag/request-budget and acknowledgement-fallback checks (overlapping counts).
+The full multi-thousand-test suite was not run.
+
+Real Google Drive: first run uploaded/bootstrap verified exact bytes but exposed
+new-record propagation lag. The next run failed before bootstrap (generic harness
+failure had no diagnostic type); this led to inspecting own cache/feed membership
+and fixing the missing receipt/checkpoint update rather than accepting a pass.
+Final run passed all ten real acceptance phases in 2:04 (includes consent):
+isolated two native replicas on this PC, new objects both directions, exact note/
+Canvas/attachment bytes, offline conflict retention and reviewed resolution,
+interrupted upload across repository restart, lost acknowledgement recovery by
+stable ID, Trash/tombstones and clean persisted restart. No personal Vault used.
+193 HTTP requests including auth/control/recovery. Observation timings including
+reconciliation: new B->A object 5,144 ms / two checks; lost-reply content 4,317 ms /
+one; Trash 5,745 ms / two; tombstone 6,299 ms / two. No pre-change real-network
+baseline, cross-device acceptance or zero-delay claim. Synthetic cloud fixtures
+were retained for inspection; credentials stayed in memory only.
+
+Google API guidance used: [uploads](https://developers.google.com/workspace/drive/api/guides/manage-uploads)
+and [performance](https://developers.google.com/workspace/drive/api/guides/performance).
+
+Final selector refinement requests combined digests only for upload staging;
+ordinary snapshots/download staging avoid unnecessary MD5 work. The same upload
+proof used by the real test is retained. Final 51 Drive/native checksum checks
+passed after this selection change (63 s). Additional 41 replica/recovery/state
+checks passed (29 s). Counts overlap preceding batches.
+
+Strict format: 912 lib/test files unchanged (12.02 s), analyzer clean (41.6 s).
+Final Windows 1.0.11+12 built in 118.3 s and Android in 125.0 s. Windows AOT
+freshness verified. APK org.orbitnote.app.preview, code 12/name 1.0.11, existing
+signing certificate verified; 140,134,210 bytes / SHA-256
+c97d6e064bef24e807978fa675faf19af66b82ad3df94c7ffd699d811a5650b4.
+Owner closed PC app for replacement. Prepare complete locally built installers
+for GitHub as in the preceding update, with source provenance/checksums and no
+build workflow. Retain full-snapshot wire-size and Google propagation limits;
+next possible task is a reviewed incremental payload design for very large Canvases.

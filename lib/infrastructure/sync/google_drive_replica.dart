@@ -207,6 +207,7 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
   Map<String, dynamic> _journal = {};
   final _records = <String, _DriveRevision>{};
   final _heads = <String, List<_DriveRevision>>{};
+  (String, DateTime)? _inspected;
   @override
   String get workspaceId => vault.workspaceId;
   @override
@@ -284,6 +285,7 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
     http.StreamedResponse? response;
     for (var attempt = 0; attempt < 2; attempt++) {
       final r = _get(id, media: true)..followRedirects = false;
+      GoogleDriveApi._compressionHeaders(r);
       r.headers['Authorization'] =
           'Bearer ${await api.auth.accessToken(refresh: attempt > 0)}';
       _check();
@@ -330,15 +332,28 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
         (int.tryParse('${f['size']}') ?? 65537) > 65536) {
       throw const WorkspaceConflict('Cloud revision identity changed.');
     }
-    final bytes = await _smallMedia(id);
-    if (md5.convert(bytes).toString() != f['md5Checksum']) {
+    final cached = (_journal['records'] as Map?)?[id] as Map?;
+    if (cached != null && cached['checksum'] != f['md5Checksum']) {
       throw const WorkspaceConflict('Cloud revision checksum changed.');
     }
-    final record = _DriveRevision.parse(
-      id,
-      jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>,
-      workspaceId,
-    );
+    _DriveRevision record;
+    if (cached != null) {
+      record = _DriveRevision.parse(
+        id,
+        Map<String, dynamic>.from(cached['record'] as Map),
+        workspaceId,
+      );
+    } else {
+      final bytes = await _smallMedia(id);
+      if (md5.convert(bytes).toString() != f['md5Checksum']) {
+        throw const WorkspaceConflict('Cloud revision checksum changed.');
+      }
+      record = _DriveRevision.parse(
+        id,
+        jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>,
+        workspaceId,
+      );
+    }
     if (record.operation != p?['orbitOp'] ||
         p?['orbitKey'] !=
             sha256.convert(utf8.encode(record.entry.key)).toString()) {
@@ -351,12 +366,20 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
   Future<SyncDelta> fetchChanges(String? cursor) => _fetchChanges();
 
   Future<SyncDelta> _scan(String? key) async {
+    _inspected = null;
     await _load();
-    await api.verifySyncVault(vault);
-    final files = await api._list(
-      vault.accountSubject,
-      "trashed = false and 'me' in owners and '${api._quoted(vault.folderId)}' in parents and appProperties has { key='orbitRole' and value='sync-revision' }${key == null ? '' : " and appProperties has { key='orbitKey' and value='${sha256.convert(utf8.encode(key))}' }"}",
-    );
+    late List<Map<String, dynamic>> files;
+    await Future.wait<void>([
+      api.verifySyncVault(vault),
+      api
+          ._list(
+            vault.accountSubject,
+            "trashed = false and 'me' in owners and '${api._quoted(vault.folderId)}' in parents and appProperties has { key='orbitRole' and value='sync-revision' }${key == null ? '' : " and appProperties has { key='orbitKey' and value='${sha256.convert(utf8.encode(key))}' }"}",
+          )
+          .then<void>((value) {
+            files = value;
+          }),
+    ]);
     _check();
     if (files.length > 10000 ||
         files.map((f) => f['id']).toSet().length != files.length) {
@@ -365,14 +388,41 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
       );
     }
     final ids = files.map((f) => f['id'] as String).toSet();
-    if (_cache.keys.any(
-      (id) =>
-          (key == null ||
-              ((_cache[id] as Map)['record'] as Map)['entry']['key'] == key) &&
-          !ids.contains(id),
-    )) {
-      throw const WorkspaceConflict(
-        'A retained cloud revision disappeared. Restore it in Drive before syncing again.',
+    final unlisted = _cache.keys
+        .where(
+          (id) =>
+              (key == null ||
+                  ((_cache[id] as Map)['record'] as Map)['entry']['key'] ==
+                      key) &&
+              !ids.contains(id),
+        )
+        .toList();
+    // Drive's property query index may lag a successful create. Do not mistake
+    // an indexed omission for deletion: prove the retained identity directly.
+    // A real missing/moved/changed file still stops the pass before any apply.
+    for (var start = 0; start < unlisted.length; start += 4) {
+      files.addAll(
+        await Future.wait([
+          for (final id in unlisted.skip(start).take(4))
+            (() async {
+              try {
+                final metadata =
+                    jsonDecode((await _request(_get(id))).body)
+                        as Map<String, dynamic>;
+                if (metadata['id'] != id) {
+                  throw const WorkspaceConflict(
+                    'A retained cloud revision identity changed.',
+                  );
+                }
+                return metadata;
+              } on GoogleCloudError catch (e) {
+                if (e.code != 'missing') rethrow;
+                throw const WorkspaceConflict(
+                  'A retained cloud revision disappeared. Restore it in Drive before syncing again.',
+                );
+              }
+            })(),
+        ]),
       );
     }
     if (key == null) {
@@ -380,10 +430,34 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
     } else {
       _records.removeWhere((_, r) => r.entry.key == key);
     }
-    for (final f in files) {
-      await _acceptRevision(f, key: key);
-    }
+    await _acceptRevisions(files, key: key);
     return _buildDelta(key);
+  }
+
+  Future<void> _acceptRevisions(
+    List<Map<String, dynamic>> files, {
+    String? key,
+  }) async {
+    // Bound media reads; repeated identities retain their observation order.
+    // Wait for every started read before reporting failure. Never checkpoint a
+    // partially validated page/graph, including on cancellation or account swap.
+    for (var start = 0; start < files.length; start += 4) {
+      final batch = files.skip(start).take(4).toList();
+      if (batch.map((f) => f['id']).toSet().length != batch.length) {
+        for (final f in batch) {
+          await _acceptRevision(f, key: key);
+        }
+      } else {
+        await Future.wait([
+          for (final f in batch) _acceptRevision(f, key: key),
+        ]);
+      }
+      if (_records.length > 10000) {
+        throw const WorkspaceFailure(
+          'Cloud revision inventory exceeds 10,000 records.',
+        );
+      }
+    }
   }
 
   Future<void> _acceptRevision(Map<String, dynamic> f, {String? key}) async {
@@ -492,6 +566,7 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
         'Concurrent cloud revisions need review. Sync again to load the alternatives.',
       );
     }
+    _inspected = (key, _now());
     return heads.isEmpty ? null : heads.single.remote;
   }
 
@@ -548,7 +623,18 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
         parents.toSet().length != parents.length) {
       throw const WorkspaceFailure('Invalid Drive publication operation.');
     }
-    await _scan(entry.key);
+    final inspected = _inspected;
+    _inspected = null;
+    final elapsed = inspected == null ? null : _now().difference(inspected.$2);
+    // The engine just refreshed this exact key. Repeating the same read cannot
+    // make append-only publication atomic; races still remain visible branches.
+    // Expire tickets promptly, and never reuse one across another observation.
+    if (inspected?.$1 != entry.key ||
+        elapsed == null ||
+        elapsed.isNegative ||
+        elapsed > const Duration(seconds: 2)) {
+      await _scan(entry.key);
+    }
     final sortedParents = List<String>.from(parents)..sort();
     Map<String, dynamic>? plan = _operations[operation] == null
         ? null
@@ -576,6 +662,7 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
         'Cloud content changed. Refresh and review before publishing.',
       );
     }
+    final freshPlan = plan == null;
     if (plan == null) {
       if (_operations.length >= 10000 || _cache.length >= 10000) {
         throw const WorkspaceFailure(
@@ -602,7 +689,7 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
     _operations[operation] = plan;
     final snapshot = await stage(bytes, entry.hash);
     try {
-      await _uploadBlob(snapshot, plan, operation);
+      await _uploadBlob(snapshot, plan, operation, fresh: freshPlan);
       final record = _DriveRevision(
         plan['record'] as String,
         entry,
@@ -633,6 +720,7 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
         'POST',
         Uri.https('www.googleapis.com', '/upload/drive/v3/files', {
           'uploadType': 'multipart',
+          'fields': GoogleDriveApi.fileFields,
         }),
       );
       r.headers['Content-Type'] = 'multipart/related; boundary=$boundary';
@@ -643,8 +731,37 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
         ...payload,
         ...utf8.encode('\r\n--$boundary--\r\n'),
       ];
+      _DriveRevision? verified;
       try {
-        await _request(r);
+        final acknowledgement =
+            jsonDecode((await _request(r)).body) as Map<String, dynamic>;
+        if (acknowledgement['md5Checksum'] is String &&
+            acknowledgement['appProperties'] is Map &&
+            acknowledgement['parents'] is List &&
+            acknowledgement['ownedByMe'] is bool &&
+            acknowledgement['size'] != null) {
+          final props = acknowledgement['appProperties'] as Map;
+          if (acknowledgement['id'] != record.id ||
+              acknowledgement['ownedByMe'] != true ||
+              acknowledgement['trashed'] == true ||
+              !(acknowledgement['parents'] as List).contains(vault.folderId) ||
+              acknowledgement['md5Checksum'] !=
+                  md5.convert(payload).toString() ||
+              '${acknowledgement['size']}' != '${payload.length}' ||
+              props['orbitRole'] != 'sync-revision' ||
+              props['orbitProtocol'] != '2' ||
+              props['orbitVaultId'] != workspaceId ||
+              props['orbitOp'] != operation ||
+              props['orbitKey'] !=
+                  sha256.convert(utf8.encode(entry.key)).toString()) {
+            throw const WorkspaceConflict(
+              'Cloud publication acknowledgement changed.',
+            );
+          }
+          // Google's checksum is over the stored payload. Combined with the
+          // returned immutable identity this proves the same bytes as readback.
+          verified = record;
+        }
       } on Object {
         // A successful create with a lost reply is recovered by the same ID.
         final found = await _readRecord(record.id);
@@ -652,8 +769,9 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
             jsonEncode(record.toJson(workspaceId))) {
           rethrow;
         }
+        verified = found;
       }
-      final verified = await _readRecord(record.id);
+      verified ??= await _readRecord(record.id);
       if (jsonEncode(verified.toJson(workspaceId)) !=
           jsonEncode(record.toJson(workspaceId))) {
         throw const WorkspaceConflict('Cloud publication verification failed.');
@@ -662,6 +780,15 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
         'checksum': md5.convert(payload).toString(),
         'record': verified.toJson(workspaceId),
       };
+      final feed = _journal['changeFeed'];
+      if (feed is Map && feed['ids'] is List) {
+        // This is a verified immutable publication receipt, not a guessed
+        // remote winner. Keep it even before Google's change feed indexes it.
+        feed['ids'] = {
+          ...List<String>.from(feed['ids'] as List),
+          record.id,
+        }.toList()..sort();
+      }
       await _save();
       return verified.remote;
     } finally {
@@ -672,10 +799,16 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
   Future<void> _uploadBlob(
     WorkspaceStage snapshot,
     Map<String, dynamic> plan,
-    String operation,
-  ) async {
+    String operation, {
+    required bool fresh,
+  }) async {
     final id = plan['blob'] as String;
-    final digest = (await md5.bind(snapshot.openRead()).first).toString();
+    final preparedDigest = snapshot is WorkspaceStageChecksums
+        ? (snapshot as WorkspaceStageChecksums).md5Hash
+        : null;
+    final digest =
+        preparedDigest ??
+        (await md5.bind(snapshot.openRead()).first).toString();
     Future<bool> verified() async {
       Map<String, dynamic> f;
       try {
@@ -700,7 +833,9 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
       return true;
     }
 
-    if (await verified()) return;
+    // Fresh generated IDs have not been used by this operation. Create-only
+    // uploads cannot replace another file. Replayed plans still inspect first.
+    if (!fresh && await verified()) return;
     if (snapshot.length == 0) {
       final metadata = jsonEncode({
         'id': id,
@@ -792,15 +927,23 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
       plan['session'] = '$session';
       await _save();
     }
-    // Ranges are read from an immutable native stage; memory stays around 1 MiB.
-    await for (final chunk in _chunks(snapshot.openRead(), offset)) {
+    var chunkBytes = 1024 * 1024;
+    // Grow only after a quick acknowledged range; slow links shrink again.
+    // Sizes stay 256-KiB aligned and bounded at 8 MiB, with original resume probes.
+    await for (final chunk in _chunks(
+      snapshot.openRead(),
+      offset,
+      () => chunkBytes,
+    )) {
       final end = offset + chunk.length;
       final r = http.Request('PUT', session)..bodyBytes = chunk;
       r.headers.addAll({
         'Content-Type': 'application/octet-stream',
         'Content-Range': 'bytes $offset-${end - 1}/${snapshot.length}',
       });
+      final watch = Stopwatch()..start();
       final response = await _request(r);
+      watch.stop();
       if (end < snapshot.length) {
         if (_offset(response, snapshot.length) != end) {
           throw const WorkspaceConflict(
@@ -815,6 +958,11 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
       offset = end;
       _check();
       onProgress?.call(offset, snapshot.length);
+      if (watch.elapsed < const Duration(seconds: 2)) {
+        chunkBytes = (chunkBytes * 2).clamp(256 * 1024, 8 * 1024 * 1024);
+      } else if (watch.elapsed > const Duration(seconds: 8)) {
+        chunkBytes = (chunkBytes ~/ 2).clamp(256 * 1024, 8 * 1024 * 1024);
+      }
     }
     if (snapshot.length == 0) {
       final r = http.Request('PUT', session)
@@ -855,7 +1003,11 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
     return offset;
   }
 
-  static Stream<List<int>> _chunks(Stream<List<int>> source, int start) async* {
+  static Stream<List<int>> _chunks(
+    Stream<List<int>> source,
+    int start,
+    int Function() chunkSize,
+  ) async* {
     var skip = start;
     var buffer = BytesBuilder(copy: false);
     await for (var part in source) {
@@ -869,13 +1021,11 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
       }
       var index = 0;
       while (index < part.length) {
-        final end = (index + 1024 * 1024 - buffer.length).clamp(
-          index,
-          part.length,
-        );
+        final target = chunkSize();
+        final end = (index + target - buffer.length).clamp(index, part.length);
         buffer.add(part.sublist(index, end));
         index = end;
-        if (buffer.length == 1024 * 1024) {
+        if (buffer.length == target) {
           yield buffer.takeBytes();
           buffer = BytesBuilder(copy: false);
         }

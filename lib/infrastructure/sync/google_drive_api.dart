@@ -46,6 +46,11 @@ class GoogleDriveApi {
   static const folderMime = 'application/vnd.google-apps.folder';
   static const fileFields =
       'id,name,mimeType,parents,appProperties,trashed,modifiedTime,size,ownedByMe,md5Checksum';
+  static void _compressionHeaders(http.BaseRequest request) {
+    request.headers['Accept-Encoding'] = 'gzip';
+    request.headers['User-Agent'] = 'OrbitNote (gzip)';
+  }
+
   void _account(String subject) {
     if (auth.account?.subject != subject) {
       throw const GoogleCloudError(
@@ -79,6 +84,7 @@ class GoogleDriveApi {
         Uri.https('www.googleapis.com', '/drive/v3/$path', query),
       );
       request.followRedirects = false;
+      _compressionHeaders(request);
       request.headers['Authorization'] = 'Bearer $token';
       if (body != null) {
         request.headers['Content-Type'] = 'application/json';

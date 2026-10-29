@@ -15,6 +15,7 @@ import 'native_path_moves.dart';
 import 'native_folder_commands.dart';
 import 'native_vault_lock.dart';
 import 'native_history_retention.dart';
+import 'native_file_digests.dart';
 import 'workspace_store.dart';
 import 'object_encoding_execution.dart';
 
@@ -31,7 +32,7 @@ class NativeWorkspaceStore
         WorkspaceAttachmentChangeSource,
         WorkspaceStreamingStore,
         WorkspaceFileSizeStore,
-        WorkspaceStagingStore,
+        WorkspaceChecksumStagingStore,
         WorkspaceAttachmentStagingStore,
         WorkspaceGuardedMoveStore,
         WorkspaceFolderCommandStore,
@@ -552,6 +553,21 @@ class NativeWorkspaceStore
     bool Function()? isCancelled,
   }) =>
       _stageSync(this, bytes, expectedHash, maxBytes, onProgress, isCancelled);
+
+  @override
+  Future<WorkspaceStage> stageWithChecksums(
+    Stream<List<int>> bytes, {
+    required String expectedHash,
+    required int maxBytes,
+  }) => _stageSync(
+    this,
+    bytes,
+    expectedHash,
+    maxBytes,
+    null,
+    null,
+    includeMd5: true,
+  );
 
   @override
   Future<WorkspaceStage> stageAttachment(
