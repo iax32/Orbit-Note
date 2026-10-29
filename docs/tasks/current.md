@@ -1,4 +1,4 @@
-# Implemented — saved Canvas ink reliability/performance, 2026-10-29
+# Delivered — saved Canvas ink reliability/performance, 2026-10-29
 
 Owner confirms empty boards are smooth but drawing and viewing saved ink remain
 severely slow after 1.0.6. Preserve samples, styles, themes, undo and live sharing.
@@ -14,7 +14,11 @@ saved-scene invalidation during theme recreation/interpolation. Native GPU P95:
 steady-state P95 3.928 ms after the first 12 frames; cold/outlier stalls remain.
 80 focused acceptance checks pass, plus pressure/release/undo and export checks.
 Analyzer clean; strict format 864 files unchanged. Final Windows 112.8 s, signed
-Android 1.0.7+8 144.7 s; packaging/publication in progress. No personal Vault used.
+Android 1.0.7+8 144.7 s. Source 4b4529d pushed; Windows setup and APK published:
+https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.7-2026-10-29
+All six asset sizes/SHA256 digests match; original APK signing identity retained.
+Windows setup built in 11.5 s; usual Windows release updated, AOT newer than all
+lib sources. No GitHub workflow runs for source commit. No personal Vault used.
 Next: physical Lenovo acceptance on the owner's drawing; don't claim hardware
 stylus latency or zero cold-load spikes from synthetic profile input.
 

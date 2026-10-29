@@ -48,7 +48,12 @@ checks pass; separate pressure endpoint/palm cancellation/undo check passes.
 20 export/background/performance/fidelity checks also pass (some overlap).
 Analyzer clean (38.9 s); strict format 864 files unchanged. Final Windows build
 112.8 s, signed Android 1.0.7+8 build 144.7 s. Both retain registered Google config;
-publication/package verification is in progress.
+published with complete setup and verified APK:
+https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.7-2026-10-29
+Source 4b4529d59a2108cd1875c846387e43d41442d3a0. Setup built in 11.5 s;
+APK 139740994 bytes, setup 27311274 bytes. Six remote asset sizes/digests match
+local checksums. Original Android package/certificate retained. Windows AOT is
+newer than every lib source. No GitHub workflow ran for this source commit.
 
 Final native run at 100 Hz, with concurrent build activity:
 
