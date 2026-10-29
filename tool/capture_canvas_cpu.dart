@@ -97,6 +97,12 @@ Future<void> main(List<String> args) async {
     );
     stdout.writeln('Local performance capture finished.');
   } finally {
+    try {
+      await service.setVMTimelineFlags([]);
+      await service.setFlag('profiler', 'false');
+    } catch (_) {
+      // A closed app must not hide a successfully written timing report.
+    }
     await service.dispose();
   }
 }
