@@ -40,6 +40,14 @@ Final focused regression run: 94 pass in 20 s; analyzer lib/test/tool clean
 (12.6 s), strict format 929 files unchanged (7.91 s). Actual-font tablet-sized
 reader and native PDF raster captures inspected. Checks/build/publication
 evidence is recorded in current.md after completion.
+Published 1.0.17+18 as
+[Windows and Android downloads](https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.17-2026-10-30).
+Windows 93.4 s; Android 173.8 s; installer 14.9 s. Source/tag
+`d5c3e47bec63db150f7bfdcc24f2e89ee7f4ae14`. Original Android signing identity,
+Windows AOT freshness, six uploaded asset hashes/sizes and public tag/source
+verified; zero GitHub workflows. Only the existing explicitly approved native
+Google configuration is distributed. No personal Vaults or private key/token
+files were published.
 Initial checks found pressure defaults with equal min/max and an Undo paint-order
 issue; both fixed. Baseline live-preview test expected a frozen preview despite
 the existing borrowed hot-path sample view; it now checks capture-time count and

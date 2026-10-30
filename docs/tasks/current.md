@@ -1,4 +1,4 @@
-# In progress — PDF ink and measured responsiveness, 2026-10-30
+# Published — PDF ink and measured responsiveness, 2026-10-30
 
 Owner requests freehand PDF drawing and major performance fixes across the app,
 preserving features and visuals. Scope: shared-engine vector PDF pen/highlighter,
@@ -17,7 +17,17 @@ smooth paths, dots, alpha), source/draft guards, disk failure/reopen, ID lookup,
 touch/palm/pen/read-mode arbitration, original highlight/form/split/navigation,
 and mixed 10000-item Canvas / long-note / 300-page PDF use. Analyzer lib/test/tool
 clean (12.6 s); strict format 929 files unchanged (7.91 s). Actual-font reader
-and native exported-ink images inspected. Builds/publication pending below.
+and native exported-ink images inspected. Windows 1.0.17+18 built in 93.4 s,
+Android in 173.8 s; installer packaging 14.9 s. Windows version/AOT freshness,
+Android package/version and original signing identity verified. Published:
+https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.17-2026-10-30
+App source/tag d5c3e47bec63db150f7bfdcc24f2e89ee7f4ae14. All six uploaded
+asset sizes/SHA-256 digests and public tag/source match; zero GitHub workflows.
+Usual Windows run folder is updated without launching the app. Existing approved
+Google native configuration retained; no account tokens, private credential
+files, signing keys or personal Vault/tmp files uploaded. Physical tablet/Windows
+pen latency remains a separate next acceptance task; universal zero lag is not
+claimed. No server/multiplayer changes were made or tested in this batch.
 
 Baseline pen/PDF/finance/find probes ran: dense 10000-highlight index ~57 ms,
 300-page distant text/raster probes ~200 ms, 100000-sample retained ink ~1.03 s for
