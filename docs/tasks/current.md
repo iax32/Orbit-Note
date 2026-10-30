@@ -1,4 +1,62 @@
-# Published — device sharing reliability, 2026-10-30
+# In progress — tablet comfort and release, 2026-10-30
+
+Owner requests small tablet/Android comfort improvements, then source and native
+releases on GitHub. Delivered: optional 56-pixel drawing controls, softer themed
+Canvas guides, left/right reach presets, device-local floating position/lock
+persistence and accessible preset/reset in Canvas tools and Settings > Canvas.
+Includes prior swapped/draggable focus toolbar work. Authored ink/paper and PDF
+exports remain unchanged. Unknown session/options survive; comfort stays outside
+the portable preference allowlist. No new backend, engine or source schema.
+Networking remains set aside; physical saved-drawing sharing is still unresolved.
+
+Validation: final 23 focused comfort/focus/ink/preference checks pass (7 s); analyzer
+lib/test/tool clean (86.4 s). Initial check caught one braces lint (fixed) and a
+test tap below the narrow viewport (fixture now scrolls before tapping).
+Actual-font portrait comfort panel and bottom-left toolbar captures inspected.
+Strict format: 922 lib/test files unchanged (8.48 s). Preparing matching
+1.0.14+15 Windows/Android builds.
+No GitHub build workflows. See [focus behavior](tablet-canvas-focus-2026-10-27.md).
+
+# Complete locally — movable Canvas tools and quiet motion, 2026-10-30
+
+Owner accepts draggable toolbar positioning and requests related features and
+visual/motion improvements. Scope: isolated view-only focus controls, direct
+dragging, edge snapping, accessible corner docking/reset, position lock, compact
+Redo and preference-aware finite transitions. Preserve Orbit colors, full Canvas
+viewport/camera, pen samples, Undo and keyboard/Back recovery. Placement persists
+only while this editor remains open; no knowledge/sync/schema mutation. The
+previous top-toolbar / lower-right pill layout remains the default. Focused
+layout/input/motion checks and local Windows build; leave networking aside.
+
+Delivered: isolated drag handle, edge snapping, four corners, lock/reset, compact
+Redo, responsive top/bottom placement and quiet Orbit motion with interruption
+from the actual visible position. Fourteen focused overlay/focus/ink checks pass
+(5 s), including Normal/Reduced/Off/OS reduction and unchanged pen pixels. Actual-
+font landscape/portrait captures inspected. Analyzer clean (18.5 s); strict format
+919 files unchanged (8.20 s). Local Windows rebuilt in 82.5 s with AOT freshness
+verified. Existing Android/GitHub assets unchanged; placement is open-editor-only.
+Next candidate: explicit device-local placement persistence across app restarts.
+
+## Complete locally — Canvas focus toolbar order, 2026-10-30
+
+Owner reports live sharing still fails physical acceptance and explicitly asks
+to leave it aside for now. Do not mark that acceptance successful. Current scope:
+swap the expanded main toolbar and compact Undo/tools/focus pill in Canvas focus,
+as shown in the screenshot. Main tools at the top, compact right-aligned pill
+below; hidden tools retain only the small pill. Keep full drawing viewport,
+Orbit styling, touch targets, Undo and Escape/focus recovery. Verify existing
+tablet focus layouts and build the local Windows update.
+
+Delivered: main toolbar at the top; content-sized 8-pixel gap to the compact
+right-aligned pill below. Tools-hidden mode retains only the small top-right
+pill. Six focused checks pass (4 s); landscape/portrait actual-font captures
+inspected. Final-save test wait now drains both fake test time and native work
+and asserts successful saving. Analyzer clean (19.7 s), strict format 917 files
+unchanged (8.28 s). Local Windows rebuilt in 82.8 s; AOT newer than all lib
+sources verified. Published GitHub/Android assets unchanged. No runtime
+networking work continued. Next candidate: optional draggable toolbar position.
+
+## Published — device sharing reliability, 2026-10-30
 
 Owner clarifies that server connections/pointers work but saved drawings fail to
 reach the opposite device. Also requests faster existing-Vault upload and better

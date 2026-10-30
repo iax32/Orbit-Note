@@ -21,6 +21,7 @@ class SessionState {
     this.projectContext = const {},
     this.dashboard = const {},
     this.lifeWorkspace = const {},
+    this.canvasComfort = const {},
     List<String> tabs = const [],
     this.activeId,
     this.secondaryId,
@@ -123,6 +124,7 @@ class SessionState {
   Map<String, dynamic> projectContext;
   Map<String, dynamic> dashboard;
   Map<String, dynamic> lifeWorkspace;
+  Map<String, dynamic> canvasComfort;
   OrbitDestination destination;
   List<String> tabs;
   List<String> pinnedTabs;
@@ -284,6 +286,13 @@ class SessionState {
     }
     final knownKeys = SessionState().toJson().keys.toSet();
     return SessionState(
+      canvasComfort: json['canvasComfort'] is Map
+          ? Map<String, dynamic>.fromEntries(
+              (json['canvasComfort'] as Map).entries
+                  .where((e) => e.key is String)
+                  .map((e) => MapEntry(e.key as String, e.value)),
+            )
+          : const {},
       projectContext: json['projectContext'] is Map
           ? Map<String, dynamic>.from(json['projectContext'] as Map)
           : const {},
@@ -507,6 +516,7 @@ class SessionState {
     'focusMode': focusMode,
     'motion': motion,
     'motionOptions': motionOptions,
+    'canvasComfort': canvasComfort,
     'positions': positions,
     'cameras': cameras,
     'noteViews': noteViews,

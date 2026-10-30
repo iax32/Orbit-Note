@@ -1,3 +1,6 @@
+import '../../app/canvas_comfort.dart';
+import '../../app/orbit_density.dart';
+import 'canvas_comfort_panel.dart';
 import '../../canvas/university_diagram.dart';
 import '../../domain/university/lab_document.dart';
 import '../../domain/edge_scroll.dart';
@@ -18,6 +21,7 @@ import '../../app/orbit_theme.dart';
 import 'dart:async';
 import 'dart:collection';
 import 'canvas_live_ink.dart';
+import 'canvas_focus_controls.dart';
 import 'canvas_scene_viewport.dart';
 import '../../app/canvas_performance.dart';
 import 'dart:convert';
@@ -132,6 +136,8 @@ class CanvasEditor extends StatefulWidget {
     this.onActivate,
     this.focusMode = false,
     this.onToggleFocusMode,
+    this.comfort = const {},
+    this.onComfortChanged,
     this.title = '',
     this.onTitleChanged,
     this.onSavePersonalTemplate,
@@ -193,6 +199,8 @@ class CanvasEditor extends StatefulWidget {
   final bool readOnly;
   final bool interactionActive;
   final VoidCallback? onActivate;
+  final Map<String, dynamic> comfort;
+  final ValueChanged<Map<String, dynamic>>? onComfortChanged;
   final bool focusMode;
   final VoidCallback? onToggleFocusMode;
   final ValueChanged<String>? onTitleChanged;
@@ -235,6 +243,8 @@ class CanvasEditor extends StatefulWidget {
 
 class _CanvasEditorState extends State<CanvasEditor> {
   bool _focusControlsVisible = false;
+  Offset _focusControlsAnchor = const Offset(1, 0);
+  bool _focusControlsLocked = false;
   bool get _drawingFocus =>
       widget.focusMode && widget.onToggleFocusMode != null;
   bool _laserMode = false;
@@ -690,6 +700,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
   @override
   void initState() {
     super.initState();
+    _readComfort();
     _acceptedData = widget.draftBaseData ?? widget.data;
     widget.captureController?._placements[this] = _prepareCapturedReferences;
     _scheduleLocation();
@@ -778,6 +789,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
     final perf = CanvasPerformance.instance;
     final started = perf.begin();
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.comfort != widget.comfort) _readComfort();
     if (oldWidget.restoreViewSerial != widget.restoreViewSerial &&
         oldWidget.canvasId == widget.canvasId) {
       _cancelGesture();
@@ -6582,8 +6594,9 @@ class _CanvasEditorState extends State<CanvasEditor> {
                                                     transparentBackground: true,
                                                     paintOverlays:
                                                         tileElements.isEmpty,
-                                                    semanticColors:
-                                                        OrbitColors.of(context),
+                                                    semanticColors: _viewColors(
+                                                      context,
+                                                    ),
                                                     textCache: _textCache,
                                                     images:
                                                         _images?.images ??
@@ -7097,78 +7110,102 @@ class _CanvasEditorState extends State<CanvasEditor> {
                             }(),
                           ],
                           if (_drawingFocus && !_presentationMode) ...[
-                            if (_focusControlsVisible)
-                              Positioned(
-                                key: const ValueKey('canvas-focus-tools'),
-                                top: 64,
-                                left: 8,
-                                right: 8,
-                                child: Material(
+                            Positioned.fill(
+                              child: CanvasFocusControls(
+                                expanded: _focusControlsVisible,
+                                initialAnchor: _focusControlsAnchor,
+                                initialLocked: _focusControlsLocked,
+                                touchSize: _comfort.touchSize,
+                                onComfort: widget.onComfortChanged == null
+                                    ? null
+                                    : _showComfort,
+                                onPlacementChanged: (anchor, locked) {
+                                  _focusControlsAnchor = anchor;
+                                  _focusControlsLocked = locked;
+                                  widget.onComfortChanged?.call(
+                                    _comfort.withValues({
+                                      'x': anchor.dx,
+                                      'y': anchor.dy,
+                                      'locked': locked,
+                                    }),
+                                  );
+                                },
+                                toolbar: Material(
+                                  key: const ValueKey('canvas-focus-tools'),
                                   elevation: 3,
                                   borderRadius: BorderRadius.circular(12),
                                   clipBehavior: Clip.antiAlias,
                                   child: _toolbar(context),
                                 ),
-                              ),
-                            Positioned(
-                              top: 8,
-                              right: 8,
-                              child: Material(
-                                key: const ValueKey('canvas-focus-dock'),
-                                elevation: 2,
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.surfaceContainerHigh,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  side: BorderSide(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.outlineVariant,
+                                dock: Material(
+                                  key: const ValueKey('canvas-focus-dock'),
+                                  elevation: 2,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.surfaceContainerHigh,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    side: BorderSide(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.outlineVariant,
+                                    ),
                                   ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      tooltip: 'Undo drawing',
-                                      constraints: const BoxConstraints(
-                                        minWidth: 48,
-                                        minHeight: 48,
+                                  child: Wrap(
+                                    children: [
+                                      IconButton(
+                                        tooltip: 'Undo drawing',
+                                        constraints: BoxConstraints(
+                                          minWidth: _comfort.touchSize,
+                                          minHeight: _comfort.touchSize,
+                                        ),
+                                        onPressed:
+                                            !_readOnly && _history.canUndo
+                                            ? _undo
+                                            : null,
+                                        icon: const Icon(Icons.undo),
                                       ),
-                                      onPressed: !_readOnly && _history.canUndo
-                                          ? _undo
-                                          : null,
-                                      icon: const Icon(Icons.undo),
-                                    ),
-                                    IconButton(
-                                      tooltip: _focusControlsVisible
-                                          ? 'Hide Canvas tools'
-                                          : 'Show Canvas tools',
-                                      constraints: const BoxConstraints(
-                                        minWidth: 48,
-                                        minHeight: 48,
+                                      IconButton(
+                                        tooltip: 'Redo drawing',
+                                        constraints: BoxConstraints(
+                                          minWidth: _comfort.touchSize,
+                                          minHeight: _comfort.touchSize,
+                                        ),
+                                        onPressed:
+                                            !_readOnly && _history.canRedo
+                                            ? _redo
+                                            : null,
+                                        icon: const Icon(Icons.redo),
                                       ),
-                                      isSelected: _focusControlsVisible,
-                                      onPressed: () {
-                                        setState(
-                                          () => _focusControlsVisible =
-                                              !_focusControlsVisible,
-                                        );
-                                        _focus.requestFocus();
-                                      },
-                                      icon: const Icon(Icons.tune),
-                                    ),
-                                    IconButton(
-                                      tooltip: 'Exit Canvas focus',
-                                      constraints: const BoxConstraints(
-                                        minWidth: 48,
-                                        minHeight: 48,
+                                      IconButton(
+                                        tooltip: _focusControlsVisible
+                                            ? 'Hide Canvas tools'
+                                            : 'Show Canvas tools',
+                                        constraints: BoxConstraints(
+                                          minWidth: _comfort.touchSize,
+                                          minHeight: _comfort.touchSize,
+                                        ),
+                                        isSelected: _focusControlsVisible,
+                                        onPressed: () {
+                                          setState(
+                                            () => _focusControlsVisible =
+                                                !_focusControlsVisible,
+                                          );
+                                          _focus.requestFocus();
+                                        },
+                                        icon: const Icon(Icons.tune),
                                       ),
-                                      onPressed: widget.onToggleFocusMode,
-                                      icon: const Icon(Icons.fullscreen_exit),
-                                    ),
-                                  ],
+                                      IconButton(
+                                        tooltip: 'Exit Canvas focus',
+                                        constraints: BoxConstraints(
+                                          minWidth: _comfort.touchSize,
+                                          minHeight: _comfort.touchSize,
+                                        ),
+                                        onPressed: widget.onToggleFocusMode,
+                                        icon: const Icon(Icons.fullscreen_exit),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -10295,7 +10332,73 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _commit();
   }
 
+  CanvasComfort get _comfort => CanvasComfort(widget.comfort);
+  void _readComfort() {
+    _focusControlsAnchor = Offset(_comfort.x, _comfort.y);
+    _focusControlsLocked = _comfort.locked;
+  }
+
+  OrbitColors _viewColors(BuildContext context) {
+    final colors = OrbitColors.of(context);
+    return _comfort.softGrid
+        ? colors.copyWith(
+            canvasGrid: colors.canvasGrid.withValues(
+              alpha: colors.canvasGrid.a * .35,
+            ),
+          )
+        : colors;
+  }
+
+  Future<void> _showComfort() async {
+    var value = widget.comfort;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, update) => AlertDialog(
+          title: const Text('Tablet comfort'),
+          content: SizedBox(
+            width: 460,
+            child: SingleChildScrollView(
+              child: CanvasComfortPanel(
+                value: value,
+                onChanged: (next) {
+                  update(() => value = next);
+                  widget.onComfortChanged?.call(next);
+                },
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _toolbar(BuildContext context) {
+    if (!_comfort.largeControls) return _toolbarContents(context);
+    final theme = Theme.of(context);
+    final density = OrbitDensity.of(context);
+    return Theme(
+      data: theme.copyWith(
+        extensions: [
+          for (final value in theme.extensions.values)
+            if (value is! OrbitDensity) value,
+          OrbitDensity(scale: math.max(density.scale, 56 / 36)),
+        ],
+        iconButtonTheme: IconButtonThemeData(
+          style: IconButton.styleFrom(minimumSize: const Size(56, 56)),
+        ),
+      ),
+      child: Builder(builder: _toolbarContents),
+    );
+  }
+
+  Widget _toolbarContents(BuildContext context) {
     final tools = <(_Tool, IconData, String)>[
       (_Tool.select, Icons.near_me_outlined, 'Select (V)'),
       (_Tool.lasso, Icons.gesture, 'Lasso selection (L)'),
@@ -10324,6 +10427,12 @@ class _CanvasEditorState extends State<CanvasEditor> {
                   icon: Icon(
                     widget.focusMode ? Icons.fullscreen_exit : Icons.fullscreen,
                   ),
+                ),
+              if (widget.onComfortChanged != null)
+                IconButton(
+                  tooltip: 'Tablet comfort',
+                  onPressed: _showComfort,
+                  icon: const Icon(Icons.touch_app_outlined),
                 ),
               for (final item in tools.take(3))
                 Padding(

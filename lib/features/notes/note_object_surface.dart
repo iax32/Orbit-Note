@@ -109,6 +109,9 @@ class _NoteObjectSurfaceState extends State<NoteObjectSurface> {
               ),
               Expanded(
                 child: CanvasEditor(
+                  comfort: controller.session.canvasComfort,
+                  onComfortChanged: (value) =>
+                      controller.updateSession((s) => s.canvasComfort = value),
                   canvasId: original.id,
                   data: original.data,
                   focusElementIds:

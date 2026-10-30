@@ -81,3 +81,8 @@ checks, not enrollment or physical-device acceptance. Google delays, full-file
 transfer costs, stored/decoded journal bounds and the measured 84.7-ms native
 handoff gap remain material limits. Suggested next task: incremental large-Canvas
 payloads and checkpoint worker handoff to reduce the remaining snapshot spikes.
+
+Owner follow-up: the 1.0.13 physical replay is still unsatisfactory. The owner
+explicitly sets further sync/server work aside for now and requests a Canvas
+focus toolbar swap instead. Do not record physical acceptance as passed or
+continue networking work under that new layout task.

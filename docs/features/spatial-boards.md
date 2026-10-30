@@ -1,5 +1,15 @@
 # Spatial boards
 
+2026-10-30 Canvas focus controls: a dedicated drag/menu handle supports free
+placement, edge snapping, four corner presets, position lock/reset and compact
+Redo. Top/bottom layouts keep tools on-screen without shrinking the Canvas.
+Placement and lock now persist in device-local session settings; no object/sync
+data changes. Optional Tablet comfort offers 56-pixel drawing controls, softer
+themed guides and left/right reach presets, with accessible reset. Authored paper
+and PDF colors remain unchanged. Motion uses
+Orbit preferences, with direct drag and immediate Reduced/Off spatial changes.
+[Behavior/evidence](../tasks/tablet-canvas-focus-2026-10-27.md).
+
 2026-10-29 pen input: the stylus takes priority over earlier provisional palm
 contacts, later palms cannot cancel the pen, and spatial filtering preserves
 pressure changes. The local preview borrows a read-only view of gesture-owned

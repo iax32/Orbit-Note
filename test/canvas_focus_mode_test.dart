@@ -74,15 +74,18 @@ void main() {
     await t.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: MaterialApp(
-          theme: orbitDarkTheme().copyWith(platform: TargetPlatform.android),
-          builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(
-              context,
-            ).copyWith(textScaler: TextScaler.linear(scale)),
-            child: child!,
+        child: RepaintBoundary(
+          key: const ValueKey('capture-shell'),
+          child: MaterialApp(
+            theme: orbitDarkTheme().copyWith(platform: TargetPlatform.android),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(scale)),
+              child: child!,
+            ),
+            home: const WorkspaceShell(),
           ),
-          home: const WorkspaceShell(),
         ),
       ),
     );
@@ -95,6 +98,50 @@ void main() {
     });
     return (c, boardId);
   }
+
+  testWidgets(
+    'tablet comfort is reachable in focus and leaves authored content intact',
+    (t) async {
+      final (c, id) = await mount(t, const Size(820, 1180));
+      final original = c.find(id)!.data;
+      await t.runAsync(() => t.tap(find.byTooltip('Focus on drawing')));
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const ValueKey('canvas-focus-position')));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Tablet comfort…'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Use tablet comfort'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Left side'));
+      await t.pumpAndSettle();
+      await captureUi(
+        t,
+        'canvas-tablet-comfort-dialog',
+        target: find.byKey(const ValueKey('capture-shell')),
+      );
+      await t.tap(find.text('Done'));
+      await t.pumpAndSettle();
+      final grip = t.getRect(
+        find.byKey(const ValueKey('canvas-focus-position')),
+      );
+      expect(grip.size, const Size(56, 56));
+      expect(grip.left, closeTo(t.getRect(surface()).left + 8, 1));
+      expect(
+        t.getSize(find.byTooltip('Undo drawing')).width,
+        greaterThanOrEqualTo(56),
+      );
+      await t.tap(find.byTooltip('Show Canvas tools'));
+      await t.pumpAndSettle();
+      expect(
+        t.getSize(find.byTooltip('Select (V)')).height,
+        greaterThanOrEqualTo(56),
+      );
+      await captureUi(t, 'canvas-tablet-comfort-left');
+      expect(c.session.canvasComfort, containsPair('softGrid', true));
+      expect(identical(c.find(id)!.data, original), isTrue);
+      expect(t.takeException(), isNull);
+    },
+  );
 
   for (final size in [const Size(1024, 768), const Size(820, 1180)]) {
     testWidgets(
@@ -132,7 +179,7 @@ void main() {
         expect(c.session.sidebarVisible, isTrue);
         expect(c.session.inspectorVisible, isTrue);
         final dock = t.getRect(find.byKey(const ValueKey('canvas-focus-dock')));
-        expect(dock.width, lessThanOrEqualTo(160));
+        expect(dock.width, lessThanOrEqualTo(208));
         expect(dock.height, greaterThanOrEqualTo(48));
         expect(dock.top, greaterThanOrEqualTo(24));
         await captureUi(t, 'canvas-focus-${size.width.toInt()}');
@@ -140,6 +187,17 @@ void main() {
         await t.pumpAndSettle();
         expect(t.getSize(surface()), focused);
         expect(find.byTooltip('Draw and erase'), findsOneWidget);
+        final tools = t.getRect(
+          find.byKey(const ValueKey('canvas-focus-tools')),
+        );
+        final lowerDock = t.getRect(
+          find.byKey(const ValueKey('canvas-focus-dock')),
+        );
+        expect(tools.top, closeTo(t.getRect(surface()).top + 8, 1));
+        expect(lowerDock.top, closeTo(tools.bottom + 8, 1));
+        expect(lowerDock.right, closeTo(tools.right, 1));
+        expect(lowerDock.width, lessThanOrEqualTo(208));
+        await captureUi(t, 'canvas-focus-swapped-${size.width.toInt()}');
         await t.sendKeyEvent(LogicalKeyboardKey.escape);
         await t.pumpAndSettle();
         expect(find.byTooltip('Draw and erase'), findsNothing);
@@ -186,6 +244,14 @@ void main() {
         (c.find(id)!.data['elements'] as List).where((e) => e['type'] == 'ink'),
         isEmpty,
       );
+      await t.tap(find.byTooltip('Redo drawing'));
+      await t.pumpAndSettle();
+      expect(
+        (c.find(id)!.data['elements'] as List).where((e) => e['type'] == 'ink'),
+        hasLength(1),
+      );
+      await t.tap(find.byTooltip('Undo drawing'));
+      await t.pumpAndSettle();
       await t.tap(find.byTooltip('Show Canvas tools'));
       await t.pumpAndSettle();
       await t.ensureVisible(find.byTooltip('Redo (Ctrl+Shift+Z)'));
@@ -199,7 +265,18 @@ void main() {
       await t.pumpAndSettle();
       await t.runAsync(() => t.tap(find.byTooltip('Exit Canvas focus')));
       await t.pumpAndSettle();
-      await t.runAsync(() => c.flushAll());
+      // Undo/Redo may have started a save in the widget test's fake zone.
+      // Drain both its microtasks and native encoder completions while waiting.
+      var saved = false;
+      final saving = c.flushAll().then((value) => saved = value);
+      for (var i = 0; i < 100 && !saved; i++) {
+        await t.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 10)),
+        );
+        await t.pump(const Duration(milliseconds: 10));
+      }
+      expect(saved, isTrue);
+      await saving;
       expect(c.find(id)!.data['future'], {'preserved': true});
       expect(t.takeException(), isNull);
     },

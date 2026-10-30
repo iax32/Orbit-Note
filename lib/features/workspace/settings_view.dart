@@ -1,3 +1,5 @@
+import '../canvas/canvas_comfort_panel.dart';
+import '../../app/canvas_comfort.dart';
 import '../../domain/motion_preferences.dart';
 import '../../domain/json_values.dart';
 import 'motion_studio.dart';
@@ -674,6 +676,12 @@ class _SettingsViewState extends State<SettingsView> {
         ),
       ],
       _Category.canvas => [
+        _resetValue(
+          s,
+          (s) => s.canvasComfort,
+          (s, v) => s.canvasComfort = v,
+          CanvasComfort(s.canvasComfort).reset,
+        ),
         _resetValue(
           s,
           (s) => s.defaultCanvasGrid,
@@ -1544,6 +1552,17 @@ class _SettingsViewState extends State<SettingsView> {
           'Default for newly opened code workspaces. Existing panes keep their local choice.',
           s.defaultCodeWrap,
           (v) => changeSession((s) => s.defaultCodeWrap = v),
+        ),
+      ),
+      _Entry(
+        'canvas-comfort',
+        _Category.canvas,
+        'This device',
+        'Tablet comfort',
+        'touch large buttons soft grid left right handed drawing position',
+        (context) => CanvasComfortPanel(
+          value: s.canvasComfort,
+          onChanged: (value) => changeSession((s) => s.canvasComfort = value),
         ),
       ),
       _Entry(

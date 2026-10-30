@@ -4608,6 +4608,9 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       'orbit.canvas' => ListenableBuilder(
         listenable: collaboration.viewerChanges,
         builder: (context, _) => CanvasEditor(
+          comfort: c.session.canvasComfort,
+          onComfortChanged: (value) =>
+              c.updateSession((s) => s.canvasComfort = value),
           interactionActive:
               !_secondaryVisible || _targetSecondary == (pane == 'secondary'),
           onActivate: () => _focusPaneEditor(secondary: pane == 'secondary'),
