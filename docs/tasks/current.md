@@ -1,4 +1,4 @@
-# Complete implementation — cohesive application motion, 2026-10-30
+# Published — cohesive application motion, 2026-10-30
 
 Owner requests a large clean-animation pass across Orbit. MOT-01/02/04/06 scope:
 shared dialog/menu/sheet arrival, finite panel/settings/tab/status feedback, and
@@ -24,9 +24,18 @@ lib/test/tool clean (9.6 s); strict 923 lib/test files unchanged (8.03 s).
 Actual-font in-flight (60 ms) and settled modal captures inspected. Minimap check
 on 10,000 objects/60 pans: cached 272.6 ms vs cold 2117.7 ms total test CPU; existing
 rendering algorithm unchanged, not a new hardware FPS claim.
-Building matching 1.0.15+16 Windows/Android using the approved existing Google and
-Android signing configuration. No GitHub build workflows. Native publication and
-remaining physical-device acceptance will be recorded after verification.
+Published 1.0.15+16:
+https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.15-2026-10-30
+App source/tag 218b06c4f81eef375fbb91ae478b5279396f1220. Windows build 104.6 s,
+Android 191.2 s; installer packaging 17.25 s. Windows version/AOT freshness and
+Android package/version/original signing identity verified. All three Android AOT
+libraries differ from 1.0.14, despite identical aligned APK lengths. All six
+uploaded asset sizes/SHA-256 digests match; tag/source match; zero GitHub workflows.
+Existing Google desktop configuration was published under the owner's prior
+explicit approval; no account tokens, credential downloads, signing keys or
+private tmp PDFs were included. Final strict format: 923 files unchanged (10.32 s).
+Next suggested task: physical Lenovo/keyboard motion review. Not started;
+headless timing and captures do not prove hardware frame latency.
 
 # Published — tablet comfort and release, 2026-10-30
 

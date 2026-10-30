@@ -98,7 +98,7 @@ completion. [Exact coverage and validation](../tasks/motion-studio-2026-10-23.md
 ## Cohesive interface pass — 2026-10-30
 
 Dialog entry points share showOrbitDialog, preserving Flutter's modal barrier,
-focus traversal, anchors, navigator choice, results and restoration settings.
+focus traversal, anchors, navigator choice, results and route settings.
 Normal adds a restrained 5–8 px / .985–1 surface arrival; Reduced uses only the
 brief route fade; Off and disabled Navigation & surfaces open immediately. Popup
 menus, context menus and mobile editing sheets use shared duration/easing and

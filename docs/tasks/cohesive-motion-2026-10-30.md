@@ -51,3 +51,17 @@ The large-Canvas test measures debug/test CPU, not native stylus latency. The
 static-state child is not rebuilt across 16 animation frames; text and pen data
 remain immediate and pixel fidelity checks pass. No further test broadening was
 needed after the corrected timing assertion passed.
+
+## Native publication
+
+1.0.15+16 is published at
+https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.15-2026-10-30
+with app source/tag 218b06c4f81eef375fbb91ae478b5279396f1220. Windows build
+104.6 s / Android 191.2 s / installer packaging 17.25 s. Version, Windows AOT
+freshness, Android original signing identity and fresh AOT on all three ABIs were
+verified. Identical APK byte length to 1.0.14 is alignment, not reused code: all
+three libapp.so hashes differ. All six uploaded file hashes/sizes and tag/source
+match; zero GitHub workflow runs. The previously approved desktop Google native
+registration is unchanged; no user credentials or original private files shipped.
+Final strict format: 923 files unchanged, 10.32 s. Real-device motion feel remains
+unverified; the next suggested task is that physical review, not more features.
