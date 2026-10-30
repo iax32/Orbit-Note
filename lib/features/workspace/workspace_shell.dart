@@ -165,6 +165,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   bool dropping = false;
   bool explorerDropping = false;
   String explorerFilter = '';
+  final _explorerFilterInput = TextEditingController();
   String explorerTypeFilter = 'all';
   bool _secondaryFocused = false;
   bool _secondaryVisible = false;
@@ -221,6 +222,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   @override
   void dispose() {
     lifecycle.dispose();
+    _explorerFilterInput.dispose();
     _primaryPaneFocus.dispose();
     _secondaryPaneFocus.dispose();
     super.dispose();
@@ -2117,6 +2119,11 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                   drawerEnableOpenDragGesture: !canvasFocus,
                   backgroundColor: colors.background,
                   drawer: Drawer(
+                    width:
+                        Theme.of(context).platform == TargetPlatform.android ||
+                            Theme.of(context).platform == TargetPlatform.iOS
+                        ? (constraints.maxWidth * .86).clamp(0.0, 400.0)
+                        : null,
                     backgroundColor: colors.panel,
                     child: SafeArea(child: explorer()),
                   ),
@@ -2545,6 +2552,12 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
 
   Widget explorer() {
     final colors = OrbitColors.of(context), destination = c.session.destination;
+    final compactExplorer =
+        Theme.of(context).platform == TargetPlatform.android ||
+        Theme.of(context).platform == TargetPlatform.iOS ||
+        MediaQuery.sizeOf(context).height < 650;
+    final explorerTools =
+        c.session.extra['compactExplorerToolsExpanded'] == true;
     final type = destination == OrbitDestination.canvas
         ? 'orbit.canvas'
         : destination == OrbitDestination.tasks
@@ -2697,718 +2710,806 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         ),
         child: Material(
           color: Colors.transparent,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (explorerDropping)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 8,
-                    horizontal: 12,
-                  ),
-                  color: colors.accent.withValues(alpha: 0.18),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.file_download_outlined,
-                        size: 16,
-                        color: colors.accent,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Drop files to import into Vault',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: colors.accent,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 18, 12, 12),
-                child: Row(
-                  children: [
+          child: LayoutBuilder(
+            builder: (context, area) {
+              final header = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (explorerDropping)
                     Container(
-                      width: 30,
-                      height: 30,
-                      decoration: BoxDecoration(
-                        color: colors.raised,
-                        borderRadius: BorderRadius.circular(8),
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 8,
+                        horizontal: 12,
                       ),
-                      child: Icon(
-                        Icons.workspaces_outline,
-                        size: 17,
-                        color: colors.accent,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      color: colors.accent.withValues(alpha: 0.18),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(
-                            c.repository.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                            ),
+                          Icon(
+                            Icons.file_download_outlined,
+                            size: 16,
+                            color: colors.accent,
                           ),
+                          const SizedBox(width: 6),
                           Text(
-                            'Personal Vault',
+                            'Drop files to import into Vault',
                             style: TextStyle(
                               fontSize: 12,
-                              color: colors.subtle,
+                              fontWeight: FontWeight.w600,
+                              color: colors.accent,
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ],
-                ),
-              ),
-              if (destination != OrbitDestination.trash)
-                ExplorerMiniCalendar(controller: c),
-              // Creation and import share one menu to keep the tree prominent.
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Wrap(
-                    spacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      _newObjectMenu(),
-                      IconButton(
-                        tooltip: 'Open code workspace (HTML / Python / C++)',
-                        onPressed: () => showCodeIde(context, controller: c),
-                        icon: const Icon(
-                          Icons.developer_mode_outlined,
-                          size: 19,
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Open code file',
-                        onPressed: pickAndOpenCode,
-                        icon: const Icon(Icons.code_outlined, size: 19),
-                      ),
-                      IconButton(
-                        tooltip: 'Open 3D model (OBJ / GLB)',
-                        onPressed: pickAndOpenModel,
-                        icon: const Icon(Icons.view_in_ar_outlined, size: 19),
-                      ),
-                      IconButton(
-                        tooltip: 'Life workspace',
-                        onPressed: () => showLifeWorkspace(context, c),
-                        icon: const Icon(Icons.spa_outlined, size: 19),
-                      ),
-                      IconButton(
-                        tooltip: 'Finance · expenses, budgets and accounts',
-                        onPressed: () => showFinanceWorkspace(context, c),
-                        icon: const Icon(
-                          Icons.account_balance_wallet_outlined,
-                          size: 19,
-                        ),
-                      ),
-                      IconButton(
-                        tooltip:
-                            'Research dossiers · functions, structures and evidence',
-                        onPressed: () => showResearchDossier(context, c),
-                        icon: const Icon(
-                          Icons.manage_search_outlined,
-                          size: 19,
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Courses & study progress',
-                        onPressed: () => showCourseHub(context, c),
-                        icon: const Icon(Icons.school_outlined, size: 19),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: OutlinedButton(
-                  onPressed: () => showCommandPalette(context, c),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.search, size: 16),
-                      const SizedBox(width: 8),
-                      const Expanded(
-                        child: Text(
-                          'Find anything',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ),
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          borderRadius: const BorderRadius.all(
-                            Radius.circular(4),
+                  Padding(
+                    padding: compactExplorer
+                        ? const EdgeInsets.fromLTRB(12, 8, 8, 4)
+                        : const EdgeInsets.fromLTRB(16, 18, 12, 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: colors.raised,
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          color: colors.raised,
-                        ),
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 5,
-                            vertical: 3,
+                          child: Icon(
+                            Icons.workspaces_outline,
+                            size: 17,
+                            color: colors.accent,
                           ),
-                          child: Text('Ctrl P', style: TextStyle(fontSize: 10)),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              // Section Header Row
-              Padding(
-                padding: const EdgeInsets.only(left: 18, right: 8),
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        '$label · ${objects.length}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          letterSpacing: .3,
-                          color: colors.subtle,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    if (destination == OrbitDestination.notes &&
-                        explorerTypeFilter == 'notes')
-                      IconButton(
-                        tooltip: c.showAttachments
-                            ? 'Hide files & PDFs'
-                            : 'Show files & PDFs',
-                        onPressed: c.toggleShowAttachments,
-                        icon: Icon(
-                          c.showAttachments
-                              ? Icons.attachment
-                              : Icons.attachment_outlined,
-                          size: 16,
-                          color: c.showAttachments
-                              ? colors.accent
-                              : colors.subtle,
-                        ),
-                        constraints: const BoxConstraints.tightFor(
-                          width: 28,
-                          height: 28,
-                        ),
-                        padding: EdgeInsets.zero,
-                        splashRadius: 16,
-                      ),
-                    if (destination == OrbitDestination.trash)
-                      TextButton.icon(
-                        onPressed: objects.isEmpty
-                            ? null
-                            : () async {
-                                final generation = c.workspaceGeneration,
-                                    workspace = c.repository.workspaceId;
-                                final reviewed = {
-                                  for (final o in objects.where(
-                                    (o) => o.isDeleted,
-                                  ))
-                                    o.id: o,
-                                };
-                                final confirmed = await showOrbitDialog<bool>(
-                                  context: context,
-                                  builder: (context) => OrbitDialog(
-                                    title: const Text('Empty Trash'),
-                                    content: const Text(
-                                      'Permanently delete all items in Trash? This cannot be undone.',
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(context, false),
-                                        child: const Text('Cancel'),
-                                      ),
-                                      FilledButton(
-                                        onPressed: () =>
-                                            Navigator.pop(context, true),
-                                        child: const Text('Empty Trash'),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                                if (confirmed == true &&
-                                    _captureStillCurrent(
-                                      generation,
-                                      workspace,
-                                    ) &&
-                                    reviewed.values.every(
-                                      (o) => identical(c.find(o.id), o),
-                                    ) &&
-                                    c.objects
-                                            .where((o) => o.isDeleted)
-                                            .length ==
-                                        reviewed.length) {
-                                  await c.emptyTrash();
-                                }
-                              },
-                        icon: const Icon(Icons.delete_sweep_outlined, size: 16),
-                        label: const Text(
-                          'Empty',
-                          style: TextStyle(fontSize: 11),
-                        ),
-                      ),
-                    if (destination != OrbitDestination.trash)
-                      IconButton(
-                        tooltip: 'Create ${type.replaceFirst('orbit.', '')}',
-                        onPressed: () => c.create(type),
-                        icon: const Icon(Icons.add, size: 17),
-                        constraints: const BoxConstraints.tightFor(
-                          width: 28,
-                          height: 28,
-                        ),
-                        padding: EdgeInsets.zero,
-                        splashRadius: 16,
-                      ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 8, 6),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        key: const ValueKey('explorer-filter'),
-                        decoration: InputDecoration(
-                          hintText: 'Filter titles & content',
-                          isDense: true,
-                          suffixIcon: explorerFilter.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.clear, size: 14),
-                                  tooltip: 'Clear filter',
-                                  onPressed: () =>
-                                      setState(() => explorerFilter = ''),
-                                )
-                              : null,
-                        ),
-                        onChanged: (value) =>
-                            setState(() => explorerFilter = value),
-                      ),
-                    ),
-                    PopupMenuButton<String>(
-                      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
-                      tooltip: 'Sort notes',
-                      icon: const Icon(Icons.sort, size: 18),
-                      initialValue: c.session.noteSort,
-                      onSelected: (value) =>
-                          c.updateSession((s) => s.noteSort = value),
-                      itemBuilder: (_) => objectSortLabels.entries
-                          .map(
-                            (e) => PopupMenuItem(
-                              value: e.key,
-                              child: Text(e.value),
-                            ),
-                          )
-                          .toList(),
-                    ),
-                  ],
-                ),
-              ),
-              // A compact filter menu replaces the permanent chip strip.
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                child: Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    PopupMenuButton<String>(
-                      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
-                      key: const ValueKey('explorer-type-menu'),
-                      tooltip: 'Filter by type',
-                      initialValue: explorerTypeFilter,
-                      onSelected: (value) =>
-                          setState(() => explorerTypeFilter = value),
-                      itemBuilder: (_) => [
-                        for (final item in const {
-                          'all': 'All items',
-                          'notes': 'Notes',
-                          'canvases': 'Canvases',
-                          'pdfs': 'PDFs',
-                          'images': 'Images',
-                          'tasks': 'Tasks',
-                        }.entries)
-                          PopupMenuItem(
-                            key: ValueKey('filter-chip-${item.key}'),
-                            value: item.key,
-                            child: Row(
-                              children: [
-                                Icon(
-                                  explorerTypeFilter == item.key
-                                      ? Icons.check
-                                      : null,
-                                  size: 17,
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                c.repository.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
                                 ),
-                                const SizedBox(width: 12),
-                                Text(item.value),
-                              ],
-                            ),
+                              ),
+                              if (!compactExplorer)
+                                Text(
+                                  'Personal Vault',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: colors.subtle,
+                                  ),
+                                ),
+                            ],
                           ),
-                      ],
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 8,
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.filter_list, size: 16),
-                            const SizedBox(width: 8),
-                            Text(
-                              explorerTypeFilter == 'all'
-                                  ? 'All items'
-                                  : '${explorerTypeFilter[0].toUpperCase()}${explorerTypeFilter.substring(1)}',
-                              style: const TextStyle(fontSize: 12),
+                      ],
+                    ),
+                  ),
+                  if (compactExplorer)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(
+                        children: [
+                          _newObjectMenu(),
+                          const Spacer(),
+                          IconButton(
+                            tooltip: 'Find anything',
+                            onPressed: () => showCommandPalette(context, c),
+                            icon: const Icon(Icons.search),
+                          ),
+                          IconButton(
+                            key: const ValueKey('compact-explorer-tools'),
+                            tooltip: explorerTools
+                                ? 'Hide explorer tools'
+                                : 'Show explorer tools',
+                            isSelected: explorerTools,
+                            onPressed: () => c.updateSession(
+                              (s) => s.extra['compactExplorerToolsExpanded'] =
+                                  !explorerTools,
                             ),
-                            const SizedBox(width: 4),
-                            const Icon(Icons.expand_more, size: 16),
+                            icon: const Icon(Icons.tune),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (!compactExplorer || explorerTools) ...[
+                    if (destination != OrbitDestination.trash)
+                      ExplorerMiniCalendar(controller: c),
+                    // Creation and import share one menu to keep the tree prominent.
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Wrap(
+                          spacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            if (!compactExplorer) _newObjectMenu(),
+                            IconButton(
+                              tooltip:
+                                  'Open code workspace (HTML / Python / C++)',
+                              onPressed: () =>
+                                  showCodeIde(context, controller: c),
+                              icon: const Icon(
+                                Icons.developer_mode_outlined,
+                                size: 19,
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Open code file',
+                              onPressed: pickAndOpenCode,
+                              icon: const Icon(Icons.code_outlined, size: 19),
+                            ),
+                            IconButton(
+                              tooltip: 'Open 3D model (OBJ / GLB)',
+                              onPressed: pickAndOpenModel,
+                              icon: const Icon(
+                                Icons.view_in_ar_outlined,
+                                size: 19,
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Life workspace',
+                              onPressed: () => showLifeWorkspace(context, c),
+                              icon: const Icon(Icons.spa_outlined, size: 19),
+                            ),
+                            IconButton(
+                              tooltip:
+                                  'Finance · expenses, budgets and accounts',
+                              onPressed: () => showFinanceWorkspace(context, c),
+                              icon: const Icon(
+                                Icons.account_balance_wallet_outlined,
+                                size: 19,
+                              ),
+                            ),
+                            IconButton(
+                              tooltip:
+                                  'Research dossiers · functions, structures and evidence',
+                              onPressed: () => showResearchDossier(context, c),
+                              icon: const Icon(
+                                Icons.manage_search_outlined,
+                                size: 19,
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Courses & study progress',
+                              onPressed: () => showCourseHub(context, c),
+                              icon: const Icon(Icons.school_outlined, size: 19),
+                            ),
                           ],
                         ),
                       ),
                     ),
-                    if ((explorerTypeFilter == 'notes' ||
-                            destination == OrbitDestination.notes) &&
-                        destination != OrbitDestination.trash &&
-                        c.repository.supportsFolders)
-                      IconButton(
-                        key: const ValueKey('explorer-collapse-expand-all'),
-                        visualDensity: VisualDensity.compact,
-                        iconSize: 16,
-                        tooltip: c.areAllFoldersCollapsed
-                            ? 'Expand all folders (Ctrl+Shift+E)'
-                            : 'Collapse all folders (Ctrl+Shift+E)',
-                        icon: Icon(
-                          c.areAllFoldersCollapsed
-                              ? Icons.unfold_more_rounded
-                              : Icons.unfold_less_rounded,
-                          color: colors.subtle,
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: OutlinedButton(
+                        onPressed: () => showCommandPalette(context, c),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.search, size: 16),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                'Find anything',
+                                style: TextStyle(fontSize: 12),
+                              ),
+                            ),
+                            DecoratedBox(
+                              decoration: BoxDecoration(
+                                borderRadius: const BorderRadius.all(
+                                  Radius.circular(4),
+                                ),
+                                color: colors.raised,
+                              ),
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 3,
+                                ),
+                                child: Text(
+                                  'Ctrl P',
+                                  style: TextStyle(fontSize: 10),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        onPressed: () {
-                          if (c.areAllFoldersCollapsed) {
-                            c.expandAllFolders();
-                          } else {
-                            c.collapseAllFolders();
-                          }
-                        },
                       ),
-                    PopupMenuButton<String>(
-                      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
-                      key: const ValueKey('explorer-tag-filter-button'),
-                      tooltip: 'Filter by tag…',
-                      icon: Icon(
-                        c.activeTagFilter != null
-                            ? Icons.label_rounded
-                            : Icons.label_outline_rounded,
-                        size: 16,
-                        color: c.activeTagFilter != null
-                            ? colors.accent
-                            : colors.subtle,
-                      ),
-                      onSelected: (tag) {
-                        if (tag == '__clear__') {
-                          c.clearTagFilter();
-                        } else {
-                          c.activeTagFilter = tag;
-                        }
-                      },
-                      itemBuilder: (_) => [
-                        if (c.activeTagFilter != null)
-                          const PopupMenuItem(
-                            value: '__clear__',
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  // Section Header Row
+                  Padding(
+                    padding: const EdgeInsets.only(left: 18, right: 8),
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            '$label · ${objects.length}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              letterSpacing: .3,
+                              color: colors.subtle,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        if (destination == OrbitDestination.notes &&
+                            explorerTypeFilter == 'notes')
+                          IconButton(
+                            tooltip: c.showAttachments
+                                ? 'Hide files & PDFs'
+                                : 'Show files & PDFs',
+                            onPressed: c.toggleShowAttachments,
+                            icon: Icon(
+                              c.showAttachments
+                                  ? Icons.attachment
+                                  : Icons.attachment_outlined,
+                              size: 16,
+                              color: c.showAttachments
+                                  ? colors.accent
+                                  : colors.subtle,
+                            ),
+                            constraints: const BoxConstraints.tightFor(
+                              width: 28,
+                              height: 28,
+                            ),
+                            padding: EdgeInsets.zero,
+                            splashRadius: 16,
+                          ),
+                        if (destination == OrbitDestination.trash)
+                          TextButton.icon(
+                            onPressed: objects.isEmpty
+                                ? null
+                                : () async {
+                                    final generation = c.workspaceGeneration,
+                                        workspace = c.repository.workspaceId;
+                                    final reviewed = {
+                                      for (final o in objects.where(
+                                        (o) => o.isDeleted,
+                                      ))
+                                        o.id: o,
+                                    };
+                                    final confirmed = await showOrbitDialog<bool>(
+                                      context: context,
+                                      builder: (context) => OrbitDialog(
+                                        title: const Text('Empty Trash'),
+                                        content: const Text(
+                                          'Permanently delete all items in Trash? This cannot be undone.',
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(context, false),
+                                            child: const Text('Cancel'),
+                                          ),
+                                          FilledButton(
+                                            onPressed: () =>
+                                                Navigator.pop(context, true),
+                                            child: const Text('Empty Trash'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirmed == true &&
+                                        _captureStillCurrent(
+                                          generation,
+                                          workspace,
+                                        ) &&
+                                        reviewed.values.every(
+                                          (o) => identical(c.find(o.id), o),
+                                        ) &&
+                                        c.objects
+                                                .where((o) => o.isDeleted)
+                                                .length ==
+                                            reviewed.length) {
+                                      await c.emptyTrash();
+                                    }
+                                  },
+                            icon: const Icon(
+                              Icons.delete_sweep_outlined,
+                              size: 16,
+                            ),
+                            label: const Text(
+                              'Empty',
+                              style: TextStyle(fontSize: 11),
+                            ),
+                          ),
+                        if (destination != OrbitDestination.trash)
+                          IconButton(
+                            tooltip:
+                                'Create ${type.replaceFirst('orbit.', '')}',
+                            onPressed: () => c.create(type),
+                            icon: const Icon(Icons.add, size: 17),
+                            constraints: const BoxConstraints.tightFor(
+                              width: 28,
+                              height: 28,
+                            ),
+                            padding: EdgeInsets.zero,
+                            splashRadius: 16,
+                          ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    key: const ValueKey('explorer-filter-row'),
+                    padding: const EdgeInsets.fromLTRB(12, 0, 8, 6),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            key: const ValueKey('explorer-filter'),
+                            controller: _explorerFilterInput,
+                            decoration: InputDecoration(
+                              hintText: 'Filter titles & content',
+                              isDense: true,
+                              suffixIcon: explorerFilter.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.clear, size: 14),
+                                      tooltip: 'Clear filter',
+                                      onPressed: () {
+                                        _explorerFilterInput.clear();
+                                        setState(() => explorerFilter = '');
+                                      },
+                                    )
+                                  : null,
+                            ),
+                            onChanged: (value) =>
+                                setState(() => explorerFilter = value),
+                          ),
+                        ),
+                        PopupMenuButton<String>(
+                          popUpAnimationStyle: OrbitMotionScope.popupStyle(
+                            context,
+                          ),
+                          tooltip: 'Sort notes',
+                          icon: const Icon(Icons.sort, size: 18),
+                          initialValue: c.session.noteSort,
+                          onSelected: (value) =>
+                              c.updateSession((s) => s.noteSort = value),
+                          itemBuilder: (_) => objectSortLabels.entries
+                              .map(
+                                (e) => PopupMenuItem(
+                                  value: e.key,
+                                  child: Text(e.value),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // A compact filter menu replaces the permanent chip strip.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                    child: Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        PopupMenuButton<String>(
+                          popUpAnimationStyle: OrbitMotionScope.popupStyle(
+                            context,
+                          ),
+                          key: const ValueKey('explorer-type-menu'),
+                          tooltip: 'Filter by type',
+                          initialValue: explorerTypeFilter,
+                          onSelected: (value) =>
+                              setState(() => explorerTypeFilter = value),
+                          itemBuilder: (_) => [
+                            for (final item in const {
+                              'all': 'All items',
+                              'notes': 'Notes',
+                              'canvases': 'Canvases',
+                              'pdfs': 'PDFs',
+                              'images': 'Images',
+                              'tasks': 'Tasks',
+                            }.entries)
+                              PopupMenuItem(
+                                key: ValueKey('filter-chip-${item.key}'),
+                                value: item.key,
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      explorerTypeFilter == item.key
+                                          ? Icons.check
+                                          : null,
+                                      size: 17,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(item.value),
+                                  ],
+                                ),
+                              ),
+                          ],
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 8,
+                            ),
                             child: Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.close_rounded, size: 16),
-                                SizedBox(width: 8),
-                                Text('Clear tag filter'),
+                                const Icon(Icons.filter_list, size: 16),
+                                const SizedBox(width: 8),
+                                Text(
+                                  explorerTypeFilter == 'all'
+                                      ? 'All items'
+                                      : '${explorerTypeFilter[0].toUpperCase()}${explorerTypeFilter.substring(1)}',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.expand_more, size: 16),
                               ],
                             ),
                           ),
-                        if (c.allTags.isEmpty)
-                          const PopupMenuItem(
-                            enabled: false,
-                            value: '',
-                            child: Text('No tags found in vault'),
-                          )
-                        else
-                          for (final tag in c.allTags)
-                            PopupMenuItem(
-                              key: ValueKey('tag-menu-item-$tag'),
-                              value: tag,
+                        ),
+                        if ((explorerTypeFilter == 'notes' ||
+                                destination == OrbitDestination.notes) &&
+                            destination != OrbitDestination.trash &&
+                            c.repository.supportsFolders)
+                          IconButton(
+                            key: const ValueKey('explorer-collapse-expand-all'),
+                            visualDensity: VisualDensity.compact,
+                            iconSize: 16,
+                            tooltip: c.areAllFoldersCollapsed
+                                ? 'Expand all folders (Ctrl+Shift+E)'
+                                : 'Collapse all folders (Ctrl+Shift+E)',
+                            icon: Icon(
+                              c.areAllFoldersCollapsed
+                                  ? Icons.unfold_more_rounded
+                                  : Icons.unfold_less_rounded,
+                              color: colors.subtle,
+                            ),
+                            onPressed: () {
+                              if (c.areAllFoldersCollapsed) {
+                                c.expandAllFolders();
+                              } else {
+                                c.collapseAllFolders();
+                              }
+                            },
+                          ),
+                        PopupMenuButton<String>(
+                          popUpAnimationStyle: OrbitMotionScope.popupStyle(
+                            context,
+                          ),
+                          key: const ValueKey('explorer-tag-filter-button'),
+                          tooltip: 'Filter by tag…',
+                          icon: Icon(
+                            c.activeTagFilter != null
+                                ? Icons.label_rounded
+                                : Icons.label_outline_rounded,
+                            size: 16,
+                            color: c.activeTagFilter != null
+                                ? colors.accent
+                                : colors.subtle,
+                          ),
+                          onSelected: (tag) {
+                            if (tag == '__clear__') {
+                              c.clearTagFilter();
+                            } else {
+                              c.activeTagFilter = tag;
+                            }
+                          },
+                          itemBuilder: (_) => [
+                            if (c.activeTagFilter != null)
+                              const PopupMenuItem(
+                                value: '__clear__',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.close_rounded, size: 16),
+                                    SizedBox(width: 8),
+                                    Text('Clear tag filter'),
+                                  ],
+                                ),
+                              ),
+                            if (c.allTags.isEmpty)
+                              const PopupMenuItem(
+                                enabled: false,
+                                value: '',
+                                child: Text('No tags found in vault'),
+                              )
+                            else
+                              for (final tag in c.allTags)
+                                PopupMenuItem(
+                                  key: ValueKey('tag-menu-item-$tag'),
+                                  value: tag,
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        c.activeTagFilter == tag
+                                            ? Icons.check
+                                            : Icons.label_outlined,
+                                        size: 16,
+                                        color: c.activeTagFilter == tag
+                                            ? colors.accent
+                                            : null,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(child: Text('#$tag')),
+                                      Text(
+                                        '${c.countForTag(tag)}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: colors.muted,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (c.activeTagFilter != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: colors.accent.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                  color: colors.accent.withValues(alpha: 0.4),
+                                ),
+                              ),
                               child: Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
-                                    c.activeTagFilter == tag
-                                        ? Icons.check
-                                        : Icons.label_outlined,
-                                    size: 16,
-                                    color: c.activeTagFilter == tag
-                                        ? colors.accent
-                                        : null,
+                                    Icons.label_rounded,
+                                    size: 12,
+                                    color: colors.accent,
                                   ),
-                                  const SizedBox(width: 8),
-                                  Expanded(child: Text('#$tag')),
-                                  Text(
-                                    '${c.countForTag(tag)}',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: colors.muted,
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                    child: Text(
+                                      '#${c.activeTagFilter}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: colors.accent,
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                      ],
+                          ),
+                          const SizedBox(width: 4),
+                          InkWell(
+                            key: const ValueKey('clear-active-tag-filter'),
+                            onTap: () => c.clearTagFilter(),
+                            borderRadius: BorderRadius.circular(10),
+                            child: Padding(
+                              padding: const EdgeInsets.all(2),
+                              child: Icon(
+                                Icons.close_rounded,
+                                size: 14,
+                                color: colors.muted,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
-                ),
-              ),
-              if (c.activeTagFilter != null)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  child: Row(
-                    children: [
-                      Flexible(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: colors.accent.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: colors.accent.withValues(alpha: 0.4),
+                ],
+              );
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (compactExplorer)
+                    ConstrainedBox(
+                      key: const ValueKey('compact-explorer-header'),
+                      constraints: BoxConstraints(
+                        maxHeight: area.maxHeight * .48,
+                      ),
+                      child: SingleChildScrollView(child: header),
+                    )
+                  else
+                    header,
+                  Expanded(
+                    child:
+                        destination != OrbitDestination.trash &&
+                            c.repository.supportsFolders
+                        ? NoteFolderExplorer(
+                            controller: c,
+                            notes: objects,
+                            visibleObjects: objects,
+                            groupLooseItems: true,
+                            onImportFiles: importFilesToFolder,
+                            filtering: explorerFilter.isNotEmpty,
+                          )
+                        : objects.isEmpty
+                        ? Padding(
+                            padding: const EdgeInsets.all(18),
+                            child: Text(
+                              destination == OrbitDestination.trash
+                                  ? 'Nothing in Trash.'
+                                  : 'No matching items in Vault.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                height: 1.6,
+                                color: colors.subtle,
+                              ),
                             ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.label_rounded,
-                                size: 12,
-                                color: colors.accent,
-                              ),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(
-                                  '#${c.activeTagFilter}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: colors.accent,
-                                  ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            itemCount: objects.length,
+                            itemBuilder: (context, index) {
+                              final o = objects[index];
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 2,
                                 ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      InkWell(
-                        key: const ValueKey('clear-active-tag-filter'),
-                        onTap: () => c.clearTagFilter(),
-                        borderRadius: BorderRadius.circular(10),
-                        child: Padding(
-                          padding: const EdgeInsets.all(2),
-                          child: Icon(
-                            Icons.close_rounded,
-                            size: 14,
-                            color: colors.muted,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              Expanded(
-                child:
-                    destination != OrbitDestination.trash &&
-                        c.repository.supportsFolders
-                    ? NoteFolderExplorer(
-                        controller: c,
-                        notes: objects,
-                        visibleObjects: objects,
-                        groupLooseItems: true,
-                        onImportFiles: importFilesToFolder,
-                        filtering: explorerFilter.isNotEmpty,
-                      )
-                    : objects.isEmpty
-                    ? Padding(
-                        padding: const EdgeInsets.all(18),
-                        child: Text(
-                          destination == OrbitDestination.trash
-                              ? 'Nothing in Trash.'
-                              : 'No matching items in Vault.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            height: 1.6,
-                            color: colors.subtle,
-                          ),
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        itemCount: objects.length,
-                        itemBuilder: (context, index) {
-                          final o = objects[index];
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 2),
-                            child: OrbitHoverRegion(
-                              builder: (context, reveal) => ListTile(
-                                dense: true,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(7),
-                                ),
-                                selected: c.session.activeId == o.id,
-                                selectedTileColor: colors.hover,
-                                leading: Icon(_objectIconFor(o), size: 16),
-                                minLeadingWidth: 16,
-                                title: Text(
-                                  o.title.isEmpty ? 'Untitled' : o.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 12),
-                                ),
-                                onTap: () => c.openObject(o.id),
-                                trailing: Opacity(
-                                  opacity: reveal || c.session.activeId == o.id
-                                      ? 1
-                                      : 0,
-                                  child: PopupMenuButton<String>(
-                                    popUpAnimationStyle:
-                                        OrbitMotionScope.popupStyle(context),
-                                    tooltip: 'Object actions',
-                                    icon: const Icon(
-                                      Icons.more_horiz,
-                                      size: 16,
+                                child: OrbitHoverRegion(
+                                  builder: (context, reveal) => ListTile(
+                                    dense: true,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(7),
                                     ),
-                                    onSelected: (v) async {
-                                      if (!identical(c.find(o.id), o)) return;
-                                      final generation = c.workspaceGeneration,
-                                          workspace = c.repository.workspaceId;
-                                      if (v == 'trash') {
-                                        c.trash(o.id, expected: o);
-                                      }
-                                      if (v == 'restore') {
-                                        c.restore(o.id, expected: o);
-                                      }
-                                      if (v == 'delete_forever') {
-                                        final confirmed =
-                                            await showOrbitDialog<bool>(
-                                              context: context,
-                                              builder: (context) => OrbitDialog(
-                                                title: const Text(
-                                                  'Delete permanently',
-                                                ),
-                                                content: Text(
-                                                  'Permanently delete “${o.title.isEmpty ? 'Untitled' : o.title}”? This cannot be undone.',
-                                                ),
-                                                actions: [
-                                                  TextButton(
-                                                    onPressed: () =>
-                                                        Navigator.pop(
-                                                          context,
-                                                          false,
-                                                        ),
-                                                    child: const Text('Cancel'),
-                                                  ),
-                                                  FilledButton(
-                                                    onPressed: () =>
-                                                        Navigator.pop(
-                                                          context,
-                                                          true,
-                                                        ),
-                                                    child: const Text('Delete'),
-                                                  ),
-                                                ],
-                                              ),
-                                            );
-                                        if (confirmed == true &&
-                                            _captureStillCurrent(
-                                              generation,
-                                              workspace,
-                                            )) {
-                                          await c.deletePermanently(
-                                            o.id,
-                                            expected: o,
-                                          );
-                                        }
-                                      }
-                                      if (v == 'rename') {
-                                        renameObject(o);
-                                      }
-                                      if (v == 'split') {
-                                        c.openObject(o.id, secondary: true);
-                                      }
-                                      if (v == 'reveal') {
-                                        revealObjectInExplorer(o.id);
-                                      }
-                                    },
-                                    itemBuilder: (_) => [
-                                      if (!o.isDeleted) ...[
-                                        const PopupMenuItem(
-                                          value: 'rename',
-                                          child: Text('Rename'),
-                                        ),
-                                        const PopupMenuItem(
-                                          value: 'split',
-                                          child: Text('Open beside'),
-                                        ),
-                                        if (c.repository.objectPath(o.id) !=
-                                                null &&
-                                            !kIsWeb)
-                                          const PopupMenuItem(
-                                            value: 'reveal',
-                                            child: Text(
-                                              'Reveal in File Explorer',
+                                    selected: c.session.activeId == o.id,
+                                    selectedTileColor: colors.hover,
+                                    leading: Icon(_objectIconFor(o), size: 16),
+                                    minLeadingWidth: 16,
+                                    title: Text(
+                                      o.title.isEmpty ? 'Untitled' : o.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                    onTap: () => c.openObject(o.id),
+                                    trailing: Opacity(
+                                      opacity:
+                                          reveal || c.session.activeId == o.id
+                                          ? 1
+                                          : 0,
+                                      child: PopupMenuButton<String>(
+                                        popUpAnimationStyle:
+                                            OrbitMotionScope.popupStyle(
+                                              context,
                                             ),
-                                          ),
-                                        const PopupMenuItem(
-                                          value: 'trash',
-                                          child: Text('Move to Trash'),
+                                        tooltip: 'Object actions',
+                                        icon: const Icon(
+                                          Icons.more_horiz,
+                                          size: 16,
                                         ),
-                                      ] else ...[
-                                        const PopupMenuItem(
-                                          value: 'restore',
-                                          child: Text('Restore'),
-                                        ),
-                                        const PopupMenuItem(
-                                          value: 'delete_forever',
-                                          child: Text('Delete permanently'),
-                                        ),
-                                      ],
-                                    ],
+                                        onSelected: (v) async {
+                                          if (!identical(c.find(o.id), o)) {
+                                            return;
+                                          }
+                                          final generation =
+                                                  c.workspaceGeneration,
+                                              workspace =
+                                                  c.repository.workspaceId;
+                                          if (v == 'trash') {
+                                            c.trash(o.id, expected: o);
+                                          }
+                                          if (v == 'restore') {
+                                            c.restore(o.id, expected: o);
+                                          }
+                                          if (v == 'delete_forever') {
+                                            final confirmed =
+                                                await showOrbitDialog<bool>(
+                                                  context: context,
+                                                  builder: (context) => OrbitDialog(
+                                                    title: const Text(
+                                                      'Delete permanently',
+                                                    ),
+                                                    content: Text(
+                                                      'Permanently delete “${o.title.isEmpty ? 'Untitled' : o.title}”? This cannot be undone.',
+                                                    ),
+                                                    actions: [
+                                                      TextButton(
+                                                        onPressed: () =>
+                                                            Navigator.pop(
+                                                              context,
+                                                              false,
+                                                            ),
+                                                        child: const Text(
+                                                          'Cancel',
+                                                        ),
+                                                      ),
+                                                      FilledButton(
+                                                        onPressed: () =>
+                                                            Navigator.pop(
+                                                              context,
+                                                              true,
+                                                            ),
+                                                        child: const Text(
+                                                          'Delete',
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                );
+                                            if (confirmed == true &&
+                                                _captureStillCurrent(
+                                                  generation,
+                                                  workspace,
+                                                )) {
+                                              await c.deletePermanently(
+                                                o.id,
+                                                expected: o,
+                                              );
+                                            }
+                                          }
+                                          if (v == 'rename') {
+                                            renameObject(o);
+                                          }
+                                          if (v == 'split') {
+                                            c.openObject(o.id, secondary: true);
+                                          }
+                                          if (v == 'reveal') {
+                                            revealObjectInExplorer(o.id);
+                                          }
+                                        },
+                                        itemBuilder: (_) => [
+                                          if (!o.isDeleted) ...[
+                                            const PopupMenuItem(
+                                              value: 'rename',
+                                              child: Text('Rename'),
+                                            ),
+                                            const PopupMenuItem(
+                                              value: 'split',
+                                              child: Text('Open beside'),
+                                            ),
+                                            if (c.repository.objectPath(o.id) !=
+                                                    null &&
+                                                !kIsWeb)
+                                              const PopupMenuItem(
+                                                value: 'reveal',
+                                                child: Text(
+                                                  'Reveal in File Explorer',
+                                                ),
+                                              ),
+                                            const PopupMenuItem(
+                                              value: 'trash',
+                                              child: Text('Move to Trash'),
+                                            ),
+                                          ] else ...[
+                                            const PopupMenuItem(
+                                              value: 'restore',
+                                              child: Text('Restore'),
+                                            ),
+                                            const PopupMenuItem(
+                                              value: 'delete_forever',
+                                              child: Text('Delete permanently'),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-              ),
-              _buildVaultSwitcherFooter(colors),
-            ],
+                              );
+                            },
+                          ),
+                  ),
+                  _buildVaultSwitcherFooter(colors),
+                ],
+              );
+            },
           ),
         ),
       ),

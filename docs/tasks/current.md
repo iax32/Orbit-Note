@@ -1,3 +1,33 @@
+# Complete implementation — tablet explorer, 2026-10-30
+
+Owner reports touch scrolling opens/moves explorer objects and tablet chrome
+crowds out the item list, with residual lag. Requests a quick focused fix and
+source/native publication, preserving features/visuals. Physical sync stays aside.
+[Behavior/evidence](tablet-explorer-2026-10-30.md).
+
+Delivered actual-pointer-kind dragging: mouse remains immediate; touch/stylus
+uses Flutter's held-pointer recognition and yields to scrolling. Explorer tooltip
+long press no longer competes for the hold, and mobile row menus stay visible.
+Compact tablet/short-window header keeps calendar/extra tools behind a remembered
+Show explorer tools button, with scrollable chrome capped at 48% of the pane.
+Tablet drawer grows to a bounded 400 px. Filter text remains owned through layout
+changes; Clear now clears the field and results together.
+Folder grouping/traversal uses object buckets, sorted child-folder lists and one
+sorted result per folder per build, eliminating repeated full-Vault scans and
+sorting during keyboard/render traversal. Existing order/archive/type rules stay.
+Folder-name/project dialogs now release controllers at route disposal rather than
+a guessed delay or immediate result completion; operations proceed immediately.
+
+Validation: 28 focused touch/stylus/mouse/layout/folder/bulk/import/ink/motion checks
+pass in 7 s. Includes narrow 360x640 and tablet 820x600, item-space reserve, tool
+recovery/persistence, filter clearing, and existing source/selection guards. Actual
+font captures inspected. Initial fixtures used an excessive scroll-distance
+threshold, old bulk-confirmation wording and an initialize future across fake/real
+test zones; corrected these and timer cleanup. The resource-lifetime failure found
+by the existing folder test was fixed in code. Analyzer lib/test/tool clean (25.2 s), strict format 925 files unchanged
+(7.91 s). Windows 1.0.16+17 built in 97.6 s; version/AOT freshness verified.
+Android and release packaging underway; no GitHub build workflows.
+
 # Published — cohesive application motion, 2026-10-30
 
 Owner requests a large clean-animation pass across Orbit. MOT-01/02/04/06 scope:

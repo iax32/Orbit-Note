@@ -53,7 +53,8 @@ class _OrbitExplorerRowState extends State<OrbitExplorerRow> {
       message:
           widget.fullDescription ??
           (widget.title is Text ? (widget.title as Text).data ?? '' : ''),
-      triggerMode: TooltipTriggerMode.longPress,
+      // Holding a touch/pen is reserved for dragging; hover still shows the tip.
+      triggerMode: TooltipTriggerMode.manual,
       child: MouseRegion(
         onEnter: (_) => setState(() => _hovered = true),
         onExit: (_) => setState(() => _hovered = false),
@@ -175,6 +176,10 @@ class _OrbitExplorerRowState extends State<OrbitExplorerRow> {
                               ),
                               Visibility(
                                 visible:
+                                    Theme.of(context).platform ==
+                                        TargetPlatform.android ||
+                                    Theme.of(context).platform ==
+                                        TargetPlatform.iOS ||
                                     _hovered ||
                                     _focused ||
                                     widget.selected ||

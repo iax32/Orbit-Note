@@ -1225,6 +1225,7 @@ Future<T?> showOrbitDialog<T>({
   bool fullscreenDialog = false,
   bool? requestFocus,
   AnimationStyle? animationStyle,
+  VoidCallback? onDisposed,
 }) {
   final fallback = context.getInheritedWidgetOfExactType<OrbitMotionScope>();
   return showDialog<T>(
@@ -1259,9 +1260,30 @@ Future<T?> showOrbitDialog<T>({
           child: content,
         );
       }
-      return content;
+      return _OrbitDialogResources(onDisposed: onDisposed, child: content);
     },
   );
+}
+
+/// Modal results complete before exit finishes. Keep caller-owned form resources
+/// alive until the route actually unmounts, without delaying the result or save.
+class _OrbitDialogResources extends StatefulWidget {
+  const _OrbitDialogResources({required this.child, this.onDisposed});
+  final Widget child;
+  final VoidCallback? onDisposed;
+  @override
+  State<_OrbitDialogResources> createState() => _OrbitDialogResourcesState();
+}
+
+class _OrbitDialogResourcesState extends State<_OrbitDialogResources> {
+  @override
+  void dispose() {
+    widget.onDisposed?.call();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class _OrbitDialogArrival extends StatelessWidget {

@@ -10,6 +10,7 @@ import '../../domain/reverse_engineering.dart';
 import '../../app/orbit_components.dart';
 import '../../app/orbit_theme.dart';
 import '../../app/orbit_drag_scroll.dart';
+import '../../app/orbit_scroll_safe_drag.dart';
 import '../../platform/open_attachment.dart';
 import '../../domain/object_sort.dart';
 import '../../domain/explorer_group.dart';
@@ -91,6 +92,23 @@ Future<_ProjectTemplateDetails?> _showProjectTemplateDialog(
   final form = GlobalKey<FormState>();
   final result = await showOrbitDialog<_ProjectTemplateDetails>(
     context: context,
+    onDisposed: () {
+      for (final controller in [
+        name,
+        courseCode,
+        semester,
+        ects,
+        lecturer,
+        genre,
+        platform,
+        engine,
+        architecture,
+        format,
+        version,
+      ]) {
+        controller.dispose();
+      }
+    },
     builder: (dialogContext) => StatefulBuilder(
       builder: (context, setState) {
         final isCourse = kind == 'course';
@@ -285,21 +303,6 @@ Future<_ProjectTemplateDetails?> _showProjectTemplateDialog(
       },
     ),
   );
-  for (final controller in [
-    name,
-    courseCode,
-    semester,
-    ects,
-    lecturer,
-    genre,
-    platform,
-    engine,
-    architecture,
-    format,
-    version,
-  ]) {
-    controller.dispose();
-  }
   return result;
 }
 
@@ -340,7 +343,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
   }
 
   Widget _drag(String path, String? noteId, Widget child) =>
-      Draggable<({String path, String? noteId})>(
+      OrbitScrollSafeDrag<({String path, String? noteId})>(
         data: (path: path, noteId: noteId),
         onDragUpdate: (details) => _dragScroll.update(details.globalPosition),
         onDragEnd: (_) => _dragScroll.stop(),
@@ -475,6 +478,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
             title.toLowerCase().contains('course'));
     final result = await showOrbitDialog<String>(
       context: context,
+      onDisposed: input.dispose,
       builder: (context) => OrbitDialog(
         title: Text(title),
         content: Form(
@@ -519,8 +523,6 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         ],
       ),
     );
-    await Future<void>.delayed(const Duration(milliseconds: 250));
-    input.dispose();
     return _owns(owner) ? result : null;
   }
 
@@ -1286,16 +1288,6 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
 
     bool isFolderArchived(String f) => widget.controller.isArchivedFolder(f);
 
-    bool objectInFolder(UniversalObject o, String folder) {
-      if (o.isDeleted) return false;
-      if (widget.visibleObjects == null &&
-          o.typeId == 'orbit.file' &&
-          !widget.controller.showAttachments) {
-        return false;
-      }
-      return repo.objectFolder(o.id) == folder;
-    }
-
     final allItems = (widget.visibleObjects ?? widget.controller.activeObjects)
         .where(
           (o) =>
@@ -1346,18 +1338,41 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         ..sort(),
     ];
 
-    List<UniversalObject> folderItems(String folder) {
-      final items = allItems.where((o) => objectInFolder(o, folder)).toList();
-      sortObjects(items, widget.controller.session.noteSort);
-      if (widget.groupLooseItems && folder == 'Notes') {
-        final grouped = <UniversalObject>[];
-        for (final group in ExplorerGroup.values) {
-          grouped.addAll(items.where((o) => explorerGroup(o) == group));
-        }
-        return grouped;
+    final objectsByFolder = <String, List<UniversalObject>>{};
+    for (final object in allItems) {
+      if (widget.visibleObjects == null &&
+          object.typeId == 'orbit.file' &&
+          !widget.controller.showAttachments) {
+        continue;
       }
-      return items;
+      objectsByFolder
+          .putIfAbsent(repo.objectFolder(object.id), () => [])
+          .add(object);
     }
+    final childrenByFolder = <String, List<String>>{};
+    for (final folder in allKnownFolders) {
+      if (!isFolderArchived(folder)) {
+        childrenByFolder
+            .putIfAbsent(p.posix.dirname(folder), () => [])
+            .add(folder);
+      }
+    }
+    for (final children in childrenByFolder.values) {
+      children.sort();
+    }
+    final sortedFolderItems = <String, List<UniversalObject>>{};
+    List<UniversalObject> folderItems(String folder) =>
+        sortedFolderItems.putIfAbsent(folder, () {
+          final items = objectsByFolder[folder] ?? <UniversalObject>[];
+          sortObjects(items, widget.controller.session.noteSort);
+          if (widget.groupLooseItems && folder == 'Notes') {
+            return [
+              for (final group in ExplorerGroup.values)
+                ...items.where((o) => explorerGroup(o) == group),
+            ];
+          }
+          return items;
+        });
 
     void collect(String folder) {
       if (isFolderArchived(folder)) return;
@@ -1366,16 +1381,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
           !widget.filtering &&
           widget.controller.session.collapsedFolders.contains(folder);
       if (collapsed) return;
-      for (final child
-          in allKnownFolders
-              .where(
-                (f) =>
-                    f != folder &&
-                    p.posix.dirname(f) == folder &&
-                    !isFolderArchived(f),
-              )
-              .toList()
-            ..sort()) {
+      for (final child in childrenByFolder[folder] ?? const <String>[]) {
         collect(child);
       }
       final folderObjects = folderItems(folder);
@@ -1795,16 +1801,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         ),
       );
       if (collapsed) return;
-      for (final child
-          in allKnownFolders
-              .where(
-                (f) =>
-                    f != folder &&
-                    p.posix.dirname(f) == folder &&
-                    !isFolderArchived(f),
-              )
-              .toList()
-            ..sort()) {
+      for (final child in childrenByFolder[folder] ?? const <String>[]) {
         visit(child, depth + 1);
       }
       final folderObjects = folderItems(folder);

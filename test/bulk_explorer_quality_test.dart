@@ -87,7 +87,10 @@ void main() {
       expect(find.text('2 items selected'), findsOneWidget);
       await tester.tap(find.byTooltip('Move to Trash'));
       await tester.pumpAndSettle();
-      expect(find.text('Move 2 items to Trash?'), findsOneWidget);
+      expect(
+        find.widgetWithText(FilledButton, 'Move to Trash'),
+        findsOneWidget,
+      );
       if (scenario == 'partial') {
         c.edit(b.id, title: 'Changed after review');
         await c.flush(b.id);
