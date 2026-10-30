@@ -123,3 +123,13 @@ invalid values, narrow panel scrolling, live placement/lock changes, 56-pixel gr
 and drawing buttons, untouched authored object data, stylus/Undo/Redo/Back, and
 Normal/Reduced/Off/OS-reduced motion. No medical relief or physical-device latency
 claim is made. Final native/release evidence is recorded in current.md.
+
+Release evidence: 1.0.14+15 / app source 87a9bbe is published with Windows and
+Android. Final 23 focused checks pass in 7 s; analyzer lib/test/tool clean in
+86.4 s, strict 922 files unchanged in 8.48 s. Actual-font portrait panel and
+bottom-left tools captures inspected. Windows build 121.1 s / Android 209.2 s;
+AOT freshness, version/package and original Android signing verified. All six
+GitHub asset sizes/digests and source tag match; zero build workflows. The owner
+explicitly approved publishing the Windows installer's existing Google desktop
+registration after automatic review blocked that embedded native-client value.
+Next task: real-device comfort/accessibility feedback, not yet performed.

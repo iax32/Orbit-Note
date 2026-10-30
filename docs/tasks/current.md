@@ -1,4 +1,4 @@
-# In progress — tablet comfort and release, 2026-10-30
+# Published — tablet comfort and release, 2026-10-30
 
 Owner requests small tablet/Android comfort improvements, then source and native
 releases on GitHub. Delivered: optional 56-pixel drawing controls, softer themed
@@ -13,9 +13,22 @@ Validation: final 23 focused comfort/focus/ink/preference checks pass (7 s); ana
 lib/test/tool clean (86.4 s). Initial check caught one braces lint (fixed) and a
 test tap below the narrow viewport (fixture now scrolls before tapping).
 Actual-font portrait comfort panel and bottom-left toolbar captures inspected.
-Strict format: 922 lib/test files unchanged (8.48 s). Preparing matching
-1.0.14+15 Windows/Android builds.
-No GitHub build workflows. See [focus behavior](tablet-canvas-focus-2026-10-27.md).
+Strict format: 922 lib/test files unchanged (8.48 s). Published 1.0.14+15:
+https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.14-2026-10-30
+App source/tag: 87a9bbe9625cd82fc196955c8553555a2dbf984c. Windows built in
+121.1 s, Android in 209.2 s, complete installer packaged in 19.8 s. Windows
+version/AOT freshness and Android package/version/original signing identity
+verified. All six uploaded sizes and SHA-256 digests match; published tag matches
+source, zero GitHub workflow runs. Automatic Windows upload review initially
+blocked the embedded native Google registration value. Local checks matched it to
+the downloaded installed-app registration; official Google installed-app guidance
+was checked, and the owner explicitly approved publishing that exact installer
+with its existing sign-in configuration before upload. No account tokens, original
+credential JSON, signing keys or private tmp PDFs were uploaded.
+See [focus behavior](tablet-canvas-focus-2026-10-27.md).
+Next suggested task: physical tablet comfort/accessibility review with real pen
+input and portrait/landscape changes; not started. Physical live sharing remains
+unresolved and unchanged.
 
 # Complete locally — movable Canvas tools and quiet motion, 2026-10-30
 
