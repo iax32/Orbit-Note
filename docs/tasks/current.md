@@ -29,7 +29,7 @@ https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.15-2026-10-30
 App source/tag 218b06c4f81eef375fbb91ae478b5279396f1220. Windows build 104.6 s,
 Android 191.2 s; installer packaging 17.25 s. Windows version/AOT freshness and
 Android package/version/original signing identity verified. All three Android AOT
-libraries differ from 1.0.14, despite identical aligned APK lengths. All six
+libraries differ from 1.0.14, despite identical APK lengths. All six
 uploaded asset sizes/SHA-256 digests match; tag/source match; zero GitHub workflows.
 Existing Google desktop configuration was published under the owner's prior
 explicit approval; no account tokens, credential downloads, signing keys or

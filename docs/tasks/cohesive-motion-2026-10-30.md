@@ -59,8 +59,8 @@ https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.15-2026-10-30
 with app source/tag 218b06c4f81eef375fbb91ae478b5279396f1220. Windows build
 104.6 s / Android 191.2 s / installer packaging 17.25 s. Version, Windows AOT
 freshness, Android original signing identity and fresh AOT on all three ABIs were
-verified. Identical APK byte length to 1.0.14 is alignment, not reused code: all
-three libapp.so hashes differ. All six uploaded file hashes/sizes and tag/source
+verified. APK byte length happens to match 1.0.14; freshness was checked using
+all three differing libapp.so hashes, not file size alone. All six uploaded file hashes/sizes and tag/source
 match; zero GitHub workflow runs. The previously approved desktop Google native
 registration is unchanged; no user credentials or original private files shipped.
 Final strict format: 923 files unchanged, 10.32 s. Real-device motion feel remains
