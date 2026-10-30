@@ -371,6 +371,7 @@ class _ReplicaStateStore implements SyncStateStore {
     : delegate = WorkspaceSyncStateStore(
         replica.repository._store,
         storagePath: path,
+        checkCurrent: replica._check,
       );
   final WorkspaceSyncReplica replica;
   final WorkspaceSyncStateStore delegate;

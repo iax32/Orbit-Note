@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../app/live_host_provider.dart';
 import 'package:file_selector/file_selector.dart';
 import '../../app/collaboration_controller.dart';
@@ -48,6 +49,8 @@ class _CollaborationSettingsState
   String? _tabletInvitation, _tabletRoom;
   String? serverStatus;
   String? progress;
+  String hostingRoute = 'relay';
+  final ownAddress = TextEditingController();
   CollaborationController get c => widget.controller;
   @override
   void initState() {
@@ -65,6 +68,7 @@ class _CollaborationSettingsState
     ownerKey.dispose();
     name.dispose();
     invitation.dispose();
+    ownAddress.dispose();
     super.dispose();
   }
 
@@ -110,12 +114,35 @@ class _CollaborationSettingsState
     );
   });
   Future<void> startEasy() async {
+    Uri? publicAddress;
+    if (hostingRoute == 'own-address') {
+      try {
+        publicAddress = CollaborationController.validateEndpoint(
+          ownAddress.text,
+        );
+        if (publicAddress.scheme != 'https' ||
+            !{'', '/'}.contains(publicAddress.path)) {
+          throw const FormatException(
+            'Enter your HTTPS address without a path.',
+          );
+        }
+      } on FormatException catch (e) {
+        setState(() => error = e.message);
+        return;
+      }
+    }
     final accepted = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Start live sharing?'),
-        content: const Text(
-          'This shares the current Vault, including attachments, Archive and Trash, with devices you invite. A temporary HTTPS connection uses Cloudflare to reach this PC; traffic passes through Cloudflare and is not end-to-end encrypted. No account or domain is needed. Keep Orbit open on this PC. Stopping or restarting needs a new invitation. A verified connection helper is downloaded on first use.',
+        content: Text(
+          'This shares the current Vault, including attachments, Archive and Trash, with devices you invite. '
+          '${hostingRoute == 'tailscale'
+              ? 'Orbit starts a private HTTPS connection through your installed Tailscale network. Sign in to the same network on the tablet. HTTPS may need a one-time Tailscale approval. Orbit uses port 8443 for this session and will not replace an existing service.'
+              : hostingRoute == 'own-address'
+              ? 'Orbit starts its server on this PC at 127.0.0.1:47831. Your HTTPS proxy must forward to that address. Orbit verifies that your HTTPS address reaches this new server before sharing.'
+              : 'A temporary HTTPS connection uses Cloudflare to reach this PC; traffic passes through Cloudflare and is not end-to-end encrypted. No account or domain is needed. A verified connection helper is downloaded on first use.'} '
+          'Keep Orbit open on this PC. Stopping or restarting needs a new invitation.',
         ),
         actions: [
           TextButton(
@@ -140,7 +167,7 @@ class _CollaborationSettingsState
       }
       c.disconnect();
       try {
-        await live.start();
+        await live.start(route: hostingRoute, publicAddress: publicAddress);
         if (!mounted || c.workspace.workspaceGeneration != opening) {
           throw StateError(
             'Vault changed. Start sharing again in the current Vault.',
@@ -348,6 +375,60 @@ class _CollaborationSettingsState
                 const SizedBox(height: 12),
               ],
               if (ref.read(liveHostProvider).supported) ...[
+                if (ref.read(liveHostProvider).endpoint == null) ...[
+                  DropdownButtonFormField<String>(
+                    initialValue: hostingRoute,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'How to connect your devices',
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'relay',
+                        child: Text('Temporary internet link'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'tailscale',
+                        child: Text('Private network · Tailscale'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'own-address',
+                        child: Text('My own HTTPS address'),
+                      ),
+                    ],
+                    onChanged: busy
+                        ? null
+                        : (value) => setState(() => hostingRoute = value!),
+                  ),
+                  const SizedBox(height: 8),
+                  if (hostingRoute == 'tailscale') ...[
+                    const Text(
+                      'Install Tailscale on your PC and tablet, and sign in to the same network. Orbit starts the server and makes your invitation. No router changes or scripts.',
+                    ),
+                    TextButton(
+                      onPressed: () => launchUrl(
+                        Uri.parse('https://tailscale.com/download'),
+                        mode: LaunchMode.externalApplication,
+                      ),
+                      child: const Text('Get Tailscale'),
+                    ),
+                  ],
+                  if (hostingRoute == 'own-address') ...[
+                    TextField(
+                      controller: ownAddress,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      decoration: const InputDecoration(
+                        labelText: 'Your HTTPS address',
+                        hintText: 'https://notes.example.com',
+                      ),
+                    ),
+                    const Text(
+                      'Forward your HTTPS proxy to 127.0.0.1:47831 on this PC. Orbit starts the server for you and checks the connection.',
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                ],
                 FilledButton.icon(
                   onPressed:
                       busy ||
@@ -360,6 +441,14 @@ class _CollaborationSettingsState
                 ),
                 const SizedBox(height: 8),
                 Text(ref.read(liveHostProvider).status),
+                if (ref.read(liveHostProvider).setupAddress case final address?)
+                  TextButton(
+                    onPressed: () => launchUrl(
+                      address,
+                      mode: LaunchMode.externalApplication,
+                    ),
+                    child: const Text('Enable HTTPS in Tailscale'),
+                  ),
                 if (ref.read(liveHostProvider).busy)
                   const LinearProgressIndicator(),
                 if (ref.read(liveHostProvider).endpoint != null && c.connected)

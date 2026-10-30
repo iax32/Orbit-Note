@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/orbit_components.dart';
 import '../../application/backup_bundle.dart';
+import '../../platform/android_vault_folders.dart';
 
 /// Review a validated backup before opening a folder picker or writing files.
 class BackupImportDialog extends StatelessWidget {
@@ -10,7 +11,7 @@ class BackupImportDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => OrbitDialog(
-    title: const Text('Import into a new workspace'),
+    title: const Text('Add Vault'),
     content: Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -29,8 +30,10 @@ class BackupImportDialog extends StatelessWidget {
         for (final warning in bundle.warnings)
           Padding(padding: const EdgeInsets.only(top: 8), child: Text(warning)),
         const SizedBox(height: 16),
-        const Text(
-          'Choose a parent folder next. Orbit creates a separate workspace and preserves existing files. Imported recovery journals are retained for review and never replayed automatically.',
+        Text(
+          usesAndroidVaultFolders
+              ? 'Add this Vault to your library using its original name. Your source stays unchanged. Recovery journals are kept for review.'
+              : 'Choose where to keep this Vault. Orbit uses its original name and adds a number if that folder already exists. Existing files stay unchanged. Recovery journals are kept for review.',
         ),
       ],
     ),
@@ -41,7 +44,7 @@ class BackupImportDialog extends StatelessWidget {
       ),
       FilledButton(
         onPressed: () => Navigator.pop(context, true),
-        child: const Text('Choose folder'),
+        child: Text(usesAndroidVaultFolders ? 'Add Vault' : 'Choose location'),
       ),
     ],
   );

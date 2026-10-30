@@ -6,19 +6,27 @@ import 'package:crypto/crypto.dart';
 import '../../application/sync/sync_provider.dart';
 import '../../domain/workspace_failure.dart';
 import 'workspace_store.dart';
+import '../../platform/shared_checkpoint.dart';
 
 /// Device-only operational state; independent of FTS rebuild and content export.
 /// The caller must own the workspace and one SyncEngine for this state file.
 class WorkspaceSyncStateStore implements SyncStateStore {
-  WorkspaceSyncStateStore(this.store, {this.storagePath = path});
+  WorkspaceSyncStateStore(
+    this.store, {
+    this.storagePath = path,
+    this.checkCurrent,
+  });
   final WorkspaceStore store;
   static const path = '.orbit/device/sync/state-v1.json';
   final String storagePath;
+  final void Function()? checkCurrent;
+  bool get _shared => storagePath.startsWith('.orbit/device/shared/');
   String? _expectedHash;
   bool _loaded = false;
 
   @override
   Future<Map<String, dynamic>?> load() async {
+    checkCurrent?.call();
     final bytes = await store.read(storagePath);
     if (bytes != null && bytes.length > 16 * 1024 * 1024) {
       throw const WorkspaceFailure(
@@ -27,21 +35,28 @@ class WorkspaceSyncStateStore implements SyncStateStore {
     }
     final state = bytes == null
         ? null
+        : _shared
+        ? await decodeSharedCheckpoint(bytes)
         : jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
     _expectedHash = bytes == null ? null : sha256.convert(bytes).toString();
     _loaded = true;
+    checkCurrent?.call();
     return state;
   }
 
   @override
   Future<void> save(Map<String, dynamic> state) async {
+    checkCurrent?.call();
     if (!_loaded) throw StateError('Load sync state before writing it.');
-    final bytes = Uint8List.fromList(utf8.encode(jsonEncode(state)));
+    final bytes = _shared
+        ? await encodeSharedCheckpoint(state)
+        : Uint8List.fromList(utf8.encode(jsonEncode(state)));
     if (bytes.length > 16 * 1024 * 1024) {
       throw const WorkspaceFailure(
         'Sync state exceeds the current safe size limit.',
       );
     }
+    checkCurrent?.call();
     await store.write(storagePath, bytes, expectedHash: _expectedHash);
     _expectedHash = sha256.convert(bytes).toString();
   }

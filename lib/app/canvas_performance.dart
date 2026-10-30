@@ -25,6 +25,7 @@ enum CanvasPerfEvent {
   draftNotify,
   driveSync,
   driveState,
+  sharedSync,
   save,
   frameStall,
   mainThreadStall,

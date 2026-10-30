@@ -90,6 +90,19 @@ class VaultFolderImporterTest {
     @Test fun enforcesSizeLimitBeforePublication() {
         assertThrows(IllegalStateException::class.java) { run(maxBytes = 3) { _, _ -> fail() } }
     }
+    @Test fun readableNamesPreserveOriginalAndUseNumberedCopies() {
+        val root = Files.createTempDirectory("orbit-vault-names").toFile()
+        try {
+            val importer = VaultFolderImporter(Tree(), root, {}, manifestName = { "Analysis / Übung" })
+            val first = importer.import("root")
+            val second = importer.import("root")
+            assertEquals("Analysis Übung", first.name)
+            assertEquals("Analysis Übung (2)", second.name)
+            assertEquals("manifest-1", File(first, "workspace.json").readText())
+            assertEquals("Vault CON", VaultFolderImporter.folderName("CON"))
+            assertEquals("Vault", VaultFolderImporter.folderName(".."))
+        } finally { root.deleteRecursively() }
+    }
     @Test fun invalidManifestNeverPublishes() {
         val root = Files.createTempDirectory("orbit-vault-manifest-test").toFile()
         try {

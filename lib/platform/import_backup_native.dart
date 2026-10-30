@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 import 'package:path_provider/path_provider.dart';
 import '../application/backup_bundle.dart';
+import 'vault_folder_name.dart';
 
 /// Mobile downloads belong to the app's writable Vault storage. A document-tree
 /// picker does not grant dart:io access to an arbitrary Android folder.
@@ -27,7 +28,6 @@ Future<String> importBackup(
   final root = await Directory(parent).resolveSymbolicLinks();
   final token = const Uuid().v4();
   final stage = await Directory(p.join(root, '.orbit-import-$token')).create();
-  final target = p.join(root, 'Imported Orbit $token');
   for (final directory in bundle.directories) {
     await Directory(
       p.joinAll([stage.path, ...directory.split('/')]),
@@ -48,6 +48,13 @@ Future<String> importBackup(
     } else {
       await file.writeAsBytes(entry.value, flush: true);
     }
+  }
+  final name = vaultFolderName(bundle.name);
+  var target = p.join(root, name);
+  var copy = 2;
+  while (await FileSystemEntity.type(target, followLinks: false) !=
+      FileSystemEntityType.notFound) {
+    target = p.join(root, '$name (${copy++})');
   }
   await stage.rename(target);
   // Reports are supplemental. Failure to write one cannot undo the publication.

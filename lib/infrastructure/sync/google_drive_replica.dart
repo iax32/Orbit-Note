@@ -670,14 +670,10 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
           'Drive publication journal needs maintenance before more uploads.',
         );
       }
-      final ids =
-          (await api._request(
-                vault.accountSubject,
-                'GET',
-                'files/generateIds',
-                query: {'count': '2', 'space': 'drive', 'type': 'files'},
-              ))['ids']
-              as List;
+      // Reserve IDs in groups rather than paying a network round trip for every
+      // tiny note in an existing Vault. The unused pool and each consumed pair
+      // are saved with the plan before any create. Lost replies keep that pair.
+      final ids = await _publicationIds();
       plan = {
         'entry': entry.toJson(),
         'parents': sortedParents,
@@ -797,6 +793,47 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
     }
   }
 
+  Future<List<String>> _publicationIds() async {
+    final raw = _journal['availableIds'] ?? const <String>[];
+    if (raw is! List || raw.length > 64 || raw.any((id) => id is! String)) {
+      throw const WorkspaceConflict('Invalid Drive ID reservation.');
+    }
+    var pool = List<String>.from(raw);
+    final used = <String>{..._cache.keys};
+    for (final plan in _operations.values) {
+      used.add((plan as Map)['blob'] as String);
+      used.add(plan['record'] as String);
+    }
+    void validate() {
+      if (pool.length != pool.toSet().length ||
+          pool.any((id) => !_driveId.hasMatch(id) || used.contains(id))) {
+        throw const WorkspaceConflict('Drive returned colliding file IDs.');
+      }
+    }
+
+    validate();
+    if (pool.length < 2) {
+      final response = await api._request(
+        vault.accountSubject,
+        'GET',
+        'files/generateIds',
+        query: {'count': '32', 'space': 'drive', 'type': 'files'},
+      );
+      _check();
+      final generated = response['ids'];
+      if (generated is! List ||
+          generated.length != 32 ||
+          generated.any((id) => id is! String)) {
+        throw const WorkspaceConflict('Incomplete Drive ID reservation.');
+      }
+      pool = [...pool, ...List<String>.from(generated)];
+      validate();
+    }
+    final pair = pool.take(2).toList();
+    _journal['availableIds'] = pool.skip(2).toList();
+    return pair;
+  }
+
   Future<void> _uploadBlob(
     WorkspaceStage snapshot,
     Map<String, dynamic> plan,
@@ -810,6 +847,21 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
     final digest =
         preparedDigest ??
         (await md5.bind(snapshot.openRead()).first).toString();
+    bool matches(Map<String, dynamic> f) {
+      final p = f['appProperties'] as Map?;
+      return f['id'] == id &&
+          f['ownedByMe'] == true &&
+          f['trashed'] != true &&
+          (f['parents'] as List? ?? []).contains(vault.folderId) &&
+          p?['orbitRole'] == 'sync-blob' &&
+          p?['orbitProtocol'] == '2' &&
+          p?['orbitVaultId'] == workspaceId &&
+          p?['orbitSha256'] == snapshot.hash &&
+          p?['orbitOp'] == operation &&
+          '${f['size']}' == '${snapshot.length}' &&
+          f['md5Checksum'] == digest;
+    }
+
     Future<bool> verified() async {
       Map<String, dynamic> f;
       try {
@@ -818,15 +870,7 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
         if (e.code == 'missing') return false;
         rethrow;
       }
-      final p = f['appProperties'] as Map?;
-      if (f['ownedByMe'] != true ||
-          f['trashed'] == true ||
-          !(f['parents'] as List? ?? []).contains(vault.folderId) ||
-          p?['orbitRole'] != 'sync-blob' ||
-          p?['orbitVaultId'] != workspaceId ||
-          p?['orbitSha256'] != snapshot.hash ||
-          '${f['size']}' != '${snapshot.length}' ||
-          f['md5Checksum'] != digest) {
+      if (!matches(f)) {
         throw const WorkspaceConflict(
           'Immutable cloud file verification failed.',
         );
@@ -837,7 +881,23 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
     // Fresh generated IDs have not been used by this operation. Create-only
     // uploads cannot replace another file. Replayed plans still inspect first.
     if (!fresh && await verified()) return;
-    if (snapshot.length == 0) {
+    // Small files do not need a resumable session and its extra round trips.
+    // Bound memory, keep generated create-only IDs, and verify the exact stored
+    // checksum/identity. Larger files retain resumable transfer unchanged.
+    if (snapshot.length <= 256 * 1024 && plan['session'] == null) {
+      final data = BytesBuilder(copy: false);
+      await for (final chunk in snapshot.openRead()) {
+        _check();
+        if (data.length + chunk.length > snapshot.length) {
+          throw const WorkspaceConflict('Staged upload size changed.');
+        }
+        data.add(chunk);
+      }
+      final bytes = data.takeBytes();
+      if (bytes.length != snapshot.length ||
+          md5.convert(bytes).toString() != digest) {
+        throw const WorkspaceConflict('Staged upload bytes changed.');
+      }
       final metadata = jsonEncode({
         'id': id,
         'name': '$id.blob',
@@ -851,24 +911,41 @@ class GoogleDriveSyncProvider implements ImmutableRevisionSyncProvider {
           'orbitOp': operation,
         },
       });
-      const boundary = 'orbit-revision-boundary';
+      var boundary = 'orbit-${const Uuid().v4()}';
+      while (latin1.decode(bytes).contains(boundary)) {
+        boundary = 'orbit-${const Uuid().v4()}';
+      }
       final request = http.Request(
         'POST',
         Uri.https('www.googleapis.com', '/upload/drive/v3/files', {
           'uploadType': 'multipart',
+          'fields': GoogleDriveApi.fileFields,
         }),
       );
       request.headers['Content-Type'] = 'multipart/related; boundary=$boundary';
-      request.body =
-          '--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n$metadata\r\n--$boundary\r\nContent-Type: application/octet-stream\r\n\r\n\r\n--$boundary--\r\n';
+      request.bodyBytes =
+          (BytesBuilder(copy: false)
+                ..add(
+                  utf8.encode(
+                    '--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n$metadata\r\n--$boundary\r\nContent-Type: application/octet-stream\r\n\r\n',
+                  ),
+                )
+                ..add(bytes)
+                ..add(utf8.encode('\r\n--$boundary--\r\n')))
+              .takeBytes();
+      var acknowledged = false;
       try {
-        await _request(request);
+        final response = await _request(request);
+        acknowledged = matches(
+          jsonDecode(response.body) as Map<String, dynamic>,
+        );
       } on Object {
         if (!await verified()) rethrow;
       }
-      if (!await verified()) {
-        throw const WorkspaceConflict('Empty cloud file verification failed.');
+      if (!acknowledged && !await verified()) {
+        throw const WorkspaceConflict('Small cloud file verification failed.');
       }
+      onProgress?.call(snapshot.length, snapshot.length);
       return;
     }
     Uri? session = plan['session'] == null

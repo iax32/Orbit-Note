@@ -4,6 +4,43 @@ class _SharedRecoveryBlocked extends StateError {
   _SharedRecoveryBlocked(super.message);
 }
 
+String _sharedCheckpointDigest(Map state) {
+  List<Object?> identities(String field, bool documents) {
+    final records = state[field] as Map;
+    final keys = records.keys.cast<String>().toList()..sort();
+    return [
+      for (final id in keys)
+        [
+          id,
+          if (documents) ...[
+            (records[id] as Map)['version'],
+            (records[id] as Map)['path'],
+            (records[id] as Map)['removed'],
+          ] else
+            (records[id] as Map)['operation'],
+        ],
+    ];
+  }
+
+  // Snapshot/operation records are immutable. Changed remote content must have
+  // a new version; changed local proposals get a new operation identity. Avoid
+  // encoding and hashing every pen sample merely to detect an unchanged journal.
+  return sha256
+      .convert(
+        utf8.encode(
+          jsonEncode([
+            state['binding'],
+            state['workspaceId'],
+            state['epoch'],
+            identities('documents', true),
+            identities('inflight', false),
+            identities('creations', false),
+          ]),
+        ),
+      )
+      .toString();
+}
+
 extension SharedVaultReplication on CollaborationController {
   Future<void> reconnectAutomatically() async {
     if (_disposed ||
@@ -59,9 +96,7 @@ extension SharedVaultReplication on CollaborationController {
       );
     }
     if (state['epoch'] != _serverEpoch) return null;
-    _checkpointDigest = sha256
-        .convert(utf8.encode(jsonEncode(state)))
-        .toString();
+    _checkpointDigest = _sharedCheckpointDigest(state);
     _inflight.addAll(
       Map<String, dynamic>.from(
         state['inflight'] as Map,
@@ -88,20 +123,22 @@ extension SharedVaultReplication on CollaborationController {
       'inflight': _inflight,
       'creations': _newPlans,
     };
-    final bytes = utf8.encode(jsonEncode(state));
-    if (bytes.length > 16 * 1024 * 1024) {
-      throw _SharedRecoveryBlocked(
-        'Shared recovery journal exceeds 16 MiB · use a smaller shared Vault · local work preserved',
-      );
-    }
-    final digest = sha256.convert(bytes).toString();
+    final digest = _sharedCheckpointDigest(state);
     if (digest == _checkpointDigest) return;
+    final perf = CanvasPerformance.instance;
+    final started = perf.begin();
     try {
       await store.save(state);
     } catch (_) {
       throw _SharedRecoveryBlocked(
         'Cannot save shared recovery journal · check Vault storage, then retry · local work preserved',
       );
+    } finally {
+      perf.duration(CanvasPerfEvent.sharedSync, 0, started, {
+        'phase': 1,
+        'documents': _documents.length,
+        'proposals': _inflight.length + _newPlans.length,
+      });
     }
     if (identical(store, _sessionJournal)) _checkpointDigest = digest;
   }

@@ -27,11 +27,13 @@ class OrbitLiveHost extends ChangeNotifier {
     http.Client Function()? client,
     Future<Process> Function(String, List<String>)? launch,
     void Function() Function(Process)? contain,
+    Future<ProcessResult> Function(String, List<String>)? run,
     this.helperDigest =
         'db4e4c413612a0916f3e1679d3caaf376f94911952d163028fb726fb2e0516a9',
   }) : _directory = directory ?? getApplicationSupportDirectory,
        _client = client ?? createCollaborationHttpClient,
        _contain = contain ?? containOrbitChild,
+       _run = run ?? ((exe, args) => Process.run(exe, args, runInShell: false)),
        _launch =
            launch ??
            ((exe, args) => Process.start(exe, args, runInShell: false));
@@ -39,6 +41,7 @@ class OrbitLiveHost extends ChangeNotifier {
   final http.Client Function() _client;
   final Future<Process> Function(String, List<String>) _launch;
   final void Function() Function(Process) _contain;
+  final Future<ProcessResult> Function(String, List<String>) _run;
   final String helperDigest;
   static const helperVersion = '2026.10.5';
   static final helperUrl = Uri.parse(
@@ -49,6 +52,7 @@ class OrbitLiveHost extends ChangeNotifier {
   Uri? endpoint, localEndpoint;
   String? ownerToken;
   String status = 'Start on this PC, then paste the invitation on your tablet.';
+  Uri? setupAddress;
   CollaborationHostWorker? _server;
   Process? _process;
   void Function()? _releaseProcess;
@@ -128,14 +132,28 @@ class OrbitLiveHost extends ChangeNotifier {
 
   Completer<void>? _cancelStart;
 
-  Future<void> start() async {
+  Future<void> start({String route = 'relay', Uri? publicAddress}) async {
     if (!supported) {
       throw StateError('Start live sharing on a Windows PC, then join here.');
     }
     if (busy || endpoint != null) return;
     final generation = ++_generation;
     final cancelled = _cancelStart = Completer<void>();
+    if (!{'relay', 'tailscale', 'own-address'}.contains(route) ||
+        (route == 'own-address' &&
+            (publicAddress == null ||
+                publicAddress.scheme != 'https' ||
+                publicAddress.host.isEmpty ||
+                publicAddress.userInfo.isNotEmpty ||
+                publicAddress.hasQuery ||
+                publicAddress.hasFragment ||
+                !{'', '/'}.contains(publicAddress.path)))) {
+      throw const FormatException(
+        'Enter your HTTPS address without a path, password or query.',
+      );
+    }
     busy = true;
+    setupAddress = null;
     status = 'Preparing live sharing…';
     _notify();
     try {
@@ -143,7 +161,66 @@ class OrbitLiveHost extends ChangeNotifier {
       await validateCollaborationDirectory(root);
       await root.create(recursive: true);
       _check(generation);
-      final helper = await _helper(root, generation);
+      String? tailscale;
+      Uri? privateAddress;
+      if (route == 'tailscale') {
+        tailscale = p.join(
+          Platform.environment['ProgramFiles'] ?? r'C:\Program Files',
+          'Tailscale',
+          'tailscale.exe',
+        );
+        status = 'Checking your private device network…';
+        _notify();
+        final result = await _run(tailscale, [
+          'status',
+          '--json',
+        ]).timeout(const Duration(seconds: 8));
+        _check(generation);
+        if (result.exitCode != 0) {
+          throw StateError(
+            'Open Tailscale on this PC and sign in, then retry. Install and sign in to the same Tailscale network on your tablet too.',
+          );
+        }
+        final state = jsonDecode(result.stdout as String) as Map;
+        final hostname = (state['Self'] as Map?)?['DNSName'];
+        if (state['BackendState'] != 'Running' ||
+            hostname is! String ||
+            !RegExp(
+              r'^[a-z0-9][a-z0-9.-]*\.ts\.net\.?$',
+              caseSensitive: false,
+            ).hasMatch(hostname)) {
+          throw StateError(
+            'Connect Tailscale on this PC and tablet first, then retry.',
+          );
+        }
+        privateAddress = Uri(
+          scheme: 'https',
+          host: hostname.replaceFirst(RegExp(r'\.$'), ''),
+          port: 8443,
+        );
+        final configuration = await _run(tailscale, [
+          'serve',
+          'status',
+          '--json',
+        ]).timeout(const Duration(seconds: 8));
+        _check(generation);
+        if (configuration.exitCode != 0) {
+          throw StateError(
+            'Tailscale could not check its sharing settings. Open Tailscale and retry.',
+          );
+        }
+        final config = jsonDecode(configuration.stdout as String) as Map;
+        if ((config['TCP'] as Map?)?.containsKey('8443') == true ||
+            (config['Web'] as Map?)?.keys.any(
+                  (key) => '$key'.endsWith(':8443'),
+                ) ==
+                true) {
+          throw StateError(
+            'Tailscale port 8443 is already used. Stop that sharing session first; Orbit will not replace it.',
+          );
+        }
+      }
+      final helper = route == 'relay' ? await _helper(root, generation) : null;
       _check(generation);
       final owner = collaborationToken();
       final server = await CollaborationHostWorker.start(
@@ -152,6 +229,7 @@ class OrbitLiveHost extends ChangeNotifier {
         // continues to be stored through the normal local repository.
         Directory(p.join(root.path, 'rooms', collaborationToken())),
         owner,
+        port: route == 'own-address' ? 47831 : 0,
       );
       final port = server.port;
       if (generation != _generation || _disposed) {
@@ -171,18 +249,34 @@ class OrbitLiveHost extends ChangeNotifier {
       );
       status = 'Creating a secure invitation address…';
       _notify();
-      await File(p.join(root.path, 'empty.yml')).writeAsString('{}\n');
+      if (route == 'own-address') {
+        status = 'Checking your HTTPS address reaches this PC on port 47831…';
+        _notify();
+        await _verifyAddress(publicAddress!, generation, cancelled);
+        endpoint = publicAddress.replace(path: '');
+        ownerToken = owner;
+        status = 'Ready · your own HTTPS address · keep Orbit open on this PC';
+        return;
+      }
+      if (route == 'relay') {
+        await File(p.join(root.path, 'empty.yml')).writeAsString('{}\n');
+      }
       _check(generation);
-      final process = await _launch(helper.path, [
-        'tunnel',
-        '--no-autoupdate',
-        '--config',
-        p.join(root.path, 'empty.yml'),
-        '--protocol',
-        'http2',
-        '--url',
-        '$localEndpoint',
-      ]);
+      final process = await _launch(
+        tailscale ?? helper!.path,
+        route == 'tailscale'
+            ? ['serve', '--https=8443', '--yes', '$localEndpoint']
+            : [
+                'tunnel',
+                '--no-autoupdate',
+                '--config',
+                p.join(root.path, 'empty.yml'),
+                '--protocol',
+                'http2',
+                '--url',
+                '$localEndpoint',
+              ],
+      );
       if (generation != _generation || _disposed) {
         process.kill();
         _check(generation);
@@ -192,6 +286,17 @@ class OrbitLiveHost extends ChangeNotifier {
       var exited = false;
       final address = Completer<Uri>();
       void line(String value) {
+        if (route == 'tailscale') {
+          final setup = RegExp(
+            r'https://login\.tailscale\.com/f/serve\?[^\s]+',
+          ).firstMatch(value);
+          if (setup != null) {
+            setupAddress = Uri.tryParse(setup[0]!);
+            status =
+                'Enable HTTPS in Tailscale, then return here. Both devices must be signed in to the same Tailscale network.';
+            _notify();
+          }
+        }
         final uri = orbitTunnelAddress(value);
         if (uri != null && !address.isCompleted) address.complete(uri);
       }
@@ -214,7 +319,7 @@ class OrbitLiveHost extends ChangeNotifier {
         process.exitCode.then((_) async {
           exited = true;
           if (generation != _generation || _disposed) return;
-          if (!address.isCompleted) {
+          if (route == 'relay' && !address.isCompleted) {
             address.completeError(
               StateError(
                 'The secure connection stopped. Check internet access and retry.',
@@ -230,7 +335,9 @@ class OrbitLiveHost extends ChangeNotifier {
         }),
       );
       final uri = await Future.any<Uri>([
-        address.future.timeout(const Duration(seconds: 60)),
+        privateAddress != null
+            ? Future.value(privateAddress)
+            : address.future.timeout(const Duration(seconds: 60)),
         cancelled.future.then<Uri>(
           (_) => throw StateError('Live sharing was cancelled.'),
         ),
@@ -241,55 +348,100 @@ class OrbitLiveHost extends ChangeNotifier {
           'The secure connection stopped. Start live sharing again.',
         );
       }
-      final probe = _client();
-      var ready = false;
-      try {
-        final deadline = DateTime.now().add(const Duration(seconds: 50));
-        while (DateTime.now().isBefore(deadline)) {
-          _check(generation);
-          if (exited) {
-            throw StateError(
-              'The secure connection stopped. Check internet access and retry.',
-            );
-          }
-          try {
-            final response = await probe
-                .get(uri.resolve('/healthz'))
-                .timeout(const Duration(seconds: 3));
-            if (response.statusCode == 200 &&
-                (jsonDecode(response.body) as Map)['service'] ==
-                    'orbit-collaboration') {
-              ready = true;
-              break;
-            }
-          } catch (_) {
-            /* DNS/TLS propagation can take a few seconds. */
-          }
-          await Future<void>.delayed(const Duration(milliseconds: 500));
-        }
-      } finally {
-        probe.close();
-      }
+      await _verifyAddress(uri, generation, cancelled);
       _check(generation);
-      if (!ready || exited) {
+      if (exited) {
         throw StateError(
           'The secure link is not reachable yet. Check internet access and retry.',
         );
       }
       endpoint = uri;
       ownerToken = owner;
-      status = 'Ready · keep Orbit open on this PC';
+      status = route == 'tailscale'
+          ? 'Ready · private Tailscale network · keep Orbit and Tailscale open on both devices'
+          : 'Ready · keep Orbit open on this PC';
     } catch (error) {
       if (generation == _generation) {
         await stop();
         status = error is StateError
             ? error.message.toString()
+            : error is ProcessException && route == 'tailscale'
+            ? 'Install Tailscale on this PC and tablet, sign in to the same network, then retry.'
+            : error is TimeoutException
+            ? 'The secure address did not become ready. Retry, use your private Tailscale network, or use your own HTTPS address.'
             : 'Could not start live sharing. Check internet access and retry.';
       }
       rethrow;
     } finally {
       if (generation == _generation) busy = false;
       _notify();
+    }
+  }
+
+  Future<void> _verifyAddress(
+    Uri uri,
+    int generation,
+    Completer<void> cancelled,
+  ) async {
+    final probe = _client();
+    _transfer = probe;
+    try {
+      final localRequest = http.Request(
+        'GET',
+        localEndpoint!.resolve('/healthz'),
+      )..followRedirects = false;
+      final local = await probe
+          .send(localRequest)
+          .then(http.Response.fromStream)
+          .timeout(const Duration(seconds: 3));
+      final localState = jsonDecode(local.body) as Map;
+      final instance = localState['instance'];
+      if (local.statusCode != 200 ||
+          localState['ready'] != true ||
+          instance is! String ||
+          instance.length != 43) {
+        throw StateError(
+          'The local sharing server is not ready. Stop sharing and retry.',
+        );
+      }
+      final deadline = DateTime.now().add(const Duration(seconds: 50));
+      while (DateTime.now().isBefore(deadline)) {
+        _check(generation);
+        try {
+          // Compare the fresh non-secret host incarnation from loopback. The
+          // owner credential never leaves the PC, including through a relay.
+          final request = http.Request('GET', uri.resolve('/healthz'))
+            ..followRedirects = false;
+          final response = await Future.any<http.Response>([
+            probe
+                .send(request)
+                .then(http.Response.fromStream)
+                .timeout(const Duration(seconds: 3)),
+            cancelled.future.then<http.Response>(
+              (_) => throw StateError('Live sharing was cancelled.'),
+            ),
+          ]);
+          _check(generation);
+          if (response.statusCode == 200) {
+            final body = jsonDecode(response.body) as Map;
+            if (body['service'] == 'orbit-collaboration' &&
+                body['ready'] == true &&
+                body['instance'] == instance) {
+              return;
+            }
+          }
+        } catch (_) {
+          _check(generation);
+        }
+        await Future.any([
+          Future<void>.delayed(const Duration(milliseconds: 500)),
+          cancelled.future,
+        ]);
+      }
+      throw TimeoutException('Sharing address did not become ready.');
+    } finally {
+      probe.close();
+      if (identical(_transfer, probe)) _transfer = null;
     }
   }
 

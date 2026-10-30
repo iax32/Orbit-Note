@@ -55,3 +55,13 @@ Validation must cover invalid helper hashes, startup failure/cancellation, URL
 parsing, reachability, stop/exit cleanup and real two-client room/blob transfer.
 Physical tablet acceptance is separate; an isolated synthetic tunnel check does
 not authorize uploading a personal Vault.
+
+2026-10-30 owner-authorized reliability extension: a user may select an installed
+private Tailscale HTTPS route or an owned HTTPS proxy instead of the temporary
+relay. Start/Stop remain explicit and scoped to the current host lifetime.
+Tailscale uses foreground Serve on port 8443, refuses an existing mapping and
+never resets unrelated configuration. Own-proxy mode binds loopback port 47831.
+HTTPS reachability compares the freshly generated non-secret server incarnation
+with loopback and refuses redirects. Owner credentials still never leave the
+PC. VPN enrollment, HTTPS approval, proxy configuration and physical device
+acceptance are prerequisites, not silently performed setup.

@@ -200,7 +200,7 @@ void main() {
     expect(received.upToDate, true);
     // Round-trip budgets, including normal immutable publication verification.
     // Baseline was 135/23/44; avoid reintroducing per-file duplicate preflights.
-    expect(publishRequests, lessThanOrEqualTo(85));
+    expect(publishRequests, lessThanOrEqualTo(50));
     expect(scans, lessThanOrEqualTo(12));
     expect(receiveRequests, lessThanOrEqualTo(36));
     for (var i = 0; i < notes.length; i++) {

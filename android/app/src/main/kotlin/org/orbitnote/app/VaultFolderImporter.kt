@@ -12,6 +12,7 @@ internal class VaultFolderImporter(
     private val destination: File,
     private val validateManifest: (ByteArray) -> Unit,
     private val maxBytes: Long = 8L * 1024 * 1024 * 1024,
+    private val manifestName: (ByteArray) -> String = { "Vault" },
 ) {
     data class Entry(val id: String, val name: String, val directory: Boolean,
                      val size: Long = -1, val modified: Long = 0)
@@ -66,7 +67,6 @@ internal class VaultFolderImporter(
         check(destination.isDirectory || destination.mkdirs()) { "Local Vault storage is unavailable." }
         check(destination.usableSpace > estimated + 8 * 1024 * 1024) { "Not enough free space for this Vault." }
         val stage = File(destination, ".importing-$token")
-        val target = File(destination, "Imported Vault $token")
         check(stage.mkdir()) { "Could not prepare local Vault storage." }
         var copied = 0L
         try {
@@ -105,7 +105,11 @@ internal class VaultFolderImporter(
             check(File(stage, "workspace.json").readBytes().contentEquals(originalManifest)) {
                 "The source Vault manifest changed during import. Retry with the other app closed."
             }
-            check(!target.exists() && stage.renameTo(target)) { "Could not finish the local Vault import." }
+            val name = folderName(manifestName(originalManifest))
+            var target = File(destination, name)
+            var copy = 2
+            while (target.exists()) target = File(destination, "$name (${copy++})")
+            check(stage.renameTo(target)) { "Could not finish the local Vault import." }
             return target
         } catch (error: Throwable) {
             // Only this newly allocated staging directory is eligible for cleanup.
@@ -117,6 +121,13 @@ internal class VaultFolderImporter(
     }
 
     companion object {
+        fun folderName(name: String): String {
+            var value = name.take(72).replace(Regex("[<>:\"/\\\\|?*\\x00-\\x1f\\x7f]"), " ")
+                .replace(Regex("\\s+"), " ").trim().trimEnd('.', ' ')
+            if (value.isEmpty() || value == "." || value == "..") value = "Vault"
+            if (Regex("(?i)^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\\.|$).*").matches(value)) value = "Vault $value"
+            return value
+        }
         fun portableName(name: String) {
             check(name.isNotEmpty() && name != "." && name != ".." &&
                 !name.endsWith('.') && !name.endsWith(' ') &&

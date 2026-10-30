@@ -18,6 +18,7 @@ import '../domain/universal_object.dart';
 import '../application/workspace_repository.dart';
 import '../application/sync/sync_provider.dart';
 import 'workspace_controller.dart';
+import 'canvas_performance.dart';
 
 part 'shared_vault_replication.dart';
 
@@ -879,6 +880,8 @@ class CollaborationController extends ChangeNotifier {
         id = room!,
         token = _token!;
     busy = true;
+    final perf = CanvasPerformance.instance;
+    final started = perf.begin();
     _refreshPending = false;
     try {
       final state = await request(
@@ -1106,6 +1109,12 @@ class CollaborationController extends ChangeNotifier {
       }
     } finally {
       busy = false;
+      perf.duration(CanvasPerfEvent.sharedSync, 0, started, {
+        'phase': 0,
+        'conflicts': conflicts.length,
+        'documents': _documents.length,
+        'blocked': accessBlocked ? 1 : 0,
+      });
       _notify();
     }
   }

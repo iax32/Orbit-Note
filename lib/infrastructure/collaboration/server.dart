@@ -390,6 +390,7 @@ class CollaborationServer {
           jsonEncode({
             'service': 'orbit-collaboration',
             'ready': !_writeFailed,
+            'instance': _epoch,
           }),
         );
         return;

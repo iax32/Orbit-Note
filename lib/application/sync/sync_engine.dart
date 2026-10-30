@@ -25,10 +25,12 @@ class SyncEngine {
     required this.replica,
     required this.provider,
     required this.stateStore,
+    this.onProgress,
   });
   final SyncReplica replica;
   final SyncProvider provider;
   final SyncStateStore stateStore;
+  final void Function(int completed, int total, String path)? onProgress;
   Future<SyncResult>? _running;
 
   Future<SyncResult> sync() {
@@ -295,6 +297,7 @@ class SyncEngine {
         final order = priority(a).compareTo(priority(b));
         return order == 0 ? a.compareTo(b) : order;
       });
+    var completed = 0;
     for (final key in keys) {
       if (delta.forks.containsKey(key)) continue;
       final previous = base[key] == null
@@ -311,6 +314,13 @@ class SyncEngine {
         local: current,
         remote: other?.entry,
       );
+      if (action == SyncAction.upload || action == SyncAction.download) {
+        onProgress?.call(
+          completed,
+          keys.length,
+          current?.path ?? other!.entry.path,
+        );
+      }
       if (action == SyncAction.upload) {
         // Feed snapshots may be stale. Refresh before deciding and still require
         // atomic expectedVersion on upload to close the read/write race.
@@ -372,6 +382,14 @@ class SyncEngine {
           conflicts[key] = {'reason': 'missing-without-tombstone'};
       }
       await stateStore.save(state);
+      completed++;
+      if (action == SyncAction.upload || action == SyncAction.download) {
+        onProgress?.call(
+          completed,
+          keys.length,
+          current?.path ?? other!.entry.path,
+        );
+      }
     }
     state['cursor'] = delta.cursor;
     await stateStore.save(state);

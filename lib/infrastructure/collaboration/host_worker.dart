@@ -45,8 +45,9 @@ class CollaborationHostWorker {
 
   static Future<CollaborationHostWorker> start(
     Directory directory,
-    String owner,
-  ) async {
+    String owner, {
+    int port = 0,
+  }) async {
     final worker = CollaborationHostWorker._();
     // Attach an early handler even if spawn itself has not completed when the
     // child reports a startup error. The await below still receives that error.
@@ -59,7 +60,7 @@ class CollaborationHostWorker {
     try {
       worker._isolate = await Isolate.spawn(
         _serve,
-        [worker._events.sendPort, directory.path, owner],
+        [worker._events.sendPort, directory.path, owner, port],
         onError: worker._errors.sendPort,
         onExit: worker._exits.sendPort,
         errorsAreFatal: true,
@@ -106,7 +107,7 @@ class CollaborationHostWorker {
     );
     String? failure;
     try {
-      final port = await server.start(port: 0);
+      final port = await server.start(port: args[3] as int);
       parent.send([commands.sendPort, port]);
       await commands.firstWhere((message) => message == 'stop');
     } catch (_) {

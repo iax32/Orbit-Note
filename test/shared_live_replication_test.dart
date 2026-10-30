@@ -30,6 +30,47 @@ class _Secret implements DeviceSecretStore {
 }
 
 void main() {
+  test(
+    'large Canvas edits cross the old 16-MiB recovery boundary both ways',
+    () async {
+      HttpOverrides.global = null;
+      final f = CanvasSessions();
+      await f.open();
+      try {
+        // One base and one outgoing snapshot exceed the former 16-MiB cap.
+        final padding = 'pen-samples-' * 850000;
+        f.firstWorkspace.edit(
+          f.id,
+          data: {
+            ...f.firstWorkspace.find(f.id)!.data,
+            'futurePadding': padding,
+          },
+        );
+        await f.first.pump();
+        await f.second.pump();
+        expect(f.first.accessBlocked, false);
+        expect(f.second.accessBlocked, false);
+        f.edit(f.firstWorkspace, 0, 111);
+        f.edit(f.secondWorkspace, 1, 222);
+        await f.first.pump();
+        await f.second.pump();
+        await f.first.pump();
+        expect(f.first.conflicts, isEmpty);
+        expect(f.second.conflicts, isEmpty);
+        expect(f.first.accessBlocked, false);
+        expect(f.second.accessBlocked, false);
+        expect(
+          f.firstWorkspace.find(f.id)!.data,
+          f.secondWorkspace.find(f.id)!.data,
+        );
+        expect(f.secondWorkspace.find(f.id)!.data['futurePadding'], padding);
+        expect(f.first.pendingChanges, 0);
+        expect(f.second.pendingChanges, 0);
+      } finally {
+        await f.close();
+      }
+    },
+  );
   TestWidgetsFlutterBinding.ensureInitialized();
   late CanvasSessions f;
   setUp(() async {

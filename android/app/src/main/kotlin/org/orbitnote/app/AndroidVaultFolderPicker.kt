@@ -74,7 +74,7 @@ internal class AndroidVaultFolderPicker(private val activity: Activity) {
                     }
                     // Storage versions, not app build numbers, govern compatibility.
                     // Repository opening retains its normal future-version read-only rules.
-                })
+                }, manifestName = { bytes -> JSONObject(bytes.toString(Charsets.UTF_8)).optString("name", "Vault") })
                 val path = importer.import(DocumentsContract.getTreeDocumentId(tree)).absolutePath
                 activity.runOnUiThread { pending = null; result.success(path) }
             } catch (error: Exception) {

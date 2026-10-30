@@ -7,6 +7,7 @@ import 'package:orbit_note/application/workspace_repository.dart';
 import 'package:orbit_note/infrastructure/storage/native_workspace_store.dart';
 import 'package:orbit_note/infrastructure/storage/memory_object_index.dart';
 import 'package:orbit_note/platform/import_backup_native.dart';
+import 'package:orbit_note/platform/vault_folder_name.dart';
 
 void main() {
   late Directory root;
@@ -93,6 +94,14 @@ void main() {
       final first = await importBackup(source, parent);
       final second = await importBackup(source, parent);
       expect(first, isNot(second));
+      expect(
+        Directory(first).uri.pathSegments.where((s) => s.isNotEmpty).last,
+        vaultFolderName(source.name),
+      );
+      expect(
+        Directory(second).uri.pathSegments.where((s) => s.isNotEmpty).last,
+        '${vaultFolderName(source.name)} (2)',
+      );
       expect(await File('$first/workspace.json').exists(), true);
       expect(await File('$second/workspace.json').exists(), true);
       final imported = WorkspaceRepository(
@@ -190,7 +199,7 @@ void main() {
       expect(await repository.exportBundle(), contains('orbit-note-backup'));
       expect(
         (await root.list().toList()).where(
-          (e) => e.path.contains('Imported Orbit'),
+          (e) => e.path.endsWith(vaultFolderName(bundle.name)),
         ),
         isEmpty,
       );

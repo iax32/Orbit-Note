@@ -7,6 +7,8 @@ class OrbitLiveHost extends ChangeNotifier {
   Uri? get localEndpoint => null;
   String? get ownerToken => null;
   String get status => 'Start live sharing on your Windows PC, then join here.';
-  Future<void> start() async => throw StateError(status);
+  Uri? get setupAddress => null;
+  Future<void> start({String route = 'relay', Uri? publicAddress}) async =>
+      throw StateError(status);
   Future<void> stop() async {}
 }

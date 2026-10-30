@@ -246,14 +246,19 @@ class DriveSyncService {
         blobCreates++;
         return http.Response('{}', 200, headers: {'location': location});
       }
-      final chunks = utf8
+      final chunks = latin1
           .decode(r.bodyBytes)
           .split('--${r.headers['Content-Type']!.split('boundary=').last}');
       final metadata =
-          jsonDecode(chunks[1].split('\r\n\r\n')[1].trim())
+          jsonDecode(
+                utf8.decode(
+                  latin1.encode(chunks[1].split('\r\n\r\n')[1].trim()),
+                ),
+              )
               as Map<String, dynamic>;
-      final payload = chunks[2].split('\r\n\r\n')[1];
-      final bytes = utf8.encode(payload.substring(0, payload.length - 2));
+      final part = chunks[2];
+      final payload = part.substring(part.indexOf('\r\n\r\n') + 4);
+      final bytes = latin1.encode(payload.substring(0, payload.length - 2));
       final id = metadata['id'] as String;
       if (files.containsKey(id)) return http.Response('{}', 409);
       final revision =
@@ -264,6 +269,11 @@ class DriveSyncService {
         recordCreates++;
       } else {
         blobCreates++;
+        if (loseBlobReply) {
+          loseBlobReply = false;
+          offline = true;
+          throw http.ClientException('Lost blob acknowledgement');
+        }
       }
       if (revision && loseRecordReply) {
         loseRecordReply = false;

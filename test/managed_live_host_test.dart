@@ -32,9 +32,69 @@ class _Tunnel extends Fake implements Process {
   }
 }
 
+String _healthBody() => jsonEncode({
+  'service': 'orbit-collaboration',
+  'ready': true,
+  'instance': 'h' * 43,
+});
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => HttpOverrides.global = null);
+  test(
+    'private network starts the built-in server without a relay helper',
+    () async {
+      if (!Platform.isWindows) return;
+      final directory = await Directory.systemTemp.createTemp(
+        'orbit-private-host-',
+      );
+      final process = _Tunnel();
+      final host = OrbitLiveHost(
+        directory: () async => directory,
+        contain: (_) => () {},
+        run: (path, args) async => ProcessResult(
+          1,
+          0,
+          args.first == 'status'
+              ? '{"BackendState":"Running","Self":{"DNSName":"orbit-test.example.ts.net."}}'
+              : '{}',
+          '',
+        ),
+        launch: (path, args) async {
+          expect(path, endsWith('tailscale.exe'));
+          expect(args, contains('--https=8443'));
+          expect(args, isNot(contains('--bg')));
+          expect(args.last, startsWith('http://127.0.0.1:'));
+          return process;
+        },
+        client: () => MockClient((request) async {
+          expect(request.url.path, '/healthz');
+          expect(request.followRedirects, false);
+          expect(request.headers['Authorization'], isNull);
+          return http.Response(_healthBody(), 200);
+        }),
+      );
+      try {
+        await host.start(route: 'tailscale');
+        expect(
+          host.endpoint.toString(),
+          'https://orbit-test.example.ts.net:8443',
+        );
+        expect(
+          await Directory(
+            directory.path,
+          ).list().any((entry) => entry.path.endsWith('.exe')),
+          false,
+        );
+        await host.stop();
+        expect(process.killed, true);
+      } finally {
+        await host.stop();
+        host.dispose();
+        await directory.delete(recursive: true);
+      }
+    },
+  );
   test(
     'stop interrupts address negotiation without waiting for its timeout',
     () async {
@@ -113,10 +173,7 @@ void main() {
         contain: (_) => () {},
         client: () => MockClient(
           (request) async => request.url.path == '/healthz'
-              ? http.Response(
-                  '{"service":"orbit-collaboration","ready":true}',
-                  200,
-                )
+              ? http.Response(_healthBody(), 200)
               : http.Response.bytes([1, 2, 3], 200),
         ),
         launch: (path, args) async {
@@ -189,7 +246,7 @@ void main() {
       contain: (_) => () {},
       client: () => MockClient(
         (request) async => request.url.path == '/healthz'
-            ? http.Response('{"service":"orbit-collaboration"}', 200)
+            ? http.Response(_healthBody(), 200)
             : http.Response.bytes([1, 2, 3], 200),
       ),
       launch: (_, _) async {

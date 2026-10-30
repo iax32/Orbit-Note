@@ -1,5 +1,32 @@
 # Optional sync and collaboration
 
+## Large-board reliability and existing-Vault transfers — 2026-10-30
+
+Native shared-session recovery can now retain large supported Canvases plus their
+outgoing proposals using bounded lossless checkpoint compression. Legacy JSON
+remains readable; small checkpoints remain plain JSON. The 16-MiB stored / 256-MiB
+decoded limits still apply. Session/expected-byte guards remain. Immutable
+version/operation fingerprints avoid repeatedly hashing whole boards when the
+checkpoint is unchanged. Numeric local diagnostics include shared-cycle and
+checkpoint timings. See [ADR 0037](../adr/0037-bounded-shared-checkpoints.md).
+
+Initial uploads reserve create-only Drive IDs in groups and send files up to
+256 KiB with bounded multipart uploads and exact acknowledgement/readback proof.
+Larger files keep resumable transfers. File counts/current-file feedback now
+distinguish overall Vault progress from a single file's transferred bytes.
+Downloaded/imported folders use the original Vault name with numbered collisions;
+source files/identity remain unchanged.
+
+Managed hosting optionally uses an installed private Tailscale network or the
+owner's existing HTTPS proxy, alongside the temporary relay. Both devices need
+the private network for Tailscale; HTTPS approval may be required. Own-address
+hosting starts loopback port 47831 only. Reachability matches a fresh non-secret
+host incarnation against loopback and checks readiness without sending owner
+credentials through a relay. These alternatives do not configure routers,
+install VPNs/proxies or guarantee third-party availability. Saved document
+replication still uses full snapshots; physical two-device acceptance remains
+separate from automated tests.
+
 ## Personal Drive throughput — 2026-10-29
 
 Cloud-Vault opening reads the verified manifest's history first, then the opened

@@ -183,16 +183,19 @@ class DriveVaultBatch {
           final result = await SyncEngine(
             replica: replica,
             stateStore: replica.createStateStore(),
+            onProgress: (done, total, path) {
+              if (!current()) return;
+              job.progress = total == 0 ? null : done / total;
+              job.message =
+                  'Syncing $done / $total files · ${path.split('/').last}';
+              onChanged();
+            },
             provider: GoogleDriveSyncProvider(
               api: api,
               vault: vault,
               journal: replica.createDriveJournalStore(),
               stage: replica.stageTransfer,
               isCurrent: current,
-              onProgress: (done, total) {
-                job.progress = total == 0 ? null : done / total;
-                onChanged();
-              },
             ),
           ).sync();
           _check(subject);

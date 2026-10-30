@@ -618,6 +618,12 @@ class DriveSyncController extends ChangeNotifier {
     _engine = SyncEngine(
       replica: replica,
       stateStore: _state!,
+      onProgress: (done, total, path) {
+        if (!current()) return;
+        final name = path.split('/').last;
+        status = 'Syncing $done / $total files · $name';
+        _notify();
+      },
       provider: GoogleDriveSyncProvider(
         api: cloud.drive,
         vault: folder,

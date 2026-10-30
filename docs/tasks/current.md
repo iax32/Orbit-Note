@@ -1,4 +1,15 @@
-# Published — Google Drive throughput, 2026-10-29
+# In progress — device sharing reliability, 2026-10-30
+
+Owner clarifies that server connections/pointers work but saved drawings fail to
+reach the opposite device. Also requests faster existing-Vault upload and better
+imports, preserving tablet pen visuals/responsiveness. Scope and evidence:
+[device reliability](device-reliability-2026-10-30.md). Correct the 16-MiB shared
+outbox / 32-MiB document mismatch, large checkpoint costs, small-file upload
+overhead and import naming. Validate simultaneous large-board edits/restart and
+failure guards; build matching Windows/Android. Do not infer physical acceptance
+from automated clients or start unrelated backlog features.
+
+## Published — Google Drive throughput, 2026-10-29
 
 Owner reports painfully slow cloud sync and requests a fix. Scope/evidence:
 [Drive throughput task](drive-throughput-2026-10-29.md). Measure actual requests
