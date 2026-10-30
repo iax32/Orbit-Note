@@ -235,7 +235,7 @@ const orbitShortcutsList = <ShortcutEntry>[
 
 /// Displays the keyboard shortcuts cheatsheet modal.
 Future<void> showShortcutsCheatsheet(BuildContext context) async {
-  await showDialog<void>(
+  await showOrbitDialog<void>(
     context: context,
     builder: (ctx) => const _ShortcutsDialogView(),
   );

@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import '../../app/orbit_theme.dart';
 
@@ -10,7 +11,7 @@ Future<({int line, int column})?> showGoToLineDialog(
   required int currentLine,
   int currentColumn = 1,
 }) {
-  return showDialog<({int line, int column})>(
+  return showOrbitDialog<({int line, int column})>(
     context: context,
     builder: (ctx) => _GoToLineDialog(
       totalLines: totalLines,

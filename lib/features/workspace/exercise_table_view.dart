@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import '../../domain/course_progress.dart';
 import 'package:flutter/material.dart';
 import '../../app/orbit_theme.dart';
@@ -151,7 +152,7 @@ Write the exercise question or theorem to prove here.
     final currentTopic = (o.properties['topic'] as String?) ?? '';
     final textCtrl = TextEditingController(text: currentTopic);
 
-    final res = await showDialog<String>(
+    final res = await showOrbitDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Edit Topic'),
@@ -363,6 +364,7 @@ Write the exercise question or theorem to prove here.
 
                   // Create buttons
                   PopupMenuButton<String>(
+                    popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                     tooltip: 'Add Exercise',
                     icon: Container(
                       padding: const EdgeInsets.symmetric(
@@ -789,6 +791,7 @@ class _ExerciseRow extends StatelessWidget {
             child: Align(
               alignment: Alignment.centerLeft,
               child: PopupMenuButton<String>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 initialValue: status,
                 tooltip: 'Change Status',
                 onSelected: onStatusChanged,
@@ -813,6 +816,7 @@ class _ExerciseRow extends StatelessWidget {
             child: Align(
               alignment: Alignment.centerLeft,
               child: PopupMenuButton<String>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 initialValue: difficulty,
                 tooltip: 'Change Difficulty',
                 onSelected: onDifficultyChanged,
@@ -832,6 +836,7 @@ class _ExerciseRow extends StatelessWidget {
             child: Align(
               alignment: Alignment.centerLeft,
               child: PopupMenuButton<String>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 initialValue: confidence,
                 tooltip: 'Change Confidence',
                 onSelected: onConfidenceChanged,

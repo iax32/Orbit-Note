@@ -30,7 +30,7 @@ Future<void> showSmartQueryBuilder(
   bool saving = false;
   var nextKey = 0;
   final keys = [for (final _ in rules) nextKey++];
-  await showDialog<void>(
+  await showOrbitDialog<void>(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, set) => OrbitDialog(
@@ -631,7 +631,7 @@ Future<void> _editProperty(
   var text = '${old ?? ''}';
   String? error;
   bool busy = false;
-  await showDialog<void>(
+  await showOrbitDialog<void>(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, set) => OrbitDialog(

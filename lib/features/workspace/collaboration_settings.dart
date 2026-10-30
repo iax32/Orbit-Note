@@ -131,7 +131,7 @@ class _CollaborationSettingsState
         return;
       }
     }
-    final accepted = await showDialog<bool>(
+    final accepted = await showOrbitDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Start live sharing?'),
@@ -276,7 +276,7 @@ class _CollaborationSettingsState
         await c.downloadRoom(endpoint, room, token),
       );
       if (!mounted || !owns()) return;
-      if (await showDialog<bool>(
+      if (await showOrbitDialog<bool>(
             context: context,
             builder: (_) => BackupImportDialog(bundle: bundle),
           ) !=
@@ -731,7 +731,7 @@ class _CollaborationSettingsState
                           : () => run(() async {
                               final review = await c.reviewCanvas(entry.key);
                               if (!context.mounted) return;
-                              await showDialog<void>(
+                              await showOrbitDialog<void>(
                                 context: context,
                                 barrierDismissible: false,
                                 builder: (_) => CanvasConflictDialog(

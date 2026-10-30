@@ -13,7 +13,7 @@ Future<void> showHarmonizedPaletteDialog(
   WorkspaceController controller, {
   Future<bool> Function(String name, String content)? exportFn,
 }) async {
-  await showDialog<void>(
+  await showOrbitDialog<void>(
     context: context,
     builder: (dialogCtx) => _HarmonizedPaletteDialogContent(
       controller: controller,

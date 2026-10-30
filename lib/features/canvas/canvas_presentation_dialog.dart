@@ -29,7 +29,7 @@ Future<void> showCanvasPresentation(
     background: background,
   );
   try {
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       builder: (_) {
         adopted = true;

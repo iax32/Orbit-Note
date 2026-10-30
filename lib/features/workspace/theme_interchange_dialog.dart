@@ -16,7 +16,7 @@ Future<void> showOrbitThemeExportDialog(
   WorkspaceController controller, {
   Future<bool> Function(String name, String content)? exportFn,
 }) async {
-  await showDialog<void>(
+  await showOrbitDialog<void>(
     context: context,
     builder: (dialogCtx) =>
         _OrbitThemeExportContent(controller: controller, exportFn: exportFn),
@@ -64,7 +64,7 @@ Future<void> showOrbitThemeImportDialog(
   final pack = OrbitThemePack.fromJson(json);
 
   if (!context.mounted) return;
-  await showDialog<void>(
+  await showOrbitDialog<void>(
     context: context,
     builder: (dialogCtx) =>
         _OrbitThemeImportPreviewContent(controller: controller, pack: pack),
@@ -509,7 +509,7 @@ Future<void> showOrbitThemeGalleryDialog(
   Future<XFile?> Function()? openFileFn,
   Future<bool> Function(String name, String content)? exportFn,
 }) async {
-  await showDialog<void>(
+  await showOrbitDialog<void>(
     context: context,
     builder: (dialogCtx) => _OrbitThemeGalleryContent(
       controller: controller,
@@ -538,7 +538,7 @@ class _OrbitThemeGalleryContent extends StatefulWidget {
 class _OrbitThemeGalleryContentState extends State<_OrbitThemeGalleryContent> {
   Future<void> _renameTheme(OrbitThemePack pack) async {
     final textController = TextEditingController(text: pack.name);
-    final newName = await showDialog<String>(
+    final newName = await showOrbitDialog<String>(
       context: context,
       builder: (promptCtx) => AlertDialog(
         scrollable: true,
@@ -589,7 +589,7 @@ class _OrbitThemeGalleryContentState extends State<_OrbitThemeGalleryContent> {
   }
 
   Future<void> _deleteTheme(OrbitThemePack pack) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showOrbitDialog<bool>(
       context: context,
       builder: (confirmCtx) => AlertDialog(
         scrollable: true,

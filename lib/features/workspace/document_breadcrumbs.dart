@@ -153,6 +153,7 @@ class DocumentBreadcrumbs extends StatelessWidget {
     final displayName = vaultName.isEmpty ? 'Personal Vault' : vaultName;
 
     return PopupMenuButton<String>(
+      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
       key: const ValueKey('breadcrumb-vault'),
       tooltip: 'Vault: $displayName · Click for options',
       padding: EdgeInsets.zero,
@@ -259,6 +260,7 @@ class DocumentBreadcrumbs extends StatelessWidget {
     required String subPath,
   }) {
     return PopupMenuButton<String>(
+      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
       key: ValueKey('breadcrumb-folder-$segmentIndex'),
       tooltip: 'Folder: $subPath · Click for folder contents',
       padding: EdgeInsets.zero,
@@ -495,6 +497,7 @@ class DocumentBreadcrumbs extends StatelessWidget {
     final title = documentTitle.isEmpty ? 'Untitled' : documentTitle;
 
     return PopupMenuButton<String>(
+      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
       key: const ValueKey('breadcrumb-document'),
       tooltip: 'Document: $title · Click for quick actions',
       padding: EdgeInsets.zero,

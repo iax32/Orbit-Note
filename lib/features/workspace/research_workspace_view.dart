@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1014,7 +1015,7 @@ class _ResearchWorkspaceViewState extends ConsumerState<ResearchWorkspaceView> {
                   : Column(
                       children: [
                         TextButton(
-                          onPressed: () => showDialog<void>(
+                          onPressed: () => showOrbitDialog<void>(
                             context: context,
                             builder: (_) => AlertDialog(
                               title: const Text('Project brief'),

@@ -1,3 +1,4 @@
+import '../../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import '../../../app/orbit_theme.dart';
 import '../../../app/workspace_controller.dart';
@@ -29,7 +30,7 @@ class BookMemoriesDialog extends StatefulWidget {
     List<PdfAnnotation> annotations = const [],
     ValueChanged<int>? onJumpToPage,
   }) {
-    return showDialog<void>(
+    return showOrbitDialog<void>(
       context: context,
       builder: (_) => BookMemoriesDialog(
         book: book,

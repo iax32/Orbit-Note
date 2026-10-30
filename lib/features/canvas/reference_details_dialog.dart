@@ -11,7 +11,7 @@ Future<Map<String, dynamic>?> showReferenceDetails(
   CanvasElement element,
   String sourceTitle, {
   String? ownerId,
-}) => showDialog<Map<String, dynamic>>(
+}) => showOrbitDialog<Map<String, dynamic>>(
   context: context,
   builder: (_) => _ReferenceDetailsDialog(
     element: element,

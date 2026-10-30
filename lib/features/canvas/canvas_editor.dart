@@ -608,7 +608,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
 
   Future<void> _addDynamicView({CanvasPoint? at}) async {
     if (_readOnly) return;
-    final selectedType = await showDialog<String>(
+    final selectedType = await showOrbitDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
         title: const Text('Add Dynamic View (Smart View)'),
@@ -2857,7 +2857,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
     if (obj == null) return;
     final titleCtrl = TextEditingController(text: obj.title);
     final bodyCtrl = TextEditingController(text: obj.body);
-    final saved = await showDialog<bool>(
+    final saved = await showOrbitDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Row(
@@ -3565,7 +3565,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
       return;
     }
     final query = TextEditingController();
-    final selected = await showDialog<CanvasObjectReference>(
+    final selected = await showOrbitDialog<CanvasObjectReference>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, update) {
@@ -3753,7 +3753,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
   }
 
   Future<void> _showElementList() async {
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) {
@@ -4137,7 +4137,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
     var mermaidWrapMarkdown = false;
     var isExporting = false;
 
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       builder: (dialogContext) {
         return StatefulBuilder(
@@ -4779,6 +4779,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
     if (hit == null) {
       final hasSelection = _selection.isNotEmpty;
       final action = await showMenu<String>(
+        popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
         context: context,
         position: RelativeRect.fromRect(
           Rect.fromLTWH(event.position.dx, event.position.dy, 1, 1),
@@ -5041,6 +5042,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
     final hasInk = _selection.any((id) => _scene[id]?.type == 'ink');
 
     final action = await showMenu<String>(
+      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
       context: context,
       position: RelativeRect.fromRect(
         Rect.fromLTWH(event.position.dx, event.position.dy, 1, 1),
@@ -8053,7 +8055,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
     }
     try {
       if (action == 'bulk') {
-        final draft = await showDialog<BrainstormDraft>(
+        final draft = await showOrbitDialog<BrainstormDraft>(
           context: context,
           builder: (_) => BrainstormDialog(initial: _pendingBrainstormDraft),
         );
@@ -8139,7 +8141,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
           mimeType: 'text/csv',
         );
       } else if (action == 'workshop') {
-        final votes = await showDialog<Map<String, int>>(
+        final votes = await showOrbitDialog<Map<String, int>>(
           context: context,
           builder: (_) => WorkshopDialog(
             canSave: current,
@@ -8194,7 +8196,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
     _cancelGesture();
     final owner = widget.canvasId, scene = _scene;
     final epoch = _interactionEpoch, revision = scene.revision;
-    final starter = await showDialog<CanvasStarter>(
+    final starter = await showOrbitDialog<CanvasStarter>(
       context: context,
       builder: (_) => const CanvasStarterDialog(),
     );
@@ -9453,7 +9455,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
     final title = TextEditingController(text: existing?.text);
     final url = TextEditingController(text: existing?.url);
     String? error;
-    final value = await showDialog<Map<String, String>>(
+    final value = await showOrbitDialog<Map<String, String>>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, update) => OrbitDialog(
@@ -9618,7 +9620,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
   Future<void> _showInteractionTools({CanvasPoint? at}) async {
     if (_readOnly) return;
     final scene = _scene, revision = _scene.revision, epoch = _interactionEpoch;
-    final action = await showDialog<String>(
+    final action = await showOrbitDialog<String>(
       context: context,
       builder: (dialog) => OrbitDialog(
         title: const Text('Use-case & sequence diagrams'),
@@ -9896,7 +9898,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
       _notice(e.message);
       return;
     }
-    final accepted = await showDialog<bool>(
+    final accepted = await showOrbitDialog<bool>(
       context: context,
       builder: (context) => OrbitDialog(
         title: const Text('Review class diagram draft'),
@@ -10351,7 +10353,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
 
   Future<void> _showComfort() async {
     var value = widget.comfort;
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, update) => AlertDialog(
@@ -10451,6 +10453,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 ),
               const OrbitToolbarDivider(),
               PopupMenuButton<_Tool>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 tooltip: 'Text and notes',
                 enabled: !_readOnly,
                 initialValue: _tool,
@@ -10479,6 +10482,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 ],
               ),
               PopupMenuButton<_Tool>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 tooltip: 'Draw and erase',
                 enabled: !_readOnly,
                 initialValue: _tool,
@@ -10516,6 +10520,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 const SizedBox(width: 4),
                 if (_tool == _Tool.pen) ...[
                   PopupMenuButton<String>(
+                    popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                     tooltip: 'Pen style ($_penStyle)',
                     initialValue: _penStyle,
                     onSelected: (style) {
@@ -10621,6 +10626,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                     ],
                   ),
                   PopupMenuButton<double>(
+                    popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                     tooltip:
                         'Pen thickness (${_penStrokeWidth.toStringAsFixed(1)}px)',
                     initialValue: _penStrokeWidth,
@@ -10660,6 +10666,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 ],
                 if (_tool == _Tool.eraser)
                   PopupMenuButton<double>(
+                    popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                     tooltip: 'Eraser radius (${_eraserRadius.round()}px)',
                     initialValue: _eraserRadius,
                     onSelected: (r) {
@@ -10774,6 +10781,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 const SizedBox(width: 4),
               ],
               PopupMenuButton<String>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 tooltip: 'Shapes and diagrams',
                 enabled: !_readOnly,
                 icon: const Icon(Icons.category_outlined, size: 21),
@@ -10903,6 +10911,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                   onPressed: _readOnly ? null : widget.onCaptureReferences,
                 ),
               PopupMenuButton<String>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 tooltip: 'Add / organize board content',
                 enabled: !_readOnly,
                 icon: const Icon(Icons.add_box_outlined, size: 20),
@@ -11113,6 +11122,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
               ),
               if (_selection.length >= 2 && !_readOnly)
                 PopupMenuButton<CanvasAlignment>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'Align selected elements',
                   icon: const Icon(Icons.align_horizontal_left, size: 20),
                   onSelected: _align,
@@ -11216,6 +11226,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 ),
               if (_selection.isNotEmpty)
                 PopupMenuButton<String>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'Selection actions',
                   icon: const Icon(Icons.more_horiz, size: 20),
                   onSelected: (action) {
@@ -11268,6 +11279,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                   ],
                 ),
               PopupMenuButton<String>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 tooltip: 'Insert object or image',
                 enabled: !_readOnly,
                 icon: const Icon(Icons.add_link, size: 20),
@@ -11297,6 +11309,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
               if (_selection.isNotEmpty ||
                   _tool != _Tool.select && _tool != _Tool.pan)
                 PopupMenuButton<int>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'Color',
                   onSelected: (value) {
                     setState(() {
@@ -11348,6 +11361,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                       _scene[_selection.first]?.type == 'connector') &&
                   !_readOnly) ...[
                 PopupMenuButton<String>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'Stroke Style',
                   icon: const Icon(Icons.line_weight, size: 20),
                   onSelected: _setConnectorStyle,
@@ -11358,6 +11372,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                   ],
                 ),
                 PopupMenuButton<String>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'Routing',
                   icon: const Icon(Icons.alt_route, size: 20),
                   onSelected: _setConnectorRouting,
@@ -11371,6 +11386,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                   ],
                 ),
                 PopupMenuButton<String>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'Start Marker',
                   icon: const Icon(Icons.west, size: 20),
                   onSelected: (m) => _setConnectorMarker(m, isStart: true),
@@ -11385,6 +11401,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                   ],
                 ),
                 PopupMenuButton<String>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'End Marker',
                   icon: const Icon(Icons.east, size: 20),
                   onSelected: (m) => _setConnectorMarker(m),
@@ -11399,6 +11416,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                   ],
                 ),
                 PopupMenuButton<String>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'Start Anchor',
                   icon: const Icon(Icons.north_west, size: 20),
                   onSelected: (a) => _setConnectorAnchor(a, isStart: true),
@@ -11426,6 +11444,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                   ],
                 ),
                 PopupMenuButton<String>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'End Anchor',
                   icon: const Icon(Icons.south_east, size: 20),
                   onSelected: (a) => _setConnectorAnchor(a, isStart: false),
@@ -11459,6 +11478,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                   _selection.every((id) => _scene[id]?.type == 'section') &&
                   !_readOnly) ...[
                 PopupMenuButton<String>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'Section Header Size',
                   icon: const Icon(Icons.format_size, size: 20),
                   onSelected: _setSectionHeaderSize,
@@ -11487,6 +11507,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                   onPressed: () => _adjustSectionSize(increase: true),
                 ),
                 PopupMenuButton<double>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'Line Thickness',
                   icon: const Icon(Icons.horizontal_rule, size: 20),
                   onSelected: _setSectionLineThickness,
@@ -11510,6 +11531,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 icon: const Icon(Icons.grid_4x4, size: 20),
               ),
               PopupMenuButton<String>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 tooltip: 'Canvas paper style',
                 icon: const Icon(Icons.grain, size: 20),
                 enabled: !_readOnly,
@@ -11595,6 +11617,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 ],
               ),
               PopupMenuButton<String>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 tooltip: 'Apply workspace preset (Study / Game Dev)',
                 icon: const Icon(Icons.dashboard_customize_outlined, size: 20),
                 enabled: !_readOnly,
@@ -11891,12 +11914,14 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 icon: const Icon(Icons.layers_outlined, size: 20),
               ),
               PopupMenuButton<String>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 tooltip: 'Brainstorming & workshops',
                 icon: const Icon(Icons.lightbulb_outline, size: 21),
                 itemBuilder: (_) => _brainstormItems(),
                 onSelected: _brainstormAction,
               ),
               PopupMenuButton<String>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 tooltip: 'Canvas motion & presentation',
                 icon: Icon(
                   _laserMode ? Icons.gesture : Icons.slow_motion_video,
@@ -11942,6 +11967,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 icon: const Icon(Icons.school_outlined, size: 21),
               ),
               PopupMenuButton<String>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 tooltip: 'Use-case and sequence diagrams',
                 enabled: !_readOnly,
                 icon: const Icon(Icons.account_tree_outlined, size: 21),
@@ -11955,6 +11981,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
               ),
               if (_selection.isNotEmpty)
                 PopupMenuButton<String>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'Layer order',
                   enabled: _selection.isNotEmpty && !_readOnly,
                   icon: const Icon(Icons.flip_to_front_outlined, size: 20),
@@ -12032,6 +12059,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
                 ),
               if (_selection.length >= 2)
                 PopupMenuButton<CanvasArrangement>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'Arrange selected placements',
                   enabled: _selection.length >= 2,
                   icon: const Icon(Icons.align_horizontal_left, size: 20),
@@ -12044,6 +12072,7 @@ class _CanvasEditorState extends State<CanvasEditor> {
               if (_selection.length >= 2 ||
                   _selection.any((id) => _scene[id]?.groupId != null))
                 PopupMenuButton<String>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'Group (Ctrl+G) / Ungroup (Ctrl+Shift+G)',
                   enabled:
                       !_readOnly &&

@@ -1,3 +1,4 @@
+import '../../../app/orbit_components.dart';
 import '../../../app/orbit_theme.dart';
 import 'package:flutter/material.dart';
 import 'latex_converter.dart';
@@ -25,7 +26,9 @@ class FormatConversionDialog extends StatefulWidget {
     required String body,
     required String currentFormat,
   }) {
-    return showDialog<({FormatConversionAction action, String convertedBody})>(
+    return showOrbitDialog<
+      ({FormatConversionAction action, String convertedBody})
+    >(
       context: context,
       builder: (_) => FormatConversionDialog(
         title: title,

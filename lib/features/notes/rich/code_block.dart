@@ -319,7 +319,7 @@ class NoteCodeBlockState extends State<NoteCodeBlock> {
                   icon: const Icon(Icons.open_in_full, size: 16),
                   onPressed: () async {
                     final original = widget.code;
-                    final result = await showDialog<String>(
+                    final result = await showOrbitDialog<String>(
                       context: context,
                       builder: (_) => CodeWorkspace(
                         code: original,

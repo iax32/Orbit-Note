@@ -157,11 +157,6 @@ class _CanvasFocusControlsState extends State<CanvasFocusControls> {
           OrbitMotion.panel,
           spatial: true,
         );
-        final menuDuration = OrbitMotionScope.duration(
-          context,
-          OrbitMotion.dialog,
-          spatial: true,
-        );
         final grip = MouseRegion(
           cursor: _locked
               ? SystemMouseCursors.basic
@@ -193,17 +188,7 @@ class _CanvasFocusControlsState extends State<CanvasFocusControls> {
                 tooltip: _locked
                     ? 'Canvas controls position (locked)'
                     : 'Move Canvas controls · tap for positions',
-                popUpAnimationStyle: menuDuration == Duration.zero
-                    ? AnimationStyle.noAnimation
-                    : AnimationStyle(
-                        duration: menuDuration,
-                        curve: OrbitMotion.ease,
-                        reverseDuration: OrbitMotionScope.duration(
-                          context,
-                          OrbitMotion.micro,
-                          spatial: true,
-                        ),
-                      ),
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 onSelected: _position,
                 itemBuilder: (_) => [
                   if (widget.onComfort != null)

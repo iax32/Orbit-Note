@@ -682,7 +682,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
         !annotation.matches(widget.checksum)) {
       return;
     }
-    showDialog<void>(
+    showOrbitDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (_) => PdfReviewEditor(
@@ -766,7 +766,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     var text = '';
     var busy = false;
     String? error;
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (dialog) => StatefulBuilder(
@@ -857,7 +857,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     final color = Color(annotation.color);
     final style = annotation.style;
 
-    showDialog<void>(
+    showOrbitDialog<void>(
       context: context,
       builder: (context) => OrbitDialog(
         title: Row(
@@ -1073,7 +1073,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     if (!_ready || !_viewer.isReady) return;
     final document = _viewer.document;
     final page = document.pages[_page - 1];
-    showDialog<void>(
+    showOrbitDialog<void>(
       context: context,
       builder: (context) => OrbitDialog(
         title: const Text('Document information'),
@@ -1116,7 +1116,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   Future<void> _showOutline() async {
     if (!_ready) return;
     final epoch = _viewerEpoch;
-    final destination = await showDialog<PdfDest>(
+    final destination = await showOrbitDialog<PdfDest>(
       context: context,
       builder: (_) =>
           PdfOutlineDialog(nodes: _outline, loadFailed: _outlineFailed),
@@ -1135,7 +1135,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   Future<void> _showBookmarks() async {
     if (!_ready || !_viewer.isReady) return;
     final epoch = _viewerEpoch;
-    final page = await showDialog<int>(
+    final page = await showOrbitDialog<int>(
       context: context,
       builder: (_) => PdfBookmarksDialog(
         pages: widget.bookmarks,
@@ -1188,7 +1188,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     if (!_ready || !_viewer.isReady) return;
     if (tool == 'custom') {
       final epoch = _viewerEpoch;
-      final zoom = await showDialog<double>(
+      final zoom = await showOrbitDialog<double>(
         context: context,
         builder: (_) => PdfZoomDialog(
           current: _viewer.currentZoom * 100,
@@ -2079,7 +2079,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
       return null;
     }
     final input = TextEditingController();
-    final password = await showDialog<String>(
+    final password = await showOrbitDialog<String>(
       context: context,
       builder: (context) => OrbitDialog(
         title: const Text('Unlock PDF'),
@@ -2153,7 +2153,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
       if (comment) {
         if (!mounted) return;
         saved =
-            await showDialog<bool>(
+            await showOrbitDialog<bool>(
               context: context,
               barrierDismissible: false,
               builder: (_) => PdfPassageCommentDialog(
@@ -2343,6 +2343,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final point = overlay.globalToLocal(global);
     final choice = await showMenu<String>(
+      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
       context: context,
       position: RelativeRect.fromSize(
         Rect.fromLTWH(point.dx, point.dy, 1, 1),
@@ -2447,7 +2448,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     bool menu,
   ) async {
     final epoch = _documentEpoch;
-    final picked = await showDialog<PdfAnnotation>(
+    final picked = await showOrbitDialog<PdfAnnotation>(
       context: context,
       builder: (context) => OrbitDialog(
         title: const Text('Choose a marking'),
@@ -2702,6 +2703,9 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                               icon: const Icon(Icons.fit_screen),
                             ),
                             PopupMenuButton<String>(
+                              popUpAnimationStyle: OrbitMotionScope.popupStyle(
+                                context,
+                              ),
                               tooltip: 'PDF zoom and reading tools',
                               enabled: _ready,
                               onSelected: _readingTool,
@@ -2771,6 +2775,9 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                             ),
                             const OrbitToolbarDivider(),
                             PopupMenuButton<PdfPageMode>(
+                              popUpAnimationStyle: OrbitMotionScope.popupStyle(
+                                context,
+                              ),
                               tooltip: 'Page display mode',
                               initialValue: _pageMode,
                               icon: Icon(switch (_pageMode) {
@@ -2908,6 +2915,8 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                             ),
                             if (widget.onCreateDocument != null)
                               PopupMenuButton<ResearchDocument>(
+                                popUpAnimationStyle:
+                                    OrbitMotionScope.popupStyle(context),
                                 tooltip: 'Create document from PDF',
                                 enabled:
                                     _ready &&
@@ -2954,6 +2963,9 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                                 icon: const Icon(Icons.description_outlined),
                               ),
                             PopupMenuButton<int>(
+                              popUpAnimationStyle: OrbitMotionScope.popupStyle(
+                                context,
+                              ),
                               tooltip: 'Highlight color',
                               icon: Container(
                                 width: 16,
@@ -3068,6 +3080,9 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                               icon: const Icon(Icons.open_in_new),
                             ),
                             PopupMenuButton<String>(
+                              popUpAnimationStyle: OrbitMotionScope.popupStyle(
+                                context,
+                              ),
                               tooltip: 'Document tools',
                               enabled: _ready,
                               icon: const Icon(Icons.more_horiz),

@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import '../../app/workspace_controller.dart';
 import '../../domain/research_comparison.dart';
@@ -9,7 +10,7 @@ Future<void> showResearchComparison(
   required bool Function(UniversalObject) matchesScope,
   required String folder,
   String target = '',
-}) => showDialog<void>(
+}) => showOrbitDialog<void>(
   context: context,
   builder: (_) => ResearchComparisonDialog(
     controller: controller,

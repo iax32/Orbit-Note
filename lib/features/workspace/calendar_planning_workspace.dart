@@ -21,7 +21,7 @@ Future<void> showCalendarPlanning(
   String? course,
   String? courseId,
   List<UniversalObject> Function()? scope,
-}) => showDialog<void>(
+}) => showOrbitDialog<void>(
   context: context,
   builder: (_) => CalendarPlanningWorkspace(
     controller: c,
@@ -236,6 +236,9 @@ class _CalendarPlanningWorkspaceState
                           child: const Text('Today'),
                         ),
                         PopupMenuButton<String>(
+                          popUpAnimationStyle: OrbitMotionScope.popupStyle(
+                            context,
+                          ),
                           tooltip: 'New planning item',
                           enabled: c.hasWorkspace && !c.repository.readOnly,
                           onSelected: (k) => showCalendarPlanEditor(
@@ -783,7 +786,7 @@ class _CalendarPlanningWorkspaceState
               examDay.day + 1,
             ).toUtc().subtract(const Duration(microseconds: 1)),
           ).length;
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       builder: (ctx) => OrbitDialog(
         title: Text(current.title),
@@ -894,7 +897,7 @@ class _CalendarPlanningWorkspaceState
                       if (ok) {
                         Navigator.pop(ctx);
                       } else {
-                        await showDialog<void>(
+                        await showOrbitDialog<void>(
                           context: ctx,
                           builder: (errorContext) => OrbitDialog(
                             title: const Text('Task could not be completed'),

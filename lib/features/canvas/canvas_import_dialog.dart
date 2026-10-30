@@ -17,7 +17,7 @@ class CanvasImportDialog extends StatefulWidget {
     required CanvasPoint center,
     String Function()? idGenerator,
   }) {
-    return showDialog<DiagramImportResult>(
+    return showOrbitDialog<DiagramImportResult>(
       context: context,
       builder: (_) =>
           CanvasImportDialog(center: center, idGenerator: idGenerator),
@@ -495,6 +495,7 @@ class _CanvasImportDialogState extends State<CanvasImportDialog> {
             ),
             const Spacer(),
             PopupMenuButton<String>(
+              popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
               tooltip: 'Load Sample',
               onSelected: _applyMermaidSample,
               itemBuilder: (_) => const [

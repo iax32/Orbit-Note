@@ -9,7 +9,7 @@ Future<String?> showDiagramNoteDialog(
   WorkspaceController controller,
   UniversalObject source,
   List<String> ids,
-) => showDialog<String>(
+) => showOrbitDialog<String>(
   context: context,
   barrierDismissible: false,
   builder: (_) =>

@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,7 +16,7 @@ import 'research_comparison_dialog.dart';
 Future<void> showResearchDossier(
   BuildContext context,
   WorkspaceController controller,
-) => showDialog<void>(
+) => showOrbitDialog<void>(
   context: context,
   builder: (_) => RepaintBoundary(
     key: const ValueKey('dossier-capture'),
@@ -242,6 +243,9 @@ class _DossierState extends ConsumerState<ResearchDossierWorkspace> {
                               label: const Text('New dossier'),
                             ),
                             PopupMenuButton<String>(
+                              popUpAnimationStyle: OrbitMotionScope.popupStyle(
+                                context,
+                              ),
                               tooltip: 'New research record',
                               enabled: root != null,
                               onSelected: (v) => edit(v),
@@ -260,6 +264,9 @@ class _DossierState extends ConsumerState<ResearchDossierWorkspace> {
                               ),
                             ),
                             PopupMenuButton<String>(
+                              popUpAnimationStyle: OrbitMotionScope.popupStyle(
+                                context,
+                              ),
                               tooltip: 'Research templates',
                               enabled: root != null,
                               onSelected: (v) => edit('journal', template: v),

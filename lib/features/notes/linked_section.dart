@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
@@ -243,7 +244,7 @@ Future<String?> showLinkedSectionPicker(
   List<UniversalObject> objects,
   String hostId,
   WorkspaceController? controller,
-) => showDialog<String>(
+) => showOrbitDialog<String>(
   context: context,
   builder: (_) =>
       _SectionPicker(objects: objects, hostId: hostId, controller: controller),

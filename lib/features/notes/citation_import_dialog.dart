@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:file_selector/file_selector.dart';
@@ -9,7 +10,7 @@ Future<CitationImportPlan?> showCitationImport(
   BuildContext context,
   String source, {
   List<CitationLibrary> libraries = const [],
-}) => showDialog<CitationImportPlan>(
+}) => showOrbitDialog<CitationImportPlan>(
   context: context,
   builder: (_) => CitationImportDialog(source: source, libraries: libraries),
 );

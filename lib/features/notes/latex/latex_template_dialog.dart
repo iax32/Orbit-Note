@@ -1,3 +1,4 @@
+import '../../../app/orbit_components.dart';
 import '../../../app/orbit_theme.dart';
 import 'package:flutter/material.dart';
 import 'latex_templates.dart';
@@ -7,7 +8,7 @@ class LatexTemplateDialog extends StatelessWidget {
   const LatexTemplateDialog({super.key});
 
   static Future<LatexTemplate?> show(BuildContext context) {
-    return showDialog<LatexTemplate>(
+    return showOrbitDialog<LatexTemplate>(
       context: context,
       builder: (_) => const LatexTemplateDialog(),
     );

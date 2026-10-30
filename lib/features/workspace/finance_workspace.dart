@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -31,7 +32,7 @@ Future<T?> _financeDialog<T>({
 Future<void> showFinanceWorkspace(
   BuildContext context,
   WorkspaceController controller,
-) => showDialog<void>(
+) => showOrbitDialog<void>(
   context: context,
   builder: (_) => RepaintBoundary(
     key: const ValueKey('finance-capture'),
@@ -126,7 +127,7 @@ class _FinanceWorkspaceState extends ConsumerState<FinanceWorkspace> {
   }
 
   Future<void> _remove(UniversalObject record) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showOrbitDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Move transaction to Trash?'),

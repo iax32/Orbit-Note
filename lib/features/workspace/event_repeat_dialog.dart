@@ -19,7 +19,7 @@ Future<void> showEventRepeatDialog(
       EventRecurrence(Map<String, dynamic>.from(raw));
     }
   } on Object catch (e) {
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       builder: (ctx) => OrbitDialog(
         title: const Text('Repeat data needs review'),
@@ -80,7 +80,7 @@ Future<void> showEventRepeatDialog(
 
   try {
     if (!context.mounted) return;
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(

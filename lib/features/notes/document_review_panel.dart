@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import '../../app/orbit_motion_effects.dart';
 import 'package:flutter/material.dart';
 import '../../domain/document_review.dart';
@@ -248,7 +249,7 @@ Future<({String message, String? replacement})?> showReviewComposer(
   BuildContext context,
   String quote, {
   required bool suggestion,
-}) => showDialog<({String message, String? replacement})>(
+}) => showOrbitDialog<({String message, String? replacement})>(
   context: context,
   builder: (_) => _ReviewComposer(quote: quote, suggestion: suggestion),
 );

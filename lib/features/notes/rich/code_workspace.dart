@@ -1,3 +1,4 @@
+import '../../../app/orbit_components.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -237,7 +238,7 @@ class _CodeWorkspaceState extends State<CodeWorkspace> {
 
   Future<void> goToLine() async {
     var entry = '';
-    final line = await showDialog<int>(
+    final line = await showOrbitDialog<int>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Go to line'),
@@ -436,6 +437,9 @@ class _CodeWorkspaceState extends State<CodeWorkspace> {
                         child: Row(
                           children: [
                             PopupMenuButton<String>(
+                              popUpAnimationStyle: OrbitMotionScope.popupStyle(
+                                context,
+                              ),
                               tooltip: 'Code actions',
                               onSelected: action,
                               itemBuilder: (_) => [

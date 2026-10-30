@@ -28,7 +28,7 @@ Future<void> showUnresolvedLinkDialog(
   final matchingRefs = unresolvedMap[targetTitle] ?? [];
   referencingNotes.addAll(matchingRefs);
 
-  await showDialog<void>(
+  await showOrbitDialog<void>(
     context: context,
     builder: (dialogCtx) {
       final colors = OrbitColors.of(dialogCtx);

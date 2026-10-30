@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'object_connection_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,7 +14,7 @@ import 'object_bridges.dart';
 Future<void> showProjectWorkspace(
   BuildContext context,
   WorkspaceController c,
-) => showDialog<void>(
+) => showOrbitDialog<void>(
   context: context,
   builder: (_) => Dialog(
     child: SizedBox(
@@ -93,7 +94,7 @@ Future<String?> _pickProject(
 ) async {
   var query = '';
   final generation = c.workspaceGeneration;
-  return showDialog<String>(
+  return showOrbitDialog<String>(
     context: context,
     builder: (_) => Consumer(
       builder: (_, ref, _) {

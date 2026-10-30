@@ -356,7 +356,7 @@ class _SearchViewState extends State<SearchView> {
   Future<void> _save() async {
     var name = _query.text.trim();
     String? problem;
-    final chosen = await showDialog<String>(
+    final chosen = await showOrbitDialog<String>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, update) => OrbitDialog(
@@ -422,7 +422,7 @@ class _SearchViewState extends State<SearchView> {
   }
 
   Future<void> _manage() async {
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, update) => OrbitDialog(
@@ -521,6 +521,7 @@ class _SearchViewState extends State<SearchView> {
   ) {
     final options = {...values, ?value}.toList()..sort();
     return PopupMenuButton<String>(
+      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
       tooltip: 'Filter by ${label.toLowerCase()}',
       onSelected: (v) => _setOptions({key: v.isEmpty ? null : v}),
       itemBuilder: (_) => [
@@ -655,7 +656,7 @@ class _SearchViewState extends State<SearchView> {
       setState(() => _preview = true);
       return;
     }
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       builder: (dialogContext) => OrbitDialog(
         title: const Text('Preview'),
@@ -931,6 +932,10 @@ class _SearchViewState extends State<SearchView> {
                                         label: const Text('More filters'),
                                       ),
                                       PopupMenuButton<SearchOrder>(
+                                        popUpAnimationStyle:
+                                            OrbitMotionScope.popupStyle(
+                                              context,
+                                            ),
                                         tooltip: 'Sort results',
                                         initialValue: _options.order,
                                         onSelected: (v) =>
@@ -982,6 +987,10 @@ class _SearchViewState extends State<SearchView> {
                                       ),
                                       if (_library.saved.isNotEmpty)
                                         PopupMenuButton<String>(
+                                          popUpAnimationStyle:
+                                              OrbitMotionScope.popupStyle(
+                                                context,
+                                              ),
                                           tooltip: 'Saved searches',
                                           onSelected: (name) {
                                             final s = _library.saved.firstWhere(

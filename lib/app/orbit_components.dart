@@ -382,7 +382,9 @@ class OrbitDisclosure extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => AnimatedSize(
-    duration: OrbitMotionScope.duration(context, duration, spatial: true),
+    duration: OrbitMotionScope.settings(context).navigation
+        ? OrbitMotionScope.duration(context, duration, spatial: true)
+        : Duration.zero,
     curve: OrbitMotion.ease,
     alignment: alignment,
     child: Visibility(visible: visible, maintainState: true, child: child),
@@ -404,15 +406,16 @@ class OrbitEntrance extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dur = OrbitMotionScope.duration(context, duration);
-    if (dur == Duration.zero) return child;
+    final dur = OrbitMotionScope.settings(context).navigation
+        ? OrbitMotionScope.duration(context, duration)
+        : Duration.zero;
     final allowTravel =
         spatial &&
         OrbitMotionScope.duration(context, duration, spatial: true) !=
             Duration.zero;
 
     return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
+      tween: Tween(begin: dur == Duration.zero ? 1 : 0, end: 1),
       duration: dur,
       curve: OrbitMotion.ease,
       builder: (_, value, child) {
@@ -420,9 +423,11 @@ class OrbitEntrance extends StatelessWidget {
           opacity: (.85 + .15 * value).clamp(0.0, 1.0),
           child: child,
         );
-        if (!allowTravel) return content;
         return Transform.translate(
-          offset: Offset(offset.dx * (1 - value), offset.dy * (1 - value)),
+          offset: allowTravel
+              ? Offset(offset.dx * (1 - value), offset.dy * (1 - value))
+              : Offset.zero,
+          transformHitTests: false,
           child: content,
         );
       },
@@ -444,14 +449,15 @@ class OrbitFadeScale extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dur = OrbitMotionScope.duration(context, duration);
-    if (dur == Duration.zero) return child;
+    final dur = OrbitMotionScope.settings(context).navigation
+        ? OrbitMotionScope.duration(context, duration)
+        : Duration.zero;
     final allowTravel =
         OrbitMotionScope.duration(context, duration, spatial: true) !=
         Duration.zero;
 
     return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
+      tween: Tween(begin: dur == Duration.zero ? 1 : 0, end: 1),
       duration: dur,
       curve: OrbitMotion.ease,
       builder: (_, value, child) => Opacity(
@@ -459,6 +465,7 @@ class OrbitFadeScale extends StatelessWidget {
         child: Transform.scale(
           scale: allowTravel ? (0.95 + 0.05 * value) : 1.0,
           alignment: Alignment.center,
+          transformHitTests: false,
           child: child,
         ),
       ),
@@ -693,6 +700,39 @@ class OrbitMotionScope extends InheritedWidget {
     final scope = context
         .dependOnInheritedWidgetOfExactType<OrbitMotionScope>();
     return scope?.preference == 'off';
+  }
+
+  /// Menus and sheets grow/slide, so Reduced removes that spatial transition.
+  static AnimationStyle popupStyle(BuildContext context) {
+    final time = settings(context).navigation
+        ? duration(context, OrbitMotion.panel, spatial: true)
+        : Duration.zero;
+    return time == Duration.zero
+        ? AnimationStyle.noAnimation
+        : AnimationStyle(
+            duration: time,
+            reverseDuration: duration(
+              context,
+              OrbitMotion.micro,
+              spatial: true,
+            ),
+            curve: OrbitMotion.ease,
+            reverseCurve: OrbitMotion.ease,
+          );
+  }
+
+  static AnimationStyle dialogStyle(BuildContext context) {
+    final time = settings(context).navigation
+        ? duration(context, OrbitMotion.dialog)
+        : Duration.zero;
+    return time == Duration.zero
+        ? AnimationStyle.noAnimation
+        : AnimationStyle(
+            duration: time,
+            reverseDuration: duration(context, OrbitMotion.control),
+            curve: OrbitMotion.ease,
+            reverseCurve: OrbitMotion.ease,
+          );
   }
 
   @override
@@ -1169,20 +1209,180 @@ class OrbitShortcutRow extends StatelessWidget {
   }
 }
 
-/// Shows an Orbit dialog with standard 200ms easeOutCubic transition matching MOT-02.
+/// Keeps Flutter's modal barrier, focus traversal, results and navigator contract.
+/// A single mounted dialog gains a small, preference-aware surface arrival.
 Future<T?> showOrbitDialog<T>({
   required BuildContext context,
   required WidgetBuilder builder,
   bool barrierDismissible = true,
-}) => showDialog<T>(
-  context: context,
-  barrierDismissible: barrierDismissible,
-  animationStyle: AnimationStyle(
-    duration: OrbitMotionScope.duration(context, OrbitMotion.dialog),
-    curve: OrbitMotion.ease,
-  ),
-  builder: builder,
-);
+  Color? barrierColor,
+  String? barrierLabel,
+  bool useSafeArea = true,
+  bool useRootNavigator = true,
+  RouteSettings? routeSettings,
+  Offset? anchorPoint,
+  TraversalEdgeBehavior? traversalEdgeBehavior,
+  bool fullscreenDialog = false,
+  bool? requestFocus,
+  AnimationStyle? animationStyle,
+}) {
+  final fallback = context.getInheritedWidgetOfExactType<OrbitMotionScope>();
+  return showDialog<T>(
+    context: context,
+    barrierDismissible: barrierDismissible,
+    barrierColor: barrierColor,
+    barrierLabel: barrierLabel,
+    useSafeArea: useSafeArea,
+    useRootNavigator: useRootNavigator,
+    routeSettings: routeSettings,
+    anchorPoint: anchorPoint,
+    traversalEdgeBehavior: traversalEdgeBehavior,
+    fullscreenDialog: fullscreenDialog,
+    requestFocus: requestFocus,
+    animationStyle:
+        OrbitMotionScope.isOff(context) ||
+            !OrbitMotionScope.settings(context).navigation ||
+            OrbitMotionScope.isReduced(context)
+        ? OrbitMotionScope.dialogStyle(context)
+        : animationStyle ?? OrbitMotionScope.dialogStyle(context),
+    builder: (routeContext) {
+      Widget content = _OrbitDialogArrival(child: Builder(builder: builder));
+      // Scopes below a nested navigator are not inherited by its modal route.
+      // Prefer the live root scope; capture only when the route has none.
+      if (routeContext.getInheritedWidgetOfExactType<OrbitMotionScope>() ==
+              null &&
+          fallback != null) {
+        content = OrbitMotionScope(
+          preference: fallback.preference,
+          osReduced: fallback.osReduced,
+          options: fallback.options,
+          child: content,
+        );
+      }
+      return content;
+    },
+  );
+}
+
+class _OrbitDialogArrival extends StatelessWidget {
+  const _OrbitDialogArrival({required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) {
+    final animation = ModalRoute.of(context)?.animation;
+    final spatial =
+        OrbitMotionScope.settings(context).navigation &&
+        OrbitMotionScope.duration(context, OrbitMotion.dialog, spatial: true) !=
+            Duration.zero;
+    final paper = OrbitMotionScope.settings(context).profile == 'paper';
+    return AnimatedBuilder(
+      animation: animation ?? kAlwaysCompleteAnimation,
+      child: child,
+      builder: (_, child) {
+        final t = spatial && animation != null
+            ? OrbitMotion.ease.transform(animation.value.clamp(0, 1))
+            : 1.0;
+        return Transform.translate(
+          offset: Offset(0, (paper ? 8 : 5) * (1 - t)),
+          transformHitTests: false,
+          child: Transform.scale(
+            scale: .985 + .015 * t,
+            transformHitTests: false,
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Finite state feedback; a new label replaces the old semantics immediately.
+/// Only the active child is mounted, suitable for save/sync and result labels.
+class OrbitStateMotion extends StatefulWidget {
+  const OrbitStateMotion({
+    super.key,
+    required this.identity,
+    required this.child,
+  });
+  final Object? identity;
+  final Widget child;
+  @override
+  State<OrbitStateMotion> createState() => _OrbitStateMotionState();
+}
+
+/// Keeps the action's slot stable while removing hidden input/focus/semantics
+/// immediately. Fading out must never leave a clickable invisible control.
+class OrbitActionReveal extends StatelessWidget {
+  const OrbitActionReveal({
+    super.key,
+    required this.visible,
+    required this.child,
+  });
+  final bool visible;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+    ignoring: !visible,
+    child: ExcludeFocus(
+      excluding: !visible,
+      child: ExcludeSemantics(
+        excluding: !visible,
+        child: AnimatedOpacity(
+          opacity: visible ? 1 : 0,
+          duration: OrbitMotionScope.settings(context).navigation
+              ? OrbitMotionScope.duration(context, OrbitMotion.control)
+              : Duration.zero,
+          curve: OrbitMotion.ease,
+          child: child,
+        ),
+      ),
+    ),
+  );
+}
+
+class _OrbitStateMotionState extends State<OrbitStateMotion>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    value: 1,
+  );
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _controller.duration = OrbitMotionScope.settings(context).navigation
+        ? OrbitMotionScope.duration(context, OrbitMotion.control)
+        : Duration.zero;
+    _controller.value = 1;
+  }
+
+  @override
+  void didUpdateWidget(OrbitStateMotion oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.identity != widget.identity) {
+      if (_controller.duration == Duration.zero) {
+        _controller.value = 1;
+      } else {
+        _controller.forward(from: 0);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _controller,
+    child: widget.child,
+    builder: (_, child) => Opacity(
+      opacity: .72 + .28 * OrbitMotion.ease.transform(_controller.value),
+      child: child,
+    ),
+  );
+}
 
 /// Animates numeric value changes with a smooth rolling counter.
 /// Respects [OrbitMotionScope] preferences.
@@ -1382,22 +1582,41 @@ class _OrbitBreathingGlowState extends State<OrbitBreathingGlow>
   void initState() {
     super.initState();
     _controller = AnimationController(vsync: this, duration: widget.duration);
-    if (widget.active) {
-      _controller.repeat(reverse: true);
+  }
+
+  void _sync() {
+    final duration = OrbitMotionScope.duration(
+      context,
+      widget.duration,
+      spatial: true,
+    );
+    final allowed =
+        widget.active &&
+        duration != Duration.zero &&
+        OrbitMotionScope.settings(context).navigation &&
+        TickerMode.valuesOf(context).enabled;
+    final changed = _controller.duration != duration;
+    if (duration != Duration.zero) _controller.duration = duration;
+    if (allowed) {
+      if (!_controller.isAnimating || changed) {
+        _controller.repeat(reverse: true);
+      }
+    } else {
+      _controller.stop();
+      _controller.value = 0;
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
   }
 
   @override
   void didUpdateWidget(OrbitBreathingGlow oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.active != oldWidget.active) {
-      if (widget.active) {
-        _controller.repeat(reverse: true);
-      } else {
-        _controller.stop();
-        _controller.value = 0;
-      }
-    }
+    _sync();
   }
 
   @override
@@ -1408,9 +1627,11 @@ class _OrbitBreathingGlowState extends State<OrbitBreathingGlow>
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.active || OrbitMotionScope.isOff(context)) {
-      return widget.child;
-    }
+    final active =
+        widget.active &&
+        !OrbitMotionScope.isOff(context) &&
+        !OrbitMotionScope.isReduced(context) &&
+        OrbitMotionScope.settings(context).navigation;
     final c = OrbitColors.of(context);
     final glow = widget.glowColor ?? c.accent;
     final radius =
@@ -1427,13 +1648,15 @@ class _OrbitBreathingGlowState extends State<OrbitBreathingGlow>
         return DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: radius,
-            boxShadow: [
-              BoxShadow(
-                color: glow.withValues(alpha: alpha),
-                spreadRadius: spread,
-                blurRadius: blur,
-              ),
-            ],
+            boxShadow: active
+                ? [
+                    BoxShadow(
+                      color: glow.withValues(alpha: alpha),
+                      spreadRadius: spread,
+                      blurRadius: blur,
+                    ),
+                  ]
+                : const [],
           ),
           child: child,
         );
@@ -1547,22 +1770,39 @@ class _OrbitPulseBadgeState extends State<OrbitPulseBadge>
       vsync: this,
       duration: const Duration(milliseconds: 1400),
     );
-    if (widget.active) {
-      _pulseController.repeat();
+  }
+
+  void _sync() {
+    final duration = OrbitMotionScope.duration(
+      context,
+      const Duration(milliseconds: 1400),
+      spatial: true,
+    );
+    final allowed =
+        widget.active &&
+        duration != Duration.zero &&
+        OrbitMotionScope.settings(context).navigation &&
+        TickerMode.valuesOf(context).enabled;
+    final changed = _pulseController.duration != duration;
+    if (duration != Duration.zero) _pulseController.duration = duration;
+    if (allowed) {
+      if (!_pulseController.isAnimating || changed) _pulseController.repeat();
+    } else {
+      _pulseController.stop();
+      _pulseController.value = 0;
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
   }
 
   @override
   void didUpdateWidget(OrbitPulseBadge oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.active != oldWidget.active) {
-      if (widget.active) {
-        _pulseController.repeat();
-      } else {
-        _pulseController.stop();
-        _pulseController.value = 0;
-      }
-    }
+    _sync();
   }
 
   @override
@@ -1577,7 +1817,10 @@ class _OrbitPulseBadgeState extends State<OrbitPulseBadge>
     final bg = widget.color ?? c.raised;
     final fg = widget.textColor ?? c.text;
     final pulse = widget.pulseColor ?? c.accent;
-    final motionOff = OrbitMotionScope.isOff(context);
+    final motionOff =
+        OrbitMotionScope.isOff(context) ||
+        OrbitMotionScope.isReduced(context) ||
+        !OrbitMotionScope.settings(context).navigation;
 
     Widget badge = Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

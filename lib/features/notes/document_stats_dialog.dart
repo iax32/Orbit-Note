@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -242,7 +243,7 @@ Future<void> showDocumentStatsDialog(
       ? DocumentStats.compute(selectedText, isLatex: isLatex)
       : null;
 
-  await showDialog<void>(
+  await showOrbitDialog<void>(
     context: context,
     builder: (ctx) => _DocumentStatsDialogView(
       title: title,

@@ -33,9 +33,10 @@ Future<void> captureUi(
   String name, {
   double pixelRatio = 1,
   Finder? target,
+  bool settle = true,
 }) async {
   if (!const bool.fromEnvironment('ORBIT_CAPTURE_UI')) return;
-  await tester.pumpAndSettle();
+  if (settle) await tester.pumpAndSettle();
   final boundary = tester.renderObject<RenderRepaintBoundary>(
     target ?? find.byType(RepaintBoundary).first,
   );

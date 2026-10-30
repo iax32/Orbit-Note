@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,7 +7,7 @@ import '../../app/workspace_controller.dart';
 Future<void> showEditorDraftReview(
   BuildContext context,
   WorkspaceController c,
-) => showDialog<void>(
+) => showOrbitDialog<void>(
   context: context,
   builder: (_) => _DraftReview(controller: c),
 );

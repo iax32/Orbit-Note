@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -273,7 +274,7 @@ class _CollectionTableViewState extends State<CollectionTableView> {
   }) async {
     final c = widget.controller, viewId = _view.id;
     final generation = c.workspaceGeneration, epoch = _actionEpoch;
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       builder: (_) => _CollectionTextDialog(
         title: title,
@@ -640,6 +641,7 @@ class _CollectionTableViewState extends State<CollectionTableView> {
 
               // Columns customization button
               PopupMenuButton<String>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 key: ValueKey(('collection-columns', _view, _actionEpoch)),
                 tooltip: 'Customize Columns',
                 icon: Container(
@@ -687,6 +689,7 @@ class _CollectionTableViewState extends State<CollectionTableView> {
 
               // Add Item button
               PopupMenuButton<String>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 key: ValueKey(('collection-create', _view, _actionEpoch)),
                 tooltip: 'Add to Collection',
                 icon: Container(
@@ -1117,6 +1120,7 @@ class _CollectionTableViewState extends State<CollectionTableView> {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: PopupMenuButton<String>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   key: ValueKey(('collection-status', _view, o, _actionEpoch)),
                   tooltip: 'Change Status',
                   enabled: writable,
@@ -1170,6 +1174,7 @@ class _CollectionTableViewState extends State<CollectionTableView> {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: PopupMenuButton<String>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   key: ValueKey((
                     'collection-priority',
                     _view,

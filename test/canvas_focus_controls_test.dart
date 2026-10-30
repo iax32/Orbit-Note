@@ -140,7 +140,7 @@ void main() {
       final menu = t.widget<PopupMenuButton<String>>(find.byKey(position));
       expect(
         menu.popUpAnimationStyle!.duration,
-        mode == 'normal' ? const Duration(milliseconds: 200) : Duration.zero,
+        mode == 'normal' ? const Duration(milliseconds: 180) : Duration.zero,
       );
       expect(find.byKey(const ValueKey('tools')), findsNothing);
       await t.drag(find.byKey(position), const Offset(-60, 80));

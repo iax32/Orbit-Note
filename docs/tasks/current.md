@@ -1,3 +1,33 @@
+# Complete implementation — cohesive application motion, 2026-10-30
+
+Owner requests a large clean-animation pass across Orbit. MOT-01/02/04/06 scope:
+shared dialog/menu/sheet arrival, finite panel/settings/tab/status feedback, and
+reduced/off/OS/idle ticker fixes. Preserve authored ink/text, export, persistence,
+focus and immediate input; no new engine or dependency. Physical sharing remains
+out of scope. [Behavior and validation](cohesive-motion-2026-10-30.md).
+
+Delivered over 230 migrated dialogs, all tool-menu call sites using explicit
+motion policies, context menus and three mobile editing sheets; desktop explorer,
+Settings selection/category/search-mode, tab actions and actual save/sync labels.
+Stable wrapper trees preserve drafts/focus while switching motion settings. Hidden
+actions immediately lose pointer/focus/semantics. Existing active ambience stops
+in reduced/off/hidden/category-disabled states. New-session const extra options
+were an adjacent settings crash; the constructor now owns a mutable shallow copy.
+
+Validation: 141 unique focused checks covered: final combined run 140 pass and one
+obsolete focus-menu timing assertion (200 ms) failed; its expectation was updated
+to the shared 180 ms timing and all seven focus checks then pass (1 s). Combined
+run 17 s; includes mode/OS changes, rapid close/reopen, immediate results/typing,
+one child tree/static-child rebuilds, settings/draft/operation recovery, split
+panes, portable preferences, pen pixels and large-board regressions. Analyzer
+lib/test/tool clean (9.6 s); strict 923 lib/test files unchanged (8.03 s).
+Actual-font in-flight (60 ms) and settled modal captures inspected. Minimap check
+on 10,000 objects/60 pans: cached 272.6 ms vs cold 2117.7 ms total test CPU; existing
+rendering algorithm unchanged, not a new hardware FPS claim.
+Building matching 1.0.15+16 Windows/Android using the approved existing Google and
+Android signing configuration. No GitHub build workflows. Native publication and
+remaining physical-device acceptance will be recorded after verification.
+
 # Published — tablet comfort and release, 2026-10-30
 
 Owner requests small tablet/Android comfort improvements, then source and native

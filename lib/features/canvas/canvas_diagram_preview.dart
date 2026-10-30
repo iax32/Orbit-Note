@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
@@ -67,7 +68,7 @@ class _CanvasDiagramPreviewState extends State<CanvasDiagramPreview> {
   }
 
   void expand() {
-    showDialog<void>(
+    showOrbitDialog<void>(
       context: context,
       builder: (context) => Dialog(
         child: SizedBox(

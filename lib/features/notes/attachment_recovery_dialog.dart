@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -201,7 +202,7 @@ class _AttachmentRecoveryDialogState extends State<AttachmentRecoveryDialog> {
 
   Future<void> forget(String reference) async {
     final readableTheme = _recoveryReadableTheme(Theme.of(context));
-    final accepted = await showDialog<bool>(
+    final accepted = await showOrbitDialog<bool>(
       context: context,
       builder: (context) => Theme(
         data: readableTheme,

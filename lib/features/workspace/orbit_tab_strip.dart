@@ -81,7 +81,7 @@ class OrbitTabStrip extends StatelessWidget {
                 message: 'Search open tabs and recent tabs',
                 child: TextButton(
                   key: const ValueKey('tab-overflow-button'),
-                  onPressed: () => showDialog<void>(
+                  onPressed: () => showOrbitDialog<void>(
                     context: context,
                     builder: (_) => _TabList(controller: controller),
                   ),
@@ -218,7 +218,10 @@ class _ReadableTabState extends State<_ReadableTab> {
                     if (c.dirty.contains(widget.id))
                       const Icon(Icons.circle, size: 5),
                     AnimatedOpacity(
-                      duration: OrbitMotion.control,
+                      duration: OrbitMotionScope.duration(
+                        context,
+                        OrbitMotion.control,
+                      ),
                       opacity: bookmarked || hover || focus || selected
                           ? 1
                           : 0.38,
@@ -240,11 +243,8 @@ class _ReadableTabState extends State<_ReadableTab> {
                         ),
                       ),
                     ),
-                    Visibility(
+                    OrbitActionReveal(
                       visible: selected || hover || focus,
-                      maintainSize: true,
-                      maintainState: true,
-                      maintainAnimation: true,
                       child: IconButton(
                         tooltip: pinned ? 'Unpin tab' : 'Close tab',
                         onPressed: () => pinned

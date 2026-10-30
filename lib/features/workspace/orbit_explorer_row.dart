@@ -191,13 +191,8 @@ class _OrbitExplorerRowState extends State<OrbitExplorerRow> {
                                     enabled: widget.menu.enabled,
                                     onSelected: widget.menu.onSelected,
                                     itemBuilder: widget.menu.itemBuilder,
-                                    popUpAnimationStyle: AnimationStyle(
-                                      duration: OrbitMotionScope.duration(
-                                        context,
-                                        OrbitMotion.panel,
-                                      ),
-                                      curve: OrbitMotion.ease,
-                                    ),
+                                    popUpAnimationStyle:
+                                        OrbitMotionScope.popupStyle(context),
                                     icon: const Icon(
                                       Icons.more_horiz,
                                       size: 16,

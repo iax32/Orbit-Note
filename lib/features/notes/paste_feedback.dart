@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import '../../domain/pdf_quote_transfer.dart';
@@ -60,7 +61,7 @@ Future<String?> readEditorClipboard(
   final pdf = _pdfCopy;
   if (!context.mounted || plain || pdf == null || text != pdf.text) return text;
   final focus = FocusManager.instance.primaryFocus;
-  final result = await showDialog<int>(
+  final result = await showOrbitDialog<int>(
     context: context,
     builder: (context) => SimpleDialog(
       title: const Text('Paste PDF text'),

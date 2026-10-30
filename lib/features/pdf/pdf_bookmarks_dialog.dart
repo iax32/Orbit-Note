@@ -122,7 +122,7 @@ class _PdfBookmarksDialogState extends State<PdfBookmarksDialog> {
   }
 
   Future<void> rename(int page) async {
-    final name = await showDialog<String>(
+    final name = await showOrbitDialog<String>(
       context: context,
       builder: (_) => _BookmarkNameDialog(
         name: names[page] ?? '',
@@ -184,6 +184,7 @@ class _PdfBookmarksDialogState extends State<PdfBookmarksDialog> {
                 },
               ),
               PopupMenuButton<_BookmarkSort>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 tooltip: 'Sort bookmarks',
                 initialValue: sort,
                 onSelected: (value) {

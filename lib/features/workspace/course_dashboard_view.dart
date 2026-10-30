@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import '../../domain/course_progress.dart';
 import 'package:flutter/material.dart';
 import '../../app/orbit_theme.dart';
@@ -88,7 +89,7 @@ class CourseDashboardView extends StatelessWidget {
 
   Future<void> _createNewTask(BuildContext context) async {
     final textCtrl = TextEditingController();
-    final res = await showDialog<String>(
+    final res = await showOrbitDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('New Course Task'),

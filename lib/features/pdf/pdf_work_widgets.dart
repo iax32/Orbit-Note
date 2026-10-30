@@ -35,7 +35,7 @@ class _PdfFormLayerState extends State<PdfFormLayer> {
       value = current != true;
     } else {
       var text = current.toString();
-      value = await showDialog<String>(
+      value = await showOrbitDialog<String>(
         context: context,
         builder: (context) => OrbitDialog(
           title: Text(field.name.isEmpty ? 'PDF text field' : field.name),

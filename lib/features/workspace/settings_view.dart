@@ -342,8 +342,12 @@ class _SettingsViewState extends State<SettingsView> {
             ),
           ],
         );
+        final animatedBody = OrbitContentTransition(
+          identity: (category, query.isEmpty),
+          child: body,
+        );
         if (!wide) {
-          return body;
+          return animatedBody;
         }
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -373,18 +377,36 @@ class _SettingsViewState extends State<SettingsView> {
                   for (final item in _Category.values)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 4),
-                      child: Material(
-                        type: MaterialType.transparency,
-                        child: ListTile(
-                          key: ValueKey('settings-category-${item.name}'),
-                          dense: true,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
+                      child: AnimatedContainer(
+                        duration: OrbitMotionScope.settings(context).navigation
+                            ? OrbitMotionScope.duration(
+                                context,
+                                OrbitMotion.control,
+                              )
+                            : Duration.zero,
+                        curve: OrbitMotion.ease,
+                        decoration: BoxDecoration(
+                          color: query.isEmpty && category == item
+                              ? colors.selected
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(
+                            OrbitRadius.control,
                           ),
-                          leading: Icon(item.icon, size: 19),
-                          title: Text(item.label),
-                          selected: query.isEmpty && category == item,
-                          onTap: () => select(item),
+                        ),
+                        child: Material(
+                          type: MaterialType.transparency,
+                          child: ListTile(
+                            key: ValueKey('settings-category-${item.name}'),
+                            dense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                            ),
+                            leading: Icon(item.icon, size: 19),
+                            title: Text(item.label),
+                            selected: query.isEmpty && category == item,
+                            selectedTileColor: Colors.transparent,
+                            onTap: () => select(item),
+                          ),
                         ),
                       ),
                     ),
@@ -405,7 +427,7 @@ class _SettingsViewState extends State<SettingsView> {
                 alignment: Alignment.topCenter,
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 1080),
-                  child: body,
+                  child: animatedBody,
                 ),
               ),
             ),
@@ -493,7 +515,7 @@ class _SettingsViewState extends State<SettingsView> {
         session = controller.session,
         generation = controller.workspaceGeneration,
         section = category;
-    final accepted = await showDialog<bool>(
+    final accepted = await showOrbitDialog<bool>(
       context: context,
       builder: (ctx) => OrbitDialog(
         title: Text('Reset ${section.label.toLowerCase()}?'),
@@ -822,7 +844,7 @@ class _SettingsViewState extends State<SettingsView> {
   Future<void> clearDictionary() async {
     final owner = controller.session,
         generation = controller.workspaceGeneration;
-    final accepted = await showDialog<bool>(
+    final accepted = await showOrbitDialog<bool>(
       context: context,
       builder: (ctx) => OrbitDialog(
         title: const Text('Clear custom dictionary?'),

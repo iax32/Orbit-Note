@@ -2014,7 +2014,7 @@ class _FocusSessionCardState extends State<_FocusSessionCard> {
     final textController = TextEditingController(
       text: c.activeWorkSession?.continuationNote ?? '',
     );
-    showDialog(
+    showOrbitDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Continuation Note'),
@@ -2064,7 +2064,7 @@ class _FocusSessionCardState extends State<_FocusSessionCard> {
       text: session.continuationNote,
     );
 
-    showDialog(
+    showOrbitDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('End Focus Session'),
@@ -2123,7 +2123,7 @@ class _FocusSessionCardState extends State<_FocusSessionCard> {
     final c = widget.controller;
     final titleController = TextEditingController();
     var category = initialCategory;
-    showDialog(
+    showOrbitDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -2921,6 +2921,7 @@ class _TaskRowState extends State<TaskRow> {
             if (widget.showPriority) ...[
               const SizedBox(width: 6),
               PopupMenuButton<String?>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 tooltip: 'Priority: ${priority ?? "None"}',
                 padding: EdgeInsets.zero,
                 iconSize: 18,
@@ -2980,6 +2981,7 @@ class _TaskRowState extends State<TaskRow> {
             if (widget.showDueDate) ...[
               const SizedBox(width: 8),
               PopupMenuButton<String>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 tooltip: dueDate != null
                     ? 'Due: $friendlyDate'
                     : 'Set due date',
@@ -3094,6 +3096,7 @@ class _TaskRowState extends State<TaskRow> {
                 onPressed: () => widget.controller.openObject(o.id),
               ),
               PopupMenuButton<String>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 tooltip: 'More actions',
                 padding: EdgeInsets.zero,
                 iconSize: 14,
@@ -3709,6 +3712,7 @@ class _TasksViewState extends State<TasksView> {
                   const SizedBox(width: 8),
                   // Sort menu
                   PopupMenuButton<String>(
+                    popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                     tooltip: 'Sort tasks',
                     icon: Icon(Icons.sort, size: 18, color: colors.subtle),
                     initialValue: sortOption,
@@ -3742,6 +3746,7 @@ class _TasksViewState extends State<TasksView> {
                   ),
                   // Filter menu
                   PopupMenuButton<String>(
+                    popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                     tooltip: 'Filter tasks',
                     icon: Icon(
                       isAnyFilterActive
@@ -3864,6 +3869,7 @@ class _TasksViewState extends State<TasksView> {
                   ),
                   // View options menu
                   PopupMenuButton<String>(
+                    popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                     tooltip: 'Visible properties',
                     icon: Icon(
                       Icons.view_column_outlined,
@@ -5258,6 +5264,7 @@ class _TaskDetailState extends State<TaskDetail> {
             Align(
               alignment: Alignment.centerLeft,
               child: PopupMenuButton<String>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 tooltip: 'More task actions',
                 onSelected: (_) => widget.controller.trash(o.id),
                 itemBuilder: (_) => [

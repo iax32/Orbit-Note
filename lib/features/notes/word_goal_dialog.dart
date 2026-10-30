@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../app/orbit_theme.dart';
@@ -423,7 +424,7 @@ Future<int?> showWordGoalDialog(
   int? targetWords,
   ValueChanged<int?>? onTargetWordsChanged,
 }) {
-  return showDialog<int?>(
+  return showOrbitDialog<int?>(
     context: context,
     builder: (ctx) => WordGoalDialog(
       currentWords: currentWords,

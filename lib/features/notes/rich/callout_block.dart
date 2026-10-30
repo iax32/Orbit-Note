@@ -1,3 +1,4 @@
+import '../../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -397,7 +398,7 @@ class CalloutBlockState extends State<CalloutBlock> {
     final before = _emitted ?? widget.source;
     final parts = CalloutSourceParts(before);
     if (parts.typeEnd <= parts.typeStart) return;
-    final next = await showDialog<String>(
+    final next = await showOrbitDialog<String>(
       context: context,
       builder: (_) => _CalloutTitleDialog(title: _parsed.title),
     );
@@ -526,6 +527,9 @@ class CalloutBlockState extends State<CalloutBlock> {
                         ),
                       ),
                       PopupMenuButton<CalloutType>(
+                        popUpAnimationStyle: OrbitMotionScope.popupStyle(
+                          context,
+                        ),
                         tooltip: 'Change callout type',
                         icon: Icon(
                           Icons.swap_horiz,
@@ -553,6 +557,9 @@ class CalloutBlockState extends State<CalloutBlock> {
                         onSelected: _updateType,
                       ),
                       PopupMenuButton<String>(
+                        popUpAnimationStyle: OrbitMotionScope.popupStyle(
+                          context,
+                        ),
                         tooltip: 'Callout options',
                         icon: const Icon(Icons.more_horiz, size: 16),
                         itemBuilder: (_) => [

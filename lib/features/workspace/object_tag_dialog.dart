@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import '../../app/workspace_controller.dart';
 
@@ -8,7 +9,7 @@ Future<void> showObjectTagDialog(
   final object = c.find(c.session.activeId);
   if (object == null || object.isDeleted || object.isReadOnly) return;
   final generation = c.workspaceGeneration;
-  final tag = await showDialog<String>(
+  final tag = await showOrbitDialog<String>(
     context: context,
     builder: (_) => const _TagDialog(),
   );

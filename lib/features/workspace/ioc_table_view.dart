@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../app/orbit_theme.dart';
@@ -81,7 +82,7 @@ class _IocTableViewState extends State<IocTableView> {
         widget.viewObject.properties['target']?.toString() ??
         '';
 
-    final result = await showDialog<bool>(
+    final result = await showOrbitDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(

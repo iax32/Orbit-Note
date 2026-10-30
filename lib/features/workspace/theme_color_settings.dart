@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'package:flutter/foundation.dart' show mapEquals;
 import 'theme_palette_browser.dart';
 import 'package:flutter/material.dart';
@@ -553,7 +554,7 @@ class ThemeColorSettings extends StatelessWidget {
                         '${role.value}${overrides.containsKey(role.key) ? ' •' : ''}',
                       ),
                       onPressed: () async {
-                        final result = await showDialog<_ColorChoice>(
+                        final result = await showOrbitDialog<_ColorChoice>(
                           context: context,
                           builder: (_) => Theme(
                             data: recovery,

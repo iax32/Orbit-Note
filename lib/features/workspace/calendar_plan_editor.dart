@@ -18,7 +18,7 @@ Future<void> showCalendarPlanEditor(
   final generation = c.workspaceGeneration;
   if (original?.properties['calendarPlan'] != null &&
       calendarPlanKind(original!) == null) {
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       builder: (ctx) => OrbitDialog(
         title: const Text('Planning data needs review'),
@@ -87,7 +87,7 @@ Future<void> showCalendarPlanEditor(
       subject.dispose();
       estimate.dispose();
       if (context.mounted) {
-        await showDialog<void>(
+        await showOrbitDialog<void>(
           context: context,
           builder: (ctx) => OrbitDialog(
             title: const Text('Event dates need review'),
@@ -122,7 +122,7 @@ Future<void> showCalendarPlanEditor(
   );
   try {
     if (!context.mounted) return;
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
@@ -342,7 +342,7 @@ Future<void> showCalendarPlanEditor(
                         : () async {
                             final search = TextEditingController();
                             try {
-                              final id = await showDialog<String>(
+                              final id = await showOrbitDialog<String>(
                                 context: ctx,
                                 builder: (picker) => StatefulBuilder(
                                   builder: (picker, update) {

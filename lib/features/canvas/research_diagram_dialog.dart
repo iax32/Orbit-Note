@@ -14,7 +14,7 @@ class ResearchDiagramChoice {
 Future<ResearchDiagramChoice?> showResearchDiagramDialog(
   BuildContext context, {
   bool allowCalculation = false,
-}) => showDialog<ResearchDiagramChoice>(
+}) => showOrbitDialog<ResearchDiagramChoice>(
   context: context,
   builder: (_) => _ResearchDiagramDialog(allowCalculation: allowCalculation),
 );

@@ -1,3 +1,4 @@
+import '../../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'equation_editor.dart';
@@ -15,7 +16,7 @@ class NoteMath extends StatelessWidget {
   final bool display;
   final ValueChanged<String>? onEdit;
   Future<void> edit(BuildContext context) async {
-    final result = await showDialog<String>(
+    final result = await showOrbitDialog<String>(
       context: context,
       builder: (_) => EquationEditor(source: source, display: display),
     );

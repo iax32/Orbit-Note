@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import '../../app/orbit_theme.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -39,7 +40,7 @@ Future<void> showCodeIde(
   WorkspaceController? controller,
   UniversalObject? owner,
   String evidenceFolder = 'Notes',
-}) => showDialog<void>(
+}) => showOrbitDialog<void>(
   context: context,
   barrierDismissible: false,
   builder: (_) => CodeIdeWorkspace(
@@ -551,7 +552,7 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
   Future<bool> confirmAssignmentSave(List<String> paths) async {
     final protected = paths.where(protectedUniversityPath).toList();
     if (!assignmentProtection || protected.isEmpty) return true;
-    return await showDialog<bool>(
+    return await showOrbitDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Protected university assignment files'),
@@ -619,7 +620,7 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
     final t = tab;
     if (t == null) return;
     var value = '';
-    final line = await showDialog<int>(
+    final line = await showOrbitDialog<int>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Go to source line'),
@@ -658,7 +659,7 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
     try {
       final current = await s.project.read(t.doc.path), version = t.doc.version;
       if (!mounted || session != s) return;
-      final reviewed = await showDialog<String>(
+      final reviewed = await showOrbitDialog<String>(
         context: context,
         builder: (_) => CodeWorkspace(
           code: t.doc.text,
@@ -727,7 +728,7 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
     final s = session;
     if (s == null || busy) return;
     var path = '';
-    final name = await showDialog<String>(
+    final name = await showOrbitDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(directory ? 'New source folder' : 'New source file'),
@@ -772,7 +773,7 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
     final s = session;
     if (s == null) return;
     // Reuse the read-only scoped browser adapter through a project bridge.
-    final hit = await showDialog<SourceSearchHit>(
+    final hit = await showOrbitDialog<SourceSearchHit>(
       context: context,
       builder: (_) => SourceSearchDialog(
         folder: _ProjectSearchFolder(s.project),
@@ -870,7 +871,7 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
     if (!mounted || session != s || t.doc.version != version || tab != t) {
       return;
     }
-    final chosen = await showDialog<CodeSuggestion>(
+    final chosen = await showOrbitDialog<CodeSuggestion>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Code completion'),
@@ -954,7 +955,7 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
           text,
           result.map((e) => CodeTextEdit.parse(text, e)).toList(),
         );
-        final reviewed = await showDialog<String>(
+        final reviewed = await showOrbitDialog<String>(
           context: context,
           builder: (_) => CodeWorkspace(
             code: formatted,
@@ -1016,7 +1017,7 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
         }
 
         collect(result, 0);
-        final chosen = await showDialog<CodePosition>(
+        final chosen = await showOrbitDialog<CodePosition>(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('File symbols'),
@@ -1061,7 +1062,7 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
         if (value == null) {
           throw const FormatException('No symbol information.');
         }
-        await showDialog<void>(
+        await showOrbitDialog<void>(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Symbol information'),
@@ -1086,7 +1087,7 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
 
   Future<void> configure() {
     toolsEdited = true;
-    return showDialog<void>(
+    return showOrbitDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Local code tools'),
@@ -1208,7 +1209,7 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
               } on Object catch (e) {
                 message(e);
                 if (context.mounted) {
-                  await showDialog<void>(
+                  await showOrbitDialog<void>(
                     context: context,
                     builder: (context) => AlertDialog(
                       title: const Text('Could not save local tools'),
@@ -1426,7 +1427,7 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
   Future<void> manageProfiles() async {
     final s = session, store = launchStore;
     if (s == null || store == null || busy || profileRun != null) return;
-    final saved = await showDialog<CodeLaunchSnapshot>(
+    final saved = await showOrbitDialog<CodeLaunchSnapshot>(
       context: context,
       barrierDismissible: false,
       builder: (_) => CodeLaunchProfiles(
@@ -1607,7 +1608,7 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
       final entries = await s.project.history(t.doc.path),
           version = t.doc.version;
       if (!mounted || session != s) return;
-      final chosen = await showDialog<String>(
+      final chosen = await showOrbitDialog<String>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Source save checkpoints'),
@@ -1652,7 +1653,7 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
           session != s) {
         return;
       }
-      final reviewed = await showDialog<String>(
+      final reviewed = await showOrbitDialog<String>(
         context: context,
         builder: (_) => CodeWorkspace(
           code: chosen,
@@ -1826,7 +1827,7 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
     final t = tab, s = session;
     if (t == null || s == null) return;
     final version = t.doc.version;
-    final value = await showDialog<String>(
+    final value = await showOrbitDialog<String>(
       context: context,
       builder: (_) => CodeWorkspace(
         code: t.doc.text,
@@ -1848,6 +1849,7 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
       Map<String, String> labels,
       void Function(String) select,
     ) => PopupMenuButton<String>(
+      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
       tooltip: label,
       onSelected: select,
       itemBuilder: (_) => [
@@ -2363,7 +2365,7 @@ class _CodeIdeWorkspaceState extends State<CodeIdeWorkspace>
                                               context,
                                             ).scale(14) /
                                             14) {
-                                      showDialog<void>(
+                                      showOrbitDialog<void>(
                                         context: context,
                                         builder: (context) => Dialog(
                                           insetPadding: const EdgeInsets.all(

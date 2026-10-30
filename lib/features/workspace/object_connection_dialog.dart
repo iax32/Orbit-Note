@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import '../../app/workspace_controller.dart';
 import '../../domain/json_values.dart';
@@ -12,7 +13,7 @@ Future<bool?> showObjectConnectionEditor(
   UniversalObject destination, {
   required int generation,
   String? expectedSourceVersion,
-}) => showDialog<bool>(
+}) => showOrbitDialog<bool>(
   context: context,
   barrierDismissible: false,
   builder: (_) => _ConnectionEditor(

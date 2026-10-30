@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import '../../domain/universal_object.dart';
 import '../../domain/life_workspace.dart';
 import 'package:flutter/material.dart';
@@ -19,7 +20,7 @@ class NoteTemplateDialog extends StatefulWidget {
     BuildContext context, {
     bool insertMode = false,
     List<UniversalObject> personalTemplates = const [],
-  }) => showDialog<NoteTemplate>(
+  }) => showOrbitDialog<NoteTemplate>(
     context: context,
     builder: (_) => NoteTemplateDialog(
       insertMode: insertMode,
@@ -81,12 +82,12 @@ class _NoteTemplateDialogState extends State<NoteTemplateDialog> {
     setState(() => _choosing = true);
     try {
       final result = _selected.id == 'creative_brief'
-          ? await showDialog<NoteTemplate>(
+          ? await showOrbitDialog<NoteTemplate>(
               context: context,
               builder: (_) => const CreativeBriefDialog(),
             )
           : _selected.id.startsWith('article_')
-          ? await showDialog<NoteTemplate>(
+          ? await showOrbitDialog<NoteTemplate>(
               context: context,
               builder: (_) => TechnicalArticleTemplateDialog(
                 template: _selected,

@@ -94,3 +94,30 @@ feedback, revision scrubbing and actual graph path reveal preserve input focus.
 No per-keystroke delay, idle particle loop, new AI/handwriting backend, mandatory
 Markdown scroll progress, physical page-curl simulation or claim of full MOT
 completion. [Exact coverage and validation](../tasks/motion-studio-2026-10-23.md).
+
+## Cohesive interface pass — 2026-10-30
+
+Dialog entry points share showOrbitDialog, preserving Flutter's modal barrier,
+focus traversal, anchors, navigator choice, results and restoration settings.
+Normal adds a restrained 5–8 px / .985–1 surface arrival; Reduced uses only the
+brief route fade; Off and disabled Navigation & surfaces open immediately. Popup
+menus, context menus and mobile editing sheets use shared duration/easing and
+speed, with spatial growth disabled in Reduced/Off. Draft confirmations and
+progress dialogs use the same boundary; operation results are never held for an
+exit animation. Specialized authored presentation remains separate.
+
+Desktop explorer opening, Settings category/search-mode arrival, category
+selection, tab actions and save/sync labels use finite transitions. Search does
+not replay on each keystroke. Status feedback shows the actual new label at once,
+keeps one semantics tree, and never infers a save or transfer success. Hidden tab
+actions fade while losing pointer, keyboard and semantics access immediately.
+
+Entrance/fade-scale wrappers now retain the same child hierarchy when motion
+preferences change; typing/focus/local controller state survives. Existing active
+focus/status ambience stops its controller in Reduced, Off, hidden TickerMode or
+disabled navigation, and resumes only when allowed. No new ambient loop, shader,
+particles, backdrop blur, delayed pen input or outgoing duplicate editor is added.
+The static child is passed outside per-frame builders. Physical device frame
+latency remains a separate acceptance check.
+
+[Scope, failures and validation](../tasks/cohesive-motion-2026-10-30.md).

@@ -520,12 +520,13 @@ class _GraphViewState extends State<GraphView> with TickerProviderStateMixin {
                     TextButton.icon(
                       icon: const Icon(Icons.insights_outlined, size: 18),
                       label: const Text('Vault Insights'),
-                      onPressed: () => showDialog<void>(
+                      onPressed: () => showOrbitDialog<void>(
                         context: context,
                         builder: (_) => VaultInsightsDialog(controller: c),
                       ),
                     ),
                     PopupMenuButton<String>(
+                      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                       tooltip: 'Choose local graph focus',
                       icon: const Icon(Icons.my_location),
                       itemBuilder: (_) => [
@@ -558,7 +559,7 @@ class _GraphViewState extends State<GraphView> with TickerProviderStateMixin {
                     IconButton(
                       tooltip: 'Browse graph objects',
                       icon: const Icon(Icons.list_alt),
-                      onPressed: () => showDialog<void>(
+                      onPressed: () => showOrbitDialog<void>(
                         context: context,
                         builder: (context) => OrbitDialog(
                           title: const Text('Graph objects'),

@@ -8,7 +8,7 @@ Future<UniversalObject?> showWorkingCalendarEditor(
   BuildContext context,
   WorkspaceController c, {
   UniversalObject? calendar,
-}) => showDialog<UniversalObject>(
+}) => showOrbitDialog<UniversalObject>(
   context: context,
   barrierDismissible: false,
   builder: (_) => _CalendarEditor(controller: c, calendar: calendar),
@@ -221,7 +221,7 @@ Future<void> showGanttCalendars(
   Object? selected = view.properties['workCalendarId'];
   bool saving = false;
   String? error;
-  await showDialog<void>(
+  await showOrbitDialog<void>(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, set) {

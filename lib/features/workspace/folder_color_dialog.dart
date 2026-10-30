@@ -14,7 +14,7 @@ Future<Color?> showFolderColorDialog(
   void Function(Color? color)? onColorSelected,
   bool Function(Color? color)? onCommit,
 }) async {
-  return showDialog<Color?>(
+  return showOrbitDialog<Color?>(
     context: context,
     builder: (dialogCtx) => _FolderColorDialogContent(
       folderName: folderName,

@@ -12,7 +12,7 @@ Future<void> showObjectRenameDialog(
   if (!identical(controller.find(object.id), object)) return Future.value();
   final generation = controller.workspaceGeneration;
   final origin = FocusManager.instance.primaryFocus;
-  return showDialog<void>(
+  return showOrbitDialog<void>(
     context: context,
     builder: (_) => _ObjectRenameDialog(
       controller: controller,

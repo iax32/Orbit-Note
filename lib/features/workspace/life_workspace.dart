@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'life_pack_dialog.dart';
 import 'finance_workspace.dart';
 import '../../domain/event_recurrence.dart';
@@ -16,7 +17,7 @@ Future<void> showLifeWorkspace(
   BuildContext context,
   WorkspaceController c, {
   String? objectId,
-}) => showDialog<void>(
+}) => showOrbitDialog<void>(
   context: context,
   builder: (_) => LifeWorkspace(controller: c, initialId: objectId),
 );
@@ -31,7 +32,7 @@ Future<void> saveObjectAsLifeTemplate(
   var saving = false;
   String? error;
   try {
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
@@ -189,7 +190,7 @@ class _LifeWorkspaceState extends ConsumerState<LifeWorkspace> {
     Map<String, dynamic> fields = const {},
   }) async {
     final generation = c.workspaceGeneration;
-    final result = await showDialog<LifeFormResult>(
+    final result = await showOrbitDialog<LifeFormResult>(
       context: context,
       builder: (_) => LifeRecordForm(
         controller: c,
@@ -212,7 +213,7 @@ class _LifeWorkspaceState extends ConsumerState<LifeWorkspace> {
   }
 
   Future<void> _library() async {
-    final preset = await showDialog<LifePreset>(
+    final preset = await showOrbitDialog<LifePreset>(
       context: context,
       builder: (_) => const _LifeLibrary(),
     );
@@ -222,7 +223,7 @@ class _LifeWorkspaceState extends ConsumerState<LifeWorkspace> {
   Future<String?> _name(String title, {String initial = ''}) async {
     final input = TextEditingController(text: initial);
     try {
-      return await showDialog<String>(
+      return await showOrbitDialog<String>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text(title),
@@ -797,7 +798,7 @@ class _LifeWorkspaceState extends ConsumerState<LifeWorkspace> {
 
   Future<void> _configureHome(Set<String> visible) async {
     final selected = {...visible}, generation = c.workspaceGeneration;
-    final result = await showDialog<bool>(
+    final result = await showOrbitDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, update) => AlertDialog(
@@ -1009,7 +1010,7 @@ class _LifeWorkspaceState extends ConsumerState<LifeWorkspace> {
       ],
       const SizedBox(height: 20),
       _button('Move to Trash', () async {
-        final yes = await showDialog<bool>(
+        final yes = await showOrbitDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
             title: Text('Move “${o.title}” to Trash?'),
@@ -1048,7 +1049,7 @@ class _LifeWorkspaceState extends ConsumerState<LifeWorkspace> {
     final generation = c.workspaceGeneration;
     String? error;
     try {
-      final yes = await showDialog<bool>(
+      final yes = await showOrbitDialog<bool>(
         context: context,
         builder: (ctx) => StatefulBuilder(
           builder: (ctx, update) => AlertDialog(
@@ -1418,7 +1419,7 @@ class _LifeWorkspaceState extends ConsumerState<LifeWorkspace> {
         ),
       if (active)
         _button('Finish workout', () async {
-          final yes = await showDialog<bool>(
+          final yes = await showOrbitDialog<bool>(
             context: context,
             builder: (ctx) => AlertDialog(
               title: const Text('Finish workout?'),
@@ -1478,7 +1479,7 @@ class _LifeWorkspaceState extends ConsumerState<LifeWorkspace> {
     String? error;
     final generation = c.workspaceGeneration;
     try {
-      final result = await showDialog<bool>(
+      final result = await showOrbitDialog<bool>(
         context: context,
         builder: (ctx) => StatefulBuilder(
           builder: (ctx, update) => AlertDialog(
@@ -1736,7 +1737,7 @@ class _LifeWorkspaceState extends ConsumerState<LifeWorkspace> {
       return '$count completed sets\n${totals.entries.map((e) => '${e.key}: ${e.value.toStringAsFixed(1)}').join('\n')}';
     }
 
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, update) => AlertDialog(
@@ -1990,7 +1991,7 @@ Future<List<String>?> _chooseObjects(
   final selected = initial.toSet();
   var query = '';
   var limit = 40;
-  return showDialog<List<String>>(
+  return showOrbitDialog<List<String>>(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, update) {

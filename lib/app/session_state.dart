@@ -15,7 +15,7 @@ enum OrbitDestination {
 class SessionState {
   SessionState({
     this.destination = OrbitDestination.home,
-    this.extra = const {},
+    Map<String, dynamic> extra = const {},
     this.searchWorkspace = const {},
     this.spaces = const {},
     this.projectContext = const {},
@@ -79,7 +79,8 @@ class SessionState {
     double codeFontSize = 14,
     List<Map<String, dynamic>> customThemes = const [],
     Map<String, int> folderColors = const {},
-  }) : tabs = List.of(tabs),
+  }) : extra = Map.of(extra),
+       tabs = List.of(tabs),
        recent = List.of(recent),
        collapsedFolders = List.of(collapsedFolders),
        pinnedTabs = List.of(pinnedTabs),

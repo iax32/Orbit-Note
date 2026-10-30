@@ -67,7 +67,7 @@ Future<void> showSpaceManager(
   BuildContext context,
   WorkspaceController c,
 ) async {
-  await showDialog<void>(
+  await showOrbitDialog<void>(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, set) => OrbitDialog(
@@ -117,6 +117,7 @@ Future<void> showSpaceManager(
                   }
                 },
                 trailing: PopupMenuButton<String>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'Manage ${r['name']}',
                   onSelected: (action) async {
                     if (action == 'duplicate') {
@@ -137,7 +138,7 @@ Future<void> showSpaceManager(
                     }
                     if (action == 'rename' && ctx.mounted) {
                       var name = r['name'] as String;
-                      final result = await showDialog<String>(
+                      final result = await showOrbitDialog<String>(
                         context: ctx,
                         builder: (d) => OrbitDialog(
                           title: const Text('Rename context'),
@@ -220,7 +221,7 @@ Future<void> _saveSpaceDialog(
   String name = '', project = '', folder = '';
   bool layout = false, appearance = false, busy = false;
   String? error;
-  await showDialog<void>(
+  await showOrbitDialog<void>(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, set) => OrbitDialog(
@@ -320,7 +321,7 @@ Future<void> showDashboardEditor(
       .toList();
   String? error;
   bool busy = false;
-  await showDialog<void>(
+  await showOrbitDialog<void>(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, set) => OrbitDialog(

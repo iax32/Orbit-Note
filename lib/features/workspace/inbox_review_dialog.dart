@@ -9,7 +9,7 @@ Future<void> showInboxReviewDialog(
   BuildContext context,
   WorkspaceController controller,
 ) async {
-  await showDialog<void>(
+  await showOrbitDialog<void>(
     context: context,
     builder: (dialogCtx) => _InboxReviewContent(controller: controller),
   );
@@ -190,6 +190,7 @@ class _InboxReviewContentState extends State<_InboxReviewContent> {
                   },
                 ),
                 PopupMenuButton<String>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'Assign Project',
                   child: Container(
                     padding: const EdgeInsets.symmetric(

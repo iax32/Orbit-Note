@@ -20,7 +20,7 @@ Future<void> showEventOccurrenceDialog(
       c.repository.readOnly ||
       source.isReadOnly ||
       (source.properties['eventRecurrence'] as Map)['finished'] == true;
-  await showDialog<void>(
+  await showOrbitDialog<void>(
     context: context,
     barrierDismissible: false,
     builder: (ctx) => StatefulBuilder(

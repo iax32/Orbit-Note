@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -15,7 +16,7 @@ Future<void> showGameplayWorkbench(
   WorkspaceController c, {
   required String project,
   required String folder,
-}) => showDialog<void>(
+}) => showOrbitDialog<void>(
   context: context,
   builder: (_) =>
       GameplayWorkbench(controller: c, project: project, folder: folder),
@@ -88,7 +89,7 @@ class _GameplayWorkbenchState extends ConsumerState<GameplayWorkbench> {
     String kind, {
     UniversalObject? task,
   }) async {
-    final result = await showDialog<UniversalObject>(
+    final result = await showOrbitDialog<UniversalObject>(
       context: context,
       builder: (_) => _GameplayRecordDialog(
         c: c,
@@ -508,7 +509,7 @@ class _GameplayWorkbenchState extends ConsumerState<GameplayWorkbench> {
                         OutlinedButton.icon(
                           onPressed: mechanics.isEmpty
                               ? null
-                              : () => showDialog<void>(
+                              : () => showOrbitDialog<void>(
                                   context: context,
                                   builder: (_) => GameplayReleaseWorkspace(
                                     controller: c,
@@ -672,7 +673,7 @@ class _GameplayRecordDialogState extends State<_GameplayRecordDialog> {
       fields.putIfAbsent(key, () => TextEditingController());
 
   Future<void> browseExcerpt() async {
-    final value = await showDialog<SourceExcerpt>(
+    final value = await showOrbitDialog<SourceExcerpt>(
       context: context,
       builder: (_) => const SourceBrowserDialog(capture: true),
     );

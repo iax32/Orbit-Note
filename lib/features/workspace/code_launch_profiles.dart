@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
@@ -206,7 +207,7 @@ class _CodeLaunchProfilesState extends State<CodeLaunchProfiles> {
     try {
       final past = await widget.store.history();
       if (!mounted) return;
-      final choice = await showDialog<CodeLaunchSnapshot>(
+      final choice = await showOrbitDialog<CodeLaunchSnapshot>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Earlier launch settings'),

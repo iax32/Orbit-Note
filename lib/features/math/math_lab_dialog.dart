@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../domain/math_lab.dart';
@@ -13,7 +14,7 @@ import '../notes/rich/note_math.dart';
 Future<MathLabResult?> showMathLab(
   BuildContext context, {
   MathPlotDefinition? initialPlot,
-}) => showDialog<MathLabResult>(
+}) => showOrbitDialog<MathLabResult>(
   context: context,
   builder: (_) => MathLabDialog(initialPlot: initialPlot),
 );

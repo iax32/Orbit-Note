@@ -60,14 +60,15 @@ void main() {
       );
 
       await tester.pump(const Duration(milliseconds: 30));
-      // No Transform should be added when travel is suppressed
-      expect(
+      // Keep a stable tree so changing the preference cannot remount an editor.
+      final transform = tester.widget<Transform>(
         find.descendant(
           of: find.byType(OrbitEntrance),
           matching: find.byType(Transform),
         ),
-        findsNothing,
       );
+      expect(transform.transform.storage[12], 0);
+      expect(transform.transform.storage[13], 0);
 
       await tester.pumpAndSettle();
       expect(find.text('Panel content'), findsOneWidget);

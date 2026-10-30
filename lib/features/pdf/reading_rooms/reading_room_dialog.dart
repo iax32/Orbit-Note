@@ -1,3 +1,4 @@
+import '../../../app/orbit_components.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../app/orbit_theme.dart';
@@ -29,7 +30,7 @@ class ReadingRoomAmbienceSheet extends StatefulWidget {
     required ValueChanged<String> onColorFilterChanged,
     void Function(int minutes, ReadingRoom room)? onStartSession,
   }) {
-    return showDialog<void>(
+    return showOrbitDialog<void>(
       context: context,
       builder: (_) => ReadingRoomAmbienceSheet(
         initialRoom: initialRoom,

@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/workspace_controller.dart';
@@ -7,7 +8,7 @@ import 'calendar_planning_workspace.dart';
 import 'study_workspace.dart';
 
 Future<void> showCourseHub(BuildContext context, WorkspaceController c) =>
-    showDialog<void>(
+    showOrbitDialog<void>(
       context: context,
       builder: (_) => CourseHub(controller: c),
     );
@@ -48,7 +49,7 @@ class _CourseHubState extends ConsumerState<CourseHub> {
     final form = GlobalKey<FormState>();
     Map<String, dynamic>? result;
     try {
-      result = await showDialog<Map<String, dynamic>>(
+      result = await showOrbitDialog<Map<String, dynamic>>(
         context: context,
         builder: (ctx) => StatefulBuilder(
           builder: (ctx, update) => AlertDialog(
@@ -215,7 +216,7 @@ class _CourseHubState extends ConsumerState<CourseHub> {
         generation = widget.controller.workspaceGeneration;
     final title = TextEditingController(), due = TextEditingController();
     final form = GlobalKey<FormState>();
-    final accepted = await showDialog<bool>(
+    final accepted = await showOrbitDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(
@@ -307,7 +308,7 @@ class _CourseHubState extends ConsumerState<CourseHub> {
     final c = widget.controller,
         generation = widget.controller.workspaceGeneration;
     var query = '';
-    final selected = await showDialog<UniversalObject>(
+    final selected = await showOrbitDialog<UniversalObject>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, update) {
@@ -587,6 +588,7 @@ class _CourseHubState extends ConsumerState<CourseHub> {
                 Navigator.pop(context);
               },
               trailing: PopupMenuButton<String>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 tooltip: 'Material actions',
                 onSelected: (v) async {
                   if (v == 'unlink') {

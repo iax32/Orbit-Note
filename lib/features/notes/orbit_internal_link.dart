@@ -215,6 +215,7 @@ class _OrbitInternalLinkState extends State<OrbitInternalLink> {
     final targetId = _extractTargetId(widget.href);
 
     final result = await showMenu<String>(
+      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
       context: context,
       position: RelativeRect.fromLTRB(
         globalPosition.dx,

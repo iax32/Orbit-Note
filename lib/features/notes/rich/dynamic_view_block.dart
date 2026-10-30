@@ -1,3 +1,4 @@
+import '../../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import '../../workspace/research_workspace_view.dart';
 import '../../workspace/gantt_view.dart';
@@ -266,7 +267,7 @@ class _DynamicViewBlockState extends ConsumerState<DynamicViewBlock> {
     var tempSort = _config.sort;
     var tempLimit = _config.limit;
 
-    showDialog<void>(
+    showOrbitDialog<void>(
       context: context,
       builder: (dialogCtx) => StatefulBuilder(
         builder: (dialogCtx, setModalState) {

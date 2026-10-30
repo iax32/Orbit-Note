@@ -1,3 +1,4 @@
+import '../../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 
 /// A deliberately small editable subset of standard TeX environments.
@@ -53,7 +54,7 @@ Future<String?> showMathGrid(
   BuildContext context, {
   MathGrid? initial,
   bool aligned = false,
-}) => showDialog<String>(
+}) => showOrbitDialog<String>(
   context: context,
   builder: (_) => _MathGridDialog(
     initial:
@@ -183,6 +184,7 @@ class _MathGridDialogState extends State<_MathGridDialog> {
         ),
         const Spacer(),
         PopupMenuButton<MathGridPreset>(
+          popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
           key: const ValueKey('math-grid-preset-button'),
           tooltip: 'Grid presets',
           onSelected: (preset) {

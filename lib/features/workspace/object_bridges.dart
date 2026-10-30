@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'object_connection_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -443,7 +444,7 @@ Future<UniversalObject?> showObjectReferencePicker(
   String? project,
 }) {
   final generation = c.workspaceGeneration;
-  return showDialog<UniversalObject>(
+  return showOrbitDialog<UniversalObject>(
     context: context,
     builder: (_) => _ObjectPicker(
       controller: c,
@@ -745,7 +746,7 @@ class _ObjectPickerState extends ConsumerState<_ObjectPicker> {
                         ),
                         if (choice != null)
                           TextButton(
-                            onPressed: () => showDialog<void>(
+                            onPressed: () => showOrbitDialog<void>(
                               context: context,
                               builder: (previewContext) => AlertDialog(
                                 content: SingleChildScrollView(
@@ -842,7 +843,7 @@ Future<void> showObjectConnections(
   BuildContext context,
   WorkspaceController c,
   String id,
-) => showDialog<void>(
+) => showOrbitDialog<void>(
   context: context,
   builder: (_) => _Connections(controller: c, id: id),
 );
@@ -1212,6 +1213,7 @@ class ObjectBridgeBar extends StatelessWidget {
               label: const Text('Connections'),
             ),
             PopupMenuButton<String>(
+              popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
               tooltip: 'Use this object elsewhere',
               onSelected: (value) {
                 final ref = ObjectReference(object.id);

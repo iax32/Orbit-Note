@@ -1,3 +1,4 @@
+import '../../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import '../../../app/orbit_theme.dart';
 import '../../../app/workspace_controller.dart';
@@ -142,6 +143,9 @@ class _OrbitLibraryViewState extends State<OrbitLibraryView> {
                                 label: const Text('Add PDF'),
                               ),
                             PopupMenuButton<String>(
+                              popUpAnimationStyle: OrbitMotionScope.popupStyle(
+                                context,
+                              ),
                               key: const ValueKey('library-reading-room'),
                               tooltip: 'Reading room',
                               initialValue: _roomId ?? 'saved',
@@ -316,6 +320,9 @@ class _OrbitLibraryViewState extends State<OrbitLibraryView> {
                               ),
                             ),
                             PopupMenuButton<String>(
+                              popUpAnimationStyle: OrbitMotionScope.popupStyle(
+                                context,
+                              ),
                               key: const ValueKey('library-sort'),
                               tooltip: 'Sort books',
                               initialValue: _sort,

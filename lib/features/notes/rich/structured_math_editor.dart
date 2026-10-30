@@ -1,3 +1,4 @@
+import '../../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../app/orbit_theme.dart';
@@ -425,7 +426,7 @@ class EditableMathExpressionState extends State<EditableMathExpression> {
 
   Future<void> _advanced() async {
     final original = _source;
-    final result = await showDialog<String>(
+    final result = await showOrbitDialog<String>(
       context: context,
       builder: (_) => EquationEditor(source: original, display: widget.display),
     );

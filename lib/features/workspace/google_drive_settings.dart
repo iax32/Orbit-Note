@@ -43,7 +43,7 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
     final setup = cloud.auth is GoogleDesktopSetup
         ? cloud.auth as GoogleDesktopSetup
         : null;
-    final import = await showDialog<bool>(
+    final import = await showOrbitDialog<bool>(
       context: context,
       builder: (dialogContext) => OrbitDialog(
         title: const Text('Activate Google sign-in'),
@@ -157,7 +157,7 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
   }
 
   Future<bool> _confirm(String title, String body) async =>
-      await showDialog<bool>(
+      await showOrbitDialog<bool>(
         context: context,
         builder: (context) => OrbitDialog(
           title: Text(title),
@@ -633,7 +633,7 @@ class _GoogleDriveSettingsState extends ConsumerState<GoogleDriveSettings> {
     try {
       final bundle = await parseBackupBundle(source);
       if (!mounted || !owns()) return;
-      if (await showDialog<bool>(
+      if (await showOrbitDialog<bool>(
                 context: context,
                 builder: (_) => BackupImportDialog(bundle: bundle),
               ) !=

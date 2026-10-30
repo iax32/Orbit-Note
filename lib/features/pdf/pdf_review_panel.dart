@@ -276,7 +276,7 @@ class _PdfReviewPanelState extends State<PdfReviewPanel> {
         .toList();
     if (running || change == null || items.isEmpty) return;
     if (action == PdfReviewBatchAction.trash) {
-      final confirmed = await showDialog<bool>(
+      final confirmed = await showOrbitDialog<bool>(
         context: context,
         builder: (context) => OrbitDialog(
           title: Text('Move ${items.length} review notes to Trash?'),
@@ -481,6 +481,7 @@ class _PdfReviewPanelState extends State<PdfReviewPanel> {
     List<String> values,
     ValueChanged<String> change,
   ) => PopupMenuButton<String>(
+    popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
     enabled: !running,
     tooltip: 'Review $value',
     initialValue: value,
@@ -557,6 +558,7 @@ class _PdfReviewPanelState extends State<PdfReviewPanel> {
                 ),
               if (widget.onBatch != null && selected.isNotEmpty)
                 PopupMenuButton<PdfReviewBatchAction>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'Change selected review items',
                   enabled: !running && selected.isNotEmpty,
                   icon: const Icon(Icons.tune),
@@ -594,6 +596,7 @@ class _PdfReviewPanelState extends State<PdfReviewPanel> {
                   widget.colors.isNotEmpty &&
                   selected.isNotEmpty)
                 PopupMenuButton<int>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'Color selected review items',
                   enabled: !running && selected.isNotEmpty,
                   icon: const Icon(Icons.palette_outlined),

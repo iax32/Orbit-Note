@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'dart:typed_data';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -805,7 +806,7 @@ Future<NoteWritingAppearance?> showWritingAppearance(
   Future<ImportedWritingPhoto?> Function()? pickPhoto,
   Future<String> Function(Uint8List bytes)? savePhoto,
   bool Function()? canApply,
-}) => showDialog<NoteWritingAppearance>(
+}) => showOrbitDialog<NoteWritingAppearance>(
   context: context,
   builder: (_) => _WritingAppearanceDialog(
     initial: initial,

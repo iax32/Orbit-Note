@@ -12,7 +12,7 @@ Future<FigureDetails?> showFigureDetails(
   FigureDetails? initial,
   List<NoteLinkTarget> targets, {
   String? draftKey,
-}) => showDialog<FigureDetails>(
+}) => showOrbitDialog<FigureDetails>(
   context: context,
   builder: (_) => _FigureDialog(
     initial: initial,

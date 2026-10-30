@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import '../../app/orbit_motion_effects.dart';
 import '../../app/orbit_density.dart';
 import 'package:flutter/material.dart';
@@ -89,6 +90,9 @@ class NoteFormatToolbar extends StatelessWidget {
                           ),
                         if (onCommand != null)
                           PopupMenuButton<String>(
+                            popUpAnimationStyle: OrbitMotionScope.popupStyle(
+                              context,
+                            ),
                             tooltip: 'Insert block or equation',
                             icon: const Icon(
                               Icons.add_circle_outline,
@@ -261,6 +265,9 @@ class NoteFormatToolbar extends StatelessWidget {
                           ],
                         ],
                         PopupMenuButton<NoteFormatAction>(
+                          popUpAnimationStyle: OrbitMotionScope.popupStyle(
+                            context,
+                          ),
                           tooltip: 'More formatting',
                           icon: const Icon(Icons.more_horiz, size: 18),
                           onSelected: onFormat,

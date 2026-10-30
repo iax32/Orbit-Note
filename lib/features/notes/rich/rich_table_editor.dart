@@ -1,3 +1,4 @@
+import '../../../app/orbit_components.dart';
 import 'dart:async';
 
 import 'package:flutter/gestures.dart';
@@ -896,6 +897,7 @@ class RichTableEditorState extends State<RichTableEditor> {
             icon: const Icon(Icons.content_paste, size: 16),
           ),
           PopupMenuButton<String>(
+            popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
             tooltip: 'Table operations',
             onSelected: operation,
             itemBuilder: (_) => actions.entries

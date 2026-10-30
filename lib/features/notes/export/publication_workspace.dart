@@ -1,3 +1,4 @@
+import '../../../app/orbit_components.dart';
 import '../../../platform/publication_image_download.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -43,7 +44,7 @@ Future<void> showPublicationWorkspace(
     readPhoto: readWritingPhoto,
   );
   final origin = FocusManager.instance.primaryFocus;
-  return showDialog<void>(
+  return showOrbitDialog<void>(
     context: context,
     builder: (_) => PublicationWorkspace(
       title: title,
@@ -596,6 +597,7 @@ class _PublicationWorkspaceState extends State<PublicationWorkspace> {
           runSpacing: 8,
           children: [
             PopupMenuButton<PublicationPreset>(
+              popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
               tooltip: 'Document style presets',
               enabled: !exporting,
               onSelected: exporting

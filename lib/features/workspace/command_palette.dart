@@ -267,7 +267,7 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
           title: 'Filter explorer by tag…',
           icon: Icons.label_outline_rounded,
           run: () async {
-            final tag = await showDialog<String>(
+            final tag = await showOrbitDialog<String>(
               context: context,
               builder: (ctx) => SimpleDialog(
                 title: const Text('Filter by Tag'),
@@ -476,7 +476,7 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
       (
         title: 'Open Bookshelf & Reading Rooms',
         icon: Icons.local_library_outlined,
-        run: () => showDialog<void>(
+        run: () => showOrbitDialog<void>(
           context: context,
           builder: (_) => Dialog.fullscreen(
             child: OrbitLibraryView(
@@ -685,6 +685,9 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
                       Align(
                         alignment: Alignment.centerLeft,
                         child: PopupMenuButton<String>(
+                          popUpAnimationStyle: OrbitMotionScope.popupStyle(
+                            context,
+                          ),
                           tooltip: 'Filter palette by type',
                           initialValue: _typeFilter,
                           onSelected: (value) {

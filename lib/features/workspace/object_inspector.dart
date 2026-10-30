@@ -1131,7 +1131,7 @@ class _ObjectInspectorState extends ConsumerState<ObjectInspector> {
     required BuildContext context,
     required List<TextEditingController> controllers,
     required WidgetBuilder builder,
-  }) => showDialog<void>(
+  }) => showOrbitDialog<void>(
     context: context,
     builder: (context) =>
         _PropertyDialogScope(controllers: controllers, builder: builder),

@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../../app/workspace_controller.dart';
@@ -7,7 +8,7 @@ import '../../domain/universal_object.dart';
 Future<UniversalObject?> showLifePackSetup(
   BuildContext context,
   WorkspaceController c,
-) => showDialog<UniversalObject>(
+) => showOrbitDialog<UniversalObject>(
   context: context,
   barrierDismissible: false,
   builder: (_) => _LifePackDialog(controller: c),

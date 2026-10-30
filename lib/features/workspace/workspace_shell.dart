@@ -264,7 +264,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     try {
       String? path;
       if (usesAndroidVaultFolders) {
-        final confirmed = await showDialog<bool>(
+        final confirmed = await showOrbitDialog<bool>(
           context: context,
           builder: (context) => OrbitDialog(
             title: const Text('Import a Vault folder'),
@@ -339,7 +339,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     String field = 'Vault name',
   }) async {
     final input = TextEditingController(text: initial);
-    final result = await showDialog<String>(
+    final result = await showOrbitDialog<String>(
       context: context,
       builder: (context) => OrbitDialog(
         title: Text(
@@ -411,7 +411,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       }
 
       if (!mounted) return;
-      await showDialog<void>(
+      await showOrbitDialog<void>(
         context: context,
         builder: (dialogContext) => OrbitDialog(
           title: const Text('Your Vaults'),
@@ -564,7 +564,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   }
 
   Future<void> showHelpDialog() async {
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       builder: (dialogContext) => OrbitDialog(
         title: const Row(
@@ -688,7 +688,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         await selected.readAsString(),
       );
       if (!mounted) return;
-      final accepted = await showDialog<bool>(
+      final accepted = await showOrbitDialog<bool>(
         context: context,
         builder: (context) => BackupImportDialog(bundle: bundle),
       );
@@ -748,7 +748,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         );
         if (matches.isNotEmpty) {
           final existing = matches.first;
-          final choice = await showDialog<String>(
+          final choice = await showOrbitDialog<String>(
             context: context,
             builder: (context) => OrbitDialog(
               title: const Text('This attachment already exists'),
@@ -1080,7 +1080,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         return;
       }
       var reuse = true;
-      final confirmed = await showDialog<bool>(
+      final confirmed = await showOrbitDialog<bool>(
         context: context,
         builder: (context) => StatefulBuilder(
           builder: (context, update) => OrbitDialog(
@@ -1343,7 +1343,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       final recordedChecksum = expected.properties['checksum'] as String?;
       final matchesRecorded =
           recordedChecksum != null && recordedChecksum == selectedChecksum;
-      final accepted = await showDialog<bool>(
+      final accepted = await showOrbitDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: Text(
@@ -1404,7 +1404,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
           .toList(),
     );
     if (!mounted) return;
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       builder: (context) => AttachmentRecoveryDialog(
         object: expected,
@@ -1603,7 +1603,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       if (!current()) return;
       if (!reveal && attachmentNeedsConfirmation(path)) {
         if (!mounted) return;
-        final confirmed = await showDialog<bool>(
+        final confirmed = await showOrbitDialog<bool>(
           context: context,
           builder: (context) => OrbitDialog(
             title: const Text('Open this file externally?'),
@@ -2130,7 +2130,11 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                               if (sidebar) ...[
                                 SizedBox(
                                   width: c.session.sidebarWidth,
-                                  child: explorer(),
+                                  child: OrbitEntrance(
+                                    spatial: true,
+                                    offset: const Offset(-6, 0),
+                                    child: explorer(),
+                                  ),
                                 ),
                                 MouseRegion(
                                   cursor: SystemMouseCursors.resizeColumn,
@@ -2436,7 +2440,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   }
 
   void _openBookshelf() {
-    showDialog<void>(
+    showOrbitDialog<void>(
       context: context,
       builder: (_) => Dialog.fullscreen(
         child: OrbitLibraryView(
@@ -2472,6 +2476,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   }
 
   Widget _newObjectMenu() => PopupMenuButton<String>(
+    popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
     key: const ValueKey('explorer-new-menu'),
     tooltip: 'New or import',
     onSelected: (value) {
@@ -2917,7 +2922,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                                   ))
                                     o.id: o,
                                 };
-                                final confirmed = await showDialog<bool>(
+                                final confirmed = await showOrbitDialog<bool>(
                                   context: context,
                                   builder: (context) => OrbitDialog(
                                     title: const Text('Empty Trash'),
@@ -2998,6 +3003,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                       ),
                     ),
                     PopupMenuButton<String>(
+                      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                       tooltip: 'Sort notes',
                       icon: const Icon(Icons.sort, size: 18),
                       initialValue: c.session.noteSort,
@@ -3022,6 +3028,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     PopupMenuButton<String>(
+                      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                       key: const ValueKey('explorer-type-menu'),
                       tooltip: 'Filter by type',
                       initialValue: explorerTypeFilter,
@@ -3101,6 +3108,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                         },
                       ),
                     PopupMenuButton<String>(
+                      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                       key: const ValueKey('explorer-tag-filter-button'),
                       tooltip: 'Filter by tag…',
                       icon: Icon(
@@ -3288,6 +3296,8 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                                       ? 1
                                       : 0,
                                   child: PopupMenuButton<String>(
+                                    popUpAnimationStyle:
+                                        OrbitMotionScope.popupStyle(context),
                                     tooltip: 'Object actions',
                                     icon: const Icon(
                                       Icons.more_horiz,
@@ -3304,33 +3314,36 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                                         c.restore(o.id, expected: o);
                                       }
                                       if (v == 'delete_forever') {
-                                        final confirmed = await showDialog<bool>(
-                                          context: context,
-                                          builder: (context) => OrbitDialog(
-                                            title: const Text(
-                                              'Delete permanently',
-                                            ),
-                                            content: Text(
-                                              'Permanently delete “${o.title.isEmpty ? 'Untitled' : o.title}”? This cannot be undone.',
-                                            ),
-                                            actions: [
-                                              TextButton(
-                                                onPressed: () => Navigator.pop(
-                                                  context,
-                                                  false,
+                                        final confirmed =
+                                            await showOrbitDialog<bool>(
+                                              context: context,
+                                              builder: (context) => OrbitDialog(
+                                                title: const Text(
+                                                  'Delete permanently',
                                                 ),
-                                                child: const Text('Cancel'),
-                                              ),
-                                              FilledButton(
-                                                onPressed: () => Navigator.pop(
-                                                  context,
-                                                  true,
+                                                content: Text(
+                                                  'Permanently delete “${o.title.isEmpty ? 'Untitled' : o.title}”? This cannot be undone.',
                                                 ),
-                                                child: const Text('Delete'),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () =>
+                                                        Navigator.pop(
+                                                          context,
+                                                          false,
+                                                        ),
+                                                    child: const Text('Cancel'),
+                                                  ),
+                                                  FilledButton(
+                                                    onPressed: () =>
+                                                        Navigator.pop(
+                                                          context,
+                                                          true,
+                                                        ),
+                                                    child: const Text('Delete'),
+                                                  ),
+                                                ],
                                               ),
-                                            ],
-                                          ),
-                                        );
+                                            );
                                         if (confirmed == true &&
                                             _captureStillCurrent(
                                               generation,
@@ -3522,6 +3535,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
               ),
             if (!wide)
               PopupMenuButton<OrbitDestination>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 tooltip: 'Navigate',
                 icon: const Icon(Icons.blur_circular),
                 onSelected: c.navigate,
@@ -3629,6 +3643,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
               ),
             ),
             PopupMenuButton<String>(
+              popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
               tooltip: 'Open & Import Files',
               icon: const Icon(Icons.add_circle_outline, size: 19),
               onSelected: (value) async {
@@ -3832,6 +3847,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
               ),
             if (wide && c.session.activeId != null)
               PopupMenuButton<String>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 tooltip: 'Split workspace',
                 icon: const Icon(Icons.vertical_split_outlined, size: 19),
                 onSelected: (axis) => c.updateSession((s) {
@@ -3877,6 +3893,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     final overlay =
         Overlay.of(context).context.findRenderObject()! as RenderBox;
     final selectedId = await showMenu<String>(
+      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
       context: context,
       position: RelativeRect.fromRect(
         Rect.fromLTWH(position.dx, position.dy, 1, 1),
@@ -3939,6 +3956,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     final isBookmarked = c.isBookmarked(id);
 
     final action = await showMenu<String>(
+      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
       context: context,
       position: RelativeRect.fromRect(
         Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 1, 1),
@@ -4078,6 +4096,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     final canReopen = c.session.closedTabs.isNotEmpty || c.lastClosed != null;
 
     final action = await showMenu<String>(
+      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
       context: context,
       position: RelativeRect.fromRect(
         Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 1, 1),
@@ -4207,6 +4226,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: PopupMenuButton<String>(
+              popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
               key: const ValueKey('workspace-bookmarks-button'),
               tooltip: 'Bookmarked tabs & notes',
               icon: Icon(
@@ -5400,14 +5420,17 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                 onTap: c.failures.isEmpty
                     ? null
                     : () => unawaited(c.flushAll()),
-                child: Text(
-                  c.saveLabel,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: OrbitColors.of(context).subtle,
+                child: OrbitStateMotion(
+                  identity: c.saveLabel,
+                  child: Text(
+                    c.saveLabel,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: OrbitColors.of(context).subtle,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ),
@@ -5480,11 +5503,14 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                     ),
                     label: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 180),
-                      child: Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 10),
+                      child: OrbitStateMotion(
+                        identity: label,
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 10),
+                        ),
                       ),
                     ),
                   ),

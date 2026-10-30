@@ -12,7 +12,7 @@ import '../../platform/export_file.dart';
 Future<void> showWorkspaceRecoveryDialog({
   required BuildContext context,
   required WorkspaceRepository repository,
-}) => showDialog<void>(
+}) => showOrbitDialog<void>(
   context: context,
   builder: (_) => WorkspaceRecoveryDialog(repository: repository),
 );
@@ -109,7 +109,7 @@ class _WorkspaceRecoveryDialogState extends State<WorkspaceRecoveryDialog> {
     final text = const JsonEncoder.withIndent('  ').convert(values);
     final ownerId = key.split(':').length > 1 ? key.split(':')[1] : '';
     final original = draft.controller.find(ownerId);
-    final action = await showDialog<String>(
+    final action = await showOrbitDialog<String>(
       context: context,
       builder: (context) => OrbitDialog(
         title: Text(title),
@@ -162,7 +162,7 @@ class _WorkspaceRecoveryDialogState extends State<WorkspaceRecoveryDialog> {
         draft.controller.openObject(ownerId);
         Navigator.pop(context);
       } else if (action == 'discard') {
-        final confirmed = await showDialog<bool>(
+        final confirmed = await showOrbitDialog<bool>(
           context: context,
           builder: (context) => OrbitDialog(
             title: const Text('Discard retained form draft?'),

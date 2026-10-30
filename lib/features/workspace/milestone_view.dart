@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import '../../app/orbit_theme.dart';
 import '../../app/workspace_controller.dart';
@@ -81,7 +82,7 @@ class _MilestoneViewState extends State<MilestoneView> {
     final textCtrl = TextEditingController();
     String discipline = 'Gameplay';
 
-    final res = await showDialog<bool>(
+    final res = await showOrbitDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(

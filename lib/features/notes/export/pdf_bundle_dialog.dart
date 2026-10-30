@@ -14,7 +14,7 @@ Future<void> showPdfBundleDialog(
   PublicationExport? note,
   String? initialCanvasId,
   Future<Uint8List?> Function(String)? readImage,
-}) => showDialog<void>(
+}) => showOrbitDialog<void>(
   context: context,
   builder: (_) => PdfBundleDialog(
     objects: List.unmodifiable(objects),

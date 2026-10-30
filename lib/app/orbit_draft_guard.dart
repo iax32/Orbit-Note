@@ -44,7 +44,7 @@ class _OrbitDraftGuardState extends State<OrbitDraftGuard> {
     if (widget.busy || confirming) return;
     if (widget.hasChanges?.call() ?? widget.dirty) {
       confirming = true;
-      final decision = await showDialog<String>(
+      final decision = await showOrbitDialog<String>(
         context: context,
         barrierDismissible: false,
         builder: (context) => OrbitDialog(

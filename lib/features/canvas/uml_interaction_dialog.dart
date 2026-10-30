@@ -10,7 +10,7 @@ Future<Map<String, dynamic>?> showInteractionEditor(
   List<CanvasElement> nodes, {
   bool sequence = false,
   bool creating = false,
-}) => showDialog<Map<String, dynamic>>(
+}) => showOrbitDialog<Map<String, dynamic>>(
   context: context,
   builder: (_) => _InteractionDialog(
     element: element,

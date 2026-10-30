@@ -24,7 +24,7 @@ class DriveSyncSettings extends ConsumerStatefulWidget {
 class _DriveSyncSettingsState extends ConsumerState<DriveSyncSettings> {
   int _limit = 20;
   Future<bool> _confirm(String title, String body) async =>
-      await showDialog<bool>(
+      await showOrbitDialog<bool>(
         context: context,
         builder: (context) => OrbitDialog(
           title: Text(title),
@@ -166,7 +166,7 @@ class _DriveSyncSettingsState extends ConsumerState<DriveSyncSettings> {
     try {
       final review = await c.review(key, remote.version);
       if (!mounted || workspace.workspaceGeneration != opening) return;
-      final choice = await showDialog<String>(
+      final choice = await showOrbitDialog<String>(
         context: context,
         builder: (context) => OrbitDialog(
           title: const Text('Review Drive conflict'),
@@ -387,7 +387,7 @@ class _DriveSyncSettingsState extends ConsumerState<DriveSyncSettings> {
                           ref.read(googleCloudProvider).account == null ||
                           ref.read(googleCloudProvider).reconnectRequired
                       ? null
-                      : () => showDialog<void>(
+                      : () => showOrbitDialog<void>(
                           context: context,
                           barrierDismissible: false,
                           builder: (_) => DriveVaultBatchDialog(
@@ -409,7 +409,7 @@ class _DriveSyncSettingsState extends ConsumerState<DriveSyncSettings> {
                           ref.read(googleCloudProvider).account == null ||
                           ref.read(googleCloudProvider).reconnectRequired
                       ? null
-                      : () => showDialog<void>(
+                      : () => showOrbitDialog<void>(
                           context: context,
                           barrierDismissible: false,
                           builder: (_) => DriveVaultBatchDialog(

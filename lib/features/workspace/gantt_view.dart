@@ -16,7 +16,7 @@ Future<void> showGanttScheduleDialog(
   UniversalObject task, {
   DateTime? proposedStart,
   Object? defaultCalendarId,
-}) => showDialog<void>(
+}) => showOrbitDialog<void>(
   context: context,
   barrierDismissible: false,
   builder: (_) => _ScheduleDialog(
@@ -1005,7 +1005,7 @@ class _GanttViewState extends ConsumerState<GanttView> {
     List<String> ids,
   ) async {
     var auditPage = 0;
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, set) {

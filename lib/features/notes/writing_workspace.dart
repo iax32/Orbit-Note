@@ -79,7 +79,7 @@ class _WritingWorkspaceState extends State<WritingWorkspace> {
       }
     }
     if (uses.isEmpty && action != 'Delete' && action != 'Inspect') return true;
-    return await showDialog<bool>(
+    return await showOrbitDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: Text('$action section'),
@@ -381,6 +381,8 @@ class _WritingWorkspaceState extends State<WritingWorkspace> {
                                 ),
                                 onTap: () => widget.onNavigate(s.start, 0),
                                 trailing: PopupMenuButton<String>(
+                                  popUpAnimationStyle:
+                                      OrbitMotionScope.popupStyle(context),
                                   tooltip: 'Section actions',
                                   onSelected: (v) async {
                                     if (v == 'focus') widget.onFocus(s.key);
@@ -655,7 +657,7 @@ Future<(String, String)?> _edit(
   required String secondLabel,
   required bool multiline,
   void Function(String first, String second)? validate,
-}) => showDialog<(String, String)>(
+}) => showOrbitDialog<(String, String)>(
   context: context,
   builder: (_) => _WritingDraftDialog(
     title: title,

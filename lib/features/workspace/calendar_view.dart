@@ -1042,7 +1042,7 @@ Future<void> showEventDialog(
         endTime = TimeOfDay(hour: endLocal.hour, minute: endLocal.minute);
       }
     } catch (_) {
-      await showDialog<void>(
+      await showOrbitDialog<void>(
         context: context,
         builder: (context) => OrbitDialog(
           title: const Text('Event dates need review'),
@@ -1068,7 +1068,7 @@ Future<void> showEventDialog(
   final titleController = TextEditingController(text: initialTitle);
   final bodyController = TextEditingController(text: initialBody);
 
-  await showDialog<void>(
+  await showOrbitDialog<void>(
     context: context,
     barrierDismissible: false,
     builder: (context) => StatefulBuilder(

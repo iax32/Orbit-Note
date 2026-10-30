@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:file_selector/file_selector.dart';
@@ -18,7 +19,7 @@ Future<void> showSourceBrowser(
   String folder = 'Notes',
 }) {
   final generation = controller?.workspaceGeneration;
-  return showDialog<void>(
+  return showOrbitDialog<void>(
     context: context,
     builder: (_) => SourceBrowserDialog(
       onSaveExcerpt: controller == null
@@ -205,7 +206,7 @@ class _SourceBrowserDialogState extends State<SourceBrowserDialog> {
     final current = folder;
     if (current == null || busy) return;
     final token = request;
-    final hit = await showDialog<SourceSearchHit>(
+    final hit = await showOrbitDialog<SourceSearchHit>(
       context: context,
       builder: (_) => SourceSearchDialog(
         folder: current,

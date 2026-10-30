@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'package:flutter/material.dart';
 import '../../app/workspace_controller.dart';
 import '../../domain/research_workspace.dart';
@@ -10,7 +11,7 @@ Future<List<String>?> pickResearchObjects(
   Iterable<String> selected = const [],
   bool Function(UniversalObject)? accepts,
   int maxSelection = 100,
-}) => showDialog<List<String>>(
+}) => showOrbitDialog<List<String>>(
   context: context,
   builder: (_) => _ResearchPicker(
     controller: controller,
@@ -127,7 +128,7 @@ Future<UniversalObject?> showDecisionEditor(
   String? folder,
   String? project,
   List<String> evidence = const [],
-}) => showDialog<UniversalObject>(
+}) => showOrbitDialog<UniversalObject>(
   context: context,
   barrierDismissible: false,
   builder: (_) => _DecisionEditor(

@@ -89,7 +89,7 @@ Future<_ProjectTemplateDetails?> _showProjectTemplateDialog(
   final format = TextEditingController(text: 'PE');
   final version = TextEditingController(text: '1.0.0');
   final form = GlobalKey<FormState>();
-  final result = await showDialog<_ProjectTemplateDetails>(
+  final result = await showOrbitDialog<_ProjectTemplateDetails>(
     context: context,
     builder: (dialogContext) => StatefulBuilder(
       builder: (context, setState) {
@@ -473,7 +473,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         (title.toLowerCase().contains('folder') ||
             title.toLowerCase().contains('project') ||
             title.toLowerCase().contains('course'));
-    final result = await showDialog<String>(
+    final result = await showOrbitDialog<String>(
       context: context,
       builder: (context) => OrbitDialog(
         title: Text(title),
@@ -525,7 +525,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
   }
 
   Future<String?> _destination(BuildContext context, {String? exclude}) =>
-      showDialog<String>(
+      showOrbitDialog<String>(
         context: context,
         builder: (context) => SimpleDialog(
           title: const Text('Move to folder'),
@@ -630,7 +630,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         },
       );
     } else if (action == 'new_creative_project') {
-      final brief = await showDialog<NoteTemplate>(
+      final brief = await showOrbitDialog<NoteTemplate>(
         context: context,
         builder: (_) => const CreativeBriefDialog(projectWorkspace: true),
       );
@@ -1005,7 +1005,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         );
       }
     } else if (action == 'delete') {
-      final confirmed = await showDialog<bool>(
+      final confirmed = await showOrbitDialog<bool>(
         context: context,
         builder: (context) => OrbitDialog(
           title: const Text('Delete folder'),
@@ -1167,7 +1167,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
     String title,
     String destination,
     Iterable<String> ids,
-  ) => showDialog<bool>(
+  ) => showOrbitDialog<bool>(
     context: context,
     builder: (context) => OrbitDialog(
       title: Text('$title · ${ids.length} items'),
@@ -1473,6 +1473,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                       : {...s.collapsedFolders, folder}.toList(),
                 ),
                 menu: PopupMenuButton<String>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'Folder actions',
                   icon: const Icon(Icons.more_horiz, size: 16),
                   onSelected: (action) => _owns(owner)
@@ -1904,6 +1905,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                 ),
                 onTap: () => _onNoteTap(note.id, visibleNoteIds),
                 menu: PopupMenuButton<String>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'Object actions',
                   icon: const Icon(Icons.more_horiz, size: 16),
                   onSelected: (action) async {
@@ -2114,6 +2116,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
           ),
           onTap: () => setState(() => _showArchived = !_showArchived),
           menu: PopupMenuButton<String>(
+            popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
             tooltip: 'Archived options',
             icon: const Icon(Icons.more_horiz, size: 16),
             itemBuilder: (_) => [
@@ -2145,6 +2148,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                 ),
                 onTap: () {},
                 menu: PopupMenuButton<String>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'Archived folder actions',
                   icon: const Icon(Icons.more_horiz, size: 16),
                   onSelected: (action) => _owns(owner)

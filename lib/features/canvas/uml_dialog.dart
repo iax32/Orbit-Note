@@ -11,7 +11,7 @@ Future<Map<String, dynamic>?> showUmlEditor(
   CanvasElement element,
   List<CanvasElement> classes, {
   bool creating = false,
-}) => showDialog<Map<String, dynamic>>(
+}) => showOrbitDialog<Map<String, dynamic>>(
   context: context,
   builder: (_) =>
       _UmlDialog(element: element, classes: classes, creating: creating),

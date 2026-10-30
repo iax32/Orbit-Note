@@ -10,7 +10,7 @@ Future<void> showMotionStudio(
   Map<String, dynamic>? options,
   ValueChanged<Map<String, dynamic>>? onChanged,
   String? text,
-}) => showDialog<void>(
+}) => showOrbitDialog<void>(
   context: context,
   builder: (_) => _MotionStudio(
     options: options ?? OrbitMotionScope.settings(context).data,
@@ -175,7 +175,7 @@ class _MotionStudioState extends State<_MotionStudio>
                       runSpacing: 8,
                       children: [
                         for (final (key, label) in [
-                          ('navigation', 'Navigation'),
+                          ('navigation', 'Navigation & surfaces'),
                           ('editing', 'Editing feedback'),
                           ('drawing', 'Drawing feedback'),
                           ('reading', 'PDF navigation'),

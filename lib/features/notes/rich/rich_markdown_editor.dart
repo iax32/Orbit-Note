@@ -2377,7 +2377,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
     };
     if (name == 'Table') {
       var rows = 2, columns = 2;
-      final accepted = await showDialog<bool>(
+      final accepted = await showOrbitDialog<bool>(
         context: context,
         builder: (context) => StatefulBuilder(
           builder: (context, set) => AlertDialog(
@@ -2514,7 +2514,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
       '±',
       '∅',
     ];
-    final selected = await showDialog<String>(
+    final selected = await showOrbitDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Math symbols'),
@@ -3201,6 +3201,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
             child: Wrap(
               children: [
                 PopupMenuButton<String>(
+                  popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                   tooltip: 'Image layout',
                   onSelected: (value) {
                     final parts = value.split(':');
@@ -3951,6 +3952,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
     final point = box != null ? box.localToGlobal(Offset.zero) : Offset.zero;
 
     final type = await showMenu<String>(
+      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
       context: context,
       position: RelativeRect.fromLTRB(
         point.dx + 48,
@@ -4011,6 +4013,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
     final canMoveDown = lastIdx >= 0 && lastIdx < allMovable.length - 1;
 
     final action = await showMenu<String>(
+      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
       context: context,
       position: RelativeRect.fromLTRB(
         point.dx + 48,
@@ -4252,6 +4255,7 @@ class RichMarkdownEditorState extends State<RichMarkdownEditor>
     final point = box != null ? box.localToGlobal(Offset.zero) : Offset.zero;
 
     final choice = await showMenu<String>(
+      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
       context: context,
       position: RelativeRect.fromLTRB(
         point.dx + 24,
@@ -5371,6 +5375,7 @@ class _RichImageBlockState extends State<_RichImageBlock> {
         onTap: widget.onSelect,
         onSecondaryTapUp: (details) async {
           final res = await showMenu<String>(
+            popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
             context: context,
             position: RelativeRect.fromLTRB(
               details.globalPosition.dx,
@@ -6705,6 +6710,7 @@ class _RichTextBlockState extends State<_RichTextBlock> {
         destination.startsWith('http://') || destination.startsWith('https://');
 
     final result = await showMenu<String>(
+      popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
       context: context,
       position: RelativeRect.fromLTRB(
         globalPos.dx,

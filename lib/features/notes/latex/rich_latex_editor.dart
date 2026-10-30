@@ -355,6 +355,7 @@ class RichLatexEditorState extends State<RichLatexEditor> {
           child: Row(
             children: [
               PopupMenuButton<LatexBlockType>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 tooltip: 'Paragraph style',
                 onSelected: (type) {
                   if (index != null && prose) {
@@ -507,7 +508,7 @@ class RichLatexEditorState extends State<RichLatexEditor> {
     insertMathBlock(result.tex);
   }
 
-  void _showSymbols() => showDialog<void>(
+  void _showSymbols() => showOrbitDialog<void>(
     context: context,
     builder: (_) => LatexMathPalette(onInsert: insertMath),
   );
@@ -763,7 +764,7 @@ class RichLatexEditorState extends State<RichLatexEditor> {
   );
 
   Future<void> _showAddBlockMenu(BuildContext context, int targetIndex) async {
-    final type = await showDialog<LatexBlockType>(
+    final type = await showOrbitDialog<LatexBlockType>(
       context: context,
       builder: (ctx) => SimpleDialog(
         title: const Text('Insert'),
@@ -820,6 +821,7 @@ class RichLatexEditorState extends State<RichLatexEditor> {
             SizedBox(
               width: 28,
               child: PopupMenuButton<String>(
+                popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
                 tooltip: 'Paragraph actions',
                 icon: Icon(
                   Icons.more_horiz,
@@ -994,7 +996,7 @@ class RichLatexEditorState extends State<RichLatexEditor> {
     final block = _doc.blocks[index];
     final original = block.rawContent;
     var value = equation.group(1)!;
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, update) => AlertDialog(

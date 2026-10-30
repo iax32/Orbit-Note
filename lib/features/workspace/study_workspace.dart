@@ -16,7 +16,7 @@ Future<void> showStudyWorkspace(
   String? course,
   String? courseId,
   DateTime? exam,
-}) => showDialog<void>(
+}) => showOrbitDialog<void>(
   context: context,
   builder: (_) => StudyWorkspace(
     controller: c,
@@ -38,7 +38,7 @@ Future<void> showStudyCardEditor(
   String? courseId,
 }) async {
   if (passage.length > 100000) {
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       builder: (ctx) => OrbitDialog(
         title: const Text('Choose a smaller passage'),
@@ -68,7 +68,7 @@ Future<void> showStudyCardEditor(
   final locked = c.repository.readOnly || card?.isReadOnly == true;
   String? error;
   try {
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
@@ -643,6 +643,7 @@ class _StudyWorkspaceState extends ConsumerState<StudyWorkspace> {
             }
           },
           trailing: PopupMenuButton<String>(
+            popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
             enabled: !_busy,
             tooltip: 'Card actions',
             onSelected: (v) async {
@@ -657,7 +658,7 @@ class _StudyWorkspaceState extends ConsumerState<StudyWorkspace> {
               }
               if (v == 'history') {
                 final history = card.history.reversed.toList();
-                await showDialog<void>(
+                await showOrbitDialog<void>(
                   context: context,
                   builder: (_) => OrbitDialog(
                     title: const Text('Review history'),

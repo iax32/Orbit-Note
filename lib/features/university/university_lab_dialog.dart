@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -19,7 +20,7 @@ import 'university_preview.dart';
 Future<UniversityDocument?> showUniversityLab(
   BuildContext context, {
   UniversityDocument? initial,
-}) => showDialog<UniversityDocument>(
+}) => showOrbitDialog<UniversityDocument>(
   context: context,
   barrierDismissible: false,
   builder: (_) => RepaintBoundary(
@@ -32,7 +33,7 @@ Future<void> recoverUniversityReport(
   BuildContext context,
   UniversityDocument document,
   String reason,
-) => showDialog<void>(
+) => showOrbitDialog<void>(
   context: context,
   barrierDismissible: false,
   builder: (context) => AlertDialog(
@@ -201,7 +202,7 @@ class _UniversityLabDialogState extends State<UniversityLabDialog> {
 
   Future<bool> confirmDiscard() async {
     if (!dirty && !busy && connection == null) return true;
-    return await showDialog<bool>(
+    return await showOrbitDialog<bool>(
           context: context,
           builder: (c) => AlertDialog(
             title: const Text('Discard unsaved lab changes?'),
@@ -332,7 +333,7 @@ class _UniversityLabDialogState extends State<UniversityLabDialog> {
           ),
     };
     String message = '';
-    final accepted = await showDialog<Map<String, dynamic>>(
+    final accepted = await showOrbitDialog<Map<String, dynamic>>(
       context: context,
       builder: (dialog) => StatefulBuilder(
         builder: (c, change) => AlertDialog(
@@ -600,7 +601,7 @@ class _UniversityLabDialogState extends State<UniversityLabDialog> {
       text: const JsonEncoder.withIndent('  ').convert(doc.model),
     );
     String message = '';
-    final result = await showDialog<Map<String, dynamic>>(
+    final result = await showOrbitDialog<Map<String, dynamic>>(
       context: context,
       builder: (dialog) => StatefulBuilder(
         builder: (context, set) => AlertDialog(

@@ -129,7 +129,7 @@ class TaskPlanningPanel extends StatelessWidget {
                   ),
               if (history.length > 20)
                 TextButton(
-                  onPressed: () => showDialog<void>(
+                  onPressed: () => showOrbitDialog<void>(
                     context: context,
                     builder: (ctx) => OrbitDialog(
                       title: const Text('Occurrence history'),
@@ -176,7 +176,7 @@ Future<void> showTaskPlanningDialog(
       if (raw is! Map) throw const FormatException('Unreadable recurrence.');
       TaskRecurrence(Map<String, dynamic>.from(raw));
     } on Object {
-      await showDialog<void>(
+      await showOrbitDialog<void>(
         context: context,
         builder: (ctx) => OrbitDialog(
           title: const Text('Planning data needs review'),
@@ -210,7 +210,7 @@ Future<void> showTaskPlanningDialog(
   bool busy = false;
   final tasks = c.ofType('orbit.task').where((o) => o.id != task.id).toList();
   if (!context.mounted) return;
-  await showDialog<void>(
+  await showOrbitDialog<void>(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, set) => OrbitDialog(
@@ -371,7 +371,7 @@ Future<void> previewCalendarMove(
 ) async {
   bool busy = false;
   String? error;
-  await showDialog<void>(
+  await showOrbitDialog<void>(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, set) => OrbitDialog(

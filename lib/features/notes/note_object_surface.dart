@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import '../../app/orbit_theme.dart';
 import '../workspace/object_bridges.dart';
 import 'dart:math' as math;
@@ -89,7 +90,7 @@ class _NoteObjectSurfaceState extends State<NoteObjectSurface> {
     final controller = widget.controller!;
     final workspace = controller.repository.workspaceId;
     var expected = original.data;
-    await showDialog<void>(
+    await showOrbitDialog<void>(
       context: context,
       builder: (context) => Dialog(
         child: SizedBox(

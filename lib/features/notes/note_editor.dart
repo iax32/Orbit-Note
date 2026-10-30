@@ -648,6 +648,7 @@ class _NoteEditorState extends State<NoteEditor> {
     _body.addListener(refreshSource);
     try {
       await showModalBottomSheet<void>(
+        sheetAnimationStyle: OrbitMotionScope.popupStyle(context),
         context: context,
         isScrollControlled: true,
         builder: (sheetContext) => SafeArea(
@@ -708,7 +709,7 @@ class _NoteEditorState extends State<NoteEditor> {
       catalog: catalog,
       bindings: widget.controller?.find(owner)?.linkBindings ?? const {},
     );
-    final choice = await showDialog<DocumentCheckChoice>(
+    final choice = await showOrbitDialog<DocumentCheckChoice>(
       context: context,
       builder: (_) => DocumentChecksDialog(
         source: source,
@@ -843,6 +844,7 @@ class _NoteEditorState extends State<NoteEditor> {
     }
     final owner = widget.noteId;
     await showModalBottomSheet<void>(
+      sheetAnimationStyle: OrbitMotionScope.popupStyle(context),
       context: context,
       isScrollControlled: true,
       builder: (sheetContext) => SafeArea(
@@ -1368,7 +1370,7 @@ class _NoteEditorState extends State<NoteEditor> {
             .ofType('orbit.canvas')
             .where((o) => !o.isReadOnly)
             .toList();
-        boardId = await showDialog<String>(
+        boardId = await showOrbitDialog<String>(
           context: context,
           builder: (context) => SimpleDialog(
             title: const Text('Place current block on Canvas'),
@@ -1536,6 +1538,7 @@ class _NoteEditorState extends State<NoteEditor> {
         _writingAppearanceButton(),
         const Spacer(),
         PopupMenuButton<NoteEditorMode>(
+          popUpAnimationStyle: OrbitMotionScope.popupStyle(context),
           tooltip: 'Editor mode',
           initialValue: _mode,
           onSelected: _setMode,
@@ -2370,7 +2373,7 @@ class _NoteEditorState extends State<NoteEditor> {
         final selected = before.substring(range.$1, range.$2);
         String converted;
         if (command == 'Convert selection') {
-          final kind = await showDialog<String>(
+          final kind = await showOrbitDialog<String>(
             context: context,
             builder: (context) => SimpleDialog(
               title: const Text('Convert selected blocks'),
@@ -2468,7 +2471,7 @@ class _NoteEditorState extends State<NoteEditor> {
       await _insertFrom(() async {
         UniversalObject? target;
         if (command == 'Inline drawing') {
-          final choice = await showDialog<String>(
+          final choice = await showOrbitDialog<String>(
             context: context,
             builder: (context) => SimpleDialog(
               title: const Text('Inline drawing'),
@@ -2555,7 +2558,7 @@ class _NoteEditorState extends State<NoteEditor> {
     final workspace = widget.controller?.repository.workspaceId;
     try {
       final range = _compositionRange(headings: true);
-      final format = await showDialog<String>(
+      final format = await showOrbitDialog<String>(
         context: context,
         builder: (_) => const BlockFormatDialog(),
       );
@@ -2684,7 +2687,7 @@ class _NoteEditorState extends State<NoteEditor> {
       var selection = _mode == NoteEditorMode.rich
           ? _richKey.currentState?.currentDocumentSelection ?? _body.selection
           : _body.selection;
-      await showDialog<void>(
+      await showOrbitDialog<void>(
         context: context,
         builder: (_) => ArticlePublishingDialog(
           title: _title.text,
@@ -2892,6 +2895,7 @@ class _NoteEditorState extends State<NoteEditor> {
       final selection = _passageSelection();
       final original = _body.text;
       await showModalBottomSheet<void>(
+        sheetAnimationStyle: OrbitMotionScope.popupStyle(context),
         context: context,
         isScrollControlled: true,
         builder: (sheetContext) => SafeArea(
@@ -3468,7 +3472,7 @@ class _NoteEditorState extends State<NoteEditor> {
     final selection = _body.selection;
     final selected = selection.isValid ? selection.textInside(_body.text) : '';
     await _insertFrom(() async {
-      final code = await showDialog<String>(
+      final code = await showOrbitDialog<String>(
         context: context,
         builder: (_) => EquationEditor(
           source: selected.isEmpty
@@ -4251,7 +4255,7 @@ class _NoteEditorState extends State<NoteEditor> {
   ];
 
   void _showIconPicker() {
-    showDialog(
+    showOrbitDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Choose Note Icon'),
@@ -4301,7 +4305,7 @@ class _NoteEditorState extends State<NoteEditor> {
   }
 
   void _showCoverPicker() {
-    showDialog(
+    showOrbitDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Choose Note Cover'),
@@ -4861,6 +4865,8 @@ class _NoteEditorState extends State<NoteEditor> {
                                           ).scale(1) <
                                       500)
                                     PopupMenuButton<NoteEditorMode>(
+                                      popUpAnimationStyle:
+                                          OrbitMotionScope.popupStyle(context),
                                       key: const ValueKey('note-mode-menu'),
                                       tooltip: 'Editor mode',
                                       itemBuilder: (_) => [
@@ -4922,6 +4928,8 @@ class _NoteEditorState extends State<NoteEditor> {
                                   if (!_isLatex) _writingAppearanceButton(),
                                   if (widget.onContentWidthChanged != null)
                                     PopupMenuButton<double>(
+                                      popUpAnimationStyle:
+                                          OrbitMotionScope.popupStyle(context),
                                       tooltip: 'Writing width',
                                       icon: const Icon(
                                         Icons.width_normal_outlined,
@@ -4977,6 +4985,8 @@ class _NoteEditorState extends State<NoteEditor> {
                                     ),
                                   if (!_isLatex)
                                     PopupMenuButton<String>(
+                                      popUpAnimationStyle:
+                                          OrbitMotionScope.popupStyle(context),
                                       tooltip: 'Writing tools',
                                       icon: const Icon(Icons.edit_note),
                                       onSelected: _insertCommand,
@@ -5026,6 +5036,8 @@ class _NoteEditorState extends State<NoteEditor> {
                                     onPressed: () => _insertCommand('Math Lab'),
                                   ),
                                   PopupMenuButton<NoteHeading>(
+                                    popUpAnimationStyle:
+                                        OrbitMotionScope.popupStyle(context),
                                     tooltip: 'Note outline',
                                     icon: const Icon(
                                       Icons.format_list_bulleted,
@@ -5059,6 +5071,8 @@ class _NoteEditorState extends State<NoteEditor> {
                                     },
                                   ),
                                   PopupMenuButton<String>(
+                                    popUpAnimationStyle:
+                                        OrbitMotionScope.popupStyle(context),
                                     key: const ValueKey(
                                       'note-font-family-menu',
                                     ),
@@ -5280,7 +5294,7 @@ class _NoteEditorState extends State<NoteEditor> {
                                           size: 18,
                                         ),
                                         onPressed: () {
-                                          showDialog<void>(
+                                          showOrbitDialog<void>(
                                             context: context,
                                             builder: (_) => LatexMathPalette(
                                               onInsert: (source) {
@@ -5399,6 +5413,8 @@ class _NoteEditorState extends State<NoteEditor> {
                                             },
                                     ),
                                   PopupMenuButton<String>(
+                                    popUpAnimationStyle:
+                                        OrbitMotionScope.popupStyle(context),
                                     key: const ValueKey('note-copy-as-menu'),
                                     tooltip: 'Copy as...',
                                     icon: const Icon(

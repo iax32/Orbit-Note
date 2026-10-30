@@ -22,7 +22,7 @@ Future<T?> runOrbitOperation<T>(
   BuildContext context,
   String title,
   Future<T> Function(OrbitOperationProgress) run,
-) => showDialog<T>(
+) => showOrbitDialog<T>(
   context: context,
   barrierDismissible: false,
   builder: (_) => _Operation<T>(title: title, run: run),

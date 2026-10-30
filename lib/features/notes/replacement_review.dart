@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import '../../app/orbit_motion_effects.dart';
 import 'package:flutter/material.dart';
 import 'note_find_index.dart';
@@ -10,7 +11,7 @@ Future<List<NoteFindMatch>?> showReplacementReview(
 ) async {
   final selected = matches.toSet();
   var page = 0;
-  return showDialog<List<NoteFindMatch>>(
+  return showOrbitDialog<List<NoteFindMatch>>(
     context: context,
     builder: (context) => StatefulBuilder(
       builder: (context, update) => Dialog(

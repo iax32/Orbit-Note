@@ -1,3 +1,4 @@
+import '../../app/orbit_components.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -300,7 +301,7 @@ class ReadAttachmentDetails extends StatelessWidget {
       : reference.split('/').last;
 
   void _showDetails(BuildContext context) {
-    showDialog<void>(
+    showOrbitDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Attachment details'),
