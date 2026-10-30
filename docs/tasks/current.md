@@ -1,4 +1,4 @@
-# In progress — device sharing reliability, 2026-10-30
+# Published — device sharing reliability, 2026-10-30
 
 Owner clarifies that server connections/pointers work but saved drawings fail to
 reach the opposite device. Also requests faster existing-Vault upload and better
@@ -8,6 +8,18 @@ outbox / 32-MiB document mismatch, large checkpoint costs, small-file upload
 overhead and import naming. Validate simultaneous large-board edits/restart and
 failure guards; build matching Windows/Android. Do not infer physical acceptance
 from automated clients or start unrelated backlog features.
+
+Published 1.0.13+14 / app source ff30c4c:
+https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.13-2026-10-30
+126 focused sync/recovery/import/live checks pass; 13 additional host/pen/logging
+checks and nine Android importer checks pass. Analyzer clean (21.2 s), strict
+format 917 files unchanged (8.94 s). Windows built in 103.6 s / Android 145.6 s;
+Windows AOT freshness and Android package/version/original signature verified.
+All six uploaded asset sizes/SHA-256 hashes match, tag/source match; zero GitHub
+workflow runs for app source. User asked to update both devices and start a fresh
+sharing session for physical saved-drawing acceptance. Existing older sessions
+and physical results are not inferred from successful pointer awareness.
+Remaining large-graph worker handoff/full-snapshot costs are recorded in the task.
 
 ## Published — Google Drive throughput, 2026-10-29
 

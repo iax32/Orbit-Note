@@ -60,7 +60,24 @@ stylus latency. Large graph handoff/full-snapshot transfer costs remain; pen
 pixels for all nibs are unchanged. The new diagnostics distinguish shared pump
 and checkpoint costs without storing note text, paths or session credentials.
 
-Windows/Android 1.0.13+14 packaging/publication pending. Preserve private logs/
-fixtures/tmp PDFs. Physical owner PC/tablet acceptance must remain distinct from
-automated tests. Suggested next task: incremental large-Canvas payloads and
-checkpoint worker handoff to reduce the remaining full-snapshot spikes.
+Published Windows/Android 1.0.13+14:
+https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.13-2026-10-30
+App source/tag ff30c4cea4585e8a55ec57ed363741581b2257d5. Windows built in
+103.6 s, installer packaged in 16.531 s; normal run folder version/AOT freshness
+verified. Android built in 145.6 s; org.orbitnote.app.preview, code 14/name 1.0.13,
+original signing certificate verified. APK 140,347,202 bytes / SHA-256
+765ebb1f3790769abd4a738a8a20bc963952f844d9a0bc8ffbf4b1d053f58a03;
+installer 27,381,892 bytes / SHA-256
+618c0908d9c15f52327e1642d404bc8c324ab305bc1419115f9ae7b4777c7cbc.
+All six uploaded asset sizes/SHA-256 hashes matched local packages; published
+tag/source matched, zero GitHub workflow runs for app source. Only private tmp/
+PDFs remain untracked; no fixtures/logs/credentials were packaged or committed.
+
+Implementation/release batch complete. Physical owner PC/tablet acceptance
+remains pending: update both clients, stop the old session, start again and join
+with a fresh invitation. Real relay/Google network acceptance was not rerun for
+this batch. The new private Tailscale route is covered by controlled lifecycle
+checks, not enrollment or physical-device acceptance. Google delays, full-file
+transfer costs, stored/decoded journal bounds and the measured 84.7-ms native
+handoff gap remain material limits. Suggested next task: incremental large-Canvas
+payloads and checkpoint worker handoff to reduce the remaining snapshot spikes.
