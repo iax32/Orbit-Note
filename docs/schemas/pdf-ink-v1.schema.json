@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Orbit PDF ink v1 (orbit.file data.pdfInk)",
+  "type": "object",
+  "required": ["version", "checksum", "elements"],
+  "properties": {
+    "version": {"const": 1},
+    "checksum": {"type": "string", "minLength": 1},
+    "elements": {
+      "type": "array", "maxItems": 20000,
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "page", "pageWidth", "pageHeight", "x", "y", "width", "height", "points", "color", "strokeWidth", "penStyle", "isHighlighter"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1, "maxLength": 200},
+          "type": {"const": "ink"},
+          "page": {"type": "integer", "minimum": 1, "maximum": 1000000},
+          "pageWidth": {"type": "number", "minimum": 0.1, "maximum": 1000000},
+          "pageHeight": {"type": "number", "minimum": 0.1, "maximum": 1000000},
+          "x": {"type": "number", "minimum": 0, "maximum": 1000000},
+          "y": {"type": "number", "minimum": 0, "maximum": 1000000},
+          "width": {"type": "number", "minimum": 0, "maximum": 1000000},
+          "height": {"type": "number", "minimum": 0, "maximum": 1000000},
+          "color": {"type": "integer"},
+          "strokeWidth": {"type": "number", "minimum": 0.1, "maximum": 100},
+          "penStyle": {"enum": ["ballpoint", "highlighter"]},
+          "isHighlighter": {"type": "boolean"},
+          "points": {
+            "type": "array", "minItems": 1, "maxItems": 100000,
+            "items": {
+              "type": "object", "required": ["x", "y", "pressure", "timeMs"],
+              "properties": {
+                "x": {"type": "number", "minimum": 0},
+                "y": {"type": "number", "minimum": 0},
+                "pressure": {"type": "number", "minimum": 0, "maximum": 1},
+                "timeMs": {"type": "number", "minimum": 0, "maximum": 1000000000000}
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "allOf": [{
+          "if": {"properties": {"penStyle": {"const": "highlighter"}}},
+          "then": {"properties": {"isHighlighter": {"const": true}}},
+          "else": {"properties": {"isHighlighter": {"const": false}}}
+        }],
+        "additionalProperties": true
+      }
+    }
+  },
+  "description": "Runtime also requires finite values, unique stroke IDs, samples inside both declared stroke bounds and canonical page dimensions, and at most 2,000,000 samples total. Unsupported/stale data is retained without mutation.",
+  "additionalProperties": true
+}

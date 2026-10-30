@@ -4982,6 +4982,12 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
         objectId: object.id,
         title: object.title,
         checksum: object.properties['checksum'] as String?,
+        inkData: object.data['pdfInk'],
+        onInkChanged: (delta) => c.applyPdfInkCommand(
+          object.id,
+          object.properties['checksum'] as String? ?? '',
+          delta,
+        ),
         initialSearchChecksum: pane == 'primary'
             ? c.pdfSearchRequests[object.id]?.sourceChecksum
             : null,

@@ -125,12 +125,14 @@ void main() async {
             .controller!;
         await controller.goToPage(pageNumber: page, duration: Duration.zero);
         await tester.pump();
-        final canvas = find.descendant(
-          of: find.byType(CanvasEditor),
-          matching: find.byWidgetPredicate(
-            (w) => w is CustomPaint && w.painter is OrbitCanvasPainter,
-          ),
-        );
+        final canvas = find
+            .descendant(
+              of: find.byType(CanvasEditor),
+              matching: find.byWidgetPredicate(
+                (w) => w is CustomPaint && w.painter is OrbitCanvasPainter,
+              ),
+            )
+            .first;
         GestureBinding.instance.handlePointerEvent(
           PointerScrollEvent(
             position: tester.getCenter(canvas),

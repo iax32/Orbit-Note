@@ -1,5 +1,30 @@
 # Attachments, media and research
 
+## PDF freehand drawing and responsiveness — 2026-10-30
+
+FILE-04/05 and INK-03/05/08/10/11 subset: **Draw** in the PDF toolbar opens pen,
+freehand highlighter, whole-stroke eraser, colors/width, Undo/Redo and native
+**Save annotated PDF**. Pen and primary mouse draw; fingers pan by default, with
+an explicit finger-drawing toggle. Read/select mode restores ordinary PDF text
+selection, forms and navigation. This subset adds no ink lasso or segment eraser.
+
+Vectors reuse the Canvas renderer, incremental live-ink cache, spatial scene and
+delta history, through a source-page coordinate adapter. Live samples repaint
+only their own layer. Saved strokes use retained vector pictures and nearby
+spatial queries; page lookup is logarithmic plus visible rows, with a 16-page LRU
+for ink spatial scenes. No source raster, authored samples or final quality is
+reduced. Reading-session timer updates only its label. A Vault ID index replaces
+repeated full-list lookups while retaining replacement/deletion/duplicate rules.
+
+One release is one undo command, including eraser sweeps and very long strokes.
+Unrelated touches do not cancel captured pen input; unavailable pressure ranges
+use raw normalized pressure. Rejected commands remain visible with Retry/Discard;
+disk failures retain ordinary dirty drafts for retry. Source replacement/read-only
+state cancels active input and checksum mismatches preserve old ink without
+re-anchoring it. Eraser Undo restores original transparency/paint order.
+[Storage](../architecture/implemented-formats.md) and
+[validation/physical-device limits](../tasks/pdf-ink-responsiveness-2026-10-30.md).
+
 ## PDF rendering recovery and bounded work — 2026-10-24
 
 FILE-04/05/11/12/13: Windows memory-backed reads synchronize completion/wakeup

@@ -27,6 +27,7 @@ import '../platform/ocr_pages.dart';
 import '../domain/ocr_document.dart';
 import '../domain/object_discovery.dart';
 import '../domain/pdf_annotation.dart';
+import '../domain/pdf_ink.dart';
 import '../domain/pdf_review_batch.dart';
 import '../domain/research_document.dart';
 import '../domain/research_workspace.dart';
@@ -169,7 +170,19 @@ class WorkspaceController extends Notifier<int> {
   final Map<(String, String?, String?), List<UniversalObject>> _viewQueryCache =
       {};
   ({UniversalObject before, UniversalObject after})? _planningUndo;
-  List<UniversalObject> objects = [];
+  List<UniversalObject> _objects = const [];
+  Map<String, UniversalObject> _objectsById = const {};
+  List<UniversalObject> get objects => _objects;
+  set objects(List<UniversalObject> value) {
+    // Snapshot ownership keeps the lookup valid even if a caller reuses a list.
+    _objects = List.unmodifiable(value);
+    _objectsById = {};
+    for (final object in _objects) {
+      // Retain the previous first-match behavior for malformed duplicate IDs.
+      _objectsById.putIfAbsent(object.id, () => object);
+    }
+  }
+
   List<UniversalObject> _financeSnapshot = const [];
   FinanceIndex? _cachedFinanceIndex;
   int _financeIndexGeneration = -1;
@@ -377,9 +390,8 @@ class WorkspaceController extends Notifier<int> {
       activeObjects.where((o) => o.typeId == type).toList()
         ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   UniversalObject? find(String? id) {
-    for (final object in objects) {
-      if (object.id == id) return object;
-    }
+    final object = _objectsById[id];
+    if (object != null) return object;
     return repository.preferenceRecords.where((o) => o.id == id).firstOrNull;
   }
 
@@ -6130,6 +6142,24 @@ ${links(against)}
     );
   }
 
+  bool applyPdfInkCommand(String fileId, String checksum, PdfInkDelta command) {
+    final file = find(fileId);
+    if (repository.readOnly ||
+        file == null ||
+        file.isDeleted ||
+        file.isReadOnly ||
+        file.typeId != 'orbit.file' ||
+        file.properties['mimeType'] != 'application/pdf' ||
+        file.properties['checksum'] != checksum) {
+      return false;
+    }
+    final ink = PdfInkDocument.read(file.data['pdfInk'], checksum);
+    final next = ink.apply(command);
+    if (next == null) return false;
+    edit(fileId, data: {...file.data, 'pdfInk': next});
+    return identical(find(fileId)?.data['pdfInk'], next);
+  }
+
   Future<bool> saveAnnotatedPdfCopy(
     UniversalObject expectedSource,
     List<PdfAnnotation> annotations,
@@ -6143,7 +6173,11 @@ ${links(against)}
         !identical(file, expectedSource) ||
         file.typeId != 'orbit.file' ||
         file.properties['mimeType'] != 'application/pdf' ||
-        annotations.isEmpty ||
+        (annotations.isEmpty &&
+            PdfInkDocument.read(
+              file.data['pdfInk'],
+              file.properties['checksum'] as String? ?? '',
+            ).elements.isEmpty) ||
         annotations.any(
           (a) =>
               !identical(find(a.object.id), a.object) ||

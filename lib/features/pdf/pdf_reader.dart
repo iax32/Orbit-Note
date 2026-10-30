@@ -1,4 +1,7 @@
 import 'pdf_motion_surface.dart';
+import 'pdf_ink_session.dart';
+import 'pdf_ink_surface.dart';
+import '../../domain/pdf_ink.dart';
 import '../../app/orbit_components.dart';
 import '../../app/orbit_theme.dart';
 import 'dart:async';
@@ -104,6 +107,8 @@ class OrbitPdfReader extends StatefulWidget {
     this.readOnly = false,
     this.checksum,
     this.annotations = const [],
+    this.inkData,
+    this.onInkChanged,
     this.onHighlight,
     this.onOpenAnnotation,
     this.onCreateDocument,
@@ -194,6 +199,8 @@ class OrbitPdfReader extends StatefulWidget {
   final bool readOnly;
   final String? checksum;
   final List<PdfAnnotation> annotations;
+  final Object? inkData;
+  final bool Function(PdfInkDelta)? onInkChanged;
   final Future<bool> Function(
     String quote,
     List<CanvasElement> regions,
@@ -213,6 +220,7 @@ class OrbitPdfReader extends StatefulWidget {
 }
 
 class _OrbitPdfReaderState extends State<OrbitPdfReader> {
+  late final PdfInkSession _ink;
   int _navigationMotion = 0, _annotationMotion = 0;
   int _navigationSerial = 0;
   int? _navigationTarget;
@@ -319,7 +327,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   }
 
   late bool _isFavorite;
-  int? _sessionSecondsRemaining;
+  final _sessionSeconds = ValueNotifier<int?>(null);
   Timer? _sessionTimer;
 
   final _pageLayoutCache = PdfPageLayoutCache();
@@ -1250,6 +1258,12 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   @override
   void initState() {
     super.initState();
+    _ink = PdfInkSession(
+      widget.inkData,
+      widget.checksum ?? '',
+      widget.onInkChanged,
+      widget.readOnly,
+    );
     _annotationIndex = PdfAnnotationIndex(
       widget.annotations,
       widget.objectId,
@@ -1274,6 +1288,13 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   @override
   void didUpdateWidget(OrbitPdfReader oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _ink.update(
+      widget.inkData,
+      widget.checksum ?? '',
+      widget.onInkChanged,
+      widget.readOnly,
+      reset: widget.objectId != oldWidget.objectId,
+    );
     if (widget.objectId == oldWidget.objectId &&
         widget.restoreViewSerial != oldWidget.restoreViewSerial) {
       final owner = widget.objectId,
@@ -1397,6 +1418,8 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   void dispose() {
     _navigationSerial++;
     _sessionTimer?.cancel();
+    _sessionSeconds.dispose();
+    _ink.dispose();
     _flushReadingState();
     _highlightPulseTimer?.cancel();
     _search?.dispose();
@@ -1442,18 +1465,16 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     _sessionTimer?.cancel();
     setState(() {
       _activeReadingRoom = room;
-      _sessionSecondsRemaining = minutes * 60;
+      _sessionSeconds.value = minutes * 60;
     });
     _sessionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
         timer.cancel();
         return;
       }
-      if (_sessionSecondsRemaining != null && _sessionSecondsRemaining! > 0) {
-        setState(() {
-          _sessionSecondsRemaining = _sessionSecondsRemaining! - 1;
-        });
-        if (_sessionSecondsRemaining == 0) {
+      if (_sessionSeconds.value != null && _sessionSeconds.value! > 0) {
+        _sessionSeconds.value = _sessionSeconds.value! - 1;
+        if (_sessionSeconds.value == 0) {
           timer.cancel();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -1473,15 +1494,7 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   }
 
   Widget _buildFilteredViewer(Widget child) {
-    Widget filtered = PdfMotionSurface(
-      navigation: _navigationMotion,
-      annotation: _annotationMotion,
-      page: _page,
-      pageCount: _ready && _viewer.isReady ? _viewer.pageCount : 0,
-      lens: _magnifyingLens,
-      onDirectInteraction: _interruptNavigation,
-      child: child,
-    );
+    Widget filtered = child;
     switch (_paperTone) {
       case 'sepia':
         filtered = ColorFiltered(
@@ -1530,8 +1543,17 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
         break;
     }
 
+    filtered = PdfMotionSurface(
+      navigation: _navigationMotion,
+      annotation: _annotationMotion,
+      page: _page,
+      pageCount: _ready && _viewer.isReady ? _viewer.pageCount : 0,
+      lens: _magnifyingLens,
+      onDirectInteraction: _interruptNavigation,
+      child: PdfInkSurface(viewer: _viewer, session: _ink, child: filtered),
+    );
     if (_activeReadingRoom != null) {
-      return ReadingAtmosphere(room: _activeReadingRoom!, child: filtered);
+      filtered = ReadingAtmosphere(room: _activeReadingRoom!, child: filtered);
     }
     return filtered;
   }
@@ -1656,6 +1678,10 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
   }
 
   Future<void> _saveAnnotatedCopy(List<PdfAnnotation> items) async {
+    if (_ink.rejected != null) {
+      _notice('Retry or discard the unsaved drawing before exporting.');
+      return;
+    }
     if (_savingAnnotations ||
         !_ready ||
         widget.readOnly ||
@@ -1667,8 +1693,14 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     final fileId = widget.objectId;
     final save = widget.onSaveAnnotatedCopy!;
     final snapshot = List<PdfAnnotation>.of(items);
+    final inkSnapshot = _ink.document;
     setState(() => _savingAnnotations = true);
     try {
+      if (!inkSnapshot.editable) {
+        throw StateError(
+          'The saved drawing belongs to another PDF version or is unsupported.',
+        );
+      }
       final source = await _bytes;
       if (source == null) throw StateError('Source PDF is unavailable.');
       final bytes = await exportPdfAnnotations(
@@ -1676,11 +1708,13 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
         fileId,
         checksum,
         snapshot,
+        ink: inkSnapshot.elements,
       );
       if (!mounted) return;
       if (widget.checksum != checksum ||
           widget.objectId != fileId ||
           widget.readOnly ||
+          !identical(_ink.document.data, inkSnapshot.data) ||
           snapshot.any(
             (a) => !widget.annotations.any(
               (current) => identical(current.object, a.object),
@@ -2564,6 +2598,133 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
     ),
   );
 
+  Widget _inkToolbar() => ListenableBuilder(
+    listenable: _ink,
+    builder: (context, _) => Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          primary: false,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              for (final tool in PdfInkTool.values)
+                IconButton(
+                  tooltip: switch (tool) {
+                    PdfInkTool.pen => 'PDF pen',
+                    PdfInkTool.highlighter => 'Freehand highlighter',
+                    PdfInkTool.eraser => 'Erase whole stroke',
+                  },
+                  isSelected: _ink.tool == tool,
+                  onPressed: _ink.canEdit
+                      ? () => _ink.configure(() => _ink.tool = tool)
+                      : null,
+                  icon: Icon(switch (tool) {
+                    PdfInkTool.pen => Icons.edit_outlined,
+                    PdfInkTool.highlighter => Icons.border_color_outlined,
+                    PdfInkTool.eraser => Icons.auto_fix_normal_outlined,
+                  }),
+                ),
+              const OrbitToolbarDivider(),
+              IconButton(
+                tooltip: 'Undo PDF drawing',
+                onPressed: _ink.canUndo ? _ink.undo : null,
+                icon: const Icon(Icons.undo),
+              ),
+              IconButton(
+                tooltip: 'Redo PDF drawing',
+                onPressed: _ink.canRedo ? _ink.redo : null,
+                icon: const Icon(Icons.redo),
+              ),
+              for (final color in const [
+                0xff2563eb,
+                0xff1e293b,
+                0xffef4444,
+                0xff22c55e,
+                0xffeab308,
+              ])
+                IconButton(
+                  tooltip: 'Ink ${color.toRadixString(16).substring(2)}',
+                  isSelected: _ink.color == color,
+                  onPressed: _ink.canEdit
+                      ? () => _ink.configure(() => _ink.color = color)
+                      : null,
+                  icon: Icon(
+                    _ink.color == color ? Icons.check_circle : Icons.circle,
+                    color: Color(color),
+                  ),
+                ),
+              DropdownButton<double>(
+                value: _ink.width,
+                underline: const SizedBox(),
+                items: [
+                  for (final width in const [1.0, 2.5, 5.0, 10.0, 20.0])
+                    DropdownMenuItem(value: width, child: Text('$width pt')),
+                ],
+                onChanged: _ink.canEdit
+                    ? (width) => _ink.configure(() => _ink.width = width!)
+                    : null,
+              ),
+              IconButton(
+                tooltip: _ink.fingerDrawing
+                    ? 'Finger drawing on (tap to pan with fingers)'
+                    : 'Draw with fingers',
+                isSelected: _ink.fingerDrawing,
+                onPressed: _ink.canEdit
+                    ? () => _ink.configure(
+                        () => _ink.fingerDrawing = !_ink.fingerDrawing,
+                      )
+                    : null,
+                icon: const Icon(Icons.touch_app_outlined),
+              ),
+              TextButton.icon(
+                onPressed:
+                    !_savingAnnotations &&
+                        widget.onSaveAnnotatedCopy != null &&
+                        _ink.document.elements.isNotEmpty
+                    ? () => _saveAnnotatedCopy(
+                        widget.annotations
+                            .where((a) => a.matches(widget.checksum))
+                            .toList(),
+                      )
+                    : null,
+                icon: const Icon(Icons.picture_as_pdf_outlined),
+                label: const Text('Save annotated PDF'),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _ink.fingerDrawing ? 'Fingers draw' : 'Pen draws · fingers pan',
+              ),
+            ],
+          ),
+        ),
+        if (_ink.error != null)
+          Padding(
+            padding: const EdgeInsets.all(6),
+            child: Text(
+              _ink.error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+        if (_ink.rejected != null)
+          Wrap(
+            spacing: 12,
+            children: [
+              TextButton(
+                onPressed: _ink.canEdit ? _ink.retry : null,
+                child: const Text('Retry drawing save'),
+              ),
+              TextButton(
+                onPressed: _ink.discardRejected,
+                child: const Text('Discard unsaved stroke'),
+              ),
+            ],
+          ),
+      ],
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     _rememberViewOptions();
@@ -2584,6 +2745,12 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
             _search?.goToNextMatch(),
         const SingleActivator(LogicalKeyboardKey.f3, shift: true): () =>
             _search?.goToPrevMatch(),
+        const SingleActivator(LogicalKeyboardKey.keyZ, control: true): () {
+          if (_ink.drawing) _ink.undo();
+        },
+        const SingleActivator(LogicalKeyboardKey.keyY, control: true): () {
+          if (_ink.drawing) _ink.redo();
+        },
         const SingleActivator(
           LogicalKeyboardKey.keyZ,
           control: true,
@@ -2616,6 +2783,29 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            ListenableBuilder(
+                              listenable: _ink,
+                              builder: (context, _) => TextButton.icon(
+                                key: const ValueKey('pdf-draw-toggle'),
+                                onPressed: _ready && _ink.canEdit && !_textOnly
+                                    ? () {
+                                        setState(
+                                          () => _ink.configure(() {
+                                            _ink.drawing = !_ink.drawing;
+                                          }),
+                                        );
+                                      }
+                                    : null,
+                                icon: Icon(
+                                  _ink.drawing
+                                      ? Icons.pan_tool_outlined
+                                      : Icons.draw_outlined,
+                                ),
+                                label: Text(
+                                  _ink.drawing ? 'Read / select' : 'Draw',
+                                ),
+                              ),
+                            ),
                             IconButton(
                               tooltip: 'Page thumbnails',
                               isSelected: _thumbnails,
@@ -3178,6 +3368,14 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                   ),
                 ),
               ),
+            if (_ink.drawing && !_zenMode && !_textOnly) _inkToolbar(),
+            if (!_ink.document.editable && widget.inkData != null)
+              const Padding(
+                padding: EdgeInsets.all(8),
+                child: Text(
+                  'Saved drawing uses another PDF version or unsupported data. It is preserved; drawing is locked.',
+                ),
+              ),
             if ((_globalSearchRange != null || _globalOcrPage != null) &&
                 _ready)
               Padding(
@@ -3345,6 +3543,9 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                                 initialPageNumber: _restorePage,
                                 passwordProvider: _password,
                                 params: PdfViewerParams(
+                                  textSelectionParams: PdfTextSelectionParams(
+                                    enabled: !_ink.drawing,
+                                  ),
                                   onKey: (_, key, real) {
                                     if (key == LogicalKeyboardKey.keyC &&
                                         (HardwareKeyboard
@@ -3717,46 +3918,56 @@ class _OrbitPdfReaderState extends State<OrbitPdfReader> {
                                         letterSpacing: 0.2,
                                       ),
                                     ),
-                                    if (_sessionSecondsRemaining != null) ...[
-                                      const SizedBox(width: 8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 6,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: OrbitColors.of(
-                                            context,
-                                          ).accent.withValues(alpha: 0.15),
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.timer_outlined,
-                                              size: 12,
-                                              color: OrbitColors.of(
-                                                context,
-                                              ).accent,
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              '${(_sessionSecondsRemaining! ~/ 60).toString().padLeft(2, '0')}:${(_sessionSecondsRemaining! % 60).toString().padLeft(2, '0')}',
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold,
-                                                color: OrbitColors.of(
-                                                  context,
-                                                ).accent,
+                                    ValueListenableBuilder<int?>(
+                                      valueListenable: _sessionSeconds,
+                                      builder: (context, seconds, _) =>
+                                          seconds == null
+                                          ? const SizedBox.shrink()
+                                          : Padding(
+                                              padding: const EdgeInsets.only(
+                                                left: 8,
+                                              ),
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 2,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: OrbitColors.of(context)
+                                                      .accent
+                                                      .withValues(alpha: 0.15),
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    Icon(
+                                                      Icons.timer_outlined,
+                                                      size: 12,
+                                                      color: OrbitColors.of(
+                                                        context,
+                                                      ).accent,
+                                                    ),
+                                                    const SizedBox(width: 4),
+                                                    Text(
+                                                      '${(seconds ~/ 60).toString().padLeft(2, '0')}:${(seconds % 60).toString().padLeft(2, '0')}',
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        color: OrbitColors.of(
+                                                          context,
+                                                        ).accent,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
                                               ),
                                             ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
+                                    ),
                                     const SizedBox(width: 10),
                                     Container(
                                       width: 1,

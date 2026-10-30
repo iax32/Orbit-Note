@@ -1,3 +1,29 @@
+# In progress — PDF ink and measured responsiveness, 2026-10-30
+
+Owner requests freehand PDF drawing and major performance fixes across the app,
+preserving features and visuals. Scope: shared-engine vector PDF pen/highlighter,
+stroke erasing, undo/redo, source-bound durable commands and annotated export;
+isolated live-ink repaint and visible-page queries; constant-time object lookup,
+reading-session update isolation and targeted PDF/large-Vault benchmarks. No
+server work, fake FPS claims or destructive user-Vault probes. Keep offline use,
+unknown fields, original PDF bytes, source identities, conflict/history recovery,
+text selection, forms, zoom and palm/finger behavior. Existing release publishing
+preferences apply after checks and native builds. Physical tablet acceptance stays
+separate from headless/native synthetic checks.
+
+Implemented [PDF ink and responsiveness](pdf-ink-responsiveness-2026-10-30.md).
+Final 94 focused tests pass in 20 s: native ink export (rotation/crop, pressure,
+smooth paths, dots, alpha), source/draft guards, disk failure/reopen, ID lookup,
+touch/palm/pen/read-mode arbitration, original highlight/form/split/navigation,
+and mixed 10000-item Canvas / long-note / 300-page PDF use. Analyzer lib/test/tool
+clean (12.6 s); strict format 929 files unchanged (7.91 s). Actual-font reader
+and native exported-ink images inspected. Builds/publication pending below.
+
+Baseline pen/PDF/finance/find probes ran: dense 10000-highlight index ~57 ms,
+300-page distant text/raster probes ~200 ms, 100000-sample retained ink ~1.03 s for
+60 test-CPU camera paints. A live-preview assertion predates borrowed sample views
+and fails in the baseline; assess its actual lifecycle behavior, do not hide it.
+
 # Published — tablet explorer, 2026-10-30
 
 Owner reports touch scrolling opens/moves explorer objects and tablet chrome

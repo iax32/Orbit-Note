@@ -1,5 +1,30 @@
 # Implemented open formats — v1 subset
 
+## Editable PDF ink — 2026-10-30
+
+Existing orbit.file sidecars may contain additive `data.pdfInk`, with `version: 1`,
+the original attachment SHA-256 `checksum`, and ordered Canvas `ink` elements.
+Each element adds 1-based `page`, `pageWidth` and `pageHeight` in the displayed
+PDF page's canonical units, including intrinsic rotation/crop. Element x/y bounds
+are page-relative; sample x/y are offsets from those bounds. Samples retain
+pressure and elapsed `timeMs`; pen/highlighter retain ARGB color and width.
+[Schema and runtime limits](../schemas/pdf-ink-v1.schema.json).
+
+The original PDF is untouched. Completed gestures use ordinary object draft,
+sidecar autosave, history and existing sync; individual samples are not notes or
+objects. Unknown root/element/sample fields survive. Invalid, future or different
+checksum ink remains preserved and locks drawing rather than partially rewriting
+it. No Vault migration or build-number compatibility gate is introduced.
+
+Native annotated-copy export includes standard PDF InkList vectors and an
+appearance stream preserving round caps, pressure widths, smoothed uniform paths,
+dots and highlighter transparency. It combines all ink with the selected review
+notes, preserves source text/forms and writes a separate attachment. Export uses
+existing protected/signed/XFA and 64 MiB source / 80 MiB output guards, and bounds
+ink export to 500,000 samples; larger editable ink remains saved. Original
+sidecars remain editable; embedded annotations in a derivative are standard PDF
+annotations, not silently adopted as a second copy of Orbit's source ink.
+
 ## Android folder imports — 2026-10-29
 
 Android's Import Vault folder reads the explicitly selected document tree through

@@ -300,6 +300,7 @@ void main() async {
       await tester.pump();
       final live = find.byType(CanvasLiveInkLayer);
       final firstPreview = tester.widget<CanvasLiveInkLayer>(live).stroke()!;
+      final initialPreviewCount = (firstPreview.data['points'] as List).length;
       final savedScenePainter = tester.widget<CustomPaint>(surface).painter;
       // Two palm contacts must not cancel a captured stylus.
       for (final pointer in [98, 99]) {
@@ -330,7 +331,10 @@ void main() async {
         ),
       );
       expect(saves, 0);
-      expect(firstPreview.points, hasLength(1));
+      expect(initialPreviewCount, 1);
+      // Live previews deliberately borrow gesture-owned samples. Only the
+      // committed stroke freezes them; copying each preview causes input lag.
+      expect((firstPreview.data['points'] as List).length, 1001);
       await tester.pump();
       expect(
         identical(

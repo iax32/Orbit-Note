@@ -314,42 +314,38 @@ void main() {
         ..loading = false;
       addTearDown(controller.cancelAllTimers);
 
-      final bookObj = await tester.runAsync(
-        () => controller.create(
-          'orbit.file',
-          title:
-              'Design Patterns Elements of Reusable Object-Oriented Software.pdf',
-          body: '',
-          properties: {
-            'mimeType': 'application/pdf',
-            'author': 'Gang of Four',
-            'shelf': 'Architecture',
-            'totalPages': 395,
-            'pdfBookmarks': [14, 87, 102],
-          },
-        ),
+      final bookObj = await controller.create(
+        'orbit.file',
+        title:
+            'Design Patterns Elements of Reusable Object-Oriented Software.pdf',
+        body: '',
+        properties: {
+          'mimeType': 'application/pdf',
+          'author': 'Gang of Four',
+          'shelf': 'Architecture',
+          'totalPages': 395,
+          'pdfBookmarks': [14, 87, 102],
+        },
       );
       expect(bookObj, isNotNull);
 
       // Create a highlight annotation
-      final noteObj = await tester.runAsync(
-        () => controller.create(
-          'orbit.note',
-          title: 'Factory Pattern quote',
-          body: "Program to an interface, not an implementation.",
-          properties: {
-            'pdfHighlightVersion': 1,
-            'pdfSource': {
-              'objectId': bookObj!.id,
-              'page': 14,
-              'quote': "Program to an interface, not an implementation.",
-            },
+      final noteObj = await controller.create(
+        'orbit.note',
+        title: 'Factory Pattern quote',
+        body: "Program to an interface, not an implementation.",
+        properties: {
+          'pdfHighlightVersion': 1,
+          'pdfSource': {
+            'objectId': bookObj!.id,
+            'page': 14,
+            'quote': "Program to an interface, not an implementation.",
           },
-        ),
+        },
       );
       expect(noteObj, isNotNull);
 
-      final bookMeta = PdfBookMeta.fromObject(bookObj!);
+      final bookMeta = PdfBookMeta.fromObject(bookObj);
       int? jumpedPage;
 
       await tester.pumpWidget(
@@ -383,10 +379,19 @@ void main() {
       // Export notes to Orbit Note
       final exportBtn = find.text('Export to Orbit Note');
       expect(exportBtn, findsOneWidget);
-      await tester.runAsync(() async {
-        await tester.tap(exportBtn);
-        await repo.search("Reading Notes");
-      });
+      await tester.tap(exportBtn);
+      // Memory repository work belongs to the widget test's zone. Moving only
+      // later queue operations into runAsync can strand its earlier barrier.
+      for (
+        var i = 0;
+        i < 100 &&
+            !controller.activeObjects.any(
+              (o) => o.title.startsWith('Reading Notes:'),
+            );
+        i++
+      ) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
       await tester.pump();
       await tester.pump(const Duration(seconds: 4));
       controller.cancelAllTimers();
