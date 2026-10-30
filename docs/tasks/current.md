@@ -1,4 +1,4 @@
-# Complete implementation — tablet explorer, 2026-10-30
+# Published — tablet explorer, 2026-10-30
 
 Owner reports touch scrolling opens/moves explorer objects and tablet chrome
 crowds out the item list, with residual lag. Requests a quick focused fix and
@@ -26,7 +26,16 @@ threshold, old bulk-confirmation wording and an initialize future across fake/re
 test zones; corrected these and timer cleanup. The resource-lifetime failure found
 by the existing folder test was fixed in code. Analyzer lib/test/tool clean (25.2 s), strict format 925 files unchanged
 (7.91 s). Windows 1.0.16+17 built in 97.6 s; version/AOT freshness verified.
-Android and release packaging underway; no GitHub build workflows.
+Android built in 116.7 s, installer packaging 14.5 s. Published 1.0.16+17:
+https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.16-2026-10-30
+App source/tag bc0f5ba4e688d3f110e9ea991765cf9e21e8c5f5. Android package/version
+and original signing identity verified; all six uploaded sizes/SHA-256 digests
+match, published tag/source match, zero GitHub workflows. Existing approved Google
+native sign-in configuration retained; no account tokens, private credential files,
+keys or tmp PDFs uploaded. Native Windows run folder is updated without launching
+it. Next suggested task: real Lenovo scrolling/fling and large-Vault frame profile;
+not started and not inferred from headless checks. General device lag is not claimed
+fully eliminated.
 
 # Published — cohesive application motion, 2026-10-30
 

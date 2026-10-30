@@ -45,3 +45,15 @@ as a new pass. No full-suite or physical-device acceptance claim.
 
 Next suggested task: real Lenovo scroll/fling and large-Vault profiling after
 installing the update. Do not start that hardware-dependent task implicitly.
+
+## Publication evidence
+
+1.0.16+17 / source bc0f5ba4e688d3f110e9ea991765cf9e21e8c5f5 is published at
+https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.16-2026-10-30.
+Windows built in 97.6 s, Android 116.7 s, installer packaging 14.5 s. Analyzer
+lib/test/tool clean (25.2 s); strict 925 files unchanged (7.91 s). 28 final checks
+pass in 7 s; phone/tablet captures inspected. Windows AOT/version and Android
+package/version/original signature verified. All six uploaded hashes/sizes and
+source tag match; zero GitHub workflows. The normal Windows run folder is updated,
+and the signed APK is available for the tablet. Physical tablet FPS and fling
+acceptance remain the next task; this update does not claim all app lag is gone.

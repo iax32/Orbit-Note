@@ -121,3 +121,8 @@ The static child is passed outside per-frame builders. Physical device frame
 latency remains a separate acceptance check.
 
 [Scope, failures and validation](../tasks/cohesive-motion-2026-10-30.md).
+
+2026-10-30 explorer follow-up: form controllers may use the shared dialog's
+onDisposed cleanup boundary, retaining resources through exit while returning
+results immediately. Folder inputs no longer guess a 250 ms disposal delay.
+[Tablet explorer validation](../tasks/tablet-explorer-2026-10-30.md).
