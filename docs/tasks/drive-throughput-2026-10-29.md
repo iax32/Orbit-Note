@@ -85,4 +85,26 @@ ownership/account at publication entry too. Six focused tests pass, including a
 paused fresh-preflight retry that must fail without a network request, unchanged
 request budgets and lost-ack recovery. No Google re-consent or schema change is
 needed for this one-line guard. Shipping as 1.0.12+13 to preserve 1.0.11 tag and
-artifact provenance; new builds/verification pending.
+artifact provenance.
+
+Final release completion (verified 2026-10-30): Windows 1.0.12+13 built in
+144.4 s; Android in 138.8 s. Normal Windows run folder reports 1.0.12+13 and
+AOT freshness was verified. APK org.orbitnote.app.preview, versionCode 13 /
+versionName 1.0.12 retains the original preview signing identity; 140,134,210
+bytes / SHA-256
+0efaa5d15b1a424cc856c2ebcf9b0f6204f29c011a6afa12512204f582a3b1a0.
+Installer: 27,371,903 bytes / SHA-256
+afe3d541f03e5c7d43428ff2b873b9ac1139607ea15ef5b1fba24837689209d3.
+Final strict formatting: 912 files unchanged (10.76 s); analyzer clean (44.3 s).
+Published app source/tag feacc9ab05203e434858b73d394b7b10233a5e6d:
+https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.12-2026-10-29
+All six uploaded asset sizes/SHA-256 hashes verified against local packages;
+published tag matches app source, zero GitHub workflow runs for that commit.
+The final checksum selection and pause-guard refinements were covered by the
+focused local checks above; the real Drive run preceded those refinements.
+No additional Google consent or personal Vault access was needed.
+
+Batch complete. Remaining limits: physical tablet acceptance has not been
+performed for this release, Drive indexing/network delays remain, and very
+large Canvas changes still transfer full-file payloads. Suggested next task:
+reviewed incremental large-Canvas payload transfer; no such migration is made here.

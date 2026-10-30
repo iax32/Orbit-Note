@@ -1,4 +1,4 @@
-# In progress — Google Drive throughput, 2026-10-29
+# Published — Google Drive throughput, 2026-10-29
 
 Owner reports painfully slow cloud sync and requests a fix. Scope/evidence:
 [Drive throughput task](drive-throughput-2026-10-29.md). Measure actual requests
@@ -25,8 +25,19 @@ bandwidth limits remain; next task is reviewed incremental large-Canvas payloads
 Published throughput source ce99add / 1.0.11 assets with verified digests and zero
 workflow runs. One final cached-retry pause guard was then tightened at provider
 entry; application checkpoint guards already rejected a stale acknowledgement.
-Six focused checks pass. Final 1.0.12+13 builds are in progress to preserve the
+Six focused checks pass. Final 1.0.12+13 builds preserve the
 previous release's provenance rather than replacing a published tag/binary.
+
+Final 1.0.12+13 is published (publication verified 2026-10-30):
+https://github.com/iax32/Orbit-Note/releases/tag/preview-1.0.12-2026-10-29
+App source/tag feacc9a; all six uploaded asset sizes and SHA-256 hashes verified.
+Windows built in 144.4 s / Android 138.8 s. Windows normal run folder reports
+1.0.12+13; AOT freshness and original Android signing identity verified. Final
+strict format: 912 files unchanged (10.76 s); analyzer clean (44.3 s). Zero
+GitHub workflow runs for the app commit. Throughput release work is complete;
+physical tablet acceptance, Google propagation delays and full-file transfer
+costs for very large Canvases remain. Suggested next task: reviewed incremental
+large-Canvas payload transfer; not implemented in this batch.
 
 ## Published pen responsiveness and easy device sharing, 2026-10-29
 
