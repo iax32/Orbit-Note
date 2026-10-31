@@ -123,3 +123,40 @@ work; no leak-free or GC-free claim is made. The existing sampler now records on
 aggregate heap/external-memory/GC counters and strips host paths from source/
 native module metadata. Its final targeted Dart analysis passes. Actual-font
 Explorer/tablet captures were inspected without visual changes.
+
+## Native build and publication state — 2026-10-31
+
+Source/tag: `a920ee9f67f84344a4fca7c7f4c90a2485e5bb8c`, version `1.0.18+19`,
+`preview-1.0.18-2026-10-31`. Source is pushed with `[skip ci]`; zero GitHub
+workflow runs are verified. Windows built in an isolated source checkout because
+the owner's running app maps the usual build/Release files. Fresh compilation
+passed in 283.1 s (290.3 s including the unchanged bundled helper). Runtime numeric
+version, lib/main.dart entry point, AOT freshness and all 13 authored font hashes
+are verified. No user app was terminated or usual Release file overwritten.
+
+The first Android build (625.1 s) used the default development package/signature;
+this was caught before staging/upload. Existing ignored signing configuration
+uses a DPAPI-protected password and original preview keystore. The corrected
+build explicitly requires production signing and the preview package, passed in
+37.4 s (42.2 s wrapper), and matches the original 1.0.17 certificate. Package
+org.orbitnote.app.preview, versionName 1.0.18/versionCode 19 and three changed AOT
+libraries are verified. No new key was generated or key/password printed/copied
+into artifacts. The corrected APK is uploaded to draft release 429690689 and its
+remote size/SHA-256 match the local artifact. The draft-by-tag API returned 404;
+reading the existing draft by release ID verifies it without creating duplicates.
+
+Windows packaging was rejected twice by automatic approval review: first for
+reading/checking an embedded Google registration value while packaging, then
+because the previous approval was available only in delegated context/project
+records rather than fresh direct user confirmation for this exact package.
+Historical approval records and Google's official desktop public-client guidance
+were checked, but the reviewer still requires direct confirmation. Windows
+packaging/upload therefore remain unexecuted. Older frozen-input hashes predate
+the current registration and are not claimed as proof of its identity. No
+configuration JSON, account token, keystore, private Vault or tmp file is uploaded.
+
+The final required step is fresh user approval of this Windows package. The local
+runtime can be copied into the usual run folder only after the owner saves and
+closes the active app. The public release remains a draft until these publication
+requirements are resolved. Next performance task after this release: reduce
+cold dense-Canvas raster/reopening spikes while preserving exact vector quality.

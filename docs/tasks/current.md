@@ -1,4 +1,4 @@
-# Ready locally — whole-app responsiveness, 2026-10-31
+# Native builds ready — Windows publication awaits direct approval, 2026-10-31
 
 Owner reports pervasive lag and authorizes implementation plus local native
 releases. [Measured work and limits](whole-app-responsiveness-2026-10-30.md).
@@ -18,9 +18,22 @@ some commit/replacement frames still exceed the frame budget. Universal zero lag
 and physical Windows/Lenovo acceptance are not claimed. 115 broad focused checks
 pass (29 s); 33 affected retained-source checks pass (15 s), including actual-font
 captures. Analyzer clean (8.8 s), strict 932 lib/test files unchanged (10.45 s).
-Preparing 1.0.18+19 native builds and publication. The owner's active app uses the
-usual Windows build output, so publication builds use an isolated source checkout;
-no running user app is terminated or overwritten.
+1.0.18+19 source/tag is a920ee9f67f84344a4fca7c7f4c90a2485e5bb8c; source
+is pushed with [skip ci]. Windows isolated build passed (283.1 s; 290.3 s with
+unchanged bundled helper), numeric version/AOT freshness and 13 authored fonts
+verified. Correct Android preview build passed in 37.4 s (42.2 s wrapper); original
+certificate, package/version and all three changed AOT libraries verified. Its
+uploaded size/SHA-256 matches draft release 429690689; zero GitHub workflows.
+The initial Android build used the default development identity and was caught
+before upload; the corrected build explicitly requires the existing preview key.
+
+Windows installer packaging remains blocked by automatic approval review, which
+requires fresh direct user confirmation for this exact package's existing embedded
+Google desktop registration despite the prior approval in the delegated context.
+No Windows packaging/upload workaround is attempted. The owner's active app uses
+the usual Windows build output; it has not been stopped or overwritten. Finish
+Windows packaging/publication after direct approval, and update that local folder
+only after the owner saves/closes the app. The release remains a draft meanwhile.
 
 # Published — PDF ink and measured responsiveness, 2026-10-30
 
