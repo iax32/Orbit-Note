@@ -33,6 +33,7 @@ Future<void> main(List<String> args) async {
       await service.clearVMTimeline();
       await service.clearCpuSamples(isolate.id!);
     }
+    final memoryBefore = await service.getMemoryUsage(isolate.id!);
     final now = (await service.getVMTimelineMicros()).timestamp!;
     final duration = Duration(seconds: int.parse(args[2]).clamp(5, 60));
     final start = recent ? now - duration.inMicroseconds : now;
@@ -40,14 +41,17 @@ Future<void> main(List<String> args) async {
     if (!recent) await Future<void>.delayed(duration);
     final end = (await service.getVMTimelineMicros()).timestamp!;
     final cpu = await service.getCpuSamples(isolate.id!, start, end - start);
+    final memoryAfter = await service.getMemoryUsage(isolate.id!);
     final functions = [
       for (final f in cpu.functions ?? [])
         {
-          'name': (f.toJson()['function'] as Map?)?['name'] ?? '',
+          'name': _safeFunction(
+            (f.toJson()['function'] as Map?)?['name'] as String? ?? '',
+          ),
           'owner':
               ((f.toJson()['function'] as Map?)?['owner'] as Map?)?['name'] ??
               '',
-          'script': f.resolvedUrl ?? '',
+          'script': _safeScript(f.resolvedUrl ?? ''),
           'kind': f.kind ?? '',
           'self': f.exclusiveTicks ?? 0,
           'total': f.inclusiveTicks ?? 0,
@@ -84,9 +88,40 @@ Future<void> main(List<String> args) async {
         });
       }
     }
+    final gc = spans
+        .where(
+          (span) => '${span['category']} ${span['name']}'
+              .toLowerCase()
+              .contains('gc'),
+        )
+        .toList();
+    num gcTotal = 0, gcMax = 0;
+    for (final span in gc) {
+      final elapsed = span['us'] as num;
+      gcTotal += elapsed;
+      if (elapsed > gcMax) gcMax = elapsed;
+    }
     spans.sort((a, b) => (b['us'] as num).compareTo(a['us'] as num));
     await File(args[1]).writeAsString(
       jsonEncode({
+        'memoryBefore': {
+          'heapBytes': memoryBefore.heapUsage,
+          'capacityBytes': memoryBefore.heapCapacity,
+          'externalBytes': memoryBefore.externalUsage,
+        },
+        'memoryAfter': {
+          'heapBytes': memoryAfter.heapUsage,
+          'capacityBytes': memoryAfter.heapCapacity,
+          'externalBytes': memoryAfter.externalUsage,
+        },
+        // Nested phases and GC threads overlap; this is not UI pause time.
+        'gcEvents': {
+          'vmWide': true,
+          'nestedOrParallel': true,
+          'spanCount': gc.length,
+          'overlappingTotalUs': gcTotal,
+          'maxSpanUs': gcMax,
+        },
         'samples': cpu.sampleCount,
         'samplePeriodUs': cpu.samplePeriod,
         'durationUs': end - start,
@@ -105,4 +140,23 @@ Future<void> main(List<String> args) async {
     }
     await service.dispose();
   }
+}
+
+String _safeFunction(String name) => name.startsWith('[Native] ')
+    ? '[Native] ${name.substring(9).split(RegExp(r'[/\\]')).last}'
+    : name;
+
+String _safeScript(String source) {
+  final uri = Uri.tryParse(source);
+  if (uri == null) return '';
+  if (const {'package', 'dart', 'org-dartlang-sdk'}.contains(uri.scheme)) {
+    return uri.replace(query: '', fragment: '').toString();
+  }
+  if (uri.scheme != 'file') return '';
+  final path = uri.path.replaceAll('\\', '/');
+  for (final boundary in ['/lib/', '/tool/']) {
+    final at = path.lastIndexOf(boundary);
+    if (at >= 0) return path.substring(at + 1);
+  }
+  return '';
 }

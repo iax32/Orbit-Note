@@ -157,6 +157,8 @@ class WorkspaceController extends Notifier<int> {
         notify();
       },
     );
+    _pdfSyncOwner = _pdfIndexer;
+    _pdfSyncSnapshot = objects;
     _pdfIndexer!.synchronize(objects);
   }
 
@@ -175,6 +177,8 @@ class WorkspaceController extends Notifier<int> {
   List<UniversalObject> get objects => _objects;
   set objects(List<UniversalObject> value) {
     // Snapshot ownership keeps the lookup valid even if a caller reuses a list.
+    _knownFolderObjects = null;
+    _pdfSyncSnapshot = null;
     _objects = List.unmodifiable(value);
     _objectsById = {};
     for (final object in _objects) {
@@ -327,8 +331,20 @@ class WorkspaceController extends Notifier<int> {
   void Function() observeChanges(void Function() listener) =>
       listenSelf((_, _) => listener());
 
+  List<UniversalObject>? _pdfSyncSnapshot;
+  PdfSearchIndexer? _pdfSyncOwner;
   void notify() {
-    if (_alive && hasWorkspace) _pdfIndexer?.synchronize(objects);
+    final indexer = _pdfIndexer;
+    if (_alive &&
+        hasWorkspace &&
+        indexer != null &&
+        (!identical(_pdfSyncSnapshot, objects) ||
+            !identical(_pdfSyncOwner, indexer))) {
+      // Publish the guard before synchronize, whose progress can notify again.
+      _pdfSyncSnapshot = objects;
+      _pdfSyncOwner = indexer;
+      indexer.synchronize(objects);
+    }
     try {
       if (_alive) state++;
     } catch (_) {}
@@ -1273,6 +1289,8 @@ class WorkspaceController extends Notifier<int> {
     ocrFailures.clear();
     ocrStatus = '';
     _pdfIndexer = null;
+    _pdfSyncOwner = null;
+    _pdfSyncSnapshot = null;
     pdfSearchRequests.clear();
     await _externalSubscription?.cancel();
     await _attachmentSubscription?.cancel();
@@ -1414,6 +1432,8 @@ class WorkspaceController extends Notifier<int> {
     _pdfOpenRequest++;
     await _pdfIndexer?.close();
     _pdfIndexer = null;
+    _pdfSyncOwner = null;
+    _pdfSyncSnapshot = null;
     pdfSearchRequests.clear();
     await repository.clearSelection();
     await _externalSubscription?.cancel();
@@ -5505,10 +5525,22 @@ ${links(against)}
     }
   }
 
+  List<UniversalObject>? _knownFolderObjects;
+  List<String> _knownFolderRoots = const [];
+  Set<String> _knownFolders = const {};
+
   /// All known normalized folder paths discovered from the repository and active objects.
   Set<String> get allKnownFolders {
+    final roots = repository.folders;
+    if (identical(_knownFolderObjects, objects) &&
+        roots.length == _knownFolderRoots.length &&
+        Iterable<int>.generate(
+          roots.length,
+        ).every((i) => roots[i] == _knownFolderRoots[i])) {
+      return Set.of(_knownFolders);
+    }
     final folders = <String>{'Notes'};
-    for (final raw in repository.folders) {
+    for (final raw in roots) {
       if (raw.isEmpty) continue;
       final f = raw == 'Notes' || raw.startsWith('Notes/') ? raw : 'Notes/$raw';
       folders.add(f);
@@ -5533,6 +5565,9 @@ ${links(against)}
         }
       }
     }
+    _knownFolderObjects = objects;
+    _knownFolderRoots = roots;
+    _knownFolders = Set.unmodifiable(folders);
     return folders;
   }
 

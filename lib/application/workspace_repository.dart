@@ -57,6 +57,8 @@ class WorkspaceRepository {
   final _codec = ObjectCodec();
   final _objects = <String, UniversalObject>{};
   final _paths = <String, String>{};
+  final _objectFolderCache =
+      <String, ({String? path, String? folder, String resolved})>{};
   final _sources = <String, String>{};
   final _hashes = <String, String>{};
   final _issues = <String>[];
@@ -439,6 +441,7 @@ class WorkspaceRepository {
     _indexReady = false;
     _initialized = false;
     _objects.clear();
+    _objectFolderCache.clear();
     _paths.clear();
     _sources.clear();
     _hashes.clear();
@@ -596,7 +599,16 @@ class WorkspaceRepository {
     final previousIds = {
       for (final entry in _paths.entries) entry.value: entry.key,
     };
+    final scanBudget = Stopwatch()..start();
+    var scannedSinceYield = 0;
     for (final path in await _store.listFiles()) {
+      // Even immediately completed reads/hash/decode futures can form one long
+      // microtask chain on warm storage. Yield without publishing partial maps.
+      if (++scannedSinceYield >= 64 && scanBudget.elapsedMicroseconds >= 6000) {
+        await Future<void>.delayed(Duration.zero);
+        scanBudget.reset();
+        scannedSinceYield = 0;
+      }
       if (WorkspaceDeletions.isJournal(path)) {
         _readOnly = true;
         _addIssue(

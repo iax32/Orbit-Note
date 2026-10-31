@@ -311,6 +311,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
   String? _anchorNoteId;
   final FocusNode _focusNode = FocusNode();
   final _scroll = ScrollController();
+  final _folderSorts = <String, ObjectSortCache>{};
   final _viewportKey = GlobalKey();
   late final _dragScroll = OrbitDragScroll(_scroll, _viewportKey);
   int _focusedIndex = 0;
@@ -1276,12 +1277,14 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
     final owner = _capture();
     if (_selectionOwner != owner) {
       _selectionOwner = owner;
+      _folderSorts.clear();
       _selectedNoteIds.clear();
       _anchorNoteId = null;
       _focusedIndex = 0;
       _batchBusy = false;
     }
-    final rows = <Widget>[];
+    // Preserve complete keyboard/batch metadata; build controls on demand.
+    final rows = <WidgetBuilder>[];
 
     final visibleEntries = <({bool isFolder, String id, String folderPath})>[];
     final visibleNoteIds = <String>[];
@@ -1360,11 +1363,18 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
     for (final children in childrenByFolder.values) {
       children.sort();
     }
+    _folderSorts.removeWhere(
+      (folder, _) => !objectsByFolder.containsKey(folder),
+    );
     final sortedFolderItems = <String, List<UniversalObject>>{};
     List<UniversalObject> folderItems(String folder) =>
         sortedFolderItems.putIfAbsent(folder, () {
-          final items = objectsByFolder[folder] ?? <UniversalObject>[];
-          sortObjects(items, widget.controller.session.noteSort);
+          final items = _folderSorts
+              .putIfAbsent(folder, ObjectSortCache.new)
+              .resolve(
+                objectsByFolder[folder] ?? const [],
+                widget.controller.session.noteSort,
+              );
           if (widget.groupLooseItems && folder == 'Notes') {
             return [
               for (final group in ExplorerGroup.values)
@@ -1394,6 +1404,9 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
     for (final root in rootFolders) {
       collect(root);
     }
+    _folderSorts.removeWhere(
+      (folder, _) => !sortedFolderItems.containsKey(folder),
+    );
 
     Color? resolveAccent(dynamic raw) {
       if (raw == null) return null;
@@ -1441,7 +1454,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                   ?.containsKey(folder) ??
               false);
       rows.add(
-        Padding(
+        (context) => Padding(
           padding: EdgeInsets.only(left: depth * 12.0),
           child: _drop(
             folder,
@@ -1812,7 +1825,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
           if (group != lastGroup) {
             lastGroup = group;
             rows.add(
-              Padding(
+              (context) => Padding(
                 key: ValueKey('loose-group:${group.name}'),
                 padding: EdgeInsets.fromLTRB((depth + 1) * 12.0 + 8, 14, 8, 4),
                 child: Text(
@@ -1825,60 +1838,60 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
             );
           }
         }
-        final isMulti = _selectedNoteIds.contains(note.id);
-        final hasBatch = _selectedNoteIds.length > 1 && isMulti;
-        final mime = (note.properties['mimeType'] as String? ?? '')
-            .toLowerCase();
-        final lowerTitle = note.title.toLowerCase();
-        final isPdf =
-            note.typeId == 'orbit.file' &&
-            (mime == 'application/pdf' || lowerTitle.endsWith('.pdf'));
-        final isImage =
-            note.typeId == 'orbit.file' &&
-            (mime.startsWith('image/') ||
-                lowerTitle.endsWith('.png') ||
-                lowerTitle.endsWith('.jpg') ||
-                lowerTitle.endsWith('.jpeg') ||
-                lowerTitle.endsWith('.webp') ||
-                lowerTitle.endsWith('.gif') ||
-                lowerTitle.endsWith('.svg'));
-        final leadingWidget =
-            note.properties['icon'] != null &&
-                note.properties['icon'].toString().isNotEmpty
-            ? Text(
-                note.properties['icon'].toString(),
-                style: const TextStyle(fontSize: 14),
-              )
-            : note.typeId == 'orbit.canvas'
-            ? const Icon(Icons.dashboard_outlined, size: 16)
-            : note.typeId == 'orbit.view'
-            ? Icon(
-                viewTypeIcon(note.properties['viewType'] as String?),
-                size: 16,
-              )
-            : note.typeId == 'orbit.file'
-            ? Icon(
-                isPdf
-                    ? Icons.picture_as_pdf_outlined
-                    : isImage
-                    ? Icons.image_outlined
-                    : Icons.insert_drive_file_outlined,
-                size: 16,
-                color: isPdf
-                    ? Theme.of(context).colorScheme.error
-                    : isImage
-                    ? Theme.of(context).colorScheme.tertiary
-                    : null,
-              )
-            : const Icon(Icons.description_outlined, size: 16);
+        rows.add((context) {
+          final isMulti = _selectedNoteIds.contains(note.id);
+          final hasBatch = _selectedNoteIds.length > 1 && isMulti;
+          final mime = (note.properties['mimeType'] as String? ?? '')
+              .toLowerCase();
+          final lowerTitle = note.title.toLowerCase();
+          final isPdf =
+              note.typeId == 'orbit.file' &&
+              (mime == 'application/pdf' || lowerTitle.endsWith('.pdf'));
+          final isImage =
+              note.typeId == 'orbit.file' &&
+              (mime.startsWith('image/') ||
+                  lowerTitle.endsWith('.png') ||
+                  lowerTitle.endsWith('.jpg') ||
+                  lowerTitle.endsWith('.jpeg') ||
+                  lowerTitle.endsWith('.webp') ||
+                  lowerTitle.endsWith('.gif') ||
+                  lowerTitle.endsWith('.svg'));
+          final leadingWidget =
+              note.properties['icon'] != null &&
+                  note.properties['icon'].toString().isNotEmpty
+              ? Text(
+                  note.properties['icon'].toString(),
+                  style: const TextStyle(fontSize: 14),
+                )
+              : note.typeId == 'orbit.canvas'
+              ? const Icon(Icons.dashboard_outlined, size: 16)
+              : note.typeId == 'orbit.view'
+              ? Icon(
+                  viewTypeIcon(note.properties['viewType'] as String?),
+                  size: 16,
+                )
+              : note.typeId == 'orbit.file'
+              ? Icon(
+                  isPdf
+                      ? Icons.picture_as_pdf_outlined
+                      : isImage
+                      ? Icons.image_outlined
+                      : Icons.insert_drive_file_outlined,
+                  size: 16,
+                  color: isPdf
+                      ? Theme.of(context).colorScheme.error
+                      : isImage
+                      ? Theme.of(context).colorScheme.tertiary
+                      : null,
+                )
+              : const Icon(Icons.description_outlined, size: 16);
 
-        final noteExplicitColor = resolveAccent(
-          note.properties['accent'] ?? note.properties['color'],
-        );
-        final noteAccent = noteExplicitColor ?? folderAccent;
+          final noteExplicitColor = resolveAccent(
+            note.properties['accent'] ?? note.properties['color'],
+          );
+          final noteAccent = noteExplicitColor ?? folderAccent;
 
-        rows.add(
-          Padding(
+          return Padding(
             padding: EdgeInsets.only(left: (depth + 1) * 12.0),
             child: _drag(
               repo.objectPath(note.id) ?? note.title,
@@ -2081,8 +2094,8 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
                 ),
               ),
             ),
-          ),
-        );
+          );
+        });
       }
     }
 
@@ -2095,9 +2108,9 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
         .where((f) => isFolderArchived(f))
         .toList();
     if (archivedFolders.isNotEmpty) {
-      rows.add(const SizedBox(height: 8));
+      rows.add((_) => const SizedBox(height: 8));
       rows.add(
-        OrbitExplorerRow(
+        (context) => OrbitExplorerRow(
           key: const ValueKey('archived-header'),
           leading: Icon(
             _showArchived ? Icons.expand_more : Icons.chevron_right,
@@ -2130,7 +2143,7 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
       if (_showArchived) {
         for (final archFolder in archivedFolders) {
           rows.add(
-            Padding(
+            (context) => Padding(
               padding: const EdgeInsets.only(left: 12.0),
               child: OrbitExplorerRow(
                 key: ValueKey('archived-folder:$archFolder'),
@@ -2446,11 +2459,12 @@ class _NoteFolderExplorerState extends State<NoteFolderExplorer> {
               ),
             ),
           Expanded(
-            child: ListView(
+            child: ListView.builder(
               key: _viewportKey,
               controller: _scroll,
               padding: const EdgeInsets.symmetric(horizontal: 4),
-              children: rows,
+              itemCount: rows.length,
+              itemBuilder: (context, index) => rows[index](context),
             ),
           ),
         ],

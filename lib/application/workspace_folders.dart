@@ -13,13 +13,34 @@ extension WorkspaceFolders on WorkspaceRepository {
 
   String objectFolder(String id) {
     final path = _paths[id];
-    if (path != null && path.startsWith('Notes/')) return p.posix.dirname(path);
-    final raw = _objects[id]?.properties['folder'];
-    try {
-      return _folder(raw is String ? raw : 'Notes');
-    } on WorkspaceFailure {
-      return 'Notes';
-    } // Preserve invalid metadata without crashing Explorer.
+    final object = _objects[id];
+    final raw = object?.properties['folder'];
+    final folder = raw is String ? raw : null;
+    final cached = _objectFolderCache[id];
+    if (cached != null && cached.path == path && cached.folder == folder) {
+      return cached.resolved;
+    }
+    String resolve() {
+      if (path != null && path.startsWith('Notes/')) {
+        return p.posix.dirname(path);
+      }
+      if (folder == null || folder.isEmpty || folder == 'Notes') return 'Notes';
+      try {
+        return _folder(folder);
+      } on WorkspaceFailure {
+        return 'Notes';
+      } // Preserve invalid metadata without crashing Explorer.
+    }
+
+    final resolved = resolve();
+    if (object != null || path != null) {
+      // Retain only derived strings, and prune permanently removed owners.
+      if (_objectFolderCache.length > _objects.length + 256) {
+        _objectFolderCache.removeWhere((key, _) => !_objects.containsKey(key));
+      }
+      _objectFolderCache[id] = (path: path, folder: folder, resolved: resolved);
+    }
+    return resolved;
   }
 
   bool _inside(String folder, String ancestor) =>

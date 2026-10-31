@@ -109,7 +109,17 @@ void main() {
       await tester.pumpAndSettle();
       expect(row, findsNothing);
       await c.flushAll();
-      await tester.runAsync(() => c.initialize());
+      // Reopening yields through timers; drain fake time and native work.
+      var reopened = false;
+      final reopening = c.initialize().then((_) => reopened = true);
+      for (var i = 0; i < 200 && !reopened; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 1)),
+        );
+      }
+      expect(reopened, isTrue);
+      await reopening;
       expect(c.session.collapsedFolders, contains('Notes'));
       expect(c.find(note.id)!.body, 'Keep these exact bytes.');
       expect(tester.takeException(), isNull);

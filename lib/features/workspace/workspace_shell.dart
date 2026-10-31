@@ -2551,6 +2551,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   );
 
   Widget explorer() {
+    final c = this.c;
     final colors = OrbitColors.of(context), destination = c.session.destination;
     final compactExplorer =
         Theme.of(context).platform == TargetPlatform.android ||
@@ -2669,7 +2670,11 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
       });
     }
 
-    sortObjects(objects, c.session.noteSort);
+    // Folder rows sort their own buckets. Do not sort the entire Vault twice.
+    if (destination == OrbitDestination.trash ||
+        !c.repository.supportsFolders) {
+      sortObjects(objects, c.session.noteSort);
+    }
 
     final label = destination == OrbitDestination.trash
         ? 'TRASH'

@@ -250,7 +250,9 @@ void main() {
       expect(find.text('Add Sticky'), findsOneWidget);
       expect(find.text('Add Text'), findsOneWidget);
 
-      // Tap Add Card
+      // The complete menu can extend past the small test viewport.
+      await tester.ensureVisible(find.text('Add Card'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Add Card'));
       await tester.pumpAndSettle();
 

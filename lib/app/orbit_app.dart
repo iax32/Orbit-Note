@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/workspace/workspace_shell.dart';
 import 'orbit_theme_cache.dart';
+import 'canvas_performance.dart';
 import 'app_zoom.dart';
 import 'orbit_components.dart';
 import 'workspace_controller.dart';
@@ -15,6 +16,21 @@ class OrbitNoteApp extends ConsumerStatefulWidget {
 
 class _OrbitNoteAppState extends ConsumerState<OrbitNoteApp> {
   final _theme = OrbitThemeCache();
+  late final int _performanceSurface;
+  @override
+  void initState() {
+    super.initState();
+    final perf = CanvasPerformance.instance;
+    _performanceSurface = perf.attach();
+    perf.context(_performanceSurface, {'app': 1});
+  }
+
+  @override
+  void dispose() {
+    CanvasPerformance.instance.detach(_performanceSurface);
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.watch(

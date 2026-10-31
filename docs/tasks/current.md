@@ -1,3 +1,27 @@
+# Ready locally — whole-app responsiveness, 2026-10-31
+
+Owner reports pervasive lag and authorizes implementation plus local native
+releases. [Measured work and limits](whole-app-responsiveness-2026-10-30.md).
+Delivered lazy Explorer controls, exact incremental folder sorting, removal of
+duplicate sorting/provider reads, input-keyed folder/known-folder caches,
+immutable-snapshot PDF synchronization guards and yielding atomic Vault scans.
+Existing bounded frame/stall diagnostics now cover the application lifetime.
+No feature/visual/animation/quality reduction, data schema change or server work.
+Personal Vaults and unrelated tmp/ remain untouched.
+
+Actual full-shell/controller/repository native profiles: status UI p95 123->42 ms,
+visible long-note typing 120->59 ms, short-stroke/commit frames 117->57 ms,
+split-note/PDF updates 133->47 ms, settings 154->36 ms. Same isolated 10,003-object,
+10,100-element/100,000-pressure-sample/2,000-paragraph/300-page workloads.
+Cold/GC/long-session limits are recorded honestly; cold large-Canvas raster and
+some commit/replacement frames still exceed the frame budget. Universal zero lag
+and physical Windows/Lenovo acceptance are not claimed. 115 broad focused checks
+pass (29 s); 33 affected retained-source checks pass (15 s), including actual-font
+captures. Analyzer clean (8.8 s), strict 932 lib/test files unchanged (10.45 s).
+Preparing 1.0.18+19 native builds and publication. The owner's active app uses the
+usual Windows build output, so publication builds use an isolated source checkout;
+no running user app is terminated or overwritten.
+
 # Published — PDF ink and measured responsiveness, 2026-10-30
 
 Owner requests freehand PDF drawing and major performance fixes across the app,
